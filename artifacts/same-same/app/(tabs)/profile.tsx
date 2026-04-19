@@ -45,10 +45,6 @@ export default function ProfileScreen() {
   };
 
   const earnedBadges = badges.filter((b) => b.earned).length;
-  const avgScore =
-    matches.length > 0
-      ? Math.round(matches.reduce((s, m) => s + m.similarityScore, 0) / matches.length)
-      : 0;
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
@@ -69,7 +65,6 @@ export default function ProfileScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={[styles.heroCard, { backgroundColor: colors.primary }]}>
-          <Text style={styles.heroTitle}>We Are One</Text>
           <Text style={styles.heroSubtitle}>
             You've connected with {matchedCountries.length} {matchedCountries.length === 1 ? "country" : "countries"} across the globe
           </Text>
@@ -82,11 +77,6 @@ export default function ProfileScreen() {
             <View style={styles.heroStat}>
               <Text style={styles.heroStatNum}>{streakCount}</Text>
               <Text style={styles.heroStatLabel}>streak</Text>
-            </View>
-            <View style={[styles.heroDivider]} />
-            <View style={styles.heroStat}>
-              <Text style={styles.heroStatNum}>{avgScore || "--"}%</Text>
-              <Text style={styles.heroStatLabel}>avg score</Text>
             </View>
             <View style={[styles.heroDivider]} />
             <View style={styles.heroStat}>
