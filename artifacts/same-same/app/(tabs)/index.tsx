@@ -1,476 +1,339 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useRef } from "react";
 import {
   Animated,
   Dimensions,
-  Image,
-  PanResponder,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
-import { SAMPLE_PHOTOS, getTodaysChallenge } from "@/data/samplePhotos";
-import type { Match } from "@/context/AppContext";
+import { GlobeAnimation } from "@/components/GlobeAnimation";
+import { getTodaysChallenge } from "@/data/samplePhotos";
 
 const { width } = Dimensions.get("window");
-const SWIPE_THRESHOLD = width * 0.28;
 
-function getTheirPhoto(exclude?: string) {
-  const pool = exclude
-    ? SAMPLE_PHOTOS.filter((p) => p.uri !== exclude)
-    : SAMPLE_PHOTOS;
-  return pool[Math.floor(Math.random() * pool.length)];
-}
-
-export default function SwipeScreen() {
+export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { addMatch, streakCount, myPhotos } = useApp();
+  const { streakCount, matchHistory, matchedCountries, myPhotos } = useApp();
   const challenge = getTodaysChallenge();
-
-  const getMyPhoto = () =>
-    myPhotos.length > 0
-      ? myPhotos[Math.floor(Math.random() * Math.min(myPhotos.length, 5))]
-      : SAMPLE_PHOTOS[Math.floor(Math.random() * SAMPLE_PHOTOS.length)].uri;
-
-  const [myPhotoUri, setMyPhotoUri] = useState(() => getMyPhoto());
-  const [theirPhoto, setTheirPhoto] = useState(() => getTheirPhoto(myPhotoUri));
-  const [isAnimatingOut, setIsAnimatingOut] = useState(false);
-
-  const pan = useRef(new Animated.ValueXY()).current;
-  const cardScale = useRef(new Animated.Value(1)).current;
-  const sameOpacity = useRef(new Animated.Value(0)).current;
-  const diffOpacity = useRef(new Animated.Value(0)).current;
-
-  const generateSimilarityScore = (v: "same" | "different") =>
-    v === "same"
-      ? Math.floor(Math.random() * 22) + 68
-      : Math.floor(Math.random() * 35) + 25;
-
-  const resetCard = useCallback(() => {
-    const newMyUri = getMyPhoto();
-    const newTheir = getTheirPhoto(newMyUri);
-    setMyPhotoUri(newMyUri);
-    setTheirPhoto(newTheir);
-    pan.setValue({ x: 0, y: 0 });
-    cardScale.setValue(1);
-    sameOpacity.setValue(0);
-    diffOpacity.setValue(0);
-    setIsAnimatingOut(false);
-  }, [myPhotos]);
-
-  const handleSwipe = useCallback(
-    (dir: "left" | "right") => {
-      if (isAnimatingOut) return;
-      setIsAnimatingOut(true);
-
-      const v: "same" | "different" = dir === "right" ? "same" : "different";
-      Haptics.impactAsync(
-        v === "same"
-          ? Haptics.ImpactFeedbackStyle.Medium
-          : Haptics.ImpactFeedbackStyle.Light
-      );
-
-      const score = generateSimilarityScore(v);
-      const match: Match = {
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-        myPhoto: myPhotoUri,
-        theirPhoto: theirPhoto.uri,
-        myCountry: "You",
-        theirCountry: theirPhoto.country,
-        theirCountryFlag: theirPhoto.countryFlag,
-        theirCountryCode: theirPhoto.countryCode,
-        similarityScore: score,
-        verdict: v,
-        timestamp: new Date().toISOString(),
-        theme: challenge.id,
-      };
-
-      Animated.parallel([
-        Animated.timing(pan.x, {
-          toValue: dir === "right" ? width * 1.5 : -width * 1.5,
-          duration: 350,
-          useNativeDriver: true,
-        }),
-        Animated.timing(cardScale, {
-          toValue: 0.85,
-          duration: 350,
-          useNativeDriver: true,
-        }),
-      ]).start(() => {
-        router.push({
-          pathname: "/reveal",
-          params: { matchData: JSON.stringify(match) },
-        });
-        setTimeout(resetCard, 400);
-      });
-    },
-    [isAnimatingOut, myPhotoUri, theirPhoto, challenge, resetCard]
-  );
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, g) =>
-        Math.abs(g.dx) > 8 && Math.abs(g.dy) < 80,
-      onPanResponderMove: (_, g) => {
-        pan.setValue({ x: g.dx, y: g.dy * 0.08 });
-        const progress = Math.abs(g.dx) / SWIPE_THRESHOLD;
-        if (g.dx > 0) {
-          sameOpacity.setValue(Math.min(progress, 1));
-          diffOpacity.setValue(0);
-        } else {
-          diffOpacity.setValue(Math.min(progress, 1));
-          sameOpacity.setValue(0);
-        }
-      },
-      onPanResponderRelease: (_, g) => {
-        if (g.dx > SWIPE_THRESHOLD) {
-          handleSwipe("right");
-        } else if (g.dx < -SWIPE_THRESHOLD) {
-          handleSwipe("left");
-        } else {
-          Animated.spring(pan, {
-            toValue: { x: 0, y: 0 },
-            useNativeDriver: true,
-            tension: 120,
-            friction: 8,
-          }).start();
-          sameOpacity.setValue(0);
-          diffOpacity.setValue(0);
-        }
-      },
-    })
-  ).current;
-
-  const rotation = pan.x.interpolate({
-    inputRange: [-width / 2, 0, width / 2],
-    outputRange: ["-7deg", "0deg", "7deg"],
-    extrapolate: "clamp",
-  });
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
+
+  const totalMatches = matchHistory.length;
   const hasUploadedPhoto = myPhotos.length > 0;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: topPadding + 8 }]}>
-        <View>
-          <Text style={[styles.appTitle, { color: colors.foreground }]}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingTop: topPadding + 16, paddingBottom: bottomPadding + 100 },
+        ]}
+      >
+        {/* Hero Globe */}
+        <View style={styles.hero}>
+          <GlobeAnimation size={190} />
+          <Text style={[styles.appName, { color: colors.foreground }]}>
             Same Same
           </Text>
-          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-            {streakCount > 0 ? `${streakCount} in a row` : "Swipe to judge"}
+          <Text style={[styles.tagline, { color: colors.mutedForeground }]}>
+            One world. Daily moments.
           </Text>
         </View>
+
+        {/* Stats row */}
+        <View style={styles.statsRow}>
+          <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.statNum, { color: colors.primary }]}>
+              {streakCount}
+            </Text>
+            <Feather name="zap" size={14} color={colors.gold} style={styles.statIcon} />
+            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
+              Streak
+            </Text>
+          </View>
+          <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.statNum, { color: colors.primary }]}>
+              {totalMatches}
+            </Text>
+            <Feather name="layers" size={14} color={colors.teal} style={styles.statIcon} />
+            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
+              Matches
+            </Text>
+          </View>
+          <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.statNum, { color: colors.primary }]}>
+              {matchedCountries.length}
+            </Text>
+            <Feather name="globe" size={14} color={colors.accent} style={styles.statIcon} />
+            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
+              Countries
+            </Text>
+          </View>
+        </View>
+
+        {/* Daily challenge */}
         <TouchableOpacity
-          onPress={() => router.push("/camera")}
-          style={[styles.cameraBtn, { backgroundColor: colors.primary }]}
+          style={[styles.challengeCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+          onPress={() => router.push("/(tabs)/match")}
           activeOpacity={0.85}
         >
-          <Feather name="camera" size={20} color="#fff" />
+          <View style={styles.challengeLeft}>
+            <Text style={styles.challengeEmoji}>{challenge.emoji}</Text>
+            <View>
+              <Text style={[styles.challengeLabel, { color: colors.mutedForeground }]}>
+                Today's theme
+              </Text>
+              <Text style={[styles.challengeTitle, { color: colors.foreground }]}>
+                {challenge.title}
+              </Text>
+            </View>
+          </View>
+          <View style={[styles.playChip, { backgroundColor: colors.primary }]}>
+            <Feather name="play" size={12} color="#fff" />
+            <Text style={styles.playChipText}>Play</Text>
+          </View>
         </TouchableOpacity>
-      </View>
 
-      <View style={[styles.challengeBar, { borderColor: colors.border }]}>
-        <Text style={styles.challengeEmoji}>{challenge.emoji}</Text>
-        <Text style={[styles.challengeText, { color: colors.mutedForeground }]}>
-          Today:{" "}
-          <Text style={{ color: colors.foreground, fontFamily: "Inter_600SemiBold" }}>
-            {challenge.title}
-          </Text>
-        </Text>
-        {hasUploadedPhoto && (
-          <View style={[styles.uploadedBadge, { backgroundColor: colors.teal + "22" }]}>
-            <Feather name="check" size={10} color={colors.teal} />
-            <Text style={[styles.uploadedText, { color: colors.teal }]}>
-              Your photo
-            </Text>
+        {/* Main CTA */}
+        <TouchableOpacity
+          style={[styles.matchBtn, { backgroundColor: colors.primary }]}
+          onPress={() => router.push("/(tabs)/match")}
+          activeOpacity={0.88}
+        >
+          <Feather name="layers" size={20} color="#fff" />
+          <Text style={styles.matchBtnText}>Start Matching</Text>
+        </TouchableOpacity>
+
+        {/* Upload photo prompt */}
+        {!hasUploadedPhoto && (
+          <TouchableOpacity
+            style={[styles.uploadPrompt, { borderColor: colors.border, backgroundColor: colors.card }]}
+            onPress={() => router.push("/camera")}
+            activeOpacity={0.85}
+          >
+            <Feather name="camera" size={18} color={colors.accent} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.uploadTitle, { color: colors.foreground }]}>
+                Add your photo
+              </Text>
+              <Text style={[styles.uploadSub, { color: colors.mutedForeground }]}>
+                Get matched with your own daily moments
+              </Text>
+            </View>
+            <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+          </TouchableOpacity>
+        )}
+
+        {/* Recent matches */}
+        {matchHistory.length > 0 && (
+          <View style={styles.recentSection}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+                Recent
+              </Text>
+              <TouchableOpacity onPress={() => router.push("/(tabs)/profile")}>
+                <Text style={[styles.seeAll, { color: colors.primary }]}>
+                  See all
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {matchHistory.slice(0, 3).map((m) => (
+              <View
+                key={m.id}
+                style={[styles.recentRow, { backgroundColor: colors.card, borderColor: colors.border }]}
+              >
+                <Text style={styles.recentFlag}>{m.theirCountryFlag}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.recentCountry, { color: colors.foreground }]}>
+                    {m.theirCountry}
+                  </Text>
+                  <Text style={[styles.recentVerdict, {
+                    color: m.verdict === "same" ? colors.teal : colors.primary,
+                  }]}>
+                    {m.verdict === "same" ? "Same Same" : "Different"} · {m.similarityScore}%
+                  </Text>
+                </View>
+                <Feather
+                  name={m.verdict === "same" ? "heart" : "x"}
+                  size={14}
+                  color={m.verdict === "same" ? colors.teal : colors.primary}
+                />
+              </View>
+            ))}
           </View>
         )}
-      </View>
-
-      <View style={styles.cardArea}>
-        <Animated.View
-          style={[
-            styles.cardWrapper,
-            {
-              transform: [
-                { translateX: pan.x },
-                { translateY: pan.y },
-                { rotate: rotation },
-                { scale: cardScale },
-              ],
-            },
-          ]}
-          {...panResponder.panHandlers}
-        >
-          <Animated.View
-            style={[
-              styles.sameLabel,
-              { opacity: sameOpacity, borderColor: colors.teal },
-            ]}
-          >
-            <Text style={[styles.labelText, { color: colors.teal }]}>
-              SAME SAME
-            </Text>
-          </Animated.View>
-          <Animated.View
-            style={[
-              styles.diffLabel,
-              { opacity: diffOpacity, borderColor: colors.primary },
-            ]}
-          >
-            <Text style={[styles.labelText, { color: colors.primary }]}>
-              DIFFERENT
-            </Text>
-          </Animated.View>
-
-          <View
-            style={[
-              styles.card,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
-          >
-            <View style={styles.photoSection}>
-              <Image
-                source={{ uri: myPhotoUri }}
-                style={styles.topPhoto}
-                resizeMode="cover"
-              />
-              <View style={[styles.photoTag, { backgroundColor: colors.background + "cc" }]}>
-                <Text style={[styles.photoTagText, { color: colors.foreground }]}>
-                  {hasUploadedPhoto ? "Your photo" : "Your moment"}
-                </Text>
-              </View>
-            </View>
-
-            <View style={[styles.divider, { backgroundColor: colors.background }]}>
-              <View style={[styles.vsChip, { backgroundColor: colors.secondary }]}>
-                <Text style={[styles.vsText, { color: colors.mutedForeground }]}>
-                  vs
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.photoSection}>
-              <Image
-                source={{ uri: theirPhoto.uri }}
-                style={styles.bottomPhoto}
-                resizeMode="cover"
-              />
-              <View style={[styles.photoTag, { backgroundColor: colors.background + "cc" }]}>
-                <Text style={[styles.photoTagText, { color: colors.foreground }]}>
-                  Somewhere in the world
-                </Text>
-              </View>
-            </View>
-          </View>
-        </Animated.View>
-      </View>
-
-      <View style={[styles.swipeHint, { paddingBottom: bottomPadding + 8 }]}>
-        <View style={styles.hintRow}>
-          <TouchableOpacity
-            style={[styles.hintBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => handleSwipe("left")}
-            activeOpacity={0.8}
-          >
-            <Feather name="x" size={18} color={colors.primary} />
-            <Text style={[styles.hintText, { color: colors.mutedForeground }]}>
-              Different
-            </Text>
-          </TouchableOpacity>
-
-          <Text style={[styles.swipeInstruction, { color: colors.mutedForeground }]}>
-            swipe or tap
-          </Text>
-
-          <TouchableOpacity
-            style={[styles.hintBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => handleSwipe("right")}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.hintText, { color: colors.mutedForeground }]}>
-              Same Same
-            </Text>
-            <Feather name="heart" size={18} color={colors.teal} />
-          </TouchableOpacity>
-        </View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
 
-const CARD_WIDTH = width - 40;
-const PHOTO_HEIGHT = Math.min((CARD_WIDTH * 0.55), 200);
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
+  scroll: {
+    alignItems: "center",
     paddingHorizontal: 20,
-    paddingBottom: 10,
+    gap: 16,
   },
-  appTitle: {
-    fontSize: 22,
+  hero: {
+    alignItems: "center",
+    gap: 10,
+    paddingBottom: 4,
+  },
+  appName: {
+    fontSize: 28,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -0.8,
+    marginTop: 4,
+  },
+  tagline: {
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+    letterSpacing: 0.2,
+  },
+  statsRow: {
+    flexDirection: "row",
+    gap: 12,
+    width: "100%",
+  },
+  statCard: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 4,
+  },
+  statNum: {
+    fontSize: 24,
     fontFamily: "Inter_700Bold",
     letterSpacing: -0.5,
   },
-  subtitle: {
-    fontSize: 13,
-    fontFamily: "Inter_400Regular",
-    marginTop: 2,
+  statIcon: {
+    marginTop: -2,
   },
-  cameraBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  challengeBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-    gap: 8,
-    borderBottomWidth: 0,
-  },
-  challengeEmoji: { fontSize: 15 },
-  challengeText: {
-    fontSize: 13,
-    fontFamily: "Inter_400Regular",
-    flex: 1,
-  },
-  uploadedBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
-  },
-  uploadedText: {
-    fontSize: 10,
-    fontFamily: "Inter_600SemiBold",
-  },
-  cardArea: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 20,
-  },
-  cardWrapper: {
-    width: CARD_WIDTH,
-  },
-  card: {
-    width: CARD_WIDTH,
-    borderRadius: 24,
-    overflow: "hidden",
-    borderWidth: 1,
-  },
-  photoSection: {
-    position: "relative",
-  },
-  topPhoto: {
-    width: "100%",
-    height: PHOTO_HEIGHT,
-  },
-  bottomPhoto: {
-    width: "100%",
-    height: PHOTO_HEIGHT,
-  },
-  photoTag: {
-    position: "absolute",
-    bottom: 8,
-    left: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  photoTagText: {
+  statLabel: {
     fontSize: 11,
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: "Inter_500Medium",
   },
-  divider: {
-    height: 28,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  vsChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  vsText: {
-    fontSize: 10,
-    fontFamily: "Inter_700Bold",
-    textTransform: "uppercase",
-    letterSpacing: 2,
-  },
-  sameLabel: {
-    position: "absolute",
-    top: 20,
-    right: 20,
-    zIndex: 10,
-    borderWidth: 3,
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    transform: [{ rotate: "12deg" }],
-  },
-  diffLabel: {
-    position: "absolute",
-    top: 20,
-    left: 20,
-    zIndex: 10,
-    borderWidth: 3,
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    transform: [{ rotate: "-12deg" }],
-  },
-  labelText: {
-    fontSize: 17,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: 1,
-  },
-  swipeHint: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
-  },
-  hintRow: {
+  challengeCard: {
+    width: "100%",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 10,
-  },
-  hintBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 24,
+    paddingVertical: 14,
+    borderRadius: 18,
     borderWidth: 1,
   },
-  hintText: {
+  challengeLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    flex: 1,
+  },
+  challengeEmoji: { fontSize: 28 },
+  challengeLabel: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+  },
+  challengeTitle: {
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
+    marginTop: 1,
+  },
+  playChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  playChipText: {
+    color: "#fff",
     fontSize: 13,
     fontFamily: "Inter_600SemiBold",
   },
-  swipeInstruction: {
-    fontSize: 11,
+  matchBtn: {
+    width: "100%",
+    height: 58,
+    borderRadius: 29,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  matchBtnText: {
+    color: "#fff",
+    fontSize: 17,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -0.2,
+  },
+  uploadPrompt: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 18,
+    borderWidth: 1,
+  },
+  uploadTitle: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+  },
+  uploadSub: {
+    fontSize: 12,
     fontFamily: "Inter_400Regular",
-    textAlign: "center",
+    marginTop: 2,
+  },
+  recentSection: {
+    width: "100%",
+    gap: 8,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 2,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -0.3,
+  },
+  seeAll: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+  },
+  recentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  recentFlag: { fontSize: 24 },
+  recentCountry: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+  },
+  recentVerdict: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    marginTop: 1,
   },
 });
