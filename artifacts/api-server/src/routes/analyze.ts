@@ -6,16 +6,25 @@ const router: IRouter = Router();
 // Vocabulary the model is allowed to choose from. Keep this list in sync with
 // the mobile app's TAG_LIBRARY in artifacts/same-same/data/samplePhotos.ts.
 const ALLOWED_TAGS = [
-  "coffee", "drink", "meal", "bread", "warm",
-  "trees", "sunset", "clouds", "stars", "night",
-  "mountains", "outdoors", "water", "wildlife",
-  "dog", "cat", "animal",
-  "people", "smile", "celebration",
-  "art", "desk", "laptop",
-  "transit", "city",
+  // Food & drink
+  "coffee", "drink", "meal", "bread", "dessert", "cooking", "baking", "warm", "cafe",
+  // Nature & outdoors
+  "trees", "sunset", "clouds", "stars", "night", "mountains", "outdoors",
+  "water", "beach", "snow", "plants", "flowers", "garden",
+  // Animals
+  "dog", "cat", "animal", "wildlife",
+  // People & social
+  "people", "smile", "celebration", "family", "friends", "party", "kids",
+  // Creative & hobbies
+  "art", "photography", "music", "reading", "crafts", "fashion",
+  // Active hobbies
+  "fitness", "yoga", "hiking", "cycling", "running", "sports", "dancing", "gaming",
+  // Lifestyle & places
+  "travel", "home", "vintage", "cozy", "work", "study",
+  "city", "transit", "desk", "laptop",
 ];
 
-const PROMPT = `You are analyzing a daily-life photo for a "find similar photos" feature.
+const PROMPT = `You are analyzing a daily-life photo for a global "find people who share your moments and interests" app.
 
 Return TWO things:
 1. "theme" — a SHORT lowercase phrase (1–4 words) naming the activity, moment,
@@ -23,7 +32,10 @@ Return TWO things:
    "morning coffee", "street food", "extreme sports", "first steps",
    "childbirth", "rainy commute", "sunset hike", "birthday cake",
    "bedroom selfie", "office lunch", etc. Do NOT pad with adjectives.
-2. "tags" — up to 6 visual tags from this FIXED vocabulary:
+2. "tags" — up to 6 tags from this FIXED vocabulary, capturing BOTH the visual
+   subject AND any lifestyle, hobby, or interest the photo strongly suggests
+   (e.g. a photo of running shoes on a trail → "running", "outdoors", "fitness";
+   a photo of a yarn project → "crafts", "cozy", "home"):
    ${ALLOWED_TAGS.join(", ")}
 
 Return ONLY this JSON, no prose, no markdown:

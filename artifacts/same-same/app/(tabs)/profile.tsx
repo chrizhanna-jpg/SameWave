@@ -16,6 +16,7 @@ import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { BadgeCard } from "@/components/BadgeCard";
 import { PhotoCard } from "@/components/PhotoCard";
+import { tagEmoji, tagLabel } from "@/utils/interests";
 
 export default function ProfileScreen() {
   const colors = useColors();
@@ -32,7 +33,23 @@ export default function ProfileScreen() {
     connectRequests,
     unreadIncoming,
     pendingOutgoing,
+    myVibe,
   } = useApp();
+  // Tags I keep matching on across all my matches — answers the question
+  // "what kinds of moments and people do I keep finding?".
+  const recurringMatchTags = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const m of matches) {
+      for (const t of m.sharedTags ?? []) {
+        counts.set(t, (counts.get(t) ?? 0) + 1);
+      }
+    }
+    return [...counts.entries()]
+      .filter(([, n]) => n >= 1)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([t, n]) => ({ tag: t, count: n }));
+  }, [matches]);
   const connectionsCount = connectRequests.filter(
     (r) => r.status === "accepted",
   ).length;
@@ -101,6 +118,72 @@ export default function ProfileScreen() {
             </View>
           </View>
         </View>
+
+        {(myVibe.length > 0 || recurringMatchTags.length > 0) && (
+          <View
+            style={[
+              styles.vibeCard,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
+            {myVibe.length > 0 && (
+              <View style={{ gap: 10 }}>
+                <Text style={[styles.vibeCardLabel, { color: colors.mutedForeground }]}>
+                  Your vibe
+                </Text>
+                <View style={styles.vibeChipsRow}>
+                  {myVibe.map((t) => (
+                    <View
+                      key={t}
+                      style={[
+                        styles.vibeChip,
+                        {
+                          backgroundColor: colors.teal + "1f",
+                          borderColor: colors.teal + "44",
+                        },
+                      ]}
+                    >
+                      <Text style={styles.vibeChipEmoji}>{tagEmoji(t)}</Text>
+                      <Text style={[styles.vibeChipText, { color: colors.teal }]}>
+                        {tagLabel(t)}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+                <Text style={[styles.vibeHint, { color: colors.mutedForeground }]}>
+                  What your photos say about you. Used to find people who share
+                  your interests.
+                </Text>
+              </View>
+            )}
+            {recurringMatchTags.length > 0 && (
+              <View style={{ gap: 10, marginTop: myVibe.length > 0 ? 16 : 0 }}>
+                <Text style={[styles.vibeCardLabel, { color: colors.mutedForeground }]}>
+                  You keep matching on
+                </Text>
+                <View style={styles.vibeChipsRow}>
+                  {recurringMatchTags.map(({ tag, count }) => (
+                    <View
+                      key={tag}
+                      style={[
+                        styles.vibeChip,
+                        {
+                          backgroundColor: colors.gold + "22",
+                          borderColor: colors.gold + "55",
+                        },
+                      ]}
+                    >
+                      <Text style={styles.vibeChipEmoji}>{tagEmoji(tag)}</Text>
+                      <Text style={[styles.vibeChipText, { color: colors.gold }]}>
+                        {tagLabel(tag)} · {count}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+          </View>
+        )}
 
         <TouchableOpacity
           onPress={() => router.push("/connections")}
@@ -302,6 +385,44 @@ const styles = StyleSheet.create({
     width: 1,
     height: 36,
     backgroundColor: "rgba(255,255,255,0.2)",
+  },
+  vibeCard: {
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  vibeCardLabel: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  vibeChipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  vibeChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  vibeChipEmoji: {
+    fontSize: 14,
+  },
+  vibeChipText: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+  },
+  vibeHint: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 16,
   },
   connectionsRow: {
     flexDirection: "row",

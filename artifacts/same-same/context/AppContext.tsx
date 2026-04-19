@@ -36,6 +36,10 @@ export interface Match {
   theme?: string;
   theirPhotoMinutesAgo?: number;
   sharedTags?: string[];
+  // Broader "vibe" of the matched user (their photo's tags expanded with a
+  // couple of lifestyle/hobby tags) — used to surface similar interests
+  // beyond the single photo subject.
+  theirVibe?: string[];
 }
 
 export interface ConnectRequest {
@@ -84,6 +88,8 @@ interface AppState {
 }
 
 interface AppContextValue extends AppState {
+  /** Top interest tags derived from the user's posted photos. */
+  myVibe: string[];
   addMatch: (match: Match) => void;
   removeMatch: (id: string) => void;
   addMyPhoto: (uri: string, theme: string, tags?: string[]) => void;
@@ -486,6 +492,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [state.connectRequests],
   );
 
+  // "My vibe" is the user's interest fingerprint. Posted-photo tags weigh more
+  // than match-derived tags, but both contribute so the user sees a vibe form
+  // even before they've uploaded their own photo (e.g. during the first
+  // session when they're using the locked sample photo).
+  const myVibe = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const p of state.myPhotos) {
+      for (const t of p.tags ?? []) counts.set(t, (counts.get(t) ?? 0) + 2);
+    }
+    for (const m of state.matches) {
+      for (const t of m.sharedTags ?? []) counts.set(t, (counts.get(t) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 8)
+      .map(([t]) => t);
+  }, [state.myPhotos, state.matches]);
+
   const getWorldMapCoverage = useCallback(() => {
     return Math.min(
       100,
@@ -497,6 +521,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     <AppContext.Provider
       value={{
         ...state,
+        myVibe,
         addMatch,
         removeMatch,
         addMyPhoto,

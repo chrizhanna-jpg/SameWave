@@ -26,6 +26,7 @@ import { ConnectSheet } from "@/components/ConnectSheet";
 import { DAILY_CHALLENGES } from "@/data/samplePhotos";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
 import { getTimeTier, getGeoTier } from "@/utils/celebrations";
+import { commonInterests, tagEmoji, tagLabel } from "@/utils/interests";
 import type { Match } from "@/context/AppContext";
 
 const { width } = Dimensions.get("window");
@@ -43,6 +44,7 @@ export default function RevealScreen() {
     hasOutgoingForMatch,
     myDefaultPlatform,
     myDefaultHandle,
+    myVibe,
   } = useApp();
   const [match, setMatch] = useState<Match | null>(null);
   const [sharing, setSharing] = useState(false);
@@ -315,6 +317,71 @@ export default function RevealScreen() {
               )}
             </View>
           </View>
+
+          {(() => {
+            const theirVibe = match.theirVibe ?? [];
+            const shared = commonInterests(myVibe, theirVibe);
+            const showShared = shared.length > 0;
+            const showVibe = !showShared && theirVibe.length > 0;
+            if (!showShared && !showVibe) return null;
+            const tags = showShared ? shared : theirVibe.slice(0, 4);
+            return (
+              <View
+                style={[
+                  styles.vibeBox,
+                  {
+                    backgroundColor: showShared
+                      ? colors.gold + "1a"
+                      : colors.card,
+                    borderColor: showShared
+                      ? colors.gold + "55"
+                      : colors.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.vibeLabel,
+                    { color: showShared ? colors.gold : colors.mutedForeground },
+                  ]}
+                >
+                  {showShared
+                    ? `You both seem to love`
+                    : `Their vibe`}
+                </Text>
+                <View style={styles.vibeChipsRow}>
+                  {tags.map((t) => (
+                    <View
+                      key={t}
+                      style={[
+                        styles.vibeChip,
+                        {
+                          backgroundColor: showShared
+                            ? colors.gold + "33"
+                            : colors.teal + "1a",
+                          borderColor: showShared
+                            ? colors.gold + "66"
+                            : colors.teal + "44",
+                        },
+                      ]}
+                    >
+                      <Text style={styles.vibeChipEmoji}>{tagEmoji(t)}</Text>
+                      <Text
+                        style={[
+                          styles.vibeChipText,
+                          {
+                            color: showShared ? colors.gold : colors.teal,
+                          },
+                        ]}
+                      >
+                        {tagLabel(t)}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            );
+          })()}
 
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
@@ -738,6 +805,39 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
+  },
+  vibeBox: {
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 10,
+  },
+  vibeLabel: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  vibeChipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  vibeChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  vibeChipEmoji: {
+    fontSize: 14,
+  },
+  vibeChipText: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
   },
   insightBox: {
     flexDirection: "row",

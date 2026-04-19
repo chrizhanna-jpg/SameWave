@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Icon } from "@/components/Icon";
 import { MirrorHeart } from "@/components/MirrorHeart";
+import { expandToVibe } from "@/utils/interests";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
@@ -250,6 +251,7 @@ export default function SwipeScreen() {
             theirPhotoMinutesAgo: theirPhoto.minutesAgo,
             myPhotoUploadedAt: myPhotoData.uploadedAt,
             sharedTags,
+            theirVibe: expandToVibe(theirPhoto.tags ?? [], theirPhoto.uri),
           };
           router.push({
             pathname: "/reveal",
