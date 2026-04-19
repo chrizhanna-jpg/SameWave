@@ -16,6 +16,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Icon } from "@/components/Icon";
+import { MirrorHeart } from "@/components/MirrorHeart";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
@@ -501,7 +502,7 @@ export default function SwipeScreen() {
                 activeOpacity={0.85}
                 accessibilityLabel="Same Same"
               >
-                <Icon name="heart" size={24} color="#001018" />
+                <MirrorHeart size={28} color="#001018" />
               </TouchableOpacity>
             </View>
           </View>
