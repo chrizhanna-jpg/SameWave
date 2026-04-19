@@ -22,6 +22,7 @@ import ViewShot, { captureRef } from "react-native-view-shot";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { CountryReveal } from "@/components/CountryReveal";
+import { ConnectSheet } from "@/components/ConnectSheet";
 import { DAILY_CHALLENGES } from "@/data/samplePhotos";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
 import { getTimeTier, getGeoTier } from "@/utils/celebrations";
@@ -33,10 +34,21 @@ export default function RevealScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
-  const { addMatch, matchedCountries, proUnlocked, unlockPro } = useApp();
+  const {
+    addMatch,
+    matchedCountries,
+    proUnlocked,
+    unlockPro,
+    sendConnectRequest,
+    hasOutgoingForMatch,
+    myDefaultPlatform,
+    myDefaultHandle,
+  } = useApp();
   const [match, setMatch] = useState<Match | null>(null);
   const [sharing, setSharing] = useState(false);
   const [paywallOpen, setPaywallOpen] = useState(false);
+  const [connectOpen, setConnectOpen] = useState(false);
+  const [connectSent, setConnectSent] = useState(false);
   const savedRef = useRef(false);
   const shotRef = useRef<ViewShot>(null);
 
@@ -136,6 +148,16 @@ export default function RevealScreen() {
 
   const handleNext = () => {
     router.back();
+  };
+
+  const handleConnectSubmit = (platform: string, handle: string) => {
+    if (!match) return;
+    const created = sendConnectRequest(match.id, platform, handle);
+    setConnectOpen(false);
+    if (created) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setConnectSent(true);
+    }
   };
 
   if (!match) return null;
@@ -394,6 +416,72 @@ export default function RevealScreen() {
           </View>
         </Animated.View>
 
+        {/* Anonymous Connect Request CTA — viral hook: mystery reveal,
+            48h timer, mutual disclosure brings both users back. */}
+        {(() => {
+          const alreadySent = hasOutgoingForMatch(match.id) || connectSent;
+          return (
+            <TouchableOpacity
+              onPress={() => {
+                if (alreadySent) {
+                  router.push("/connections");
+                } else {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setConnectOpen(true);
+                }
+              }}
+              activeOpacity={0.88}
+              style={[
+                styles.connectCta,
+                {
+                  backgroundColor: alreadySent
+                    ? colors.card
+                    : colors.teal,
+                  borderColor: alreadySent ? colors.teal : colors.teal,
+                  borderWidth: alreadySent ? 1 : 0,
+                },
+              ]}
+            >
+              <View style={[styles.connectIconBubble, { backgroundColor: alreadySent ? colors.teal + "22" : "rgba(0,16,24,0.18)" }]}>
+                <Icon
+                  name={alreadySent ? "clock" : "eye-off"}
+                  size={18}
+                  color={alreadySent ? colors.teal : "#001018"}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={[
+                    styles.connectTitle,
+                    { color: alreadySent ? colors.teal : "#001018" },
+                  ]}
+                >
+                  {alreadySent ? "Request sent · waiting" : "Reveal & Connect"}
+                </Text>
+                <Text
+                  style={[
+                    styles.connectSub,
+                    {
+                      color: alreadySent
+                        ? colors.mutedForeground
+                        : "rgba(0,16,24,0.7)",
+                    },
+                  ]}
+                >
+                  {alreadySent
+                    ? "They have 48h to respond — we'll ping you. Tap to view."
+                    : "Anonymously swap socials — only revealed if they accept."}
+                </Text>
+              </View>
+              <Icon
+                name="chevron-right"
+                size={18}
+                color={alreadySent ? colors.mutedForeground : "#001018"}
+              />
+            </TouchableOpacity>
+          );
+        })()}
+
         <View style={styles.shareRow}>
           <TouchableOpacity
             style={[
@@ -512,6 +600,17 @@ export default function RevealScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <ConnectSheet
+        visible={connectOpen}
+        onClose={() => setConnectOpen(false)}
+        onSubmit={handleConnectSubmit}
+        mode="send"
+        defaultPlatform={myDefaultPlatform}
+        defaultHandle={myDefaultHandle}
+        theirCountry={match.theirCountry}
+        theirCountryFlag={match.theirCountryFlag}
+      />
     </View>
   );
 }
@@ -732,6 +831,30 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
     color: "rgba(255,255,255,0.55)",
     letterSpacing: 0.5,
+  },
+  connectCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+  },
+  connectIconBubble: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  connectTitle: {
+    fontSize: 15,
+    fontFamily: "Inter_700Bold",
+  },
+  connectSub: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    marginTop: 2,
   },
   shareRow: {
     flexDirection: "row",

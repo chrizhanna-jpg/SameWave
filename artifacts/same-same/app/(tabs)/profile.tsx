@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
+import { router } from "expo-router";
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
@@ -19,7 +20,22 @@ import { PhotoCard } from "@/components/PhotoCard";
 export default function ProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { matches, matchedCountries, streakCount, totalMatches, badges, myPhotos, getWorldMapCoverage, removeMatch } = useApp();
+  const {
+    matches,
+    matchedCountries,
+    streakCount,
+    totalMatches,
+    badges,
+    myPhotos,
+    getWorldMapCoverage,
+    removeMatch,
+    connectRequests,
+    unreadIncoming,
+    pendingOutgoing,
+  } = useApp();
+  const connectionsCount = connectRequests.filter(
+    (r) => r.status === "accepted",
+  ).length;
 
   const confirmUndo = (id: string, country: string) => {
     const doRemove = () => {
@@ -85,6 +101,52 @@ export default function ProfileScreen() {
             </View>
           </View>
         </View>
+
+        <TouchableOpacity
+          onPress={() => router.push("/connections")}
+          activeOpacity={0.85}
+          style={[
+            styles.connectionsRow,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+          accessibilityLabel="Open connections"
+        >
+          <View
+            style={[
+              styles.connectionsIcon,
+              {
+                backgroundColor:
+                  unreadIncoming > 0 ? colors.teal : colors.teal + "22",
+              },
+            ]}
+          >
+            <Icon
+              name="bell"
+              size={18}
+              color={unreadIncoming > 0 ? "#001018" : colors.teal}
+            />
+            {unreadIncoming > 0 && (
+              <View style={[styles.connectionsDot, { backgroundColor: colors.gold, borderColor: colors.card }]}>
+                <Text style={styles.connectionsDotText}>{unreadIncoming}</Text>
+              </View>
+            )}
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.connectionsTitle, { color: colors.foreground }]}>
+              Connections
+            </Text>
+            <Text style={[styles.connectionsSub, { color: colors.mutedForeground }]}>
+              {unreadIncoming > 0
+                ? `${unreadIncoming} new — tap to respond`
+                : pendingOutgoing > 0
+                ? `${pendingOutgoing} request${pendingOutgoing === 1 ? "" : "s"} awaiting reply`
+                : connectionsCount > 0
+                ? `${connectionsCount} mutual reveal${connectionsCount === 1 ? "" : "s"}`
+                : "Anonymous social swaps with your matches"}
+            </Text>
+          </View>
+          <Icon name="chevron-right" size={18} color={colors.mutedForeground} />
+        </TouchableOpacity>
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -240,6 +302,50 @@ const styles = StyleSheet.create({
     width: 1,
     height: 36,
     backgroundColor: "rgba(255,255,255,0.2)",
+  },
+  connectionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  connectionsIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  connectionsDot: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  connectionsDotText: {
+    color: "#001018",
+    fontSize: 10,
+    fontFamily: "Inter_700Bold",
+  },
+  connectionsTitle: {
+    fontSize: 15,
+    fontFamily: "Inter_700Bold",
+  },
+  connectionsSub: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    marginTop: 2,
   },
   section: {
     gap: 12,

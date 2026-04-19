@@ -38,6 +38,29 @@ export interface Match {
   sharedTags?: string[];
 }
 
+export interface ConnectRequest {
+  id: string;
+  matchId: string;
+  direction: "outgoing" | "incoming";
+  status: "pending" | "accepted" | "declined" | "expired";
+  myPlatform?: string;
+  myHandle?: string;
+  theirPlatform?: string;
+  theirHandle?: string;
+  createdAt: string;
+  respondedAt?: string;
+  expiresAt: string;
+  // Snapshot of match context (so requests still render if match removed)
+  theirCountry: string;
+  theirCountryFlag: string;
+  theirCountryCode: string;
+  theirPhoto: string;
+  myPhoto: string;
+  theme?: string;
+  // Has the user already opened/viewed this request? (for unread badge)
+  seen: boolean;
+}
+
 export interface Badge {
   id: string;
   name: string;
@@ -55,6 +78,9 @@ interface AppState {
   myPhotos: MyPhoto[];
   onboardingComplete: boolean;
   proUnlocked: boolean;
+  connectRequests: ConnectRequest[];
+  myDefaultPlatform?: string; // remembered preference
+  myDefaultHandle?: string;
 }
 
 interface AppContextValue extends AppState {
@@ -65,6 +91,18 @@ interface AppContextValue extends AppState {
   resetOnboarding: () => void;
   unlockPro: () => void;
   getWorldMapCoverage: () => number;
+  // Connect requests
+  sendConnectRequest: (matchId: string, platform: string, handle: string) => ConnectRequest | null;
+  respondConnectRequest: (
+    id: string,
+    accept: boolean,
+    platform?: string,
+    handle?: string,
+  ) => void;
+  markRequestSeen: (id: string) => void;
+  unreadIncoming: number;
+  pendingOutgoing: number;
+  hasOutgoingForMatch: (matchId: string) => boolean;
 }
 
 const defaultBadges: Badge[] = [
@@ -89,7 +127,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     myPhotos: [],
     onboardingComplete: false,
     proUnlocked: false,
+    connectRequests: [],
   });
+  // Mutable ref so simulated-response timeouts can read latest state
+  const stateRef = React.useRef(state);
+  React.useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   useEffect(() => {
     loadState();
@@ -118,10 +162,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             };
           }
         );
+        // Expire any pending requests whose 48h window has passed.
+        const now = Date.now();
+        const migratedRequests: ConnectRequest[] = (parsed.connectRequests ?? [])
+          .map((r: ConnectRequest) => {
+            if (r.status === "pending" && new Date(r.expiresAt).getTime() < now) {
+              return { ...r, status: "expired" as const };
+            }
+            return r;
+          });
         setState((prev) => ({
           ...prev,
           ...parsed,
           myPhotos: migratedPhotos,
+          connectRequests: migratedRequests,
           badges: defaultBadges.map((b) => {
             const stored = parsed.badges?.find((sb: Badge) => sb.id === b.id);
             return stored ? { ...b, ...stored } : b;
@@ -261,6 +315,177 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  // --- Connect Requests ---
+
+  const REQUEST_TTL_MS = 48 * 60 * 60 * 1000; // 48h
+
+  const sendConnectRequest = useCallback(
+    (matchId: string, platform: string, handle: string): ConnectRequest | null => {
+      const trimmed = handle.trim().replace(/^@+/, "");
+      if (!trimmed) return null;
+      let created: ConnectRequest | null = null as ConnectRequest | null;
+      setState((prev) => {
+        const match = prev.matches.find((m) => m.id === matchId);
+        if (!match) return prev;
+        // Don't allow duplicate outgoing for the same match
+        const existing = prev.connectRequests.find(
+          (r) =>
+            r.matchId === matchId &&
+            r.direction === "outgoing" &&
+            (r.status === "pending" || r.status === "accepted"),
+        );
+        if (existing) {
+          created = existing;
+          return prev;
+        }
+        const now = Date.now();
+        const req: ConnectRequest = {
+          id: `out_${now.toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+          matchId,
+          direction: "outgoing",
+          status: "pending",
+          myPlatform: platform,
+          myHandle: trimmed,
+          createdAt: new Date(now).toISOString(),
+          expiresAt: new Date(now + REQUEST_TTL_MS).toISOString(),
+          theirCountry: match.theirCountry,
+          theirCountryFlag: match.theirCountryFlag,
+          theirCountryCode: match.theirCountryCode,
+          theirPhoto: match.theirPhoto,
+          myPhoto: match.myPhoto,
+          theme: match.theme,
+          seen: true,
+        };
+        created = req;
+        const newState: AppState = {
+          ...prev,
+          connectRequests: [req, ...prev.connectRequests],
+          myDefaultPlatform: platform,
+          myDefaultHandle: trimmed,
+        };
+        saveState(newState);
+        return newState;
+      });
+
+      // Dev-only: simulate the other user responding within a few seconds so
+      // the user can experience the full loop without a backend. In real
+      // production builds we'd be waiting on a push from the server.
+      if (created && __DEV__) {
+        const targetId = created.id;
+        setTimeout(() => {
+          const live = stateRef.current.connectRequests.find(
+            (r) => r.id === targetId,
+          );
+          if (!live || live.status !== "pending") return;
+          const accepted = Math.random() < 0.7;
+          // Pick a fake handle for the simulated counterpart
+          const platforms = ["instagram", "tiktok", "snapchat", "x", "threads"];
+          const theirPlatform = platforms[Math.floor(Math.random() * platforms.length)];
+          const adjectives = ["wandering", "sunny", "quiet", "wild", "tiny", "loud", "soft", "lucky"];
+          const nouns = ["fern", "lantern", "river", "moth", "cloud", "atlas", "echo", "mango"];
+          const a = adjectives[Math.floor(Math.random() * adjectives.length)];
+          const n = nouns[Math.floor(Math.random() * nouns.length)];
+          const num = Math.floor(Math.random() * 90) + 10;
+          const theirHandle = `${a}.${n}${num}`;
+          setState((prev) => {
+            const newRequests = prev.connectRequests.map((r) =>
+              r.id === targetId
+                ? {
+                    ...r,
+                    status: accepted ? ("accepted" as const) : ("declined" as const),
+                    respondedAt: new Date().toISOString(),
+                    theirPlatform: accepted ? theirPlatform : undefined,
+                    theirHandle: accepted ? theirHandle : undefined,
+                    seen: false,
+                  }
+                : r,
+            );
+            const newState = { ...prev, connectRequests: newRequests };
+            saveState(newState);
+            return newState;
+          });
+        }, 6000 + Math.random() * 4000);
+      }
+
+      return created;
+    },
+    [],
+  );
+
+  const respondConnectRequest = useCallback(
+    (id: string, accept: boolean, platform?: string, handle?: string) => {
+      const trimmed = handle?.trim().replace(/^@+/, "");
+      setState((prev) => {
+        const newRequests = prev.connectRequests.map((r) => {
+          if (r.id !== id) return r;
+          if (r.status !== "pending") return r;
+          if (accept && (!platform || !trimmed)) return r;
+          return {
+            ...r,
+            status: accept ? ("accepted" as const) : ("declined" as const),
+            respondedAt: new Date().toISOString(),
+            myPlatform: accept ? platform : r.myPlatform,
+            myHandle: accept ? trimmed : r.myHandle,
+            seen: true,
+          };
+        });
+        const newState: AppState = {
+          ...prev,
+          connectRequests: newRequests,
+          ...(accept && platform && trimmed
+            ? { myDefaultPlatform: platform, myDefaultHandle: trimmed }
+            : {}),
+        };
+        saveState(newState);
+        return newState;
+      });
+    },
+    [],
+  );
+
+  const markRequestSeen = useCallback((id: string) => {
+    setState((prev) => {
+      let changed = false;
+      const newRequests = prev.connectRequests.map((r) => {
+        if (r.id === id && !r.seen) {
+          changed = true;
+          return { ...r, seen: true };
+        }
+        return r;
+      });
+      if (!changed) return prev;
+      const newState = { ...prev, connectRequests: newRequests };
+      saveState(newState);
+      return newState;
+    });
+  }, []);
+
+  const unreadIncoming = state.connectRequests.filter(
+    (r) => r.direction === "incoming" && r.status === "pending" && !r.seen,
+  ).length
+    + state.connectRequests.filter(
+      // Resolved outgoing the user hasn't seen yet (they responded!)
+      (r) =>
+        r.direction === "outgoing" &&
+        (r.status === "accepted" || r.status === "declined") &&
+        !r.seen,
+    ).length;
+
+  const pendingOutgoing = state.connectRequests.filter(
+    (r) => r.direction === "outgoing" && r.status === "pending",
+  ).length;
+
+  const hasOutgoingForMatch = useCallback(
+    (matchId: string) =>
+      state.connectRequests.some(
+        (r) =>
+          r.matchId === matchId &&
+          r.direction === "outgoing" &&
+          (r.status === "pending" || r.status === "accepted"),
+      ),
+    [state.connectRequests],
+  );
+
   const getWorldMapCoverage = useCallback(() => {
     return Math.min(
       100,
@@ -270,7 +495,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AppContext.Provider
-      value={{ ...state, addMatch, removeMatch, addMyPhoto, completeOnboarding, resetOnboarding, unlockPro, getWorldMapCoverage }}
+      value={{
+        ...state,
+        addMatch,
+        removeMatch,
+        addMyPhoto,
+        completeOnboarding,
+        resetOnboarding,
+        unlockPro,
+        getWorldMapCoverage,
+        sendConnectRequest,
+        respondConnectRequest,
+        markRequestSeen,
+        unreadIncoming,
+        pendingOutgoing,
+        hasOutgoingForMatch,
+      }}
     >
       {children}
     </AppContext.Provider>
