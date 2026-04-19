@@ -57,6 +57,7 @@ interface AppContextValue extends AppState {
   addMatch: (match: Match) => void;
   addMyPhoto: (uri: string) => void;
   completeOnboarding: () => void;
+  resetOnboarding: () => void;
   getWorldMapCoverage: () => number;
 }
 
@@ -183,6 +184,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const resetOnboarding = useCallback(() => {
+    setState((prev) => {
+      const newState = { ...prev, onboardingComplete: false };
+      saveState(newState);
+      return newState;
+    });
+  }, []);
+
   const getWorldMapCoverage = useCallback(() => {
     return Math.min(
       100,
@@ -192,7 +201,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AppContext.Provider
-      value={{ ...state, addMatch, addMyPhoto, completeOnboarding, getWorldMapCoverage }}
+      value={{ ...state, addMatch, addMyPhoto, completeOnboarding, resetOnboarding, getWorldMapCoverage }}
     >
       {children}
     </AppContext.Provider>

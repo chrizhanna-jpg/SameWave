@@ -22,7 +22,7 @@ const { width } = Dimensions.get("window");
 export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { streakCount, matches, matchedCountries, myPhotos } = useApp();
+  const { streakCount, matches, matchedCountries, myPhotos, resetOnboarding } = useApp();
   const challenge = getTodaysChallenge();
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
@@ -134,6 +134,21 @@ export default function HomeScreen() {
             <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
           </TouchableOpacity>
         )}
+
+        {/* Restart tutorial */}
+        <TouchableOpacity
+          style={[styles.tutorialBtn, { borderColor: colors.border }]}
+          onPress={() => {
+            resetOnboarding();
+            router.replace("/onboarding");
+          }}
+          activeOpacity={0.75}
+        >
+          <Feather name="rotate-ccw" size={14} color={colors.mutedForeground} />
+          <Text style={[styles.tutorialText, { color: colors.mutedForeground }]}>
+            Replay tutorial
+          </Text>
+        </TouchableOpacity>
 
         {/* Recent matches */}
         {matches.length > 0 && (
@@ -315,6 +330,20 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
   seeAll: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+  },
+  tutorialBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignSelf: "center",
+  },
+  tutorialText: {
     fontSize: 13,
     fontFamily: "Inter_500Medium",
   },
