@@ -26,6 +26,7 @@ export interface Match {
   verdict: "same" | "different" | null;
   timestamp: string;
   theme?: string;
+  theirPhotoMinutesAgo?: number;
 }
 
 export interface Badge {

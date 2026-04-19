@@ -18,6 +18,7 @@ import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { CountryReveal } from "@/components/CountryReveal";
 import { SimilarityMeter } from "@/components/SimilarityMeter";
+import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
 import type { Match } from "@/context/AppContext";
 
 const { width } = Dimensions.get("window");
@@ -145,6 +146,11 @@ export default function RevealScreen() {
               <Text style={[styles.photoLabel, { color: colors.mutedForeground }]}>
                 Their photo
               </Text>
+              {match.theirPhotoMinutesAgo != null && (
+                <Text style={[styles.photoLabelTime, { color: colors.mutedForeground }]}>
+                  {timeAgo(simulatedPostedAt(match.theirPhotoMinutesAgo))}
+                </Text>
+              )}
             </View>
           </View>
 
@@ -300,6 +306,13 @@ const styles = StyleSheet.create({
     textAlign: "center",
     textTransform: "uppercase",
     letterSpacing: 0.5,
+  },
+  photoLabelTime: {
+    fontSize: 10,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+    marginTop: 2,
+    opacity: 0.7,
   },
   vsBar: {
     width: 1,

@@ -17,6 +17,7 @@ import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { SAMPLE_PHOTOS, getTodaysChallenge } from "@/data/samplePhotos";
+import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
 import type { Match } from "@/context/AppContext";
 
 const { width } = Dimensions.get("window");
@@ -91,6 +92,7 @@ export default function SwipeScreen() {
         verdict: v,
         timestamp: new Date().toISOString(),
         theme: challenge.id,
+        theirPhotoMinutesAgo: theirPhoto.minutesAgo,
       };
 
       Animated.parallel([
@@ -268,7 +270,10 @@ export default function SwipeScreen() {
               />
               <View style={[styles.photoTag, { backgroundColor: colors.background + "cc" }]}>
                 <Text style={[styles.photoTagText, { color: colors.foreground }]}>
-                  Somewhere in the world
+                  somewhere in the world
+                </Text>
+                <Text style={[styles.photoTagTime, { color: colors.mutedForeground }]}>
+                  {timeAgo(simulatedPostedAt(theirPhoto.minutesAgo))}
                 </Text>
               </View>
             </View>
@@ -401,6 +406,11 @@ const styles = StyleSheet.create({
   photoTagText: {
     fontSize: 11,
     fontFamily: "Inter_600SemiBold",
+  },
+  photoTagTime: {
+    fontSize: 10,
+    fontFamily: "Inter_400Regular",
+    marginTop: 1,
   },
   divider: {
     height: 28,

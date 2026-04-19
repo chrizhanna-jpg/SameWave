@@ -5,6 +5,7 @@ export interface SamplePhoto {
   countryCode: string;
   countryFlag: string;
   theme: string;
+  minutesAgo: number;
 }
 
 export const SAMPLE_PHOTOS: SamplePhoto[] = [
@@ -15,6 +16,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryCode: "ET",
     countryFlag: "🇪🇹",
     theme: "morning",
+    minutesAgo: 45,
   },
   {
     id: "2",
@@ -23,6 +25,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryCode: "JP",
     countryFlag: "🇯🇵",
     theme: "morning",
+    minutesAgo: 127,
   },
   {
     id: "3",
@@ -31,6 +34,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryCode: "MX",
     countryFlag: "🇲🇽",
     theme: "food",
+    minutesAgo: 210,
   },
   {
     id: "4",
@@ -39,6 +43,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryCode: "IN",
     countryFlag: "🇮🇳",
     theme: "food",
+    minutesAgo: 68,
   },
   {
     id: "5",
@@ -47,6 +52,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryCode: "PE",
     countryFlag: "🇵🇪",
     theme: "work",
+    minutesAgo: 361,
   },
   {
     id: "6",
@@ -55,6 +61,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryCode: "DE",
     countryFlag: "🇩🇪",
     theme: "work",
+    minutesAgo: 22,
   },
   {
     id: "7",
@@ -63,6 +70,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryCode: "NO",
     countryFlag: "🇳🇴",
     theme: "nature",
+    minutesAgo: 720,
   },
   {
     id: "8",
@@ -71,6 +79,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryCode: "KE",
     countryFlag: "🇰🇪",
     theme: "nature",
+    minutesAgo: 244,
   },
   {
     id: "9",
@@ -79,6 +88,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryCode: "BR",
     countryFlag: "🇧🇷",
     theme: "joy",
+    minutesAgo: 18,
   },
   {
     id: "10",
@@ -87,6 +97,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryCode: "KR",
     countryFlag: "🇰🇷",
     theme: "joy",
+    minutesAgo: 480,
   },
   {
     id: "11",
@@ -95,6 +106,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryCode: "MA",
     countryFlag: "🇲🇦",
     theme: "hands",
+    minutesAgo: 153,
   },
   {
     id: "12",
@@ -103,6 +115,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryCode: "AR",
     countryFlag: "🇦🇷",
     theme: "hands",
+    minutesAgo: 1090,
   },
   {
     id: "13",
@@ -111,6 +124,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryCode: "FI",
     countryFlag: "🇫🇮",
     theme: "pets",
+    minutesAgo: 96,
   },
   {
     id: "14",
@@ -119,6 +133,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryCode: "AU",
     countryFlag: "🇦🇺",
     theme: "pets",
+    minutesAgo: 1440,
   },
   {
     id: "15",
@@ -127,6 +142,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryCode: "CN",
     countryFlag: "🇨🇳",
     theme: "commute",
+    minutesAgo: 305,
   },
   {
     id: "16",
@@ -135,6 +151,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryCode: "GB",
     countryFlag: "🇬🇧",
     theme: "commute",
+    minutesAgo: 185,
   },
   {
     id: "17",
@@ -143,6 +160,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryCode: "MV",
     countryFlag: "🇲🇻",
     theme: "sky",
+    minutesAgo: 2160,
   },
   {
     id: "18",
@@ -151,6 +169,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryCode: "MN",
     countryFlag: "🇲🇳",
     theme: "sky",
+    minutesAgo: 425,
   },
 ];
 
