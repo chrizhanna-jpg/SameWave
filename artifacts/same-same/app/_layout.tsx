@@ -36,7 +36,6 @@ export default function RootLayout() {
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
-    feather: require("../assets/fonts/Feather.ttf"),
   });
 
   useEffect(() => {

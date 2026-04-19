@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Feather } from "@expo/vector-icons";
+import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { BadgeCard } from "@/components/BadgeCard";
@@ -111,7 +111,7 @@ export default function ProfileScreen() {
                   <View style={styles.matchMeta}>
                     <View style={styles.matchFlags}>
                       <Text style={styles.matchFlag}>🌍</Text>
-                      <Feather name="arrow-right" size={12} color={colors.mutedForeground} />
+                      <Icon name="arrow-right" size={12} color={colors.mutedForeground} />
                       <Text style={styles.matchFlag}>{match.theirCountryFlag}</Text>
                     </View>
                     <Text style={[styles.matchCountry, { color: colors.foreground }]}>
@@ -166,7 +166,7 @@ export default function ProfileScreen() {
 
         {matches.length === 0 && (
           <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Feather name="globe" size={32} color={colors.mutedForeground} />
+            <Icon name="globe" size={32} color={colors.mutedForeground} />
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
               Your journey starts here
             </Text>

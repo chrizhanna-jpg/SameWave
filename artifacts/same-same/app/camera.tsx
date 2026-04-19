@@ -12,7 +12,7 @@ import {
 import { router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Feather } from "@expo/vector-icons";
+import { Icon } from "@/components/Icon";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
@@ -83,7 +83,7 @@ export default function CameraScreen() {
           onPress={() => router.back()}
           style={[styles.backBtn, { backgroundColor: colors.card }]}
         >
-          <Feather name="arrow-left" size={20} color={colors.foreground} />
+          <Icon name="arrow-left" size={20} color={colors.foreground} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.foreground }]}>
           Post a Photo
@@ -116,7 +116,7 @@ export default function CameraScreen() {
         {submitted ? (
           <View style={styles.successContainer}>
             <View style={[styles.successIcon, { backgroundColor: colors.teal + "22" }]}>
-              <Feather name="check" size={40} color={colors.teal} />
+              <Icon name="check" size={40} color={colors.teal} />
             </View>
             <Text style={[styles.successTitle, { color: colors.foreground }]}>
               Photo submitted!
@@ -137,7 +137,7 @@ export default function CameraScreen() {
                 style={[styles.retakeBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
                 onPress={() => setSelectedPhoto(null)}
               >
-                <Feather name="refresh-cw" size={18} color={colors.foreground} />
+                <Icon name="refresh-cw" size={18} color={colors.foreground} />
                 <Text style={[styles.retakeBtnText, { color: colors.foreground }]}>
                   Retake
                 </Text>
@@ -150,7 +150,7 @@ export default function CameraScreen() {
                 <Text style={[styles.submitBtnText, { color: colors.primaryForeground }]}>
                   Submit & Match
                 </Text>
-                <Feather name="globe" size={18} color={colors.primaryForeground} />
+                <Icon name="globe" size={18} color={colors.primaryForeground} />
               </TouchableOpacity>
             </View>
           </View>
@@ -161,7 +161,7 @@ export default function CameraScreen() {
               onPress={takePhoto}
               activeOpacity={0.85}
             >
-              <Feather name="camera" size={28} color="#fff" />
+              <Icon name="camera" size={28} color="#fff" />
               <Text style={[styles.pickBtnText, { color: "#fff" }]}>
                 Take a Photo
               </Text>
@@ -175,7 +175,7 @@ export default function CameraScreen() {
               onPress={pickFromLibrary}
               activeOpacity={0.85}
             >
-              <Feather name="image" size={28} color={colors.primary} />
+              <Icon name="image" size={28} color={colors.primary} />
               <Text style={[styles.pickBtnText, { color: colors.foreground }]}>
                 Choose from Library
               </Text>

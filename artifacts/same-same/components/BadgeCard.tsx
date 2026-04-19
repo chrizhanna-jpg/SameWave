@@ -1,6 +1,6 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
 import type { Badge } from "@/context/AppContext";
 
@@ -8,7 +8,7 @@ interface Props {
   badge: Badge;
 }
 
-const BADGE_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
+const BADGE_ICONS: Record<string, string> = {
   explorer: "globe",
   connector: "link",
   similar: "heart",
@@ -40,7 +40,7 @@ export function BadgeCard({ badge }: Props) {
           },
         ]}
       >
-        <Feather
+        <Icon
           name={BADGE_ICONS[badge.id] || "award"}
           size={22}
           color={badge.earned ? colors.primary : colors.mutedForeground}

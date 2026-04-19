@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Feather } from "@expo/vector-icons";
+import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { GlobeAnimation } from "@/components/GlobeAnimation";
@@ -57,7 +57,7 @@ export default function HomeScreen() {
             <Text style={[styles.statNum, { color: colors.primary }]}>
               {streakCount}
             </Text>
-            <Feather name="zap" size={14} color={colors.gold} style={styles.statIcon} />
+            <Icon name="zap" size={14} color={colors.gold} style={styles.statIcon} />
             <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
               Streak
             </Text>
@@ -66,7 +66,7 @@ export default function HomeScreen() {
             <Text style={[styles.statNum, { color: colors.primary }]}>
               {totalMatches}
             </Text>
-            <Feather name="layers" size={14} color={colors.teal} style={styles.statIcon} />
+            <Icon name="layers" size={14} color={colors.teal} style={styles.statIcon} />
             <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
               Matches
             </Text>
@@ -75,7 +75,7 @@ export default function HomeScreen() {
             <Text style={[styles.statNum, { color: colors.primary }]}>
               {matchedCountries.length}
             </Text>
-            <Feather name="globe" size={14} color={colors.accent} style={styles.statIcon} />
+            <Icon name="globe" size={14} color={colors.accent} style={styles.statIcon} />
             <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
               Countries
             </Text>
@@ -100,7 +100,7 @@ export default function HomeScreen() {
             </View>
           </View>
           <View style={[styles.playChip, { backgroundColor: colors.primary }]}>
-            <Feather name="play" size={12} color="#fff" />
+            <Icon name="play" size={12} color="#fff" />
             <Text style={styles.playChipText}>Play</Text>
           </View>
         </TouchableOpacity>
@@ -111,7 +111,7 @@ export default function HomeScreen() {
           onPress={() => router.push("/(tabs)/match")}
           activeOpacity={0.88}
         >
-          <Feather name="layers" size={20} color="#fff" />
+          <Icon name="layers" size={20} color="#fff" />
           <Text style={styles.matchBtnText}>Start Matching</Text>
         </TouchableOpacity>
 
@@ -122,7 +122,7 @@ export default function HomeScreen() {
             onPress={() => router.push("/camera")}
             activeOpacity={0.85}
           >
-            <Feather name="camera" size={18} color={colors.accent} />
+            <Icon name="camera" size={18} color={colors.accent} />
             <View style={{ flex: 1 }}>
               <Text style={[styles.uploadTitle, { color: colors.foreground }]}>
                 Add your photo
@@ -131,7 +131,7 @@ export default function HomeScreen() {
                 Get matched with your own daily moments
               </Text>
             </View>
-            <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+            <Icon name="chevron-right" size={16} color={colors.mutedForeground} />
           </TouchableOpacity>
         )}
 
@@ -144,7 +144,7 @@ export default function HomeScreen() {
           }}
           activeOpacity={0.75}
         >
-          <Feather name="rotate-ccw" size={14} color={colors.mutedForeground} />
+          <Icon name="rotate-ccw" size={14} color={colors.mutedForeground} />
           <Text style={[styles.tutorialText, { color: colors.mutedForeground }]}>
             Replay tutorial
           </Text>
@@ -179,7 +179,7 @@ export default function HomeScreen() {
                     {m.verdict === "same" ? "Same Same" : "Different"} · {m.similarityScore}%
                   </Text>
                 </View>
-                <Feather
+                <Icon
                   name={m.verdict === "same" ? "heart" : "x"}
                   size={14}
                   color={m.verdict === "same" ? colors.teal : colors.primary}

@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { Feather } from "@expo/vector-icons";
+import { Icon } from "@/components/Icon";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
@@ -185,7 +185,7 @@ export default function SwipeScreen() {
           style={[styles.cameraBtn, { backgroundColor: colors.primary }]}
           activeOpacity={0.85}
         >
-          <Feather name="camera" size={20} color="#fff" />
+          <Icon name="camera" size={20} color="#fff" />
         </TouchableOpacity>
       </View>
 
@@ -199,7 +199,7 @@ export default function SwipeScreen() {
         </Text>
         {hasUploadedPhoto && (
           <View style={[styles.uploadedBadge, { backgroundColor: colors.teal + "22" }]}>
-            <Feather name="check" size={10} color={colors.teal} />
+            <Icon name="check" size={10} color={colors.teal} />
             <Text style={[styles.uploadedText, { color: colors.teal }]}>
               Your photo
             </Text>
@@ -299,7 +299,7 @@ export default function SwipeScreen() {
             onPress={() => handleSwipe("left")}
             activeOpacity={0.8}
           >
-            <Feather name="x" size={18} color={colors.primary} />
+            <Icon name="x" size={18} color={colors.primary} />
             <Text style={[styles.hintText, { color: colors.mutedForeground }]}>
               Different
             </Text>
@@ -317,7 +317,7 @@ export default function SwipeScreen() {
             <Text style={[styles.hintText, { color: colors.mutedForeground }]}>
               Same Same
             </Text>
-            <Feather name="heart" size={18} color={colors.teal} />
+            <Icon name="heart" size={18} color={colors.teal} />
           </TouchableOpacity>
         </View>
       </View>

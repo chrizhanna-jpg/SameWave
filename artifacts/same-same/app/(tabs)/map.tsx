@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Feather } from "@expo/vector-icons";
+import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { GlobeAnimation } from "@/components/GlobeAnimation";
@@ -61,7 +61,7 @@ export default function MapScreen() {
           World Map
         </Text>
         <View style={[styles.coveragePill, { backgroundColor: colors.primary + "22" }]}>
-          <Feather name="globe" size={12} color={colors.primary} />
+          <Icon name="globe" size={12} color={colors.primary} />
           <Text style={[styles.coverageText, { color: colors.primary }]}>
             {coverage}% explored
           </Text>
@@ -109,7 +109,7 @@ export default function MapScreen() {
 
         {matchedCountries.length === 0 ? (
           <View style={[styles.emptyState, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Feather name="map" size={32} color={colors.mutedForeground} />
+            <Icon name="map" size={32} color={colors.mutedForeground} />
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
               Your world is empty
             </Text>

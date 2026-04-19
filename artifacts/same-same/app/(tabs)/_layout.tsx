@@ -1,6 +1,6 @@
 import { BlurView } from "expo-blur";
 import { Tabs } from "expo-router";
-import { Feather } from "@expo/vector-icons";
+import { Icon } from "@/components/Icon";
 import React from "react";
 import { Platform, StyleSheet, View, useColorScheme } from "react-native";
 import { useColors } from "@/hooks/useColors";
@@ -50,7 +50,7 @@ export default function TabLayout() {
         options={{
           title: "Home",
           tabBarIcon: ({ color }) => (
-            <Feather name="globe" size={22} color={color} />
+            <Icon name="globe" size={22} color={color} />
           ),
         }}
       />
@@ -59,7 +59,7 @@ export default function TabLayout() {
         options={{
           title: "Match",
           tabBarIcon: ({ color }) => (
-            <Feather name="layers" size={22} color={color} />
+            <Icon name="layers" size={22} color={color} />
           ),
         }}
       />
@@ -68,7 +68,7 @@ export default function TabLayout() {
         options={{
           title: "World",
           tabBarIcon: ({ color }) => (
-            <Feather name="map" size={22} color={color} />
+            <Icon name="map" size={22} color={color} />
           ),
         }}
       />
@@ -77,7 +77,7 @@ export default function TabLayout() {
         options={{
           title: "Me",
           tabBarIcon: ({ color }) => (
-            <Feather name="user" size={22} color={color} />
+            <Icon name="user" size={22} color={color} />
           ),
         }}
       />

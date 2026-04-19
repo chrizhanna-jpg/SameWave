@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Feather } from "@expo/vector-icons";
+import { Icon } from "@/components/Icon";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
@@ -92,7 +92,7 @@ export default function RevealScreen() {
           onPress={handleNext}
           style={[styles.backBtn, { backgroundColor: colors.card }]}
         >
-          <Feather name="x" size={20} color={colors.foreground} />
+          <Icon name="x" size={20} color={colors.foreground} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.foreground }]}>
           Reveal
@@ -120,7 +120,7 @@ export default function RevealScreen() {
         >
           {isNewCountry && (
             <View style={[styles.newBadge, { backgroundColor: colors.primary }]}>
-              <Feather name="star" size={12} color="#fff" />
+              <Icon name="star" size={12} color="#fff" />
               <Text style={styles.newBadgeText}>New country!</Text>
             </View>
           )}
@@ -184,7 +184,7 @@ export default function RevealScreen() {
                 { backgroundColor: colors.teal + "18", borderColor: colors.teal + "40" },
               ]}
             >
-              <Feather name="heart" size={16} color={colors.teal} />
+              <Icon name="heart" size={16} color={colors.teal} />
               <Text style={[styles.insightText, { color: colors.teal }]}>
                 Your human instinct was right. We really are the same.
               </Text>
@@ -232,7 +232,7 @@ export default function RevealScreen() {
           <Text style={[styles.nextBtnText, { color: colors.primaryForeground }]}>
             Next Match
           </Text>
-          <Feather name="arrow-right" size={20} color={colors.primaryForeground} />
+          <Icon name="arrow-right" size={20} color={colors.primaryForeground} />
         </TouchableOpacity>
       </ScrollView>
     </View>
