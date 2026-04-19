@@ -11,6 +11,7 @@ export default function TabLayout() {
   const isDark = colorScheme === "dark";
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
+  const isAndroid = Platform.OS === "android";
 
   return (
     <Tabs
@@ -19,11 +20,12 @@ export default function TabLayout() {
         tabBarInactiveTintColor: colors.mutedForeground,
         headerShown: false,
         tabBarStyle: {
-          position: "absolute",
+          // Only float over content on iOS (blur) and web; Android uses normal flow
+          ...(isIOS || isWeb ? { position: "absolute" } : {}),
           backgroundColor: isIOS ? "transparent" : colors.background,
-          borderTopWidth: isWeb ? 1 : 0,
+          borderTopWidth: 1,
           borderTopColor: colors.border,
-          elevation: 0,
+          elevation: isAndroid ? 8 : 0,
           ...(isWeb ? { height: 84 } : {}),
         },
         tabBarBackground: () =>
@@ -33,14 +35,14 @@ export default function TabLayout() {
               tint="dark"
               style={StyleSheet.absoluteFill}
             />
-          ) : isWeb ? (
+          ) : (
             <View
               style={[
                 StyleSheet.absoluteFill,
                 { backgroundColor: colors.background },
               ]}
             />
-          ) : null,
+          ),
       }}
     >
       <Tabs.Screen
