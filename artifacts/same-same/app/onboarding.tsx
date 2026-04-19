@@ -2,7 +2,6 @@ import React, { useEffect, useRef } from "react";
 import {
   Animated,
   Dimensions,
-  Image,
   Platform,
   StyleSheet,
   Text,
@@ -15,13 +14,13 @@ import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { GlobeAnimation } from "@/components/GlobeAnimation";
 
-const { width, height } = Dimensions.get("window");
+const { width } = Dimensions.get("window");
 
 const STEPS = [
   {
-    title: "Different places.",
-    subtitle: "Same people.",
-    body: "You post a photo from your daily life. We instantly pair it with a visually similar photo from someone else — somewhere in the world.",
+    title: null,
+    subtitle: null,
+    body: "Post a photo from your daily life. We pair it with a visually similar photo from someone, somewhere else in the world.",
   },
   {
     title: "Swipe to judge.",
@@ -40,34 +39,43 @@ export default function OnboardingScreen() {
   const insets = useSafeAreaInsets();
   const { completeOnboarding } = useApp();
   const [step, setStep] = React.useState(0);
+
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
+  const globeScale = useRef(new Animated.Value(1)).current;
 
   const goNext = () => {
     if (step < STEPS.length - 1) {
+      if (step === 0) {
+        Animated.timing(globeScale, {
+          toValue: 0.55,
+          duration: 450,
+          useNativeDriver: true,
+        }).start();
+      }
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 0,
-          duration: 200,
+          duration: 180,
           useNativeDriver: true,
         }),
         Animated.timing(slideAnim, {
-          toValue: -20,
-          duration: 200,
+          toValue: -18,
+          duration: 180,
           useNativeDriver: true,
         }),
       ]).start(() => {
         setStep((s) => s + 1);
-        slideAnim.setValue(20);
+        slideAnim.setValue(18);
         Animated.parallel([
           Animated.timing(fadeAnim, {
             toValue: 1,
-            duration: 300,
+            duration: 280,
             useNativeDriver: true,
           }),
           Animated.timing(slideAnim, {
             toValue: 0,
-            duration: 300,
+            duration: 280,
             useNativeDriver: true,
           }),
         ]).start();
@@ -79,14 +87,31 @@ export default function OnboardingScreen() {
   };
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
+  const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
+
+  const isHeroStep = step === 0;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.heroSection, { paddingTop: topPadding + 20 }]}>
-        <GlobeAnimation size={90} />
-        <Text style={[styles.appName, { color: colors.primary }]}>
+      <View
+        style={[
+          styles.globeWrapper,
+          { paddingTop: topPadding + (isHeroStep ? 24 : 12) },
+        ]}
+      >
+        <Animated.View style={{ transform: [{ scale: globeScale }] }}>
+          <GlobeAnimation size={isHeroStep ? 200 : 110} />
+        </Animated.View>
+
+        <Animated.Text
+          style={[
+            styles.appName,
+            { color: colors.primary },
+            isHeroStep && styles.appNameLarge,
+          ]}
+        >
           Same Same
-        </Text>
+        </Animated.Text>
       </View>
 
       <Animated.View
@@ -98,13 +123,23 @@ export default function OnboardingScreen() {
           },
         ]}
       >
-        <Text style={[styles.title, { color: colors.foreground }]}>
-          {STEPS[step].title}
-        </Text>
-        <Text style={[styles.subtitle, { color: colors.primary }]}>
-          {STEPS[step].subtitle}
-        </Text>
-        <Text style={[styles.body, { color: colors.mutedForeground }]}>
+        {STEPS[step].title && (
+          <Text style={[styles.title, { color: colors.foreground }]}>
+            {STEPS[step].title}
+          </Text>
+        )}
+        {STEPS[step].subtitle && (
+          <Text style={[styles.subtitle, { color: colors.primary }]}>
+            {STEPS[step].subtitle}
+          </Text>
+        )}
+        <Text
+          style={[
+            styles.body,
+            { color: colors.mutedForeground },
+            isHeroStep && styles.bodyHero,
+          ]}
+        >
           {STEPS[step].body}
         </Text>
       </Animated.View>
@@ -112,7 +147,7 @@ export default function OnboardingScreen() {
       <View
         style={[
           styles.footer,
-          { paddingBottom: Platform.OS === "web" ? 34 : insets.bottom + 16 },
+          { paddingBottom: bottomPadding + 16 },
         ]}
       >
         <View style={styles.dots}>
@@ -124,7 +159,7 @@ export default function OnboardingScreen() {
                 {
                   backgroundColor:
                     i === step ? colors.primary : colors.secondary,
-                  width: i === step ? 20 : 8,
+                  width: i === step ? 22 : 8,
                 },
               ]}
             />
@@ -142,7 +177,12 @@ export default function OnboardingScreen() {
         </TouchableOpacity>
 
         {step < STEPS.length - 1 && (
-          <TouchableOpacity onPress={() => { completeOnboarding(); router.replace("/(tabs)"); }}>
+          <TouchableOpacity
+            onPress={() => {
+              completeOnboarding();
+              router.replace("/(tabs)");
+            }}
+          >
             <Text style={[styles.skip, { color: colors.mutedForeground }]}>
               Skip
             </Text>
@@ -157,43 +197,51 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  heroSection: {
+  globeWrapper: {
     alignItems: "center",
-    paddingBottom: 32,
-    gap: 16,
+    gap: 14,
+    paddingBottom: 8,
   },
   appName: {
-    fontSize: 32,
+    fontSize: 26,
     fontFamily: "Inter_700Bold",
     letterSpacing: -0.5,
   },
+  appNameLarge: {
+    fontSize: 34,
+    letterSpacing: -1,
+  },
   textSection: {
     flex: 1,
-    paddingHorizontal: 32,
+    paddingHorizontal: 36,
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
+    gap: 10,
   },
   title: {
-    fontSize: 34,
+    fontSize: 32,
     fontFamily: "Inter_700Bold",
     textAlign: "center",
-    letterSpacing: -1,
-    lineHeight: 40,
+    letterSpacing: -0.8,
+    lineHeight: 38,
   },
   subtitle: {
-    fontSize: 34,
+    fontSize: 32,
     fontFamily: "Inter_700Bold",
     textAlign: "center",
-    letterSpacing: -1,
-    lineHeight: 40,
+    letterSpacing: -0.8,
+    lineHeight: 38,
   },
   body: {
-    fontSize: 16,
+    fontSize: 15,
     fontFamily: "Inter_400Regular",
     textAlign: "center",
-    lineHeight: 24,
-    marginTop: 8,
+    lineHeight: 23,
+    marginTop: 4,
+  },
+  bodyHero: {
+    fontSize: 17,
+    lineHeight: 26,
   },
   footer: {
     paddingHorizontal: 24,
