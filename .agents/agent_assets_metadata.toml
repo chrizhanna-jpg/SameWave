@@ -1,0 +1,20 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "Ykl6cPjkCPqpHl4bqFSzp"
+uri = "file://artifacts/same-same/assets/images/icon.png"
+type = "image"
+title = "same-same app icon globe hands"
+
+[[generated]]
+id = "iBCoyCQUxY7WkifDVPnL1"
+uri = "file://artifacts/same-same/assets/images/onboarding_hero.png"
+type = "image"
+title = "global daily life moments collage"
+
+[[generated]]
+id = "2mD6SKkPDdN10zILKHfuu"
+uri = "file://artifacts/same-same/assets/images/world_map_bg.png"
+type = "image"
+title = "world map constellation connections"

@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/"
+title = "Same Same"
+version = "1.0.0"
+id = "artifacts/same-same"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+name = "expo"
+paths = [ "/" ]
+localPort = 22193
+
+[services.development]
+run = "pnpm --filter @workspace/same-same run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/same-same", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/same-same", "run", "serve" ]
+
+[services.env]
+PORT = "22193"
+BASE_PATH = "/"
