@@ -14,9 +14,15 @@ export interface MatchedCountry {
   matchedAt: string;
 }
 
+export interface MyPhoto {
+  uri: string;
+  uploadedAt: string;
+}
+
 export interface Match {
   id: string;
   myPhoto: string;
+  myPhotoUploadedAt?: string;
   theirPhoto: string;
   myCountry: string;
   theirCountry: string;
@@ -43,7 +49,7 @@ interface AppState {
   streakCount: number;
   totalMatches: number;
   badges: Badge[];
-  myPhotos: string[];
+  myPhotos: MyPhoto[];
   onboardingComplete: boolean;
 }
 
@@ -86,9 +92,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const stored = await AsyncStorage.getItem("samesame_state");
       if (stored) {
         const parsed = JSON.parse(stored);
+        // Migrate old myPhotos format (string[]) to MyPhoto[]
+        const migratedPhotos: MyPhoto[] = (parsed.myPhotos || []).map(
+          (p: string | MyPhoto) =>
+            typeof p === "string"
+              ? { uri: p, uploadedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString() }
+              : p
+        );
         setState((prev) => ({
           ...prev,
           ...parsed,
+          myPhotos: migratedPhotos,
           badges: defaultBadges.map((b) => {
             const stored = parsed.badges?.find((sb: Badge) => sb.id === b.id);
             return stored ? { ...b, ...stored } : b;
@@ -154,7 +168,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addMyPhoto = useCallback((uri: string) => {
     setState((prev) => {
-      const newState = { ...prev, myPhotos: [uri, ...prev.myPhotos] };
+      const photo: MyPhoto = { uri, uploadedAt: new Date().toISOString() };
+      const newState = { ...prev, myPhotos: [photo, ...prev.myPhotos] };
       saveState(newState);
       return newState;
     });

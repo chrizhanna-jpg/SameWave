@@ -157,8 +157,8 @@ export default function ProfileScreen() {
               My Photos
             </Text>
             <View style={styles.photoGrid}>
-              {myPhotos.slice(0, 9).map((uri, i) => (
-                <PhotoCard key={i} uri={uri} size="sm" style={styles.gridPhoto} />
+              {myPhotos.slice(0, 9).map((photo, i) => (
+                <PhotoCard key={i} uri={photo.uri} size="sm" style={styles.gridPhoto} />
               ))}
             </View>
           </View>

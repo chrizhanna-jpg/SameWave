@@ -192,10 +192,10 @@ export default function CameraScreen() {
               Your recent photos
             </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.prevScroll}>
-              {myPhotos.slice(0, 8).map((uri, i) => (
-                <TouchableOpacity key={i} onPress={() => setSelectedPhoto(uri)}>
+              {myPhotos.slice(0, 8).map((photo, i) => (
+                <TouchableOpacity key={i} onPress={() => setSelectedPhoto(photo.uri)}>
                   <Image
-                    source={{ uri }}
+                    source={{ uri: photo.uri }}
                     style={[styles.prevPhoto, { borderColor: colors.border }]}
                     resizeMode="cover"
                   />

@@ -135,6 +135,11 @@ export default function RevealScreen() {
               <Text style={[styles.photoLabel, { color: colors.mutedForeground }]}>
                 Your photo
               </Text>
+              {match.myPhotoUploadedAt && (
+                <Text style={[styles.photoLabelTime, { color: colors.mutedForeground }]}>
+                  {timeAgo(new Date(match.myPhotoUploadedAt))}
+                </Text>
+              )}
             </View>
             <View style={[styles.vsBar, { backgroundColor: colors.border }]} />
             <View style={styles.photoWrapper}>

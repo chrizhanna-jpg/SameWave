@@ -18,7 +18,7 @@ import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { SAMPLE_PHOTOS, getTodaysChallenge } from "@/data/samplePhotos";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
-import type { Match } from "@/context/AppContext";
+import type { Match, MyPhoto } from "@/context/AppContext";
 
 const { width } = Dimensions.get("window");
 const SWIPE_THRESHOLD = width * 0.28;
@@ -36,12 +36,19 @@ export default function SwipeScreen() {
   const { addMatch, streakCount, myPhotos } = useApp();
   const challenge = getTodaysChallenge();
 
-  const getMyPhoto = () =>
-    myPhotos.length > 0
-      ? myPhotos[Math.floor(Math.random() * Math.min(myPhotos.length, 5))]
-      : SAMPLE_PHOTOS[Math.floor(Math.random() * SAMPLE_PHOTOS.length)].uri;
+  const getMyPhotoData = (): { uri: string; uploadedAt: string } => {
+    if (myPhotos.length > 0) {
+      return myPhotos[Math.floor(Math.random() * Math.min(myPhotos.length, 5))];
+    }
+    const sample = SAMPLE_PHOTOS[Math.floor(Math.random() * SAMPLE_PHOTOS.length)];
+    return {
+      uri: sample.uri,
+      uploadedAt: simulatedPostedAt(sample.minutesAgo).toISOString(),
+    };
+  };
 
-  const [myPhotoUri, setMyPhotoUri] = useState(() => getMyPhoto());
+  const [myPhotoData, setMyPhotoData] = useState(() => getMyPhotoData());
+  const myPhotoUri = myPhotoData.uri;
   const [theirPhoto, setTheirPhoto] = useState(() => getTheirPhoto(myPhotoUri));
   const [isAnimatingOut, setIsAnimatingOut] = useState(false);
 
@@ -56,16 +63,16 @@ export default function SwipeScreen() {
       : Math.floor(Math.random() * 35) + 25;
 
   const resetCard = useCallback(() => {
-    const newMyUri = getMyPhoto();
-    const newTheir = getTheirPhoto(newMyUri);
-    setMyPhotoUri(newMyUri);
+    const newMyData = getMyPhotoData();
+    const newTheir = getTheirPhoto(newMyData.uri);
+    setMyPhotoData(newMyData);
     setTheirPhoto(newTheir);
     pan.setValue({ x: 0, y: 0 });
     cardScale.setValue(1);
     sameOpacity.setValue(0);
     diffOpacity.setValue(0);
     setIsAnimatingOut(false);
-  }, [myPhotos]);
+  }, [myPhotos]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSwipe = useCallback(
     (dir: "left" | "right") => {
@@ -93,6 +100,7 @@ export default function SwipeScreen() {
         timestamp: new Date().toISOString(),
         theme: challenge.id,
         theirPhotoMinutesAgo: theirPhoto.minutesAgo,
+        myPhotoUploadedAt: myPhotoData.uploadedAt,
       };
 
       Animated.parallel([
@@ -250,6 +258,9 @@ export default function SwipeScreen() {
               <View style={[styles.photoTag, { backgroundColor: colors.background + "cc" }]}>
                 <Text style={[styles.photoTagText, { color: colors.foreground }]}>
                   {hasUploadedPhoto ? "Your photo" : "Your moment"}
+                </Text>
+                <Text style={[styles.photoTagTime, { color: colors.mutedForeground }]}>
+                  {timeAgo(new Date(myPhotoData.uploadedAt))}
                 </Text>
               </View>
             </View>
