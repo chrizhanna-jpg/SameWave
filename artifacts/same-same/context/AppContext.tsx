@@ -17,6 +17,7 @@ export interface MatchedCountry {
 export interface MyPhoto {
   uri: string;
   uploadedAt: string;
+  theme: string;
 }
 
 export interface Match {
@@ -55,7 +56,7 @@ interface AppState {
 
 interface AppContextValue extends AppState {
   addMatch: (match: Match) => void;
-  addMyPhoto: (uri: string) => void;
+  addMyPhoto: (uri: string, theme: string) => void;
   completeOnboarding: () => void;
   resetOnboarding: () => void;
   getWorldMapCoverage: () => number;
@@ -93,12 +94,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const stored = await AsyncStorage.getItem("samesame_state");
       if (stored) {
         const parsed = JSON.parse(stored);
-        // Migrate old myPhotos format (string[]) to MyPhoto[]
+        // Migrate old myPhotos formats to current MyPhoto[]
         const migratedPhotos: MyPhoto[] = (parsed.myPhotos || []).map(
-          (p: string | MyPhoto) =>
-            typeof p === "string"
-              ? { uri: p, uploadedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString() }
-              : p
+          (p: string | Partial<MyPhoto>) => {
+            if (typeof p === "string") {
+              return {
+                uri: p,
+                uploadedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+                theme: "joy",
+              };
+            }
+            return {
+              uri: p.uri ?? "",
+              uploadedAt: p.uploadedAt ?? new Date().toISOString(),
+              theme: p.theme ?? "joy",
+            };
+          }
         );
         setState((prev) => ({
           ...prev,
@@ -143,8 +154,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           return { ...b, earned: true, earnedAt: new Date().toISOString() };
         if (b.id === "connector" && newCountries.length >= 10)
           return { ...b, earned: true, earnedAt: new Date().toISOString() };
-        if (b.id === "sameday" && (match.theirPhotoMinutesAgo ?? 9999) < 1440)
-          return { ...b, earned: true, earnedAt: new Date().toISOString() };
+        if (b.id === "sameday") {
+          const myAgeMin = match.myPhotoUploadedAt
+            ? (Date.now() - new Date(match.myPhotoUploadedAt).getTime()) / 60000
+            : 9999;
+          const theirAgeMin = match.theirPhotoMinutesAgo ?? 9999;
+          if (myAgeMin < 1440 && theirAgeMin < 1440)
+            return { ...b, earned: true, earnedAt: new Date().toISOString() };
+        }
         if (b.id === "asia" && isAsian(match.theirCountryCode))
           return { ...b, earned: true, earnedAt: new Date().toISOString() };
         if (b.id === "africa" && isAfrican(match.theirCountryCode))
@@ -167,9 +184,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const addMyPhoto = useCallback((uri: string) => {
+  const addMyPhoto = useCallback((uri: string, theme: string) => {
     setState((prev) => {
-      const photo: MyPhoto = { uri, uploadedAt: new Date().toISOString() };
+      const photo: MyPhoto = {
+        uri,
+        uploadedAt: new Date().toISOString(),
+        theme,
+      };
       const newState = { ...prev, myPhotos: [photo, ...prev.myPhotos] };
       saveState(newState);
       return newState;

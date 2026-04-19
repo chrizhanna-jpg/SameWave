@@ -164,7 +164,11 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
             {matches.slice(0, 3).map((m) => {
-              const sameDay = (m.theirPhotoMinutesAgo ?? 9999) < 1440;
+              const myAgeMin = m.myPhotoUploadedAt
+                ? (Date.now() - new Date(m.myPhotoUploadedAt).getTime()) / 60000
+                : 9999;
+              const sameDay =
+                myAgeMin < 1440 && (m.theirPhotoMinutesAgo ?? 9999) < 1440;
               return (
                 <View
                   key={m.id}

@@ -95,7 +95,11 @@ export default function RevealScreen() {
   );
 
   // The special moment: same activity, within 24h
-  const isSameDay = (match.theirPhotoMinutesAgo ?? 9999) < 1440;
+  const myAgeMin = match.myPhotoUploadedAt
+    ? (Date.now() - new Date(match.myPhotoUploadedAt).getTime()) / 60000
+    : 9999;
+  const theirAgeMin = match.theirPhotoMinutesAgo ?? 9999;
+  const isSameDay = myAgeMin < 1440 && theirAgeMin < 1440;
 
   const themeMeta = DAILY_CHALLENGES.find((c) => c.id === match.theme);
   const themeTitle = themeMeta?.title ?? "the same thing";

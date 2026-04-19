@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
   Dimensions,
@@ -16,7 +16,7 @@ import { Icon } from "@/components/Icon";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
-import { SAMPLE_PHOTOS, getTodaysChallenge } from "@/data/samplePhotos";
+import { SAMPLE_PHOTOS, DAILY_CHALLENGES, getTodaysChallenge } from "@/data/samplePhotos";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
 import type { Match } from "@/context/AppContext";
 
@@ -36,24 +36,36 @@ export default function SwipeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { streakCount, myPhotos } = useApp();
-  const challenge = getTodaysChallenge();
+  const todaysChallenge = getTodaysChallenge();
 
   // User's photo is LOCKED for the session — only changes when they upload a new one
-  const myPhotoData = React.useMemo<{ uri: string; uploadedAt: string }>(() => {
+  const myPhotoData = React.useMemo<{ uri: string; uploadedAt: string; theme: string }>(() => {
     if (myPhotos.length > 0) return myPhotos[0];
     const sample = SAMPLE_PHOTOS[0];
     return {
       uri: sample.uri,
       uploadedAt: simulatedPostedAt(5).toISOString(),
+      theme: sample.theme,
     };
   }, [myPhotos]);
 
   const myPhotoUri = myPhotoData.uri;
+  const activeTheme = myPhotoData.theme;
+  const themeMeta =
+    DAILY_CHALLENGES.find((c) => c.id === activeTheme) ?? todaysChallenge;
   const seenRef = useRef<string[]>([myPhotoUri]);
   const [theirPhoto, setTheirPhoto] = useState(() =>
-    getTheirPhoto(challenge.id, [myPhotoUri])
+    getTheirPhoto(activeTheme, [myPhotoUri])
   );
   const [isAnimatingOut, setIsAnimatingOut] = useState(false);
+
+  // When the user uploads a new photo (which may carry a new theme),
+  // reset the candidate pool so we immediately match against the new theme.
+  useEffect(() => {
+    seenRef.current = [myPhotoUri];
+    setTheirPhoto(getTheirPhoto(activeTheme, [myPhotoUri]));
+    setIsAnimatingOut(false);
+  }, [myPhotoUri, activeTheme]);
 
   const pan = useRef(new Animated.ValueXY()).current;
   const cardScale = useRef(new Animated.Value(1)).current;
@@ -62,13 +74,13 @@ export default function SwipeScreen() {
   const loadNextCandidate = useCallback(() => {
     seenRef.current.push(theirPhoto.uri);
     if (seenRef.current.length > 30) seenRef.current = seenRef.current.slice(-15);
-    const next = getTheirPhoto(challenge.id, seenRef.current);
+    const next = getTheirPhoto(activeTheme, seenRef.current);
     setTheirPhoto(next);
     pan.setValue({ x: 0, y: 0 });
     cardScale.setValue(1);
     sameOpacity.setValue(0);
     setIsAnimatingOut(false);
-  }, [theirPhoto.uri, challenge.id, pan, cardScale, sameOpacity]);
+  }, [theirPhoto.uri, activeTheme, pan, cardScale, sameOpacity]);
 
   const handleSwipe = useCallback(
     (dir: "left" | "right") => {
@@ -106,7 +118,7 @@ export default function SwipeScreen() {
             similarityScore: 0,
             verdict: "same",
             timestamp: new Date().toISOString(),
-            theme: challenge.id,
+            theme: activeTheme,
             theirPhotoMinutesAgo: theirPhoto.minutesAgo,
             myPhotoUploadedAt: myPhotoData.uploadedAt,
           };
@@ -126,7 +138,7 @@ export default function SwipeScreen() {
       isAnimatingOut,
       myPhotoUri,
       theirPhoto,
-      challenge.id,
+      activeTheme,
       myPhotoData.uploadedAt,
       pan.x,
       cardScale,
@@ -196,11 +208,11 @@ export default function SwipeScreen() {
       </View>
 
       <View style={[styles.challengeBar, { borderColor: colors.border }]}>
-        <Text style={styles.challengeEmoji}>{challenge.emoji}</Text>
+        <Text style={styles.challengeEmoji}>{themeMeta.emoji}</Text>
         <Text style={[styles.challengeText, { color: colors.mutedForeground }]}>
-          Today:{" "}
+          Matching:{" "}
           <Text style={{ color: colors.foreground, fontFamily: "Inter_600SemiBold" }}>
-            {challenge.title}
+            {themeMeta.title}
           </Text>
         </Text>
         {hasUploadedPhoto && (

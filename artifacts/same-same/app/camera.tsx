@@ -16,7 +16,7 @@ import { Icon } from "@/components/Icon";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
-import { getTodaysChallenge } from "@/data/samplePhotos";
+import { DAILY_CHALLENGES, getTodaysChallenge } from "@/data/samplePhotos";
 
 export default function CameraScreen() {
   const colors = useColors();
@@ -25,6 +25,7 @@ export default function CameraScreen() {
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const challenge = getTodaysChallenge();
+  const [selectedTheme, setSelectedTheme] = useState<string>(challenge.id);
 
   const pickFromLibrary = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -65,7 +66,7 @@ export default function CameraScreen() {
 
   const submit = () => {
     if (!selectedPhoto) return;
-    addMyPhoto(selectedPhoto);
+    addMyPhoto(selectedPhoto, selectedTheme);
     setSubmitted(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setTimeout(() => {
@@ -98,11 +99,15 @@ export default function CameraScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.challengeCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <TouchableOpacity
+          style={[styles.challengeCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+          activeOpacity={0.85}
+          onPress={() => setSelectedTheme(challenge.id)}
+        >
           <Text style={styles.challengeEmoji}>{challenge.emoji}</Text>
           <View style={styles.challengeText}>
             <Text style={[styles.challengeTitle, { color: colors.foreground }]}>
-              Today's Challenge
+              Today's idea
             </Text>
             <Text style={[styles.challengeName, { color: colors.primary }]}>
               {challenge.title}
@@ -111,7 +116,7 @@ export default function CameraScreen() {
               {challenge.description}
             </Text>
           </View>
-        </View>
+        </TouchableOpacity>
 
         {submitted ? (
           <View style={styles.successContainer}>
@@ -132,6 +137,42 @@ export default function CameraScreen() {
               style={[styles.selectedImage, { borderColor: colors.border }]}
               resizeMode="cover"
             />
+
+            <View style={styles.themeSection}>
+              <Text style={[styles.themeSectionLabel, { color: colors.mutedForeground }]}>
+                What's in your photo?
+              </Text>
+              <View style={styles.themeChips}>
+                {DAILY_CHALLENGES.map((c) => {
+                  const active = c.id === selectedTheme;
+                  return (
+                    <TouchableOpacity
+                      key={c.id}
+                      onPress={() => setSelectedTheme(c.id)}
+                      activeOpacity={0.85}
+                      style={[
+                        styles.themeChip,
+                        {
+                          backgroundColor: active ? colors.primary : colors.card,
+                          borderColor: active ? colors.primary : colors.border,
+                        },
+                      ]}
+                    >
+                      <Text style={styles.themeChipEmoji}>{c.emoji}</Text>
+                      <Text
+                        style={[
+                          styles.themeChipLabel,
+                          { color: active ? colors.primaryForeground : colors.foreground },
+                        ]}
+                      >
+                        {c.title}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
             <View style={styles.actionButtons}>
               <TouchableOpacity
                 style={[styles.retakeBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
@@ -363,5 +404,35 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginRight: 8,
     borderWidth: 1,
+  },
+  themeSection: {
+    gap: 10,
+  },
+  themeSectionLabel: {
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  themeChips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  themeChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  themeChipEmoji: {
+    fontSize: 14,
+  },
+  themeChipLabel: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
   },
 });
