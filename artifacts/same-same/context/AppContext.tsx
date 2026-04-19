@@ -18,6 +18,7 @@ export interface MyPhoto {
   uri: string;
   uploadedAt: string;
   theme: string;
+  tags?: string[];
 }
 
 export interface Match {
@@ -34,6 +35,7 @@ export interface Match {
   timestamp: string;
   theme?: string;
   theirPhotoMinutesAgo?: number;
+  sharedTags?: string[];
 }
 
 export interface Badge {
@@ -56,7 +58,7 @@ interface AppState {
 
 interface AppContextValue extends AppState {
   addMatch: (match: Match) => void;
-  addMyPhoto: (uri: string, theme: string) => void;
+  addMyPhoto: (uri: string, theme: string, tags?: string[]) => void;
   completeOnboarding: () => void;
   resetOnboarding: () => void;
   getWorldMapCoverage: () => number;
@@ -108,6 +110,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               uri: p.uri ?? "",
               uploadedAt: p.uploadedAt ?? new Date().toISOString(),
               theme: p.theme ?? "joy",
+              tags: p.tags ?? [],
             };
           }
         );
@@ -184,12 +187,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const addMyPhoto = useCallback((uri: string, theme: string) => {
+  const addMyPhoto = useCallback((uri: string, theme: string, tags?: string[]) => {
     setState((prev) => {
       const photo: MyPhoto = {
         uri,
         uploadedAt: new Date().toISOString(),
         theme,
+        tags: tags ?? [],
       };
       const newState = { ...prev, myPhotos: [photo, ...prev.myPhotos] };
       saveState(newState);

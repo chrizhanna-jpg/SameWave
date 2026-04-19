@@ -21,6 +21,7 @@ import {
   DAILY_CHALLENGES,
   getTodaysChallenge,
   getThemeChain,
+  TAG_LIBRARY,
 } from "@/data/samplePhotos";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
 import type { Match } from "@/context/AppContext";
@@ -28,47 +29,83 @@ import type { Match } from "@/context/AppContext";
 const { width } = Dimensions.get("window");
 const SWIPE_THRESHOLD = width * 0.28;
 
-// Pick the next candidate, walking the theme chain (preferred theme first,
-// then adjacent themes) until we find an unseen photo. Within a theme, prefer
-// the most recently-posted photo so same-day matches surface first.
-type Candidate = { photo: typeof SAMPLE_PHOTOS[number]; matchedTheme: string } | null;
+// Candidate scoring: shared tags weigh most, then same theme, then adjacent
+// theme, then recency. Returns scored unseen candidates sorted high → low.
+type Scored = {
+  photo: typeof SAMPLE_PHOTOS[number];
+  score: number;
+  sharedTags: string[];
+  inChain: boolean;
+};
 
-function pickFromChain(
+function scoreCandidates(
   preferredTheme: string,
+  myTags: string[],
   excludeUris: string[]
-): Candidate {
+): Scored[] {
   const chain = getThemeChain(preferredTheme);
-  for (const theme of chain) {
-    const pool = SAMPLE_PHOTOS.filter(
-      (p) => p.theme === theme && !excludeUris.includes(p.uri)
-    );
-    if (pool.length === 0) continue;
-    pool.sort((a, b) => a.minutesAgo - b.minutesAgo);
-    const top = pool.slice(0, Math.min(3, pool.length));
-    const pick = top[Math.floor(Math.random() * top.length)];
-    return { photo: pick, matchedTheme: theme };
-  }
-  return null;
+  const chainIndex = (theme: string) => {
+    const i = chain.indexOf(theme);
+    return i === -1 ? -1 : i;
+  };
+  const myTagSet = new Set(myTags);
+
+  const candidates: Scored[] = SAMPLE_PHOTOS
+    .filter((p) => !excludeUris.includes(p.uri))
+    .map((p) => {
+      const sharedTags = p.tags.filter((t) => myTagSet.has(t));
+      const idx = chainIndex(p.theme);
+      const inChain = idx >= 0;
+      const sameTheme = p.theme === preferredTheme;
+      // Tag overlap dominates. Then theme match. Then adjacency depth.
+      // Recency contributes — and same-day photos get an extra bump so a
+      // fresh, world-away match can still surface even when no tags overlap.
+      const isSameDay = p.minutesAgo <= 24 * 60;
+      const score =
+        sharedTags.length * 5 +
+        (sameTheme ? 3 : 0) +
+        (inChain && !sameTheme ? Math.max(0, 2 - idx * 0.5) : 0) +
+        Math.max(0, 1 - p.minutesAgo / 1440) +
+        (isSameDay ? 1.5 : 0);
+      return { photo: p, score, sharedTags, inChain };
+    })
+    .sort((a, b) => b.score - a.score);
+  return candidates;
 }
 
-// Pick the next candidate, walking the theme chain (preferred theme first,
-// then adjacent themes) until we find an unseen photo. Within a theme, prefer
-// the most recently-posted photo so same-day matches surface first.
-// When the seen pool is exhausted, recycle (keeping current candidate excluded
-// so we never repeat back-to-back).
+// Pick the next candidate. Prefers tag overlap, then same theme, then adjacent
+// themes, then recency. Within the top tier, adds a touch of randomness so
+// repeated swipes don't feel deterministic. Recycles when seen list exhausts.
 function getTheirPhoto(
   preferredTheme: string,
+  myTags: string[],
   excludeUris: string[] = []
-): { photo: typeof SAMPLE_PHOTOS[number]; matchedTheme: string } {
-  const first = pickFromChain(preferredTheme, excludeUris);
+): { photo: typeof SAMPLE_PHOTOS[number]; matchedTheme: string; sharedTags: string[] } {
+  const pickFrom = (excl: string[]) => {
+    const ranked = scoreCandidates(preferredTheme, myTags, excl);
+    if (ranked.length === 0) return null;
+    // Prefer the top scorer, but pick from up to top-3 ties to feel less rigid.
+    const topScore = ranked[0].score;
+    const topTier = ranked.filter((c) => c.score >= topScore - 0.25).slice(0, 3);
+    const pick = topTier[Math.floor(Math.random() * topTier.length)];
+    return {
+      photo: pick.photo,
+      matchedTheme: pick.photo.theme,
+      sharedTags: pick.sharedTags,
+    };
+  };
+
+  const first = pickFrom(excludeUris);
   if (first) return first;
-  // Exhausted: keep only the very latest (current candidate) excluded
-  // so the user doesn't see the exact same photo twice in a row.
-  const minimalExclude = excludeUris.slice(-1);
-  const recycled = pickFromChain(preferredTheme, minimalExclude);
+  // Exhausted: keep only the most recent candidate excluded so we don't
+  // immediately repeat the same photo.
+  const recycled = pickFrom(excludeUris.slice(-1));
   if (recycled) return recycled;
-  // True last resort.
-  return { photo: SAMPLE_PHOTOS[0], matchedTheme: SAMPLE_PHOTOS[0].theme };
+  return {
+    photo: SAMPLE_PHOTOS[0],
+    matchedTheme: SAMPLE_PHOTOS[0].theme,
+    sharedTags: [],
+  };
 }
 
 export default function SwipeScreen() {
@@ -78,40 +115,57 @@ export default function SwipeScreen() {
   const todaysChallenge = getTodaysChallenge();
 
   // User's photo is LOCKED for the session — only changes when they upload a new one
-  const myPhotoData = React.useMemo<{ uri: string; uploadedAt: string; theme: string }>(() => {
-    if (myPhotos.length > 0) return myPhotos[0];
+  const myPhotoData = React.useMemo<{ uri: string; uploadedAt: string; theme: string; tags: string[] }>(() => {
+    if (myPhotos.length > 0) {
+      const p = myPhotos[0];
+      return {
+        uri: p.uri,
+        uploadedAt: p.uploadedAt,
+        theme: p.theme,
+        tags: p.tags ?? [],
+      };
+    }
     const sample = SAMPLE_PHOTOS[0];
     return {
       uri: sample.uri,
       uploadedAt: simulatedPostedAt(5).toISOString(),
       theme: sample.theme,
+      tags: sample.tags,
     };
   }, [myPhotos]);
 
   const myPhotoUri = myPhotoData.uri;
   const activeTheme = myPhotoData.theme;
+  const myTags = myPhotoData.tags;
   const themeMeta =
     DAILY_CHALLENGES.find((c) => c.id === activeTheme) ?? todaysChallenge;
 
+  // Stable signature of the user's tag list — included in deps so re-uploading
+  // the same URI/theme but with different tags re-seeds the candidate pool.
+  const myTagsKey = React.useMemo(() => [...myTags].sort().join("|"), [myTags]);
+
   const seenRef = useRef<string[]>([myPhotoUri]);
   const initial = React.useMemo(
-    () => getTheirPhoto(activeTheme, [myPhotoUri]),
+    () => getTheirPhoto(activeTheme, myTags, [myPhotoUri]),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
   const [theirPhoto, setTheirPhoto] = useState(initial.photo);
   const [matchedTheme, setMatchedTheme] = useState<string>(initial.matchedTheme);
+  const [sharedTags, setSharedTags] = useState<string[]>(initial.sharedTags);
   const [isAnimatingOut, setIsAnimatingOut] = useState(false);
 
-  // When the user uploads a new photo (which may carry a new theme),
-  // reset the candidate pool so we immediately match against the new theme.
+  // When the user uploads a new photo (which may carry a new theme/tags),
+  // reset the candidate pool so we immediately match against the new context.
   useEffect(() => {
     seenRef.current = [myPhotoUri];
-    const next = getTheirPhoto(activeTheme, [myPhotoUri]);
+    const next = getTheirPhoto(activeTheme, myTags, [myPhotoUri]);
     setTheirPhoto(next.photo);
     setMatchedTheme(next.matchedTheme);
+    setSharedTags(next.sharedTags);
     setIsAnimatingOut(false);
-  }, [myPhotoUri, activeTheme]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myPhotoUri, activeTheme, myTagsKey]);
 
   const pan = useRef(new Animated.ValueXY()).current;
   const cardScale = useRef(new Animated.Value(1)).current;
@@ -120,7 +174,7 @@ export default function SwipeScreen() {
   const loadNextCandidate = useCallback(() => {
     seenRef.current.push(theirPhoto.uri);
     if (seenRef.current.length > 30) seenRef.current = seenRef.current.slice(-15);
-    const next = getTheirPhoto(activeTheme, seenRef.current);
+    const next = getTheirPhoto(activeTheme, myTags, seenRef.current);
     // If we've cycled back through everything, trim seen so the recycle
     // doesn't keep firing on every swipe.
     if (next.photo.uri === theirPhoto.uri || seenRef.current.includes(next.photo.uri)) {
@@ -128,11 +182,12 @@ export default function SwipeScreen() {
     }
     setTheirPhoto(next.photo);
     setMatchedTheme(next.matchedTheme);
+    setSharedTags(next.sharedTags);
     pan.setValue({ x: 0, y: 0 });
     cardScale.setValue(1);
     sameOpacity.setValue(0);
     setIsAnimatingOut(false);
-  }, [theirPhoto.uri, activeTheme, myPhotoUri, pan, cardScale, sameOpacity]);
+  }, [theirPhoto.uri, activeTheme, myTags, myPhotoUri, pan, cardScale, sameOpacity]);
 
   const handleSwipe = useCallback(
     (dir: "left" | "right") => {
@@ -173,6 +228,7 @@ export default function SwipeScreen() {
             theme: matchedTheme,
             theirPhotoMinutesAgo: theirPhoto.minutesAgo,
             myPhotoUploadedAt: myPhotoData.uploadedAt,
+            sharedTags,
           };
           router.push({
             pathname: "/reveal",
@@ -191,6 +247,7 @@ export default function SwipeScreen() {
       myPhotoUri,
       theirPhoto,
       matchedTheme,
+      sharedTags,
       myPhotoData.uploadedAt,
       pan.x,
       cardScale,
@@ -361,6 +418,20 @@ export default function SwipeScreen() {
                   {timeAgo(simulatedPostedAt(theirPhoto.minutesAgo))}
                 </Text>
               </View>
+              {sharedTags.length > 0 && (
+                <View style={[styles.sharedTagsChip, { backgroundColor: colors.teal + "f2" }]}>
+                  <Text style={styles.sharedTagsLabel}>Both have</Text>
+                  <Text style={styles.sharedTagsValue}>
+                    {sharedTags
+                      .slice(0, 3)
+                      .map((id) => {
+                        const t = TAG_LIBRARY.find((x) => x.id === id);
+                        return t ? `${t.emoji} ${t.label}` : id;
+                      })
+                      .join("  ·  ")}
+                  </Text>
+                </View>
+              )}
             </View>
           </View>
         </Animated.View>
@@ -512,6 +583,29 @@ const styles = StyleSheet.create({
   photoTagTime: {
     fontSize: 10,
     fontFamily: "Inter_400Regular",
+    marginTop: 1,
+  },
+  sharedTagsChip: {
+    position: "absolute",
+    top: 8,
+    right: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    maxWidth: "70%",
+  },
+  sharedTagsLabel: {
+    fontSize: 9,
+    fontFamily: "Inter_600SemiBold",
+    color: "#001018",
+    opacity: 0.7,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  sharedTagsValue: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
+    color: "#001018",
     marginTop: 1,
   },
   divider: {

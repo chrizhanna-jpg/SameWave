@@ -16,7 +16,14 @@ import { Icon } from "@/components/Icon";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
-import { DAILY_CHALLENGES, getTodaysChallenge } from "@/data/samplePhotos";
+import {
+  DAILY_CHALLENGES,
+  getTodaysChallenge,
+  TAG_LIBRARY,
+  SUGGESTED_TAGS_BY_THEME,
+} from "@/data/samplePhotos";
+
+const MAX_TAGS = 4;
 
 export default function CameraScreen() {
   const colors = useColors();
@@ -26,6 +33,35 @@ export default function CameraScreen() {
   const [submitted, setSubmitted] = useState(false);
   const challenge = getTodaysChallenge();
   const [selectedTheme, setSelectedTheme] = useState<string>(challenge.id);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [showAllTags, setShowAllTags] = useState(false);
+
+  const toggleTag = (id: string) => {
+    setSelectedTags((prev) => {
+      if (prev.includes(id)) return prev.filter((t) => t !== id);
+      if (prev.length >= MAX_TAGS) return prev;
+      return [...prev, id];
+    });
+  };
+
+  // When the user changes the theme, clear tag selection so they don't
+  // accidentally submit tags that no longer fit (e.g. picking "coffee"
+  // for "morning", then switching to "pets"). Also collapse the "+ more"
+  // expansion so suggestions for the new theme are visible first.
+  const changeTheme = (id: string) => {
+    if (id === selectedTheme) return;
+    setSelectedTheme(id);
+    setSelectedTags([]);
+    setShowAllTags(false);
+  };
+
+  // Suggested tags first (for the active theme), then the rest if expanded.
+  const suggestedIds = SUGGESTED_TAGS_BY_THEME[selectedTheme] ?? [];
+  const suggestedTags = suggestedIds
+    .map((id) => TAG_LIBRARY.find((t) => t.id === id))
+    .filter(Boolean) as typeof TAG_LIBRARY;
+  const otherTags = TAG_LIBRARY.filter((t) => !suggestedIds.includes(t.id));
+  const visibleTags = showAllTags ? [...suggestedTags, ...otherTags] : suggestedTags;
 
   const pickFromLibrary = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -66,7 +102,7 @@ export default function CameraScreen() {
 
   const submit = () => {
     if (!selectedPhoto) return;
-    addMyPhoto(selectedPhoto, selectedTheme);
+    addMyPhoto(selectedPhoto, selectedTheme, selectedTags);
     setSubmitted(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setTimeout(() => {
@@ -148,7 +184,7 @@ export default function CameraScreen() {
                   return (
                     <TouchableOpacity
                       key={c.id}
-                      onPress={() => setSelectedTheme(c.id)}
+                      onPress={() => changeTheme(c.id)}
                       activeOpacity={0.85}
                       style={[
                         styles.themeChip,
@@ -170,6 +206,60 @@ export default function CameraScreen() {
                     </TouchableOpacity>
                   );
                 })}
+              </View>
+            </View>
+
+            <View style={styles.themeSection}>
+              <View style={styles.tagSectionHeader}>
+                <Text style={[styles.themeSectionLabel, { color: colors.mutedForeground }]}>
+                  Add details (helps find similar photos)
+                </Text>
+                <Text style={[styles.tagCount, { color: colors.mutedForeground }]}>
+                  {selectedTags.length}/{MAX_TAGS}
+                </Text>
+              </View>
+              <View style={styles.themeChips}>
+                {visibleTags.map((t) => {
+                  const active = selectedTags.includes(t.id);
+                  return (
+                    <TouchableOpacity
+                      key={t.id}
+                      onPress={() => toggleTag(t.id)}
+                      activeOpacity={0.85}
+                      style={[
+                        styles.themeChip,
+                        {
+                          backgroundColor: active ? colors.teal : colors.card,
+                          borderColor: active ? colors.teal : colors.border,
+                        },
+                      ]}
+                    >
+                      <Text style={styles.themeChipEmoji}>{t.emoji}</Text>
+                      <Text
+                        style={[
+                          styles.themeChipLabel,
+                          { color: active ? "#001018" : colors.foreground },
+                        ]}
+                      >
+                        {t.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+                {!showAllTags && otherTags.length > 0 && (
+                  <TouchableOpacity
+                    onPress={() => setShowAllTags(true)}
+                    activeOpacity={0.85}
+                    style={[
+                      styles.themeChip,
+                      { backgroundColor: "transparent", borderColor: colors.border },
+                    ]}
+                  >
+                    <Text style={[styles.themeChipLabel, { color: colors.mutedForeground }]}>
+                      + more
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
 
@@ -433,6 +523,15 @@ const styles = StyleSheet.create({
   },
   themeChipLabel: {
     fontSize: 13,
+    fontFamily: "Inter_500Medium",
+  },
+  tagSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  tagCount: {
+    fontSize: 11,
     fontFamily: "Inter_500Medium",
   },
 });

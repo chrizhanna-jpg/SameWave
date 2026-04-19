@@ -6,6 +6,7 @@ export interface SamplePhoto {
   countryFlag: string;
   theme: string;
   minutesAgo: number;
+  tags: string[];
 }
 
 export const SAMPLE_PHOTOS: SamplePhoto[] = [
@@ -17,6 +18,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇪🇹",
     theme: "morning",
     minutesAgo: 45,
+    tags: ["coffee", "drink", "warm"],
   },
   {
     id: "2",
@@ -26,6 +28,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇯🇵",
     theme: "morning",
     minutesAgo: 127,
+    tags: ["coffee", "drink", "warm"],
   },
   {
     id: "3",
@@ -35,6 +38,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇲🇽",
     theme: "food",
     minutesAgo: 210,
+    tags: ["meal", "warm"],
   },
   {
     id: "4",
@@ -44,6 +48,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇮🇳",
     theme: "food",
     minutesAgo: 68,
+    tags: ["meal", "bread"],
   },
   {
     id: "5",
@@ -53,6 +58,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇵🇪",
     theme: "work",
     minutesAgo: 361,
+    tags: ["laptop", "desk"],
   },
   {
     id: "6",
@@ -62,6 +68,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇩🇪",
     theme: "work",
     minutesAgo: 22,
+    tags: ["desk", "laptop"],
   },
   {
     id: "7",
@@ -71,6 +78,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇳🇴",
     theme: "nature",
     minutesAgo: 720,
+    tags: ["mountains", "trees", "outdoors"],
   },
   {
     id: "8",
@@ -80,6 +88,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇰🇪",
     theme: "nature",
     minutesAgo: 244,
+    tags: ["wildlife", "outdoors", "animal"],
   },
   {
     id: "9",
@@ -89,6 +98,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇧🇷",
     theme: "joy",
     minutesAgo: 18,
+    tags: ["smile", "people"],
   },
   {
     id: "10",
@@ -98,6 +108,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇰🇷",
     theme: "joy",
     minutesAgo: 480,
+    tags: ["celebration", "people"],
   },
   {
     id: "11",
@@ -107,6 +118,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇲🇦",
     theme: "hands",
     minutesAgo: 153,
+    tags: ["art", "people"],
   },
   {
     id: "12",
@@ -116,6 +128,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇦🇷",
     theme: "hands",
     minutesAgo: 1090,
+    tags: ["people"],
   },
   {
     id: "13",
@@ -125,6 +138,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇫🇮",
     theme: "pets",
     minutesAgo: 96,
+    tags: ["dog", "animal"],
   },
   {
     id: "14",
@@ -134,6 +148,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇦🇺",
     theme: "pets",
     minutesAgo: 1440,
+    tags: ["cat", "animal"],
   },
   {
     id: "15",
@@ -143,6 +158,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇨🇳",
     theme: "commute",
     minutesAgo: 305,
+    tags: ["transit", "city"],
   },
   {
     id: "16",
@@ -152,6 +168,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇬🇧",
     theme: "commute",
     minutesAgo: 185,
+    tags: ["transit", "city"],
   },
   {
     id: "17",
@@ -161,6 +178,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇲🇻",
     theme: "sky",
     minutesAgo: 2160,
+    tags: ["clouds", "sunset", "water"],
   },
   {
     id: "18",
@@ -170,8 +188,82 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇲🇳",
     theme: "sky",
     minutesAgo: 425,
+    tags: ["stars", "night"],
+  },
+  {
+    id: "19",
+    uri: "https://images.unsplash.com/photo-1472214103451-9374bd1c798e?w=400",
+    country: "Canada",
+    countryCode: "CA",
+    countryFlag: "🇨🇦",
+    theme: "nature",
+    minutesAgo: 95,
+    tags: ["trees", "sunset", "outdoors"],
+  },
+  {
+    id: "20",
+    uri: "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=400",
+    country: "South Africa",
+    countryCode: "ZA",
+    countryFlag: "🇿🇦",
+    theme: "sky",
+    minutesAgo: 38,
+    tags: ["sunset", "trees", "clouds"],
+  },
+  {
+    id: "21",
+    uri: "https://images.unsplash.com/photo-1502082553048-f009c37129b9?w=400",
+    country: "New Zealand",
+    countryCode: "NZ",
+    countryFlag: "🇳🇿",
+    theme: "nature",
+    minutesAgo: 510,
+    tags: ["trees", "outdoors"],
   },
 ];
+
+// Tag library — what users can pick to describe their photo. Grouped so the
+// camera screen can suggest the most relevant chips per theme.
+export const TAG_LIBRARY: { id: string; emoji: string; label: string }[] = [
+  { id: "coffee", emoji: "☕", label: "Coffee" },
+  { id: "drink", emoji: "🥤", label: "Drink" },
+  { id: "meal", emoji: "🍽️", label: "Meal" },
+  { id: "bread", emoji: "🥖", label: "Bread" },
+  { id: "warm", emoji: "🔥", label: "Warm" },
+  { id: "trees", emoji: "🌳", label: "Trees" },
+  { id: "sunset", emoji: "🌅", label: "Sunset" },
+  { id: "clouds", emoji: "☁️", label: "Clouds" },
+  { id: "stars", emoji: "✨", label: "Stars" },
+  { id: "night", emoji: "🌙", label: "Night" },
+  { id: "mountains", emoji: "🏔️", label: "Mountains" },
+  { id: "outdoors", emoji: "🌲", label: "Outdoors" },
+  { id: "water", emoji: "🌊", label: "Water" },
+  { id: "wildlife", emoji: "🦌", label: "Wildlife" },
+  { id: "dog", emoji: "🐕", label: "Dog" },
+  { id: "cat", emoji: "🐈", label: "Cat" },
+  { id: "animal", emoji: "🐾", label: "Animal" },
+  { id: "people", emoji: "👤", label: "People" },
+  { id: "smile", emoji: "😊", label: "Smile" },
+  { id: "celebration", emoji: "🎉", label: "Celebration" },
+  { id: "art", emoji: "🎨", label: "Art" },
+  { id: "desk", emoji: "🖥️", label: "Desk" },
+  { id: "laptop", emoji: "💻", label: "Laptop" },
+  { id: "transit", emoji: "🚇", label: "Transit" },
+  { id: "city", emoji: "🏙️", label: "City" },
+];
+
+// Suggested tag IDs surfaced first per theme on the camera screen.
+export const SUGGESTED_TAGS_BY_THEME: Record<string, string[]> = {
+  morning: ["coffee", "drink", "sunset", "warm"],
+  food: ["meal", "bread", "drink", "coffee"],
+  hands: ["art", "people"],
+  sky: ["sunset", "clouds", "stars", "night", "trees"],
+  commute: ["transit", "city"],
+  work: ["laptop", "desk", "coffee"],
+  joy: ["smile", "celebration", "people"],
+  nature: ["trees", "mountains", "outdoors", "water", "sunset", "wildlife"],
+  pets: ["dog", "cat", "animal"],
+};
 
 export const DAILY_CHALLENGES = [
   { id: "morning", title: "Your morning", description: "What does your morning look like?", emoji: "☀️" },
