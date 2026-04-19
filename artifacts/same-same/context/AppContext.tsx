@@ -54,6 +54,7 @@ interface AppState {
   badges: Badge[];
   myPhotos: MyPhoto[];
   onboardingComplete: boolean;
+  proUnlocked: boolean;
 }
 
 interface AppContextValue extends AppState {
@@ -61,6 +62,7 @@ interface AppContextValue extends AppState {
   addMyPhoto: (uri: string, theme: string, tags?: string[]) => void;
   completeOnboarding: () => void;
   resetOnboarding: () => void;
+  unlockPro: () => void;
   getWorldMapCoverage: () => number;
 }
 
@@ -85,6 +87,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     badges: defaultBadges,
     myPhotos: [],
     onboardingComplete: false,
+    proUnlocked: false,
   });
 
   useEffect(() => {
@@ -217,6 +220,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const unlockPro = useCallback(() => {
+    setState((prev) => {
+      const newState = { ...prev, proUnlocked: true };
+      saveState(newState);
+      return newState;
+    });
+  }, []);
+
   const getWorldMapCoverage = useCallback(() => {
     return Math.min(
       100,
@@ -226,7 +237,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AppContext.Provider
-      value={{ ...state, addMatch, addMyPhoto, completeOnboarding, resetOnboarding, getWorldMapCoverage }}
+      value={{ ...state, addMatch, addMyPhoto, completeOnboarding, resetOnboarding, unlockPro, getWorldMapCoverage }}
     >
       {children}
     </AppContext.Provider>

@@ -1,9 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
+  Alert,
   Animated,
   Dimensions,
   Image,
+  Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,6 +17,8 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
 import * as Haptics from "expo-haptics";
+import * as Sharing from "expo-sharing";
+import ViewShot, { captureRef } from "react-native-view-shot";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { CountryReveal } from "@/components/CountryReveal";
@@ -27,9 +32,53 @@ export default function RevealScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
-  const { addMatch, matchedCountries } = useApp();
+  const { addMatch, matchedCountries, proUnlocked, unlockPro } = useApp();
   const [match, setMatch] = useState<Match | null>(null);
+  const [sharing, setSharing] = useState(false);
+  const [paywallOpen, setPaywallOpen] = useState(false);
   const savedRef = useRef(false);
+  const shotRef = useRef<ViewShot>(null);
+
+  const handleShare = async () => {
+    if (sharing || !shotRef.current) return;
+    setSharing(true);
+    try {
+      const uri = await captureRef(shotRef.current, {
+        format: "jpg",
+        quality: 0.95,
+        result: "tmpfile",
+      });
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      if (Platform.OS === "web") {
+        Alert.alert(
+          "Share ready",
+          "On the published mobile app, this opens your phone's share sheet (Instagram, WhatsApp, Messages, etc.).",
+        );
+      } else {
+        const available = await Sharing.isAvailableAsync();
+        if (!available) {
+          Alert.alert("Sharing unavailable", "Sharing isn't supported on this device.");
+        } else {
+          await Sharing.shareAsync(uri, {
+            mimeType: "image/jpeg",
+            dialogTitle: "Share your Same Same",
+          });
+        }
+      }
+    } catch (err) {
+      Alert.alert("Couldn't share", "Something went wrong creating the share image.");
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  const handleUnlock = () => {
+    // Stub paywall — real billing (RevenueCat or platform IAP) wires in
+    // at publish time. For now this flips the local pro flag.
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    unlockPro();
+    setPaywallOpen(false);
+  };
 
   const fadeIn = useRef(new Animated.Value(0)).current;
   const scaleIn = useRef(new Animated.Value(0.92)).current;
@@ -166,13 +215,19 @@ export default function RevealScreen() {
         )}
 
         <Animated.View
+          style={{
+            opacity: fadeIn,
+            transform: [{ scale: scaleIn }],
+          }}
+        >
+        <ViewShot
+          ref={shotRef}
+          options={{ format: "jpg", quality: 0.95 }}
           style={[
             styles.revealCard,
             {
               backgroundColor: colors.card,
               borderColor: colors.border,
-              opacity: fadeIn,
-              transform: [{ scale: scaleIn }],
             },
           ]}
         >
@@ -251,6 +306,13 @@ export default function RevealScreen() {
                 : `Across the world, someone in ${match.theirCountry} shared the same thing.`}
             </Text>
           </View>
+
+          {!proUnlocked && (
+            <View style={styles.watermark}>
+              <Text style={styles.watermarkText}>Same Same · samesame.app</Text>
+            </View>
+          )}
+        </ViewShot>
         </Animated.View>
 
         <Animated.View
@@ -283,6 +345,46 @@ export default function RevealScreen() {
           </View>
         </Animated.View>
 
+        <View style={styles.shareRow}>
+          <TouchableOpacity
+            style={[
+              styles.shareBtn,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+            onPress={handleShare}
+            activeOpacity={0.85}
+            disabled={sharing}
+            accessibilityLabel="Share this match"
+          >
+            <Icon name="share" size={18} color={colors.foreground} />
+            <Text style={[styles.shareBtnText, { color: colors.foreground }]}>
+              {sharing ? "Preparing…" : "Share"}
+            </Text>
+          </TouchableOpacity>
+
+          {!proUnlocked && (
+            <TouchableOpacity
+              style={[styles.upsellBtn, { borderColor: colors.gold }]}
+              onPress={() => setPaywallOpen(true)}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.upsellEmoji}>✨</Text>
+              <Text style={[styles.upsellText, { color: colors.gold }]}>
+                Remove watermark · £1
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {proUnlocked && (
+            <View style={[styles.proBadge, { backgroundColor: colors.gold + "22", borderColor: colors.gold }]}>
+              <Text style={styles.upsellEmoji}>✨</Text>
+              <Text style={[styles.upsellText, { color: colors.gold }]}>
+                Pro · no watermark
+              </Text>
+            </View>
+          )}
+        </View>
+
         <TouchableOpacity
           style={[styles.nextBtn, { backgroundColor: colors.primary }]}
           onPress={handleNext}
@@ -294,6 +396,73 @@ export default function RevealScreen() {
           <Icon name="arrow-right" size={20} color={colors.primaryForeground} />
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Paywall modal */}
+      <Modal
+        visible={paywallOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPaywallOpen(false)}
+      >
+        <Pressable
+          style={styles.paywallBackdrop}
+          onPress={() => setPaywallOpen(false)}
+        >
+          <Pressable
+            style={[styles.paywallCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={(e) => e.stopPropagation?.()}
+          >
+            <TouchableOpacity
+              onPress={() => setPaywallOpen(false)}
+              style={styles.paywallClose}
+              accessibilityLabel="Close"
+            >
+              <Icon name="x" size={20} color={colors.mutedForeground} />
+            </TouchableOpacity>
+
+            <Text style={styles.paywallSparkle}>✨</Text>
+            <Text style={[styles.paywallTitle, { color: colors.foreground }]}>
+              Same Same Pro
+            </Text>
+            <Text style={[styles.paywallPrice, { color: colors.gold }]}>
+              £1 · one-time, lifetime
+            </Text>
+
+            <View style={styles.paywallFeatures}>
+              <View style={styles.paywallFeature}>
+                <Icon name="check" size={16} color={colors.teal} />
+                <Text style={[styles.paywallFeatureText, { color: colors.foreground }]}>
+                  Share without watermark
+                </Text>
+              </View>
+              <View style={styles.paywallFeature}>
+                <Icon name="check" size={16} color={colors.teal} />
+                <Text style={[styles.paywallFeatureText, { color: colors.foreground }]}>
+                  Higher resolution exports
+                </Text>
+              </View>
+              <View style={styles.paywallFeature}>
+                <Icon name="check" size={16} color={colors.teal} />
+                <Text style={[styles.paywallFeatureText, { color: colors.foreground }]}>
+                  Support a small team
+                </Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.paywallCta, { backgroundColor: colors.gold }]}
+              onPress={handleUnlock}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.paywallCtaText}>Unlock for £1</Text>
+            </TouchableOpacity>
+
+            <Text style={[styles.paywallFinePrint, { color: colors.mutedForeground }]}>
+              One-time purchase · Restored automatically on this device
+            </Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -470,5 +639,132 @@ const styles = StyleSheet.create({
   nextBtnText: {
     fontSize: 16,
     fontFamily: "Inter_600SemiBold",
+  },
+  watermark: {
+    alignSelf: "center",
+    marginTop: -4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  watermarkText: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    color: "rgba(255,255,255,0.55)",
+    letterSpacing: 0.5,
+  },
+  shareRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  shareBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+  },
+  shareBtnText: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+  },
+  upsellBtn: {
+    flex: 1.4,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+    backgroundColor: "transparent",
+  },
+  upsellEmoji: { fontSize: 14 },
+  upsellText: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+  },
+  proBadge: {
+    flex: 1.4,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+  },
+  paywallBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+  },
+  paywallCard: {
+    width: "100%",
+    maxWidth: 380,
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 28,
+    alignItems: "center",
+    gap: 8,
+  },
+  paywallClose: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  paywallSparkle: { fontSize: 40, marginTop: 4 },
+  paywallTitle: {
+    fontSize: 22,
+    fontFamily: "Inter_700Bold",
+  },
+  paywallPrice: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+    marginBottom: 8,
+  },
+  paywallFeatures: {
+    width: "100%",
+    gap: 10,
+    paddingVertical: 10,
+  },
+  paywallFeature: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  paywallFeatureText: {
+    fontSize: 14,
+    fontFamily: "Inter_500Medium",
+  },
+  paywallCta: {
+    width: "100%",
+    height: 52,
+    borderRadius: 26,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+  },
+  paywallCtaText: {
+    fontSize: 16,
+    fontFamily: "Inter_700Bold",
+    color: "#001018",
+  },
+  paywallFinePrint: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+    marginTop: 4,
   },
 });
