@@ -16,20 +16,59 @@ import { Icon } from "@/components/Icon";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
-import { SAMPLE_PHOTOS, DAILY_CHALLENGES, getTodaysChallenge } from "@/data/samplePhotos";
+import {
+  SAMPLE_PHOTOS,
+  DAILY_CHALLENGES,
+  getTodaysChallenge,
+  getThemeChain,
+} from "@/data/samplePhotos";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
 import type { Match } from "@/context/AppContext";
 
 const { width } = Dimensions.get("window");
 const SWIPE_THRESHOLD = width * 0.28;
 
-function getTheirPhoto(theme: string, excludeUris: string[] = []) {
-  const themed = SAMPLE_PHOTOS.filter(
-    (p) => p.theme === theme && !excludeUris.includes(p.uri)
-  );
-  const pool = themed.length > 0 ? themed : SAMPLE_PHOTOS.filter((p) => !excludeUris.includes(p.uri));
-  if (pool.length === 0) return SAMPLE_PHOTOS[0];
-  return pool[Math.floor(Math.random() * pool.length)];
+// Pick the next candidate, walking the theme chain (preferred theme first,
+// then adjacent themes) until we find an unseen photo. Within a theme, prefer
+// the most recently-posted photo so same-day matches surface first.
+type Candidate = { photo: typeof SAMPLE_PHOTOS[number]; matchedTheme: string } | null;
+
+function pickFromChain(
+  preferredTheme: string,
+  excludeUris: string[]
+): Candidate {
+  const chain = getThemeChain(preferredTheme);
+  for (const theme of chain) {
+    const pool = SAMPLE_PHOTOS.filter(
+      (p) => p.theme === theme && !excludeUris.includes(p.uri)
+    );
+    if (pool.length === 0) continue;
+    pool.sort((a, b) => a.minutesAgo - b.minutesAgo);
+    const top = pool.slice(0, Math.min(3, pool.length));
+    const pick = top[Math.floor(Math.random() * top.length)];
+    return { photo: pick, matchedTheme: theme };
+  }
+  return null;
+}
+
+// Pick the next candidate, walking the theme chain (preferred theme first,
+// then adjacent themes) until we find an unseen photo. Within a theme, prefer
+// the most recently-posted photo so same-day matches surface first.
+// When the seen pool is exhausted, recycle (keeping current candidate excluded
+// so we never repeat back-to-back).
+function getTheirPhoto(
+  preferredTheme: string,
+  excludeUris: string[] = []
+): { photo: typeof SAMPLE_PHOTOS[number]; matchedTheme: string } {
+  const first = pickFromChain(preferredTheme, excludeUris);
+  if (first) return first;
+  // Exhausted: keep only the very latest (current candidate) excluded
+  // so the user doesn't see the exact same photo twice in a row.
+  const minimalExclude = excludeUris.slice(-1);
+  const recycled = pickFromChain(preferredTheme, minimalExclude);
+  if (recycled) return recycled;
+  // True last resort.
+  return { photo: SAMPLE_PHOTOS[0], matchedTheme: SAMPLE_PHOTOS[0].theme };
 }
 
 export default function SwipeScreen() {
@@ -53,17 +92,24 @@ export default function SwipeScreen() {
   const activeTheme = myPhotoData.theme;
   const themeMeta =
     DAILY_CHALLENGES.find((c) => c.id === activeTheme) ?? todaysChallenge;
+
   const seenRef = useRef<string[]>([myPhotoUri]);
-  const [theirPhoto, setTheirPhoto] = useState(() =>
-    getTheirPhoto(activeTheme, [myPhotoUri])
+  const initial = React.useMemo(
+    () => getTheirPhoto(activeTheme, [myPhotoUri]),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
   );
+  const [theirPhoto, setTheirPhoto] = useState(initial.photo);
+  const [matchedTheme, setMatchedTheme] = useState<string>(initial.matchedTheme);
   const [isAnimatingOut, setIsAnimatingOut] = useState(false);
 
   // When the user uploads a new photo (which may carry a new theme),
   // reset the candidate pool so we immediately match against the new theme.
   useEffect(() => {
     seenRef.current = [myPhotoUri];
-    setTheirPhoto(getTheirPhoto(activeTheme, [myPhotoUri]));
+    const next = getTheirPhoto(activeTheme, [myPhotoUri]);
+    setTheirPhoto(next.photo);
+    setMatchedTheme(next.matchedTheme);
     setIsAnimatingOut(false);
   }, [myPhotoUri, activeTheme]);
 
@@ -75,12 +121,18 @@ export default function SwipeScreen() {
     seenRef.current.push(theirPhoto.uri);
     if (seenRef.current.length > 30) seenRef.current = seenRef.current.slice(-15);
     const next = getTheirPhoto(activeTheme, seenRef.current);
-    setTheirPhoto(next);
+    // If we've cycled back through everything, trim seen so the recycle
+    // doesn't keep firing on every swipe.
+    if (next.photo.uri === theirPhoto.uri || seenRef.current.includes(next.photo.uri)) {
+      seenRef.current = [myPhotoUri, theirPhoto.uri];
+    }
+    setTheirPhoto(next.photo);
+    setMatchedTheme(next.matchedTheme);
     pan.setValue({ x: 0, y: 0 });
     cardScale.setValue(1);
     sameOpacity.setValue(0);
     setIsAnimatingOut(false);
-  }, [theirPhoto.uri, activeTheme, pan, cardScale, sameOpacity]);
+  }, [theirPhoto.uri, activeTheme, myPhotoUri, pan, cardScale, sameOpacity]);
 
   const handleSwipe = useCallback(
     (dir: "left" | "right") => {
@@ -118,7 +170,7 @@ export default function SwipeScreen() {
             similarityScore: 0,
             verdict: "same",
             timestamp: new Date().toISOString(),
-            theme: activeTheme,
+            theme: matchedTheme,
             theirPhotoMinutesAgo: theirPhoto.minutesAgo,
             myPhotoUploadedAt: myPhotoData.uploadedAt,
           };
@@ -138,7 +190,7 @@ export default function SwipeScreen() {
       isAnimatingOut,
       myPhotoUri,
       theirPhoto,
-      activeTheme,
+      matchedTheme,
       myPhotoData.uploadedAt,
       pan.x,
       cardScale,
@@ -224,6 +276,20 @@ export default function SwipeScreen() {
           </View>
         )}
       </View>
+
+      {matchedTheme !== activeTheme && (() => {
+        const nearby = DAILY_CHALLENGES.find((c) => c.id === matchedTheme);
+        if (!nearby) return null;
+        return (
+          <View style={[styles.nearbyBar, { backgroundColor: colors.gold + "1a", borderColor: colors.gold + "55" }]}>
+            <Text style={styles.nearbyEmoji}>{nearby.emoji}</Text>
+            <Text style={[styles.nearbyText, { color: colors.foreground }]}>
+              Trying nearby:{" "}
+              <Text style={{ fontFamily: "Inter_600SemiBold" }}>{nearby.title}</Text>
+            </Text>
+          </View>
+        );
+      })()}
 
       <View style={styles.cardArea}>
         <Animated.View
@@ -387,6 +453,23 @@ const styles = StyleSheet.create({
   uploadedText: {
     fontSize: 10,
     fontFamily: "Inter_600SemiBold",
+  },
+  nearbyBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 20,
+    marginBottom: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  nearbyEmoji: { fontSize: 14 },
+  nearbyText: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    flex: 1,
   },
   cardArea: {
     flex: 1,

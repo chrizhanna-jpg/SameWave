@@ -185,6 +185,25 @@ export const DAILY_CHALLENGES = [
   { id: "pets", title: "An animal", description: "Pet, wild, or neighbor's", emoji: "🐾" },
 ];
 
+// Themes that "feel" related — used as fallback when the active theme
+// pool is exhausted so the user can still find a match nearby.
+export const THEME_ADJACENCY: Record<string, string[]> = {
+  morning: ["food", "commute", "sky"],
+  food: ["morning", "hands", "joy"],
+  hands: ["food", "work", "joy"],
+  sky: ["nature", "morning"],
+  commute: ["morning", "work", "sky"],
+  work: ["commute", "hands"],
+  joy: ["pets", "food", "hands"],
+  nature: ["sky", "pets"],
+  pets: ["nature", "joy"],
+};
+
+export function getThemeChain(theme: string): string[] {
+  const adj = THEME_ADJACENCY[theme] ?? [];
+  return [theme, ...adj];
+}
+
 export function getTodaysChallenge(): typeof DAILY_CHALLENGES[0] {
   const dayOfYear = Math.floor(
     (Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000
