@@ -22,6 +22,7 @@ import {
   TAG_LIBRARY,
 } from "@/data/samplePhotos";
 import { analyzePhoto } from "@/utils/api";
+import { validatePhotoOrigin, type PhotoSource } from "@/utils/photoOrigin";
 
 const MAX_TAGS = 4;
 const QUICK_THEMES = [
@@ -101,6 +102,27 @@ export default function CameraScreen() {
   const visibleTags = showAllTags ? orderedTags : orderedTags.slice(0, INITIAL_TAGS);
   const hiddenCount = orderedTags.length - INITIAL_TAGS;
 
+  const acceptOrReject = (
+    asset: ImagePicker.ImagePickerAsset,
+    source: PhotoSource,
+  ) => {
+    const verdict = validatePhotoOrigin(asset, source);
+    if (!verdict.ok) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert(
+        "Photo not allowed",
+        verdict.message ??
+          "Same Same only accepts photos taken with your device's camera.",
+        [{ text: "OK" }],
+      );
+      return false;
+    }
+    resetForNewPhoto();
+    setSelectedPhoto(asset.uri);
+    analyzeSelected(asset);
+    return true;
+  };
+
   const pickFromLibrary = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
@@ -112,11 +134,10 @@ export default function CameraScreen() {
       quality: 0.8,
       allowsEditing: true,
       aspect: [1, 1],
+      exif: true,
     });
     if (!result.canceled && result.assets[0]) {
-      resetForNewPhoto();
-      setSelectedPhoto(result.assets[0].uri);
-      analyzeSelected(result.assets[0]);
+      acceptOrReject(result.assets[0], "library");
     }
   };
 
@@ -144,11 +165,10 @@ export default function CameraScreen() {
       allowsEditing: true,
       aspect: [1, 1],
       base64: true,
+      exif: true,
     });
     if (!result.canceled && result.assets[0]) {
-      resetForNewPhoto();
-      setSelectedPhoto(result.assets[0].uri);
-      analyzeSelected(result.assets[0]);
+      acceptOrReject(result.assets[0], "camera");
     }
   };
 
@@ -506,6 +526,13 @@ export default function CameraScreen() {
                 Pick an existing photo
               </Text>
             </TouchableOpacity>
+
+            <View style={[styles.authenticNote, { borderColor: colors.border }]}>
+              <Icon name="check" size={14} color={colors.teal} />
+              <Text style={[styles.authenticNoteText, { color: colors.mutedForeground }]}>
+                Real photos only — AI-generated and downloaded images are blocked.
+              </Text>
+            </View>
           </View>
         )}
 
@@ -604,6 +631,22 @@ const styles = StyleSheet.create({
   pickBtnSub: {
     fontSize: 13,
     fontFamily: "Inter_400Regular",
+  },
+  authenticNote: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 4,
+  },
+  authenticNoteText: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 16,
   },
   selectedContainer: {
     gap: 16,
