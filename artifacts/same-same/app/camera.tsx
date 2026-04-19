@@ -6,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -17,14 +18,33 @@ import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import {
-  DAILY_CHALLENGES,
   getTodaysChallenge,
   TAG_LIBRARY,
-  SUGGESTED_TAGS_BY_THEME,
 } from "@/data/samplePhotos";
 import { analyzePhoto } from "@/utils/api";
 
 const MAX_TAGS = 4;
+const QUICK_THEMES = [
+  "morning coffee",
+  "street food",
+  "sunset hike",
+  "extreme sports",
+  "rainy commute",
+  "pet moment",
+  "office lunch",
+  "first steps",
+  "city lights",
+];
+
+function normalizeTheme(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9 \-']/g, "")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 4)
+    .join(" ");
+}
 
 export default function CameraScreen() {
   const colors = useColors();
@@ -33,11 +53,14 @@ export default function CameraScreen() {
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const challenge = getTodaysChallenge();
-  const [selectedTheme, setSelectedTheme] = useState<string>(challenge.id);
+  const [themeText, setThemeText] = useState<string>("");
+  const [themeEdited, setThemeEdited] = useState(false);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [aiTags, setAiTags] = useState<string[]>([]);
+  const [aiTheme, setAiTheme] = useState<string>("");
   const [analyzing, setAnalyzing] = useState(false);
   const [showAllTags, setShowAllTags] = useState(false);
+  const themeEditedRef = useRef(false);
   // Tracks the latest analysis call so older in-flight responses don't
   // overwrite tags for a newer photo pick.
   const analyzeReqIdRef = useRef(0);
@@ -56,24 +79,27 @@ export default function CameraScreen() {
     });
   };
 
-  // When the user changes the theme, clear tag selection so they don't
-  // accidentally submit tags that no longer fit (e.g. picking "coffee"
-  // for "morning", then switching to "pets"). Also collapse the "+ more"
-  // expansion so suggestions for the new theme are visible first.
-  const changeTheme = (id: string) => {
-    if (id === selectedTheme) return;
-    setSelectedTheme(id);
-    setSelectedTags([]);
-    setShowAllTags(false);
+  const onThemeChange = (text: string) => {
+    setThemeText(text);
+    setThemeEdited(true);
+    themeEditedRef.current = true;
   };
 
-  // Suggested tags first (for the active theme), then the rest if expanded.
-  const suggestedIds = SUGGESTED_TAGS_BY_THEME[selectedTheme] ?? [];
-  const suggestedTags = suggestedIds
-    .map((id) => TAG_LIBRARY.find((t) => t.id === id))
-    .filter(Boolean) as typeof TAG_LIBRARY;
-  const otherTags = TAG_LIBRARY.filter((t) => !suggestedIds.includes(t.id));
-  const visibleTags = showAllTags ? [...suggestedTags, ...otherTags] : suggestedTags;
+  const useQuickTheme = (t: string) => {
+    setThemeText(t);
+    setThemeEdited(true);
+    themeEditedRef.current = true;
+  };
+
+  // Tag picker: show all tags from the fixed library, ordered with AI-spotted
+  // ones first so the user can quickly add or remove any.
+  const orderedTags = [
+    ...TAG_LIBRARY.filter((t) => aiTags.includes(t.id)),
+    ...TAG_LIBRARY.filter((t) => !aiTags.includes(t.id)),
+  ];
+  const INITIAL_TAGS = 8;
+  const visibleTags = showAllTags ? orderedTags : orderedTags.slice(0, INITIAL_TAGS);
+  const hiddenCount = orderedTags.length - INITIAL_TAGS;
 
   const pickFromLibrary = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -88,9 +114,19 @@ export default function CameraScreen() {
       aspect: [1, 1],
     });
     if (!result.canceled && result.assets[0]) {
+      resetForNewPhoto();
       setSelectedPhoto(result.assets[0].uri);
       analyzeSelected(result.assets[0]);
     }
+  };
+
+  const resetForNewPhoto = () => {
+    setSelectedTags([]);
+    setAiTags([]);
+    setAiTheme("");
+    setThemeText("");
+    setThemeEdited(false);
+    themeEditedRef.current = false;
   };
 
   const takePhoto = async () => {
@@ -110,6 +146,7 @@ export default function CameraScreen() {
       base64: true,
     });
     if (!result.canceled && result.assets[0]) {
+      resetForNewPhoto();
       setSelectedPhoto(result.assets[0].uri);
       analyzeSelected(result.assets[0]);
     }
@@ -121,20 +158,25 @@ export default function CameraScreen() {
     setAiTags([]);
     setAnalyzing(true);
     const p = (async () => {
-      let resultTags: string[] = [];
+      let result: { tags: string[]; theme: string } = { tags: [], theme: "" };
       try {
-        resultTags = await analyzePhoto(
+        result = await analyzePhoto(
           asset.base64
             ? { imageBase64: asset.base64, mimeType: asset.mimeType ?? "image/jpeg" }
             : { imageUrl: asset.uri }
         );
       } catch {
-        resultTags = [];
+        result = { tags: [], theme: "" };
       }
       // Drop stale results (user picked a newer photo while we were waiting).
       if (reqId !== analyzeReqIdRef.current) return;
-      aiTagsRef.current = resultTags;
-      setAiTags(resultTags);
+      aiTagsRef.current = result.tags;
+      setAiTags(result.tags);
+      setAiTheme(result.theme);
+      // Autofill the theme input only if the user hasn't typed anything yet.
+      if (!themeEditedRef.current && result.theme) {
+        setThemeText(result.theme);
+      }
       setAnalyzing(false);
     })();
     inFlightAnalysisRef.current = p;
@@ -163,7 +205,14 @@ export default function CameraScreen() {
     // Use the ref so we read the freshest AI tags (state closure is stale
     // after awaiting an in-flight analysis above).
     const merged = Array.from(new Set([...selectedTags, ...aiTagsRef.current]));
-    addMyPhoto(selectedPhoto, selectedTheme, merged);
+    // If the user typed something, that wins — even an empty clear (which
+    // means "no theme"). Otherwise use the AI suggestion, falling back to
+    // today's challenge so we always show something meaningful.
+    const typed = normalizeTheme(themeText);
+    const finalTheme = themeEdited
+      ? typed || normalizeTheme(challenge.title)
+      : normalizeTheme(aiTheme) || normalizeTheme(challenge.title);
+    addMyPhoto(selectedPhoto, finalTheme, merged);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setTimeout(() => {
       router.back();
@@ -198,7 +247,7 @@ export default function CameraScreen() {
         <TouchableOpacity
           style={[styles.challengeCard, { backgroundColor: colors.card, borderColor: colors.border }]}
           activeOpacity={0.85}
-          onPress={() => setSelectedTheme(challenge.id)}
+          onPress={() => useQuickTheme(challenge.title.toLowerCase())}
         >
           <Text style={styles.challengeEmoji}>{challenge.emoji}</Text>
           <View style={styles.challengeText}>
@@ -261,44 +310,101 @@ export default function CameraScreen() {
             )}
 
             <View style={styles.themeSection}>
-              <Text style={[styles.themeSectionLabel, { color: colors.mutedForeground }]}>
-                What's in your photo?
-              </Text>
-              <View style={styles.themeChips}>
-                {DAILY_CHALLENGES.map((c) => {
-                  const active = c.id === selectedTheme;
+              <View style={styles.tagSectionHeader}>
+                <Text style={[styles.themeSectionLabel, { color: colors.mutedForeground }]}>
+                  Theme
+                </Text>
+                {analyzing && (
+                  <Text style={[styles.tagCount, { color: colors.mutedForeground }]}>
+                    suggesting…
+                  </Text>
+                )}
+                {!analyzing && aiTheme && !themeEdited && (
+                  <Text style={[styles.tagCount, { color: colors.teal }]}>
+                    AI suggested
+                  </Text>
+                )}
+              </View>
+              <View
+                style={[
+                  styles.themeInputWrap,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor:
+                      !themeEdited && aiTheme ? colors.teal : colors.border,
+                  },
+                ]}
+              >
+                <Icon
+                  name="sparkles"
+                  size={16}
+                  color={!themeEdited && aiTheme ? colors.teal : colors.mutedForeground}
+                />
+                <TextInput
+                  value={themeText}
+                  onChangeText={onThemeChange}
+                  placeholder={analyzing ? "Looking at your photo…" : "e.g. extreme sports"}
+                  placeholderTextColor={colors.mutedForeground}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  maxLength={40}
+                  style={[styles.themeInput, { color: colors.foreground }]}
+                />
+                {themeText.length > 0 && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setThemeText("");
+                      setThemeEdited(true);
+                      themeEditedRef.current = true;
+                    }}
+                    hitSlop={10}
+                  >
+                    <Icon name="x" size={16} color={colors.mutedForeground} />
+                  </TouchableOpacity>
+                )}
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.quickThemes}
+              >
+                {QUICK_THEMES.map((t) => {
+                  const active = themeText.trim().toLowerCase() === t;
                   return (
                     <TouchableOpacity
-                      key={c.id}
-                      onPress={() => changeTheme(c.id)}
+                      key={t}
+                      onPress={() => useQuickTheme(t)}
                       activeOpacity={0.85}
                       style={[
                         styles.themeChip,
                         {
-                          backgroundColor: active ? colors.primary : colors.card,
+                          backgroundColor: active ? colors.primary : "transparent",
                           borderColor: active ? colors.primary : colors.border,
                         },
                       ]}
                     >
-                      <Text style={styles.themeChipEmoji}>{c.emoji}</Text>
                       <Text
                         style={[
                           styles.themeChipLabel,
-                          { color: active ? colors.primaryForeground : colors.foreground },
+                          {
+                            color: active
+                              ? colors.primaryForeground
+                              : colors.mutedForeground,
+                          },
                         ]}
                       >
-                        {c.title}
+                        {t}
                       </Text>
                     </TouchableOpacity>
                   );
                 })}
-              </View>
+              </ScrollView>
             </View>
 
             <View style={styles.themeSection}>
               <View style={styles.tagSectionHeader}>
                 <Text style={[styles.themeSectionLabel, { color: colors.mutedForeground }]}>
-                  Add details (helps find similar photos)
+                  Add details (optional)
                 </Text>
                 <Text style={[styles.tagCount, { color: colors.mutedForeground }]}>
                   {selectedTags.length}/{MAX_TAGS}
@@ -332,7 +438,7 @@ export default function CameraScreen() {
                     </TouchableOpacity>
                   );
                 })}
-                {!showAllTags && otherTags.length > 0 && (
+                {!showAllTags && hiddenCount > 0 && (
                   <TouchableOpacity
                     onPress={() => setShowAllTags(true)}
                     activeOpacity={0.85}
@@ -342,7 +448,7 @@ export default function CameraScreen() {
                     ]}
                   >
                     <Text style={[styles.themeChipLabel, { color: colors.mutedForeground }]}>
-                      + more
+                      + {hiddenCount} more
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -636,5 +742,25 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "Inter_600SemiBold",
     marginTop: 4,
+  },
+  themeInputWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 14,
+    height: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  themeInput: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: "Inter_500Medium",
+    paddingVertical: 0,
+  },
+  quickThemes: {
+    flexDirection: "row",
+    gap: 8,
+    paddingVertical: 4,
   },
 });

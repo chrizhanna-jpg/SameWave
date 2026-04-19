@@ -15,15 +15,19 @@ const ALLOWED_TAGS = [
   "transit", "city",
 ];
 
-const PROMPT = `You are a vision tagger for a "find similar photos" feature.
-Look at the image and return up to 6 tags that describe what is visually present
-(objects, animals, scenes, weather, activities, mood).
+const PROMPT = `You are analyzing a daily-life photo for a "find similar photos" feature.
 
-You MUST only choose tags from this fixed vocabulary:
-${ALLOWED_TAGS.join(", ")}
+Return TWO things:
+1. "theme" — a SHORT lowercase phrase (1–4 words) naming the activity, moment,
+   or subject of the photo. Be specific and natural. Anything is fair game:
+   "morning coffee", "street food", "extreme sports", "first steps",
+   "childbirth", "rainy commute", "sunset hike", "birthday cake",
+   "bedroom selfie", "office lunch", etc. Do NOT pad with adjectives.
+2. "tags" — up to 6 visual tags from this FIXED vocabulary:
+   ${ALLOWED_TAGS.join(", ")}
 
-Return ONLY a JSON object of the form: {"tags": ["tag1", "tag2", ...]}
-No prose, no markdown.`;
+Return ONLY this JSON, no prose, no markdown:
+{"theme": "...", "tags": ["..."]}`;
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8 MB
 const FETCH_TIMEOUT_MS = 8000;
@@ -130,7 +134,7 @@ router.post("/analyze-photo", async (req, res) => {
       },
     });
 
-    let parsed: { tags?: unknown } = {};
+    let parsed: { tags?: unknown; theme?: unknown } = {};
     try {
       parsed = JSON.parse(response.text ?? "{}");
     } catch {
@@ -145,7 +149,18 @@ router.post("/analyze-photo", async (req, res) => {
           .slice(0, 6)
       : [];
 
-    res.json({ tags });
+    let theme = "";
+    if (typeof parsed.theme === "string") {
+      theme = parsed.theme
+        .toLowerCase()
+        .replace(/[^a-z0-9 \-']/g, "")
+        .trim()
+        .split(/\s+/)
+        .slice(0, 4)
+        .join(" ");
+    }
+
+    res.json({ tags, theme });
   } catch (err) {
     req.log.error({ err }, "analyze-photo failed");
     res.status(500).json({ error: "analysis failed", tags: [] });

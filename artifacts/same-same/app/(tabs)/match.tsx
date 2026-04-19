@@ -137,8 +137,13 @@ export default function SwipeScreen() {
   const myPhotoUri = myPhotoData.uri;
   const activeTheme = myPhotoData.theme;
   const myTags = myPhotoData.tags;
-  const themeMeta =
-    DAILY_CHALLENGES.find((c) => c.id === activeTheme) ?? todaysChallenge;
+  // The user's theme is freeform — find a matching daily challenge for the
+  // emoji if possible, otherwise default to ✨ and show the raw theme text.
+  const themeMeta = DAILY_CHALLENGES.find(
+    (c) => c.id === activeTheme || c.title.toLowerCase() === activeTheme,
+  );
+  const themeEmoji = themeMeta?.emoji ?? "✨";
+  const themeTitle = themeMeta?.title ?? activeTheme;
 
   // Stable signature of the user's tag list — included in deps so re-uploading
   // the same URI/theme but with different tags re-seeds the candidate pool.
@@ -225,7 +230,7 @@ export default function SwipeScreen() {
             similarityScore: 0,
             verdict: "same",
             timestamp: new Date().toISOString(),
-            theme: matchedTheme,
+            theme: activeTheme,
             theirPhotoMinutesAgo: theirPhoto.minutesAgo,
             myPhotoUploadedAt: myPhotoData.uploadedAt,
             sharedTags,
@@ -317,11 +322,11 @@ export default function SwipeScreen() {
       </View>
 
       <View style={[styles.challengeBar, { borderColor: colors.border }]}>
-        <Text style={styles.challengeEmoji}>{themeMeta.emoji}</Text>
+        <Text style={styles.challengeEmoji}>{themeEmoji}</Text>
         <Text style={[styles.challengeText, { color: colors.mutedForeground }]}>
           Matching:{" "}
           <Text style={{ color: colors.foreground, fontFamily: "Inter_600SemiBold" }}>
-            {themeMeta.title}
+            {themeTitle}
           </Text>
         </Text>
         {hasUploadedPhoto && (

@@ -11,11 +11,16 @@ function getApiBase(): string {
   return "";
 }
 
+export interface PhotoAnalysis {
+  tags: string[];
+  theme: string;
+}
+
 export async function analyzePhoto(input: {
   imageUrl?: string;
   imageBase64?: string;
   mimeType?: string;
-}): Promise<string[]> {
+}): Promise<PhotoAnalysis> {
   try {
     const base = getApiBase();
     const res = await fetch(`${base}/api/analyze-photo`, {
@@ -23,10 +28,13 @@ export async function analyzePhoto(input: {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
     });
-    if (!res.ok) return [];
-    const json = (await res.json()) as { tags?: string[] };
-    return Array.isArray(json.tags) ? json.tags : [];
+    if (!res.ok) return { tags: [], theme: "" };
+    const json = (await res.json()) as { tags?: string[]; theme?: string };
+    return {
+      tags: Array.isArray(json.tags) ? json.tags : [],
+      theme: typeof json.theme === "string" ? json.theme : "",
+    };
   } catch {
-    return [];
+    return { tags: [], theme: "" };
   }
 }

@@ -101,8 +101,10 @@ export default function RevealScreen() {
   const theirAgeMin = match.theirPhotoMinutesAgo ?? 9999;
   const isSameDay = myAgeMin < 1440 && theirAgeMin < 1440;
 
-  const themeMeta = DAILY_CHALLENGES.find((c) => c.id === match.theme);
-  const themeTitle = themeMeta?.title ?? "the same thing";
+  const themeMeta = DAILY_CHALLENGES.find(
+    (c) => c.id === match.theme || c.title.toLowerCase() === match.theme,
+  );
+  const themeTitle = themeMeta?.title ?? match.theme ?? "the same thing";
   const themeEmoji = themeMeta?.emoji ?? "✨";
 
   const sparkleScale = sparklePulse.interpolate({
