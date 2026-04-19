@@ -3,8 +3,11 @@ import {
   Animated,
   Dimensions,
   Image,
+  Modal,
   PanResponder,
   Platform,
+  Pressable,
+  StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -159,6 +162,7 @@ export default function SwipeScreen() {
   const [matchedTheme, setMatchedTheme] = useState<string>(initial.matchedTheme);
   const [sharedTags, setSharedTags] = useState<string[]>(initial.sharedTags);
   const [isAnimatingOut, setIsAnimatingOut] = useState(false);
+  const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
 
   // When the user uploads a new photo (which may carry a new theme/tags),
   // reset the candidate pool so we immediately match against the new context.
@@ -385,23 +389,29 @@ export default function SwipeScreen() {
               { backgroundColor: colors.card, borderColor: colors.border },
             ]}
           >
-            <View style={styles.photoSection}>
+            <Pressable
+              style={styles.photoSection}
+              onPress={() => setFullscreenUri(myPhotoUri)}
+            >
               <Image
                 source={{ uri: myPhotoUri }}
-                style={styles.topPhoto}
+                style={styles.fillPhoto}
                 resizeMode="cover"
               />
-              <View style={[styles.photoTag, { backgroundColor: colors.background + "cc" }]}>
-                <Text style={[styles.photoTagText, { color: colors.foreground }]}>
+              <View style={[styles.photoTag, { backgroundColor: "rgba(0,0,0,0.55)" }]}>
+                <Text style={[styles.photoTagText, { color: "#fff" }]}>
                   {hasUploadedPhoto ? "Your photo" : "Your moment"}
                 </Text>
-                <Text style={[styles.photoTagTime, { color: colors.mutedForeground }]}>
+                <Text style={[styles.photoTagTime, { color: "rgba(255,255,255,0.75)" }]}>
                   {timeAgo(new Date(myPhotoData.uploadedAt))}
                 </Text>
               </View>
-            </View>
+              <View style={[styles.expandHint, { backgroundColor: "rgba(0,0,0,0.45)" }]}>
+                <Icon name="maximize" size={12} color="#fff" />
+              </View>
+            </Pressable>
 
-            <View style={[styles.divider, { backgroundColor: colors.background }]}>
+            <View style={[styles.divider, { backgroundColor: colors.card }]}>
               <View style={[styles.vsChip, { backgroundColor: colors.secondary }]}>
                 <Text style={[styles.vsText, { color: colors.mutedForeground }]}>
                   vs
@@ -409,19 +419,31 @@ export default function SwipeScreen() {
               </View>
             </View>
 
-            <View style={styles.photoSection}>
+            <Pressable
+              style={styles.photoSection}
+              onPress={() => setFullscreenUri(theirPhoto.uri)}
+            >
               <Image
                 source={{ uri: theirPhoto.uri }}
-                style={styles.bottomPhoto}
+                style={styles.fillPhoto}
                 resizeMode="cover"
               />
-              <View style={[styles.photoTag, { backgroundColor: colors.background + "cc" }]}>
-                <Text style={[styles.photoTagText, { color: colors.foreground }]}>
+              <View
+                style={[
+                  styles.photoTag,
+                  styles.photoTagLifted,
+                  { backgroundColor: "rgba(0,0,0,0.55)" },
+                ]}
+              >
+                <Text style={[styles.photoTagText, { color: "#fff" }]}>
                   somewhere in the world
                 </Text>
-                <Text style={[styles.photoTagTime, { color: colors.mutedForeground }]}>
+                <Text style={[styles.photoTagTime, { color: "rgba(255,255,255,0.75)" }]}>
                   {timeAgo(simulatedPostedAt(theirPhoto.minutesAgo))}
                 </Text>
+              </View>
+              <View style={[styles.expandHint, { backgroundColor: "rgba(0,0,0,0.45)" }]}>
+                <Icon name="maximize" size={12} color="#fff" />
               </View>
               {sharedTags.length > 0 && (
                 <View style={[styles.sharedTagsChip, { backgroundColor: colors.teal + "f2" }]}>
@@ -437,46 +459,77 @@ export default function SwipeScreen() {
                   </Text>
                 </View>
               )}
+            </Pressable>
+
+            {/* Floating action buttons overlaid on the bottom of the card */}
+            <View
+              style={[
+                styles.actionOverlay,
+                { paddingBottom: 14 },
+              ]}
+              pointerEvents="box-none"
+            >
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.skipBtn]}
+                onPress={() => handleSwipe("left")}
+                activeOpacity={0.8}
+                accessibilityLabel="Skip"
+              >
+                <Icon name="x" size={26} color="#fff" />
+              </TouchableOpacity>
+
+              <View style={{ flex: 1 }} pointerEvents="none" />
+
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.matchBtn, { backgroundColor: colors.teal }]}
+                onPress={() => handleSwipe("right")}
+                activeOpacity={0.85}
+                accessibilityLabel="Same Same"
+              >
+                <Icon name="heart" size={24} color="#001018" />
+              </TouchableOpacity>
             </View>
           </View>
         </Animated.View>
       </View>
 
-      <View style={[styles.swipeHint, { paddingBottom: bottomPadding + 8 }]}>
-        <View style={styles.hintRow}>
+      {/* Fullscreen image viewer */}
+      <Modal
+        visible={fullscreenUri !== null}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setFullscreenUri(null)}
+      >
+        <StatusBar barStyle="light-content" backgroundColor="#000" />
+        <Pressable
+          style={styles.fullscreenBackdrop}
+          onPress={() => setFullscreenUri(null)}
+        >
+          {fullscreenUri && (
+            <Image
+              source={{ uri: fullscreenUri }}
+              style={styles.fullscreenImage}
+              resizeMode="contain"
+            />
+          )}
           <TouchableOpacity
-            style={[styles.hintBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => handleSwipe("left")}
-            activeOpacity={0.8}
+            onPress={() => setFullscreenUri(null)}
+            style={[styles.fullscreenClose, { top: insets.top + 12 }]}
+            activeOpacity={0.85}
+            accessibilityLabel="Close"
           >
-            <Icon name="x" size={18} color={colors.mutedForeground} />
-            <Text style={[styles.hintText, { color: colors.mutedForeground }]}>
-              Skip
-            </Text>
+            <Icon name="x" size={22} color="#fff" />
           </TouchableOpacity>
+        </Pressable>
+      </Modal>
 
-          <Text style={[styles.swipeInstruction, { color: colors.mutedForeground }]}>
-            swipe right to match
-          </Text>
-
-          <TouchableOpacity
-            style={[styles.hintBtn, { backgroundColor: colors.teal + "18", borderColor: colors.teal }]}
-            onPress={() => handleSwipe("right")}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.hintText, { color: colors.teal }]}>
-              Same Same
-            </Text>
-            <Icon name="heart" size={18} color={colors.teal} />
-          </TouchableOpacity>
-        </View>
-      </View>
+      <View style={{ paddingBottom: bottomPadding }} />
     </View>
   );
 }
 
-const CARD_WIDTH = width - 40;
-const PHOTO_HEIGHT = Math.min((CARD_WIDTH * 0.55), 200);
+const CARD_WIDTH = width - 24;
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -551,35 +604,111 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 20,
+    paddingHorizontal: 12,
+    paddingBottom: Platform.OS === "web" ? 90 : 70,
   },
   cardWrapper: {
     width: CARD_WIDTH,
+    flex: 1,
   },
   card: {
     width: CARD_WIDTH,
+    flex: 1,
     borderRadius: 24,
     overflow: "hidden",
     borderWidth: 1,
+    position: "relative",
   },
   photoSection: {
     position: "relative",
+    flex: 1,
   },
-  topPhoto: {
+  fillPhoto: {
     width: "100%",
-    height: PHOTO_HEIGHT,
-  },
-  bottomPhoto: {
-    width: "100%",
-    height: PHOTO_HEIGHT,
+    height: "100%",
   },
   photoTag: {
     position: "absolute",
-    bottom: 8,
+    bottom: 10,
     left: 10,
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
+    paddingVertical: 5,
+    borderRadius: 10,
+  },
+  photoTagLifted: {
+    bottom: 84, // clear of the bottom action buttons
+  },
+  expandHint: {
+    position: "absolute",
+    top: 10,
+    left: 10,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 18,
+  },
+  actionBtn: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  skipBtn: {
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+  },
+  matchBtn: {
+    shadowColor: "#000",
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+  },
+  swipeHintPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 14,
+  },
+  swipeHintText: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+    color: "rgba(255,255,255,0.85)",
+    letterSpacing: 0.3,
+  },
+  fullscreenBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.97)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fullscreenImage: {
+    width: "100%",
+    height: "100%",
+  },
+  fullscreenClose: {
+    position: "absolute",
+    right: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.6)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
   },
   photoTagText: {
     fontSize: 11,
@@ -614,9 +743,15 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   divider: {
+    position: "absolute",
+    top: "50%",
+    marginTop: -14,
+    left: 0,
+    right: 0,
     height: 28,
     alignItems: "center",
     justifyContent: "center",
+    zIndex: 5,
   },
   vsChip: {
     paddingHorizontal: 14,
