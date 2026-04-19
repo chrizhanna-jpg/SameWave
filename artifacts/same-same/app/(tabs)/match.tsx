@@ -27,6 +27,7 @@ import {
   TAG_LIBRARY,
 } from "@/data/samplePhotos";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
+import { getGeoTier } from "@/utils/celebrations";
 import type { Match } from "@/context/AppContext";
 
 const { width } = Dimensions.get("window");
@@ -436,7 +437,11 @@ export default function SwipeScreen() {
                 ]}
               >
                 <Text style={[styles.photoTagText, { color: "#fff" }]}>
-                  somewhere in the world
+                  {/* Hint at distance without spoiling the country reveal.
+                      Without device location this lands at "Same Planet"; once
+                      we have geolocation it can become Same Continent / Country. */}
+                  {getGeoTier(undefined, theirPhoto.countryCode).emoji}{" "}
+                  {getGeoTier(undefined, theirPhoto.countryCode).label.toLowerCase()}
                 </Text>
                 <Text style={[styles.photoTagTime, { color: "rgba(255,255,255,0.75)" }]}>
                   {timeAgo(simulatedPostedAt(theirPhoto.minutesAgo))}

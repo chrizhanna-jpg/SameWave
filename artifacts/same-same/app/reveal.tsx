@@ -24,6 +24,7 @@ import { useApp } from "@/context/AppContext";
 import { CountryReveal } from "@/components/CountryReveal";
 import { DAILY_CHALLENGES } from "@/data/samplePhotos";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
+import { getTimeTier, getGeoTier } from "@/utils/celebrations";
 import type { Match } from "@/context/AppContext";
 
 const { width } = Dimensions.get("window");
@@ -143,12 +144,13 @@ export default function RevealScreen() {
     (c) => c.code === match.theirCountryCode
   );
 
-  // The special moment: same activity, within 24h
-  const myAgeMin = match.myPhotoUploadedAt
-    ? (Date.now() - new Date(match.myPhotoUploadedAt).getTime()) / 60000
-    : 9999;
-  const theirAgeMin = match.theirPhotoMinutesAgo ?? 9999;
-  const isSameDay = myAgeMin < 1440 && theirAgeMin < 1440;
+  // Tiered celebrations: closer in time = bigger deal.
+  const timeTier = getTimeTier(match.myPhotoUploadedAt, match.theirPhotoMinutesAgo);
+  // Geography tier — without device geolocation we don't yet know the user's
+  // country, so this currently lands at "Same Planet" for everyone. It will
+  // unlock Same Country / Same Continent once we ship location.
+  const geoTier = getGeoTier(undefined, match.theirCountryCode);
+  const isCelebrated = timeTier.rank >= 1; // anything from week up
 
   const themeMeta = DAILY_CHALLENGES.find(
     (c) => c.id === match.theme || c.title.toLowerCase() === match.theme,
@@ -190,25 +192,33 @@ export default function RevealScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {isSameDay && (
+        {isCelebrated && (
           <Animated.View
             style={[
               styles.sameDayBanner,
               {
-                backgroundColor: colors.gold + "1f",
+                backgroundColor:
+                  timeTier.rank >= 3 ? colors.gold + "2a" : colors.gold + "1f",
                 borderColor: colors.gold,
-                opacity: sparkleOpacity,
-                transform: [{ scale: sparkleScale }],
+                borderWidth: timeTier.rank >= 3 ? 2 : 1,
+                opacity: timeTier.rank >= 2 ? sparkleOpacity : 1,
               },
             ]}
           >
-            <Text style={styles.sameDayEmoji}>✨</Text>
+            <Text style={styles.sameDayEmoji}>{timeTier.emoji}</Text>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.sameDayTitle, { color: colors.gold }]}>
-                Same Day Match
-              </Text>
+              <View style={styles.tierTitleRow}>
+                <Text style={[styles.sameDayTitle, { color: colors.gold }]}>
+                  {timeTier.label}
+                </Text>
+                {timeTier.sparkles > 0 && (
+                  <Text style={[styles.tierSparkles, { color: colors.gold }]}>
+                    {"✨".repeat(timeTier.sparkles)}
+                  </Text>
+                )}
+              </View>
               <Text style={[styles.sameDaySub, { color: colors.foreground }]}>
-                Both posted within 24 hours. Rare and beautiful.
+                {timeTier.sub}
               </Text>
             </View>
           </Animated.View>
@@ -293,6 +303,31 @@ export default function RevealScreen() {
             rightFlag={match.theirCountryFlag}
           />
 
+          <View style={styles.tierChipsRow}>
+            <View
+              style={[
+                styles.tierChip,
+                { backgroundColor: colors.teal + "18", borderColor: colors.teal + "55" },
+              ]}
+            >
+              <Text style={styles.tierChipEmoji}>{geoTier.emoji}</Text>
+              <Text style={[styles.tierChipText, { color: colors.teal }]}>
+                {geoTier.label}
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.tierChip,
+                { backgroundColor: colors.gold + "18", borderColor: colors.gold + "55" },
+              ]}
+            >
+              <Text style={styles.tierChipEmoji}>{timeTier.emoji}</Text>
+              <Text style={[styles.tierChipText, { color: colors.gold }]}>
+                {timeTier.label}
+              </Text>
+            </View>
+          </View>
+
           <View
             style={[
               styles.insightBox,
@@ -301,8 +336,14 @@ export default function RevealScreen() {
           >
             <Icon name="heart" size={16} color={colors.teal} />
             <Text style={[styles.insightText, { color: colors.teal }]}>
-              {isSameDay
-                ? `Right now, you and someone in ${match.theirCountry} are both living this moment.`
+              {timeTier.kind === "minute"
+                ? `Right this minute, someone in ${match.theirCountry} is sharing the same thing.`
+                : timeTier.kind === "hour"
+                ? `Within the hour, someone in ${match.theirCountry} shared the same thing.`
+                : timeTier.kind === "day"
+                ? `Today, someone in ${match.theirCountry} shared the same thing.`
+                : timeTier.kind === "week"
+                ? `This week, someone in ${match.theirCountry} shared the same thing.`
                 : `Across the world, someone in ${match.theirCountry} shared the same thing.`}
             </Text>
           </View>
@@ -336,11 +377,19 @@ export default function RevealScreen() {
             </Text>
           </View>
           <View style={[styles.statChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.statNum, { color: isSameDay ? colors.gold : colors.teal }]}>
-              {isSameDay ? "Today" : "Recent"}
+            <Text style={[styles.statNum, { color: timeTier.rank >= 2 ? colors.gold : colors.teal }]}>
+              {timeTier.kind === "minute"
+                ? "Now"
+                : timeTier.kind === "hour"
+                ? "Hour"
+                : timeTier.kind === "day"
+                ? "Today"
+                : timeTier.kind === "week"
+                ? "Week"
+                : "—"}
             </Text>
             <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
-              {isSameDay ? "same day" : "this week"}
+              {timeTier.label.toLowerCase()}
             </Text>
           </View>
         </Animated.View>
@@ -639,6 +688,36 @@ const styles = StyleSheet.create({
   nextBtnText: {
     fontSize: 16,
     fontFamily: "Inter_600SemiBold",
+  },
+  tierTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  tierSparkles: {
+    fontSize: 12,
+    letterSpacing: 1,
+  },
+  tierChipsRow: {
+    flexDirection: "row",
+    gap: 8,
+    flexWrap: "wrap",
+    justifyContent: "center",
+  },
+  tierChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  tierChipEmoji: { fontSize: 14 },
+  tierChipText: {
+    fontSize: 12,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.3,
   },
   watermark: {
     alignSelf: "center",
