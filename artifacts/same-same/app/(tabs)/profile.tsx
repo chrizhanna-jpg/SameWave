@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  Alert,
   Platform,
   ScrollView,
   StyleSheet,
@@ -8,6 +9,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Haptics from "expo-haptics";
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
@@ -17,7 +19,30 @@ import { PhotoCard } from "@/components/PhotoCard";
 export default function ProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { matches, matchedCountries, streakCount, totalMatches, badges, myPhotos, getWorldMapCoverage } = useApp();
+  const { matches, matchedCountries, streakCount, totalMatches, badges, myPhotos, getWorldMapCoverage, removeMatch } = useApp();
+
+  const confirmUndo = (id: string, country: string) => {
+    const doRemove = () => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      removeMatch(id);
+    };
+    if (Platform.OS === "web") {
+      // RN Alert on web doesn't render buttons; fall back to window.confirm.
+      // eslint-disable-next-line no-alert
+      if (typeof window !== "undefined" && window.confirm(`Undo this match with ${country}? This removes it from your history.`)) {
+        doRemove();
+      }
+      return;
+    }
+    Alert.alert(
+      "Undo this match?",
+      `This removes your match with ${country} from your history. Earned badges stay.`,
+      [
+        { text: "Keep", style: "cancel" },
+        { text: "Undo match", style: "destructive", onPress: doRemove },
+      ],
+    );
+  };
 
   const earnedBadges = badges.filter((b) => b.earned).length;
   const avgScore =
@@ -121,30 +146,15 @@ export default function ProfileScreen() {
                       {match.similarityScore}% similar
                     </Text>
                   </View>
-                  <View
-                    style={[
-                      styles.matchVerdict,
-                      {
-                        backgroundColor:
-                          match.verdict === "same"
-                            ? colors.teal + "22"
-                            : colors.primary + "22",
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.matchVerdictText,
-                        {
-                          color:
-                            match.verdict === "same" ? colors.teal : colors.primary,
-                        },
-                      ]}
-                    >
-                      {match.verdict === "same" ? "Same" : "Diff"}
-                    </Text>
-                  </View>
                   <PhotoCard uri={match.theirPhoto} size="sm" />
+                  <TouchableOpacity
+                    onPress={() => confirmUndo(match.id, match.theirCountry)}
+                    style={[styles.undoBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
+                    accessibilityLabel={`Undo match with ${match.theirCountry}`}
+                    hitSlop={8}
+                  >
+                    <Icon name="rotate-ccw" size={14} color={colors.mutedForeground} />
+                  </TouchableOpacity>
                 </View>
               ))}
             </View>
@@ -302,6 +312,14 @@ const styles = StyleSheet.create({
   matchVerdictText: {
     fontSize: 11,
     fontFamily: "Inter_700Bold",
+  },
+  undoBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   photoGrid: {
     flexDirection: "row",

@@ -59,6 +59,7 @@ interface AppState {
 
 interface AppContextValue extends AppState {
   addMatch: (match: Match) => void;
+  removeMatch: (id: string) => void;
   addMyPhoto: (uri: string, theme: string, tags?: string[]) => void;
   completeOnboarding: () => void;
   resetOnboarding: () => void;
@@ -190,6 +191,38 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const removeMatch = useCallback((id: string) => {
+    setState((prev) => {
+      const target = prev.matches.find((m) => m.id === id);
+      if (!target) return prev;
+
+      const remainingMatches = prev.matches.filter((m) => m.id !== id);
+
+      // If no other match still references the same country, drop it from
+      // matchedCountries so the world map stays accurate.
+      const stillHasCountry = remainingMatches.some(
+        (m) => m.theirCountryCode === target.theirCountryCode,
+      );
+      const matchedCountries = stillHasCountry
+        ? prev.matchedCountries
+        : prev.matchedCountries.filter(
+            (c) => c.code !== target.theirCountryCode,
+          );
+
+      // Note: we intentionally keep earned badges. Undoing a single match
+      // shouldn't take an achievement away — and re-earning is trivial.
+      const newState: AppState = {
+        ...prev,
+        matches: remainingMatches,
+        matchedCountries,
+        totalMatches: Math.max(0, prev.totalMatches - 1),
+        streakCount: Math.max(0, prev.streakCount - 1),
+      };
+      saveState(newState);
+      return newState;
+    });
+  }, []);
+
   const addMyPhoto = useCallback((uri: string, theme: string, tags?: string[]) => {
     setState((prev) => {
       const photo: MyPhoto = {
@@ -237,7 +270,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AppContext.Provider
-      value={{ ...state, addMatch, addMyPhoto, completeOnboarding, resetOnboarding, unlockPro, getWorldMapCoverage }}
+      value={{ ...state, addMatch, removeMatch, addMyPhoto, completeOnboarding, resetOnboarding, unlockPro, getWorldMapCoverage }}
     >
       {children}
     </AppContext.Provider>
