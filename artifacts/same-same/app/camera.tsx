@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   Alert,
   Image,
@@ -22,6 +22,7 @@ import {
   TAG_LIBRARY,
   SUGGESTED_TAGS_BY_THEME,
 } from "@/data/samplePhotos";
+import { analyzePhoto } from "@/utils/api";
 
 const MAX_TAGS = 4;
 
@@ -34,7 +35,18 @@ export default function CameraScreen() {
   const challenge = getTodaysChallenge();
   const [selectedTheme, setSelectedTheme] = useState<string>(challenge.id);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [aiTags, setAiTags] = useState<string[]>([]);
+  const [analyzing, setAnalyzing] = useState(false);
   const [showAllTags, setShowAllTags] = useState(false);
+  // Tracks the latest analysis call so older in-flight responses don't
+  // overwrite tags for a newer photo pick.
+  const analyzeReqIdRef = useRef(0);
+  // Resolves when the in-flight analysis completes — used so submit can
+  // wait for AI tags instead of dropping them.
+  const inFlightAnalysisRef = useRef<Promise<void> | null>(null);
+  // Mirror of aiTags so submit() can read the freshest value after awaiting
+  // an in-flight analysis (state closures would be stale).
+  const aiTagsRef = useRef<string[]>([]);
 
   const toggleTag = (id: string) => {
     setSelectedTags((prev) => {
@@ -77,6 +89,7 @@ export default function CameraScreen() {
     });
     if (!result.canceled && result.assets[0]) {
       setSelectedPhoto(result.assets[0].uri);
+      analyzeSelected(result.assets[0]);
     }
   };
 
@@ -94,16 +107,63 @@ export default function CameraScreen() {
       quality: 0.8,
       allowsEditing: true,
       aspect: [1, 1],
+      base64: true,
     });
     if (!result.canceled && result.assets[0]) {
       setSelectedPhoto(result.assets[0].uri);
+      analyzeSelected(result.assets[0]);
     }
   };
 
-  const submit = () => {
-    if (!selectedPhoto) return;
-    addMyPhoto(selectedPhoto, selectedTheme, selectedTags);
-    setSubmitted(true);
+  const analyzeSelected = (asset: ImagePicker.ImagePickerAsset) => {
+    const reqId = ++analyzeReqIdRef.current;
+    aiTagsRef.current = [];
+    setAiTags([]);
+    setAnalyzing(true);
+    const p = (async () => {
+      let resultTags: string[] = [];
+      try {
+        resultTags = await analyzePhoto(
+          asset.base64
+            ? { imageBase64: asset.base64, mimeType: asset.mimeType ?? "image/jpeg" }
+            : { imageUrl: asset.uri }
+        );
+      } catch {
+        resultTags = [];
+      }
+      // Drop stale results (user picked a newer photo while we were waiting).
+      if (reqId !== analyzeReqIdRef.current) return;
+      aiTagsRef.current = resultTags;
+      setAiTags(resultTags);
+      setAnalyzing(false);
+    })();
+    inFlightAnalysisRef.current = p;
+    // Once this analysis settles (and is still latest), clear the in-flight ref
+    // so submit() doesn't await an old promise.
+    p.finally(() => {
+      if (reqId === analyzeReqIdRef.current) {
+        inFlightAnalysisRef.current = null;
+      }
+    });
+  };
+
+  const submit = async () => {
+    if (!selectedPhoto || submitted) return;
+    // If AI is still working, wait for it so we don't drop its tags.
+    if (inFlightAnalysisRef.current) {
+      setSubmitted(true); // visually lock the button immediately
+      try {
+        await inFlightAnalysisRef.current;
+      } catch {
+        // ignore — we'll just submit without AI tags
+      }
+    } else {
+      setSubmitted(true);
+    }
+    // Use the ref so we read the freshest AI tags (state closure is stale
+    // after awaiting an in-flight analysis above).
+    const merged = Array.from(new Set([...selectedTags, ...aiTagsRef.current]));
+    addMyPhoto(selectedPhoto, selectedTheme, merged);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setTimeout(() => {
       router.back();
@@ -173,6 +233,32 @@ export default function CameraScreen() {
               style={[styles.selectedImage, { borderColor: colors.border }]}
               resizeMode="cover"
             />
+
+            {(analyzing || aiTags.length > 0) && (
+              <View
+                style={[
+                  styles.aiBanner,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: analyzing ? colors.border : colors.teal,
+                  },
+                ]}
+              >
+                <Text style={[styles.aiBannerLabel, { color: colors.mutedForeground }]}>
+                  {analyzing ? "Analyzing your photo…" : "AI spotted"}
+                </Text>
+                {!analyzing && (
+                  <Text style={[styles.aiBannerTags, { color: colors.foreground }]}>
+                    {aiTags
+                      .map((id) => {
+                        const t = TAG_LIBRARY.find((x) => x.id === id);
+                        return t ? `${t.emoji} ${t.label}` : id;
+                      })
+                      .join("  ·  ")}
+                  </Text>
+                )}
+              </View>
+            )}
 
             <View style={styles.themeSection}>
               <Text style={[styles.themeSectionLabel, { color: colors.mutedForeground }]}>
@@ -533,5 +619,22 @@ const styles = StyleSheet.create({
   tagCount: {
     fontSize: 11,
     fontFamily: "Inter_500Medium",
+  },
+  aiBanner: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  aiBannerLabel: {
+    fontSize: 10,
+    fontFamily: "Inter_600SemiBold",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  aiBannerTags: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+    marginTop: 4,
   },
 });

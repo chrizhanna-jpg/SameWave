@@ -18,7 +18,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇪🇹",
     theme: "morning",
     minutesAgo: 45,
-    tags: ["coffee", "drink", "warm"],
+    tags: ["coffee","drink","people","art","warm"],
   },
   {
     id: "2",
@@ -28,7 +28,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇯🇵",
     theme: "morning",
     minutesAgo: 127,
-    tags: ["coffee", "drink", "warm"],
+    tags: ["coffee","drink","people","art","warm"],
   },
   {
     id: "3",
@@ -38,7 +38,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇲🇽",
     theme: "food",
     minutesAgo: 210,
-    tags: ["meal", "warm"],
+    tags: ["meal"],
   },
   {
     id: "4",
@@ -48,7 +48,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇮🇳",
     theme: "food",
     minutesAgo: 68,
-    tags: ["meal", "bread"],
+    tags: ["meal","bread","drink","warm"],
   },
   {
     id: "5",
@@ -58,7 +58,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇵🇪",
     theme: "work",
     minutesAgo: 361,
-    tags: ["laptop", "desk"],
+    tags: ["people","coffee","laptop","desk"],
   },
   {
     id: "6",
@@ -68,7 +68,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇩🇪",
     theme: "work",
     minutesAgo: 22,
-    tags: ["desk", "laptop"],
+    tags: ["people","desk","laptop"],
   },
   {
     id: "7",
@@ -78,7 +78,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇳🇴",
     theme: "nature",
     minutesAgo: 720,
-    tags: ["mountains", "trees", "outdoors"],
+    tags: ["mountains","clouds","sunset","outdoors"],
   },
   {
     id: "8",
@@ -88,7 +88,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇰🇪",
     theme: "nature",
     minutesAgo: 244,
-    tags: ["wildlife", "outdoors", "animal"],
+    tags: ["sunset","water","outdoors","clouds","trees","warm"],
   },
   {
     id: "9",
@@ -98,7 +98,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇧🇷",
     theme: "joy",
     minutesAgo: 18,
-    tags: ["smile", "people"],
+    tags: ["people"],
   },
   {
     id: "10",
@@ -108,7 +108,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇰🇷",
     theme: "joy",
     minutesAgo: 480,
-    tags: ["celebration", "people"],
+    tags: ["water","art"],
   },
   {
     id: "11",
@@ -118,7 +118,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇲🇦",
     theme: "hands",
     minutesAgo: 153,
-    tags: ["art", "people"],
+    tags: ["warm"],
   },
   {
     id: "12",
@@ -128,7 +128,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇦🇷",
     theme: "hands",
     minutesAgo: 1090,
-    tags: ["people"],
+    tags: ["art","clouds","water","night","stars","sunset"],
   },
   {
     id: "13",
@@ -138,7 +138,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇫🇮",
     theme: "pets",
     minutesAgo: 96,
-    tags: ["dog", "animal"],
+    tags: ["cat","animal","wildlife"],
   },
   {
     id: "14",
@@ -148,7 +148,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇦🇺",
     theme: "pets",
     minutesAgo: 1440,
-    tags: ["cat", "animal"],
+    tags: ["dog","animal","smile","outdoors","water"],
   },
   {
     id: "15",
@@ -158,7 +158,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇨🇳",
     theme: "commute",
     minutesAgo: 305,
-    tags: ["transit", "city"],
+    tags: ["transit","mountains","night","outdoors"],
   },
   {
     id: "16",
@@ -168,7 +168,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇬🇧",
     theme: "commute",
     minutesAgo: 185,
-    tags: ["transit", "city"],
+    tags: ["city","water","outdoors","sunset","clouds"],
   },
   {
     id: "17",
@@ -178,7 +178,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇲🇻",
     theme: "sky",
     minutesAgo: 2160,
-    tags: ["clouds", "sunset", "water"],
+    tags: ["water","clouds","sunset","outdoors"],
   },
   {
     id: "18",
@@ -188,7 +188,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇲🇳",
     theme: "sky",
     minutesAgo: 425,
-    tags: ["stars", "night"],
+    tags: ["stars","night","mountains","outdoors"],
   },
   {
     id: "19",
@@ -198,7 +198,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇨🇦",
     theme: "nature",
     minutesAgo: 95,
-    tags: ["trees", "sunset", "outdoors"],
+    tags: ["sunset","clouds","mountains","outdoors"],
   },
   {
     id: "20",
@@ -208,7 +208,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇿🇦",
     theme: "sky",
     minutesAgo: 38,
-    tags: ["sunset", "trees", "clouds"],
+    tags: ["sunset","outdoors","trees","warm"],
   },
   {
     id: "21",
@@ -218,7 +218,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇳🇿",
     theme: "nature",
     minutesAgo: 510,
-    tags: ["trees", "outdoors"],
+    tags: ["trees","outdoors","clouds","warm","sunset"],
   },
 ];
 
