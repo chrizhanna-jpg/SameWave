@@ -25,6 +25,7 @@ import {
   getTodaysChallenge,
   getThemeChain,
   TAG_LIBRARY,
+  generateSyntheticCandidates,
 } from "@/data/samplePhotos";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
 import { getGeoTier } from "@/utils/celebrations";
@@ -54,7 +55,14 @@ function scoreCandidates(
   };
   const myTagSet = new Set(myTags);
 
-  const candidates: Scored[] = SAMPLE_PHOTOS
+  // Dev/test builds blend in some synthetic candidates so users always see
+  // fresh material even after the curated pool repeats. The generator is
+  // hard-gated by ENABLE_SYNTHETIC_MATCHES (tied to __DEV__) and returns []
+  // in production builds — real users only ship.
+  const synthetic = generateSyntheticCandidates(preferredTheme, myTags, 8);
+  const pool = [...SAMPLE_PHOTOS, ...synthetic];
+
+  const candidates: Scored[] = pool
     .filter((p) => !excludeUris.includes(p.uri))
     .map((p) => {
       const sharedTags = p.tags.filter((t) => myTagSet.has(t));
@@ -88,9 +96,11 @@ function getTheirPhoto(
   const pickFrom = (excl: string[]) => {
     const ranked = scoreCandidates(preferredTheme, myTags, excl);
     if (ranked.length === 0) return null;
-    // Prefer the top scorer, but pick from up to top-3 ties to feel less rigid.
+    // Widen the top-tier window so repeated swipes don't keep landing on
+    // the same handful of high scorers. We sample from the top 8 within a
+    // 1.5-point band of the leader.
     const topScore = ranked[0].score;
-    const topTier = ranked.filter((c) => c.score >= topScore - 0.25).slice(0, 3);
+    const topTier = ranked.filter((c) => c.score >= topScore - 1.5).slice(0, 8);
     const pick = topTier[Math.floor(Math.random() * topTier.length)];
     return {
       photo: pick.photo,
