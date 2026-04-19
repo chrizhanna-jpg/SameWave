@@ -22,13 +22,13 @@ const { width } = Dimensions.get("window");
 export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { streakCount, matchHistory, matchedCountries, myPhotos } = useApp();
+  const { streakCount, matches, matchedCountries, myPhotos } = useApp();
   const challenge = getTodaysChallenge();
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
 
-  const totalMatches = matchHistory.length;
+  const totalMatches = matches.length;
   const hasUploadedPhoto = myPhotos.length > 0;
 
   return (
@@ -136,7 +136,7 @@ export default function HomeScreen() {
         )}
 
         {/* Recent matches */}
-        {matchHistory.length > 0 && (
+        {matches.length > 0 && (
           <View style={styles.recentSection}>
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
@@ -148,7 +148,7 @@ export default function HomeScreen() {
                 </Text>
               </TouchableOpacity>
             </View>
-            {matchHistory.slice(0, 3).map((m) => (
+            {matches.slice(0, 3).map((m) => (
               <View
                 key={m.id}
                 style={[styles.recentRow, { backgroundColor: colors.card, borderColor: colors.border }]}
