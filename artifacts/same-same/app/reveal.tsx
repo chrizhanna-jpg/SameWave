@@ -17,7 +17,7 @@ import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { CountryReveal } from "@/components/CountryReveal";
-import { SimilarityMeter } from "@/components/SimilarityMeter";
+import { DAILY_CHALLENGES } from "@/data/samplePhotos";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
 import type { Match } from "@/context/AppContext";
 
@@ -29,16 +29,23 @@ export default function RevealScreen() {
   const params = useLocalSearchParams();
   const { addMatch, matchedCountries } = useApp();
   const [match, setMatch] = useState<Match | null>(null);
-  const [saved, setSaved] = useState(false);
+  const savedRef = useRef(false);
 
   const fadeIn = useRef(new Animated.Value(0)).current;
   const scaleIn = useRef(new Animated.Value(0.92)).current;
+  const sparklePulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (params.matchData) {
       try {
         const m = JSON.parse(params.matchData as string) as Match;
         setMatch(m);
+
+        // Save the match immediately — every "Same Same" counts
+        if (!savedRef.current) {
+          savedRef.current = true;
+          addMatch(m);
+        }
 
         Animated.parallel([
           Animated.timing(fadeIn, {
@@ -54,25 +61,30 @@ export default function RevealScreen() {
           }),
         ]).start();
 
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(sparklePulse, {
+              toValue: 1,
+              duration: 1100,
+              useNativeDriver: true,
+            }),
+            Animated.timing(sparklePulse, {
+              toValue: 0,
+              duration: 1100,
+              useNativeDriver: true,
+            }),
+          ])
+        ).start();
+
         setTimeout(() => {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        }, 500);
+        }, 400);
       } catch {}
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.matchData]);
 
-  const handleSave = () => {
-    if (match && !saved) {
-      addMatch(match);
-      setSaved(true);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    }
-  };
-
   const handleNext = () => {
-    if (!saved && match) {
-      addMatch(match);
-    }
     router.back();
   };
 
@@ -81,6 +93,22 @@ export default function RevealScreen() {
   const isNewCountry = !matchedCountries.some(
     (c) => c.code === match.theirCountryCode
   );
+
+  // The special moment: same activity, within 24h
+  const isSameDay = (match.theirPhotoMinutesAgo ?? 9999) < 1440;
+
+  const themeMeta = DAILY_CHALLENGES.find((c) => c.id === match.theme);
+  const themeTitle = themeMeta?.title ?? "the same thing";
+  const themeEmoji = themeMeta?.emoji ?? "✨";
+
+  const sparkleScale = sparklePulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.15],
+  });
+  const sparkleOpacity = sparklePulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.85, 1],
+  });
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
@@ -95,7 +123,7 @@ export default function RevealScreen() {
           <Icon name="x" size={20} color={colors.foreground} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-          Reveal
+          It's a match
         </Text>
         <View style={{ width: 40 }} />
       </View>
@@ -107,6 +135,30 @@ export default function RevealScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
+        {isSameDay && (
+          <Animated.View
+            style={[
+              styles.sameDayBanner,
+              {
+                backgroundColor: colors.gold + "1f",
+                borderColor: colors.gold,
+                opacity: sparkleOpacity,
+                transform: [{ scale: sparkleScale }],
+              },
+            ]}
+          >
+            <Text style={styles.sameDayEmoji}>✨</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.sameDayTitle, { color: colors.gold }]}>
+                Same Day Match
+              </Text>
+              <Text style={[styles.sameDaySub, { color: colors.foreground }]}>
+                Both posted within 24 hours. Rare and beautiful.
+              </Text>
+            </View>
+          </Animated.View>
+        )}
+
         <Animated.View
           style={[
             styles.revealCard,
@@ -124,6 +176,18 @@ export default function RevealScreen() {
               <Text style={styles.newBadgeText}>New country!</Text>
             </View>
           )}
+
+          <View style={styles.themeRow}>
+            <Text style={styles.themeEmoji}>{themeEmoji}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.themeLabel, { color: colors.mutedForeground }]}>
+                You both shared
+              </Text>
+              <Text style={[styles.themeTitle, { color: colors.foreground }]}>
+                {themeTitle}
+              </Text>
+            </View>
+          </View>
 
           <View style={styles.photoPair}>
             <View style={styles.photoWrapper}>
@@ -168,28 +232,19 @@ export default function RevealScreen() {
             rightFlag={match.theirCountryFlag}
           />
 
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-
-          <View style={styles.scoreSection}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-              Similarity Score
+          <View
+            style={[
+              styles.insightBox,
+              { backgroundColor: colors.teal + "18", borderColor: colors.teal + "40" },
+            ]}
+          >
+            <Icon name="heart" size={16} color={colors.teal} />
+            <Text style={[styles.insightText, { color: colors.teal }]}>
+              {isSameDay
+                ? `Right now, you and someone in ${match.theirCountry} are both living this moment.`
+                : `Across the world, someone in ${match.theirCountry} shared the same thing.`}
             </Text>
-            <SimilarityMeter score={match.similarityScore} animate />
           </View>
-
-          {match.verdict === "same" && match.similarityScore >= 70 && (
-            <View
-              style={[
-                styles.insightBox,
-                { backgroundColor: colors.teal + "18", borderColor: colors.teal + "40" },
-              ]}
-            >
-              <Icon name="heart" size={16} color={colors.teal} />
-              <Text style={[styles.insightText, { color: colors.teal }]}>
-                Your human instinct was right. We really are the same.
-              </Text>
-            </View>
-          )}
         </Animated.View>
 
         <Animated.View
@@ -200,26 +255,24 @@ export default function RevealScreen() {
         >
           <View style={[styles.statChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.statNum, { color: colors.primary }]}>
-              {matchedCountries.length + (isNewCountry && saved ? 0 : isNewCountry ? 1 : 0)}
+              {matchedCountries.length}
             </Text>
             <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
               countries
             </Text>
           </View>
           <View style={[styles.statChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.statNum, { color: colors.teal }]}>
-              {match.similarityScore}%
-            </Text>
+            <Text style={styles.statEmoji}>{themeEmoji}</Text>
             <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
-              similar
+              {themeTitle.toLowerCase()}
             </Text>
           </View>
           <View style={[styles.statChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.statNum, { color: colors.gold }]}>
-              {match.verdict === "same" ? "Same!" : "Diff"}
+            <Text style={[styles.statNum, { color: isSameDay ? colors.gold : colors.teal }]}>
+              {isSameDay ? "Today" : "Recent"}
             </Text>
             <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
-              your call
+              {isSameDay ? "same day" : "this week"}
             </Text>
           </View>
         </Animated.View>
@@ -230,7 +283,7 @@ export default function RevealScreen() {
           activeOpacity={0.85}
         >
           <Text style={[styles.nextBtnText, { color: colors.primaryForeground }]}>
-            Next Match
+            Keep matching
           </Text>
           <Icon name="arrow-right" size={20} color={colors.primaryForeground} />
         </TouchableOpacity>
@@ -268,11 +321,31 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     gap: 16,
   },
+  sameDayBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  sameDayEmoji: { fontSize: 26 },
+  sameDayTitle: {
+    fontSize: 14,
+    fontFamily: "Inter_700Bold",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  sameDaySub: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+    marginTop: 2,
+  },
   revealCard: {
     borderRadius: 24,
     borderWidth: 1,
     padding: 20,
-    gap: 20,
+    gap: 18,
     overflow: "hidden",
   },
   newBadge: {
@@ -288,6 +361,23 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 12,
     fontFamily: "Inter_600SemiBold",
+  },
+  themeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  themeEmoji: { fontSize: 28 },
+  themeLabel: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  themeTitle: {
+    fontSize: 18,
+    fontFamily: "Inter_700Bold",
+    marginTop: 2,
   },
   photoPair: {
     flexDirection: "row",
@@ -326,15 +416,6 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
   },
-  scoreSection: {
-    gap: 12,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
   insightBox: {
     flexDirection: "row",
     alignItems: "center",
@@ -364,6 +445,9 @@ const styles = StyleSheet.create({
   statNum: {
     fontSize: 20,
     fontFamily: "Inter_700Bold",
+  },
+  statEmoji: {
+    fontSize: 22,
   },
   statLabel: {
     fontSize: 11,

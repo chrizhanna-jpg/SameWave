@@ -163,29 +163,26 @@ export default function HomeScreen() {
                 </Text>
               </TouchableOpacity>
             </View>
-            {matches.slice(0, 3).map((m) => (
-              <View
-                key={m.id}
-                style={[styles.recentRow, { backgroundColor: colors.card, borderColor: colors.border }]}
-              >
-                <Text style={styles.recentFlag}>{m.theirCountryFlag}</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.recentCountry, { color: colors.foreground }]}>
-                    {m.theirCountry}
-                  </Text>
-                  <Text style={[styles.recentVerdict, {
-                    color: m.verdict === "same" ? colors.teal : colors.primary,
-                  }]}>
-                    {m.verdict === "same" ? "Same Same" : "Different"} · {m.similarityScore}%
-                  </Text>
+            {matches.slice(0, 3).map((m) => {
+              const sameDay = (m.theirPhotoMinutesAgo ?? 9999) < 1440;
+              return (
+                <View
+                  key={m.id}
+                  style={[styles.recentRow, { backgroundColor: colors.card, borderColor: colors.border }]}
+                >
+                  <Text style={styles.recentFlag}>{m.theirCountryFlag}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.recentCountry, { color: colors.foreground }]}>
+                      {m.theirCountry}
+                    </Text>
+                    <Text style={[styles.recentVerdict, { color: colors.teal }]}>
+                      Same Same{sameDay ? " · same day" : ""}
+                    </Text>
+                  </View>
+                  <Icon name="heart" size={14} color={colors.teal} />
                 </View>
-                <Icon
-                  name={m.verdict === "same" ? "heart" : "x"}
-                  size={14}
-                  color={m.verdict === "same" ? colors.teal : colors.primary}
-                />
-              </View>
-            ))}
+              );
+            })}
           </View>
         )}
       </ScrollView>

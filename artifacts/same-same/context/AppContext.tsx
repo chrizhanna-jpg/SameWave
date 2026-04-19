@@ -64,7 +64,7 @@ interface AppContextValue extends AppState {
 const defaultBadges: Badge[] = [
   { id: "explorer", name: "Global Explorer", description: "Match with 5 countries", earned: false },
   { id: "connector", name: "World Connector", description: "Match with 10 countries", earned: false },
-  { id: "similar", name: "We Are One", description: "Get a 90%+ similarity score", earned: false },
+  { id: "sameday", name: "Same Day", description: "Match with someone within 24 hours", earned: false },
   { id: "streak5", name: "5-Day Streak", description: "Match 5 days in a row", earned: false },
   { id: "asia", name: "Asia Bound", description: "Match with an Asian country", earned: false },
   { id: "africa", name: "Africa Bound", description: "Match with an African country", earned: false },
@@ -143,7 +143,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           return { ...b, earned: true, earnedAt: new Date().toISOString() };
         if (b.id === "connector" && newCountries.length >= 10)
           return { ...b, earned: true, earnedAt: new Date().toISOString() };
-        if (b.id === "similar" && match.similarityScore >= 90)
+        if (b.id === "sameday" && (match.theirPhotoMinutesAgo ?? 9999) < 1440)
           return { ...b, earned: true, earnedAt: new Date().toISOString() };
         if (b.id === "asia" && isAsian(match.theirCountryCode))
           return { ...b, earned: true, earnedAt: new Date().toISOString() };

@@ -18,111 +18,120 @@ import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { SAMPLE_PHOTOS, getTodaysChallenge } from "@/data/samplePhotos";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
-import type { Match, MyPhoto } from "@/context/AppContext";
+import type { Match } from "@/context/AppContext";
 
 const { width } = Dimensions.get("window");
 const SWIPE_THRESHOLD = width * 0.28;
 
-function getTheirPhoto(exclude?: string) {
-  const pool = exclude
-    ? SAMPLE_PHOTOS.filter((p) => p.uri !== exclude)
-    : SAMPLE_PHOTOS;
+function getTheirPhoto(theme: string, excludeUris: string[] = []) {
+  const themed = SAMPLE_PHOTOS.filter(
+    (p) => p.theme === theme && !excludeUris.includes(p.uri)
+  );
+  const pool = themed.length > 0 ? themed : SAMPLE_PHOTOS.filter((p) => !excludeUris.includes(p.uri));
+  if (pool.length === 0) return SAMPLE_PHOTOS[0];
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
 export default function SwipeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { addMatch, streakCount, myPhotos } = useApp();
+  const { streakCount, myPhotos } = useApp();
   const challenge = getTodaysChallenge();
 
-  const getMyPhotoData = (): { uri: string; uploadedAt: string } => {
-    if (myPhotos.length > 0) {
-      return myPhotos[Math.floor(Math.random() * Math.min(myPhotos.length, 5))];
-    }
-    const sample = SAMPLE_PHOTOS[Math.floor(Math.random() * SAMPLE_PHOTOS.length)];
+  // User's photo is LOCKED for the session — only changes when they upload a new one
+  const myPhotoData = React.useMemo<{ uri: string; uploadedAt: string }>(() => {
+    if (myPhotos.length > 0) return myPhotos[0];
+    const sample = SAMPLE_PHOTOS[0];
     return {
       uri: sample.uri,
-      uploadedAt: simulatedPostedAt(sample.minutesAgo).toISOString(),
+      uploadedAt: simulatedPostedAt(5).toISOString(),
     };
-  };
+  }, [myPhotos]);
 
-  const [myPhotoData, setMyPhotoData] = useState(() => getMyPhotoData());
   const myPhotoUri = myPhotoData.uri;
-  const [theirPhoto, setTheirPhoto] = useState(() => getTheirPhoto(myPhotoUri));
+  const seenRef = useRef<string[]>([myPhotoUri]);
+  const [theirPhoto, setTheirPhoto] = useState(() =>
+    getTheirPhoto(challenge.id, [myPhotoUri])
+  );
   const [isAnimatingOut, setIsAnimatingOut] = useState(false);
 
   const pan = useRef(new Animated.ValueXY()).current;
   const cardScale = useRef(new Animated.Value(1)).current;
   const sameOpacity = useRef(new Animated.Value(0)).current;
-  const diffOpacity = useRef(new Animated.Value(0)).current;
 
-  const generateSimilarityScore = (v: "same" | "different") =>
-    v === "same"
-      ? Math.floor(Math.random() * 22) + 68
-      : Math.floor(Math.random() * 35) + 25;
-
-  const resetCard = useCallback(() => {
-    const newMyData = getMyPhotoData();
-    const newTheir = getTheirPhoto(newMyData.uri);
-    setMyPhotoData(newMyData);
-    setTheirPhoto(newTheir);
+  const loadNextCandidate = useCallback(() => {
+    seenRef.current.push(theirPhoto.uri);
+    if (seenRef.current.length > 30) seenRef.current = seenRef.current.slice(-15);
+    const next = getTheirPhoto(challenge.id, seenRef.current);
+    setTheirPhoto(next);
     pan.setValue({ x: 0, y: 0 });
     cardScale.setValue(1);
     sameOpacity.setValue(0);
-    diffOpacity.setValue(0);
     setIsAnimatingOut(false);
-  }, [myPhotos]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [theirPhoto.uri, challenge.id, pan, cardScale, sameOpacity]);
 
   const handleSwipe = useCallback(
     (dir: "left" | "right") => {
       if (isAnimatingOut) return;
       setIsAnimatingOut(true);
 
-      const v: "same" | "different" = dir === "right" ? "same" : "different";
       Haptics.impactAsync(
-        v === "same"
+        dir === "right"
           ? Haptics.ImpactFeedbackStyle.Medium
           : Haptics.ImpactFeedbackStyle.Light
       );
 
-      const score = generateSimilarityScore(v);
-      const match: Match = {
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-        myPhoto: myPhotoUri,
-        theirPhoto: theirPhoto.uri,
-        myCountry: "You",
-        theirCountry: theirPhoto.country,
-        theirCountryFlag: theirPhoto.countryFlag,
-        theirCountryCode: theirPhoto.countryCode,
-        similarityScore: score,
-        verdict: v,
-        timestamp: new Date().toISOString(),
-        theme: challenge.id,
-        theirPhotoMinutesAgo: theirPhoto.minutesAgo,
-        myPhotoUploadedAt: myPhotoData.uploadedAt,
-      };
-
       Animated.parallel([
         Animated.timing(pan.x, {
           toValue: dir === "right" ? width * 1.5 : -width * 1.5,
-          duration: 350,
+          duration: 320,
           useNativeDriver: true,
         }),
         Animated.timing(cardScale, {
-          toValue: 0.85,
-          duration: 350,
+          toValue: 0.9,
+          duration: 320,
           useNativeDriver: true,
         }),
       ]).start(() => {
-        router.push({
-          pathname: "/reveal",
-          params: { matchData: JSON.stringify(match) },
-        });
-        setTimeout(resetCard, 400);
+        if (dir === "right") {
+          // It's a match! Build the match record and reveal.
+          const match: Match = {
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+            myPhoto: myPhotoUri,
+            theirPhoto: theirPhoto.uri,
+            myCountry: "You",
+            theirCountry: theirPhoto.country,
+            theirCountryFlag: theirPhoto.countryFlag,
+            theirCountryCode: theirPhoto.countryCode,
+            similarityScore: 0,
+            verdict: "same",
+            timestamp: new Date().toISOString(),
+            theme: challenge.id,
+            theirPhotoMinutesAgo: theirPhoto.minutesAgo,
+            myPhotoUploadedAt: myPhotoData.uploadedAt,
+          };
+          router.push({
+            pathname: "/reveal",
+            params: { matchData: JSON.stringify(match) },
+          });
+          // Prepare next candidate behind the modal
+          setTimeout(loadNextCandidate, 400);
+        } else {
+          // "Different" — silently move on, keep user's photo locked
+          loadNextCandidate();
+        }
       });
     },
-    [isAnimatingOut, myPhotoUri, theirPhoto, challenge, resetCard]
+    [
+      isAnimatingOut,
+      myPhotoUri,
+      theirPhoto,
+      challenge.id,
+      myPhotoData.uploadedAt,
+      pan.x,
+      cardScale,
+      loadNextCandidate,
+    ]
   );
 
   const panResponder = useRef(
@@ -134,9 +143,7 @@ export default function SwipeScreen() {
         const progress = Math.abs(g.dx) / SWIPE_THRESHOLD;
         if (g.dx > 0) {
           sameOpacity.setValue(Math.min(progress, 1));
-          diffOpacity.setValue(0);
         } else {
-          diffOpacity.setValue(Math.min(progress, 1));
           sameOpacity.setValue(0);
         }
       },
@@ -153,7 +160,6 @@ export default function SwipeScreen() {
             friction: 8,
           }).start();
           sameOpacity.setValue(0);
-          diffOpacity.setValue(0);
         }
       },
     })
@@ -177,7 +183,7 @@ export default function SwipeScreen() {
             Same Same
           </Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-            {streakCount > 0 ? `${streakCount} in a row` : "Swipe to judge"}
+            {streakCount > 0 ? `${streakCount} matches` : "Find your same"}
           </Text>
         </View>
         <TouchableOpacity
@@ -230,16 +236,6 @@ export default function SwipeScreen() {
           >
             <Text style={[styles.labelText, { color: colors.teal }]}>
               SAME SAME
-            </Text>
-          </Animated.View>
-          <Animated.View
-            style={[
-              styles.diffLabel,
-              { opacity: diffOpacity, borderColor: colors.primary },
-            ]}
-          >
-            <Text style={[styles.labelText, { color: colors.primary }]}>
-              DIFFERENT
             </Text>
           </Animated.View>
 
@@ -299,22 +295,22 @@ export default function SwipeScreen() {
             onPress={() => handleSwipe("left")}
             activeOpacity={0.8}
           >
-            <Icon name="x" size={18} color={colors.primary} />
+            <Icon name="x" size={18} color={colors.mutedForeground} />
             <Text style={[styles.hintText, { color: colors.mutedForeground }]}>
-              Different
+              Skip
             </Text>
           </TouchableOpacity>
 
           <Text style={[styles.swipeInstruction, { color: colors.mutedForeground }]}>
-            swipe or tap
+            swipe right to match
           </Text>
 
           <TouchableOpacity
-            style={[styles.hintBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            style={[styles.hintBtn, { backgroundColor: colors.teal + "18", borderColor: colors.teal }]}
             onPress={() => handleSwipe("right")}
             activeOpacity={0.8}
           >
-            <Text style={[styles.hintText, { color: colors.mutedForeground }]}>
+            <Text style={[styles.hintText, { color: colors.teal }]}>
               Same Same
             </Text>
             <Icon name="heart" size={18} color={colors.teal} />
@@ -449,17 +445,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     transform: [{ rotate: "12deg" }],
-  },
-  diffLabel: {
-    position: "absolute",
-    top: 20,
-    left: 20,
-    zIndex: 10,
-    borderWidth: 3,
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    transform: [{ rotate: "-12deg" }],
   },
   labelText: {
     fontSize: 17,

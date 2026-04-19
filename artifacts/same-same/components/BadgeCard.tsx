@@ -11,8 +11,8 @@ interface Props {
 const BADGE_ICONS: Record<string, string> = {
   explorer: "globe",
   connector: "link",
-  similar: "heart",
-  streak5: "zap",
+  sameday: "zap",
+  streak5: "star",
   asia: "map-pin",
   africa: "map-pin",
   americas: "map-pin",
