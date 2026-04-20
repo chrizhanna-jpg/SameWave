@@ -93,7 +93,8 @@ function scoreCandidates(
 function getTheirPhoto(
   preferredTheme: string,
   myTags: string[],
-  excludeUris: string[] = []
+  excludeUris: string[] = [],
+  currentUri?: string
 ): { photo: typeof SAMPLE_PHOTOS[number]; matchedTheme: string; sharedTags: string[] } {
   const pickFrom = (excl: string[]) => {
     const ranked = scoreCandidates(preferredTheme, myTags, excl);
@@ -112,14 +113,17 @@ function getTheirPhoto(
   };
 
   const first = pickFrom(excludeUris);
-  if (first) return first;
-  // Exhausted: keep only the most recent candidate excluded so we don't
-  // immediately repeat the same photo.
-  const recycled = pickFrom(excludeUris.slice(-1));
-  if (recycled) return recycled;
+  if (first && first.photo.uri !== currentUri) return first;
+  // Exhausted (or got the same photo back) — recycle, excluding only the
+  // current photo so we never repeat in place.
+  const recycleExcl = currentUri ? [currentUri] : [];
+  const recycled = pickFrom(recycleExcl);
+  if (recycled && recycled.photo.uri !== currentUri) return recycled;
+  // Last-ditch: any photo other than current.
+  const fallback = SAMPLE_PHOTOS.find((p) => p.uri !== currentUri) ?? SAMPLE_PHOTOS[0];
   return {
-    photo: SAMPLE_PHOTOS[0],
-    matchedTheme: SAMPLE_PHOTOS[0].theme,
+    photo: fallback,
+    matchedTheme: fallback.theme,
     sharedTags: [],
   };
 }
@@ -174,8 +178,24 @@ export default function SwipeScreen() {
   const [theirPhoto, setTheirPhoto] = useState(initial.photo);
   const [matchedTheme, setMatchedTheme] = useState<string>(initial.matchedTheme);
   const [sharedTags, setSharedTags] = useState<string[]>(initial.sharedTags);
-  const [isAnimatingOut, setIsAnimatingOut] = useState(false);
   const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
+
+  // Refs mirror state so callbacks stay stable and read latest values
+  // without triggering re-creation (which previously caused stale closures
+  // inside in-flight Animated callbacks → "stuck on same photo").
+  const theirPhotoRef = useRef(theirPhoto);
+  theirPhotoRef.current = theirPhoto;
+  const activeThemeRef = useRef(activeTheme);
+  activeThemeRef.current = activeTheme;
+  const myTagsRef = useRef(myTags);
+  myTagsRef.current = myTags;
+  const myPhotoUriRef = useRef(myPhotoUri);
+  myPhotoUriRef.current = myPhotoUri;
+  const isAnimatingOutRef = useRef(false);
+
+  const pan = useRef(new Animated.ValueXY()).current;
+  const cardScale = useRef(new Animated.Value(1)).current;
+  const sameOpacity = useRef(new Animated.Value(0)).current;
 
   // When the user uploads a new photo (which may carry a new theme/tags),
   // reset the candidate pool so we immediately match against the new context.
@@ -185,42 +205,52 @@ export default function SwipeScreen() {
     setTheirPhoto(next.photo);
     setMatchedTheme(next.matchedTheme);
     setSharedTags(next.sharedTags);
-    setIsAnimatingOut(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myPhotoUri, activeTheme, myTagsKey]);
-
-  const pan = useRef(new Animated.ValueXY()).current;
-  const cardScale = useRef(new Animated.Value(1)).current;
-  const sameOpacity = useRef(new Animated.Value(0)).current;
-
-  const loadNextCandidate = useCallback(() => {
-    seenRef.current.push(theirPhoto.uri);
-    if (seenRef.current.length > 30) seenRef.current = seenRef.current.slice(-15);
-    const next = getTheirPhoto(activeTheme, myTags, seenRef.current);
-    // If we've cycled back through everything, trim seen so the recycle
-    // doesn't keep firing on every swipe.
-    if (next.photo.uri === theirPhoto.uri || seenRef.current.includes(next.photo.uri)) {
-      seenRef.current = [myPhotoUri, theirPhoto.uri];
-    }
-    setTheirPhoto(next.photo);
-    setMatchedTheme(next.matchedTheme);
-    setSharedTags(next.sharedTags);
+    isAnimatingOutRef.current = false;
     pan.setValue({ x: 0, y: 0 });
     cardScale.setValue(1);
     sameOpacity.setValue(0);
-    setIsAnimatingOut(false);
-  }, [theirPhoto.uri, activeTheme, myTags, myPhotoUri, pan, cardScale, sameOpacity]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myPhotoUri, activeTheme, myTagsKey]);
+
+  const loadNextCandidate = useCallback(() => {
+    const currentUri = theirPhotoRef.current.uri;
+    seenRef.current.push(currentUri);
+    if (seenRef.current.length > 30) seenRef.current = seenRef.current.slice(-15);
+    const next = getTheirPhoto(
+      activeThemeRef.current,
+      myTagsRef.current,
+      seenRef.current,
+      currentUri,
+    );
+    // Reset animated values BEFORE updating state so the next render
+    // paints the new photo at center, not at the off-screen end position.
+    pan.setValue({ x: 0, y: 0 });
+    cardScale.setValue(1);
+    sameOpacity.setValue(0);
+    setTheirPhoto(next.photo);
+    setMatchedTheme(next.matchedTheme);
+    setSharedTags(next.sharedTags);
+    isAnimatingOutRef.current = false;
+  }, [pan, cardScale, sameOpacity]);
 
   const handleSwipe = useCallback(
     (dir: "left" | "right") => {
-      if (isAnimatingOut) return;
-      setIsAnimatingOut(true);
+      if (isAnimatingOutRef.current) return;
+      isAnimatingOutRef.current = true;
 
       Haptics.impactAsync(
         dir === "right"
           ? Haptics.ImpactFeedbackStyle.Medium
           : Haptics.ImpactFeedbackStyle.Light
       );
+
+      // Snapshot the current photo so a re-render mid-animation can't
+      // change what we navigate to.
+      const snapshotPhoto = theirPhotoRef.current;
+      const snapshotShared = sharedTags;
+      const snapshotMyUri = myPhotoUriRef.current;
+      const snapshotTheme = activeThemeRef.current;
+      const snapshotMyUploadedAt = myPhotoData.uploadedAt;
 
       Animated.parallel([
         Animated.timing(pan.x, {
@@ -238,20 +268,20 @@ export default function SwipeScreen() {
           // It's a match! Build the match record and reveal.
           const match: Match = {
             id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-            myPhoto: myPhotoUri,
-            theirPhoto: theirPhoto.uri,
+            myPhoto: snapshotMyUri,
+            theirPhoto: snapshotPhoto.uri,
             myCountry: "You",
-            theirCountry: theirPhoto.country,
-            theirCountryFlag: theirPhoto.countryFlag,
-            theirCountryCode: theirPhoto.countryCode,
+            theirCountry: snapshotPhoto.country,
+            theirCountryFlag: snapshotPhoto.countryFlag,
+            theirCountryCode: snapshotPhoto.countryCode,
             similarityScore: 0,
             verdict: "same",
             timestamp: new Date().toISOString(),
-            theme: activeTheme,
-            theirPhotoMinutesAgo: theirPhoto.minutesAgo,
-            myPhotoUploadedAt: myPhotoData.uploadedAt,
-            sharedTags,
-            theirVibe: expandToVibe(theirPhoto.tags ?? [], theirPhoto.uri),
+            theme: snapshotTheme,
+            theirPhotoMinutesAgo: snapshotPhoto.minutesAgo,
+            myPhotoUploadedAt: snapshotMyUploadedAt,
+            sharedTags: snapshotShared,
+            theirVibe: expandToVibe(snapshotPhoto.tags ?? [], snapshotPhoto.uri),
           };
           router.push({
             pathname: "/reveal",
@@ -265,17 +295,7 @@ export default function SwipeScreen() {
         }
       });
     },
-    [
-      isAnimatingOut,
-      myPhotoUri,
-      theirPhoto,
-      matchedTheme,
-      sharedTags,
-      myPhotoData.uploadedAt,
-      pan.x,
-      cardScale,
-      loadNextCandidate,
-    ]
+    [sharedTags, myPhotoData.uploadedAt, pan.x, cardScale, loadNextCandidate]
   );
 
   const panResponder = useRef(
