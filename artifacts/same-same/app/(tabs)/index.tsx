@@ -48,7 +48,7 @@ export default function HomeScreen() {
             taglineColor={colors.mutedForeground}
           />
           <Text style={[styles.tagline, { color: colors.mutedForeground, marginTop: 10 }]}>
-            Similar vibe.
+            Echo your vibe.
           </Text>
         </View>
 
