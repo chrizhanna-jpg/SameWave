@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Icon } from "@/components/Icon";
 import { MatchHearts } from "@/components/MatchHearts";
+import { MatchFlash } from "@/components/MatchFlash";
 import { EchoLogo } from "@/components/EchoLogo";
 import { expandToVibe } from "@/utils/interests";
 import * as Haptics from "expo-haptics";
@@ -266,6 +267,11 @@ export default function SwipeScreen() {
   // True when the candidate pool is exhausted (production: no real photos
   // matched the user's theme/tags and we can't fall back to fakes).
   const [noMore, setNoMore] = useState<boolean>(initial == null);
+  // Inline celebration shown right on the swipe card after a "same same"
+  // verdict. Replaces the older auto-navigate-to-/reveal flow so swipes
+  // stay in flow. The full /reveal screen remains accessible via the
+  // overlay's "Open" pill (and from My Journey).
+  const [flashMatch, setFlashMatch] = useState<Match | null>(null);
 
   // Refs mirror state so callbacks stay stable and read latest values
   // without triggering re-creation (which previously caused stale closures
@@ -407,12 +413,9 @@ export default function SwipeScreen() {
           votePhoto(liveId, dir === "right" ? "same" : "different").catch(() => {});
         }
         if (dir === "right") {
-          router.push({
-            pathname: "/reveal",
-            params: { matchData: JSON.stringify(match) },
-          });
-          // Prepare next candidate behind the modal
-          setTimeout(loadNextCandidate, 400);
+          // Show the lightweight in-card flash. It auto-dismisses (or the
+          // user can tap "Open" to dive into the full /reveal screen).
+          setFlashMatch(match);
         } else {
           // "Different" — silently move on, keep user's photo locked
           loadNextCandidate();
@@ -688,6 +691,38 @@ export default function SwipeScreen() {
         </Animated.View>
         )}
       </View>
+
+      {/* Lightweight in-card celebration. Auto-advances to the next
+          candidate on dismiss; "Open" navigates to the full /reveal. */}
+      {flashMatch && (() => {
+        const themeMeta = DAILY_CHALLENGES.find(
+          (c) => c.id === flashMatch.theme || c.title.toLowerCase() === flashMatch.theme,
+        );
+        return (
+          <MatchFlash
+            theirCountry={flashMatch.theirCountry}
+            theirCountryFlag={flashMatch.theirCountryFlag}
+            myCountryFlag={myCountryFlag}
+            themeTitle={themeMeta?.title ?? flashMatch.theme ?? "the same thing"}
+            themeEmoji={themeMeta?.emoji ?? "✨"}
+            sharedTags={flashMatch.sharedTags ?? []}
+            onDone={() => {
+              setFlashMatch(null);
+              loadNextCandidate();
+            }}
+            onOpenFull={() => {
+              const data = flashMatch;
+              setFlashMatch(null);
+              // Pre-load the next card so it's ready when they come back.
+              loadNextCandidate();
+              router.push({
+                pathname: "/reveal",
+                params: { matchData: JSON.stringify(data) },
+              });
+            }}
+          />
+        );
+      })()}
 
       {/* Fullscreen image viewer */}
       <Modal
