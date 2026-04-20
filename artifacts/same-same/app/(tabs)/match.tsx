@@ -138,7 +138,7 @@ function getTheirPhoto(
 export default function SwipeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { streakCount, myPhotos } = useApp();
+  const { streakCount, myPhotos, addMatch } = useApp();
   const todaysChallenge = getTodaysChallenge();
 
   // User's photo is LOCKED for the session — only changes when they upload a new one
@@ -285,25 +285,28 @@ export default function SwipeScreen() {
           useNativeDriver: true,
         }),
       ]).start(() => {
+        // Build a match record for BOTH verdicts so the user can revisit
+        // and flip a previous swipe from My Journey. Stats / countries /
+        // badges only count "same" — the context handles that branching.
+        const match: Match = {
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+          myPhoto: snapshotMyUri,
+          theirPhoto: snapshotPhoto.uri,
+          myCountry: "You",
+          theirCountry: snapshotPhoto.country,
+          theirCountryFlag: snapshotPhoto.countryFlag,
+          theirCountryCode: snapshotPhoto.countryCode,
+          similarityScore: 0,
+          verdict: dir === "right" ? "same" : "different",
+          timestamp: new Date().toISOString(),
+          theme: snapshotTheme,
+          theirPhotoMinutesAgo: snapshotPhoto.minutesAgo,
+          myPhotoUploadedAt: snapshotMyUploadedAt,
+          sharedTags: snapshotShared,
+          theirVibe: expandToVibe(snapshotPhoto.tags ?? [], snapshotPhoto.uri),
+        };
+        addMatch(match);
         if (dir === "right") {
-          // It's a match! Build the match record and reveal.
-          const match: Match = {
-            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-            myPhoto: snapshotMyUri,
-            theirPhoto: snapshotPhoto.uri,
-            myCountry: "You",
-            theirCountry: snapshotPhoto.country,
-            theirCountryFlag: snapshotPhoto.countryFlag,
-            theirCountryCode: snapshotPhoto.countryCode,
-            similarityScore: 0,
-            verdict: "same",
-            timestamp: new Date().toISOString(),
-            theme: snapshotTheme,
-            theirPhotoMinutesAgo: snapshotPhoto.minutesAgo,
-            myPhotoUploadedAt: snapshotMyUploadedAt,
-            sharedTags: snapshotShared,
-            theirVibe: expandToVibe(snapshotPhoto.tags ?? [], snapshotPhoto.uri),
-          };
           router.push({
             pathname: "/reveal",
             params: { matchData: JSON.stringify(match) },
@@ -316,7 +319,7 @@ export default function SwipeScreen() {
         }
       });
     },
-    [sharedTags, myPhotoData.uploadedAt, pan.x, cardScale, loadNextCandidate]
+    [sharedTags, myPhotoData.uploadedAt, pan.x, cardScale, loadNextCandidate, addMatch]
   );
 
   const panResponder = useRef(

@@ -92,6 +92,12 @@ interface AppContextValue extends AppState {
   myVibe: string[];
   addMatch: (match: Match) => void;
   removeMatch: (id: string) => void;
+  /**
+   * Flip a recorded swipe between "same" and "different". Recomputes
+   * countries / streak / badges so the journey stats stay accurate.
+   * Returns the updated match (with any newly-earned badges) or null.
+   */
+  changeVerdict: (id: string, newVerdict: "same" | "different") => Match | null;
   addMyPhoto: (uri: string, theme: string, tags?: string[]) => void;
   completeOnboarding: () => void;
   resetOnboarding: () => void;
@@ -197,54 +203,75 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   };
 
+  // Pure helper: compute country list + badges given the set of all
+  // CONFIRMED ("same") matches. Used by addMatch / removeMatch /
+  // changeVerdict so journey stats always reflect the current state.
+  const recomputeFromConfirmed = (
+    confirmed: Match[],
+    existingBadges: Badge[],
+  ): { matchedCountries: MatchedCountry[]; badges: Badge[] } => {
+    const byCode = new Map<string, MatchedCountry>();
+    for (const m of confirmed) {
+      if (!byCode.has(m.theirCountryCode)) {
+        byCode.set(m.theirCountryCode, {
+          code: m.theirCountryCode,
+          name: m.theirCountry,
+          flag: m.theirCountryFlag,
+          matchedAt: m.timestamp,
+        });
+      }
+    }
+    const matchedCountries = [...byCode.values()];
+    const codes = matchedCountries.map((c) => c.code);
+    const sameDayEarned = confirmed.some((m) => {
+      const myAgeMin = m.myPhotoUploadedAt
+        ? (Date.now() - new Date(m.myPhotoUploadedAt).getTime()) / 60000
+        : 9999;
+      const theirAgeMin = m.theirPhotoMinutesAgo ?? 9999;
+      return myAgeMin < 1440 && theirAgeMin < 1440;
+    });
+    // Earned badges stick — we never take them away on undo.
+    const badges = existingBadges.map((b) => {
+      if (b.earned) return b;
+      const justEarnedAt = new Date().toISOString();
+      if (b.id === "explorer" && matchedCountries.length >= 5)
+        return { ...b, earned: true, earnedAt: justEarnedAt };
+      if (b.id === "connector" && matchedCountries.length >= 10)
+        return { ...b, earned: true, earnedAt: justEarnedAt };
+      if (b.id === "sameday" && sameDayEarned)
+        return { ...b, earned: true, earnedAt: justEarnedAt };
+      if (b.id === "asia" && codes.some(isAsian))
+        return { ...b, earned: true, earnedAt: justEarnedAt };
+      if (b.id === "africa" && codes.some(isAfrican))
+        return { ...b, earned: true, earnedAt: justEarnedAt };
+      if (b.id === "americas" && codes.some(isAmericas))
+        return { ...b, earned: true, earnedAt: justEarnedAt };
+      return b;
+    });
+    return { matchedCountries, badges };
+  };
+
   const addMatch = useCallback((match: Match) => {
     setState((prev) => {
-      const alreadyHasCountry = prev.matchedCountries.some(
-        (c) => c.code === match.theirCountryCode
+      // Both "same" and "different" verdicts get persisted to history so
+      // the user can revisit & flip a previous swipe. Only "same" verdicts
+      // count toward the journey stats / badges / streak.
+      const allMatches = [match, ...prev.matches];
+      const confirmed = allMatches.filter((m) => m.verdict === "same");
+      const { matchedCountries, badges } = recomputeFromConfirmed(
+        confirmed,
+        prev.badges,
       );
-
-      const newCountries = alreadyHasCountry
-        ? prev.matchedCountries
-        : [
-            ...prev.matchedCountries,
-            {
-              code: match.theirCountryCode,
-              name: match.theirCountry,
-              flag: match.theirCountryFlag,
-              matchedAt: match.timestamp,
-            },
-          ];
-
-      const updatedBadges = prev.badges.map((b) => {
-        if (b.earned) return b;
-        if (b.id === "explorer" && newCountries.length >= 5)
-          return { ...b, earned: true, earnedAt: new Date().toISOString() };
-        if (b.id === "connector" && newCountries.length >= 10)
-          return { ...b, earned: true, earnedAt: new Date().toISOString() };
-        if (b.id === "sameday") {
-          const myAgeMin = match.myPhotoUploadedAt
-            ? (Date.now() - new Date(match.myPhotoUploadedAt).getTime()) / 60000
-            : 9999;
-          const theirAgeMin = match.theirPhotoMinutesAgo ?? 9999;
-          if (myAgeMin < 1440 && theirAgeMin < 1440)
-            return { ...b, earned: true, earnedAt: new Date().toISOString() };
-        }
-        if (b.id === "asia" && isAsian(match.theirCountryCode))
-          return { ...b, earned: true, earnedAt: new Date().toISOString() };
-        if (b.id === "africa" && isAfrican(match.theirCountryCode))
-          return { ...b, earned: true, earnedAt: new Date().toISOString() };
-        if (b.id === "americas" && isAmericas(match.theirCountryCode))
-          return { ...b, earned: true, earnedAt: new Date().toISOString() };
-        return b;
-      });
-
       const newState: AppState = {
         ...prev,
-        matchedCountries: newCountries,
-        matches: [match, ...prev.matches],
-        totalMatches: prev.totalMatches + 1,
-        streakCount: prev.streakCount + 1,
-        badges: updatedBadges,
+        matchedCountries,
+        matches: allMatches,
+        totalMatches: confirmed.length,
+        streakCount:
+          match.verdict === "same"
+            ? prev.streakCount + 1
+            : prev.streakCount,
+        badges,
       };
       saveState(newState);
       return newState;
@@ -257,31 +284,73 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!target) return prev;
 
       const remainingMatches = prev.matches.filter((m) => m.id !== id);
-
-      // If no other match still references the same country, drop it from
-      // matchedCountries so the world map stays accurate.
-      const stillHasCountry = remainingMatches.some(
-        (m) => m.theirCountryCode === target.theirCountryCode,
-      );
-      const matchedCountries = stillHasCountry
-        ? prev.matchedCountries
-        : prev.matchedCountries.filter(
-            (c) => c.code !== target.theirCountryCode,
-          );
+      const confirmed = remainingMatches.filter((m) => m.verdict === "same");
+      const { matchedCountries } = recomputeFromConfirmed(confirmed, prev.badges);
 
       // Note: we intentionally keep earned badges. Undoing a single match
       // shouldn't take an achievement away — and re-earning is trivial.
+      const wasConfirmed = target.verdict === "same";
       const newState: AppState = {
         ...prev,
         matches: remainingMatches,
         matchedCountries,
-        totalMatches: Math.max(0, prev.totalMatches - 1),
-        streakCount: Math.max(0, prev.streakCount - 1),
+        totalMatches: confirmed.length,
+        streakCount: wasConfirmed
+          ? Math.max(0, prev.streakCount - 1)
+          : prev.streakCount,
       };
       saveState(newState);
       return newState;
     });
   }, []);
+
+  const changeVerdict = useCallback(
+    (id: string, newVerdict: "same" | "different"): Match | null => {
+      let updated: Match | null = null;
+      setState((prev) => {
+        const target = prev.matches.find((m) => m.id === id);
+        if (!target) return prev;
+        if (target.verdict === newVerdict) {
+          updated = target;
+          return prev;
+        }
+        const flipped: Match = {
+          ...target,
+          verdict: newVerdict,
+          // Refresh timestamp on flip → "Same Same" so it surfaces as
+          // freshly matched in the journey.
+          ...(newVerdict === "same"
+            ? { timestamp: new Date().toISOString() }
+            : {}),
+        };
+        updated = flipped;
+
+        const newMatches = prev.matches.map((m) => (m.id === id ? flipped : m));
+        const confirmed = newMatches.filter((m) => m.verdict === "same");
+        const { matchedCountries, badges } = recomputeFromConfirmed(
+          confirmed,
+          prev.badges,
+        );
+        // Streak: bump on different→same, decrement on same→different.
+        const streakCount =
+          newVerdict === "same"
+            ? prev.streakCount + 1
+            : Math.max(0, prev.streakCount - 1);
+        const newState: AppState = {
+          ...prev,
+          matches: newMatches,
+          matchedCountries,
+          totalMatches: confirmed.length,
+          streakCount,
+          badges,
+        };
+        saveState(newState);
+        return newState;
+      });
+      return updated;
+    },
+    [],
+  );
 
   const addMyPhoto = useCallback((uri: string, theme: string, tags?: string[]) => {
     setState((prev) => {
@@ -524,6 +593,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         myVibe,
         addMatch,
         removeMatch,
+        changeVerdict,
         addMyPhoto,
         completeOnboarding,
         resetOnboarding,

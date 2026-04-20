@@ -30,16 +30,27 @@ export default function ProfileScreen() {
     myPhotos,
     getWorldMapCoverage,
     removeMatch,
+    changeVerdict,
     connectRequests,
     unreadIncoming,
     pendingOutgoing,
     myVibe,
   } = useApp();
+  // Split history by verdict — confirmed Same Same matches drive the
+  // journey, recent "different" passes get their own reconsider section.
+  const confirmedMatches = React.useMemo(
+    () => matches.filter((m) => m.verdict === "same"),
+    [matches],
+  );
+  const passedMatches = React.useMemo(
+    () => matches.filter((m) => m.verdict === "different"),
+    [matches],
+  );
   // Tags I keep matching on across all my matches — answers the question
   // "what kinds of moments and people do I keep finding?".
   const recurringMatchTags = React.useMemo(() => {
     const counts = new Map<string, number>();
-    for (const m of matches) {
+    for (const m of confirmedMatches) {
       for (const t of m.sharedTags ?? []) {
         counts.set(t, (counts.get(t) ?? 0) + 1);
       }
@@ -49,7 +60,40 @@ export default function ProfileScreen() {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
       .map(([t, n]) => ({ tag: t, count: n }));
-  }, [matches]);
+  }, [confirmedMatches]);
+
+  const reconsiderAsSame = (id: string) => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    const flipped = changeVerdict(id, "same");
+    if (flipped) {
+      router.push({
+        pathname: "/reveal",
+        params: { matchData: JSON.stringify(flipped) },
+      });
+    }
+  };
+
+  const confirmPassInstead = (id: string, country: string) => {
+    const doFlip = () => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      changeVerdict(id, "different");
+    };
+    if (Platform.OS === "web") {
+      // eslint-disable-next-line no-alert
+      if (typeof window !== "undefined" && window.confirm(`Move your match with ${country} into Recent passes? Your country count will update.`)) {
+        doFlip();
+      }
+      return;
+    }
+    Alert.alert(
+      "Change to Different?",
+      `This moves your match with ${country} out of your matches. You can change it back any time.`,
+      [
+        { text: "Keep as match", style: "cancel" },
+        { text: "Mark as Different", style: "destructive", onPress: doFlip },
+      ],
+    );
+  };
   const connectionsCount = connectRequests.filter(
     (r) => r.status === "accepted",
   ).length;
@@ -253,13 +297,18 @@ export default function ProfileScreen() {
           </ScrollView>
         </View>
 
-        {matches.length > 0 && (
+        {confirmedMatches.length > 0 && (
           <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-              Match History
-            </Text>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+                Match History
+              </Text>
+              <Text style={[styles.sectionCount, { color: colors.mutedForeground }]}>
+                Tap to change
+              </Text>
+            </View>
             <View style={styles.matchList}>
-              {matches.slice(0, 10).map((match) => (
+              {confirmedMatches.slice(0, 10).map((match) => (
                 <View
                   key={match.id}
                   style={[
@@ -277,18 +326,79 @@ export default function ProfileScreen() {
                     <Text style={[styles.matchCountry, { color: colors.foreground }]}>
                       {match.theirCountry}
                     </Text>
-                    <Text style={[styles.matchScore, { color: colors.primary }]}>
-                      {match.similarityScore}% similar
-                    </Text>
+                    <TouchableOpacity
+                      onPress={() => confirmPassInstead(match.id, match.theirCountry)}
+                      hitSlop={8}
+                      accessibilityLabel={`Change match with ${match.theirCountry} to Different`}
+                    >
+                      <Text style={[styles.matchAction, { color: colors.mutedForeground }]}>
+                        Change to Different
+                      </Text>
+                    </TouchableOpacity>
                   </View>
                   <PhotoCard uri={match.theirPhoto} size="sm" />
                   <TouchableOpacity
                     onPress={() => confirmUndo(match.id, match.theirCountry)}
                     style={[styles.undoBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
-                    accessibilityLabel={`Undo match with ${match.theirCountry}`}
+                    accessibilityLabel={`Remove match with ${match.theirCountry} from history`}
                     hitSlop={8}
                   >
-                    <Icon name="rotate-ccw" size={14} color={colors.mutedForeground} />
+                    <Icon name="trash-2" size={14} color={colors.mutedForeground} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {passedMatches.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+                Recent passes
+              </Text>
+              <Text style={[styles.sectionCount, { color: colors.mutedForeground }]}>
+                Changed your mind?
+              </Text>
+            </View>
+            <View style={styles.matchList}>
+              {passedMatches.slice(0, 10).map((match) => (
+                <View
+                  key={match.id}
+                  style={[
+                    styles.matchRow,
+                    {
+                      backgroundColor: colors.card,
+                      borderColor: colors.border,
+                      opacity: 0.92,
+                    },
+                  ]}
+                >
+                  <PhotoCard uri={match.myPhoto} size="sm" />
+                  <View style={styles.matchMeta}>
+                    <View style={styles.matchFlags}>
+                      <Text style={styles.matchFlag}>🌍</Text>
+                      <Icon name="arrow-right" size={12} color={colors.mutedForeground} />
+                      <Text style={styles.matchFlag}>{match.theirCountryFlag}</Text>
+                    </View>
+                    <Text style={[styles.matchCountry, { color: colors.foreground }]}>
+                      {match.theirCountry}
+                    </Text>
+                    <Text style={[styles.matchAction, { color: colors.mutedForeground }]}>
+                      You said different
+                    </Text>
+                  </View>
+                  <PhotoCard uri={match.theirPhoto} size="sm" />
+                  <TouchableOpacity
+                    onPress={() => reconsiderAsSame(match.id)}
+                    style={[
+                      styles.reconsiderBtn,
+                      { backgroundColor: colors.teal },
+                    ]}
+                    accessibilityLabel={`Mark photo from ${match.theirCountry} as Same Same`}
+                    hitSlop={8}
+                  >
+                    <Text style={styles.reconsiderBtnText}>Same Same</Text>
                   </TouchableOpacity>
                 </View>
               ))}
@@ -518,6 +628,25 @@ const styles = StyleSheet.create({
   matchScore: {
     fontSize: 12,
     fontFamily: "Inter_500Medium",
+  },
+  matchAction: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+    textDecorationLine: "underline",
+    marginTop: 2,
+  },
+  reconsiderBtn: {
+    paddingHorizontal: 12,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  reconsiderBtnText: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    color: "#001018",
+    letterSpacing: 0.3,
   },
   matchVerdict: {
     paddingHorizontal: 10,
