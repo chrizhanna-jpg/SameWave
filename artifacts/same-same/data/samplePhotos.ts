@@ -9,6 +9,18 @@ export interface SamplePhoto {
   tags: string[];
 }
 
+// Helper used by PhotoCard to know whether to overlay the "sample" globe
+// badge in the corner. We resolve the URI set lazily so the SAMPLE_PHOTOS
+// constant declared below can populate it on first call.
+let _sampleUriSet: Set<string> | undefined;
+export function isSamplePhoto(uri: string | undefined | null): boolean {
+  if (!uri) return false;
+  if (!_sampleUriSet) {
+    _sampleUriSet = new Set(SAMPLE_PHOTOS.map((p) => p.uri));
+  }
+  return _sampleUriSet.has(uri);
+}
+
 export const SAMPLE_PHOTOS: SamplePhoto[] = [
   {
     id: "1",
