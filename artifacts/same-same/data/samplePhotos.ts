@@ -596,16 +596,44 @@ export const SUGGESTED_TAGS_BY_THEME: Record<string, string[]> = {
   travel: ["travel", "beach", "mountains", "city", "outdoors"],
 };
 
+// The daily challenge pool. One theme is shown to the entire world each
+// UTC day, rotating deterministically. Order is interleaved so back-to-
+// back days don't feel similar (e.g. food themes are spaced apart). Add
+// freely — anything in here will appear in the rotation. The first 9
+// entries also exist as synthetic dev-mode placeholder buckets in
+// SYNTH_PHOTO_BANK; new themes silently fall back to the synthetic
+// "joy" bucket in dev only.
 export const DAILY_CHALLENGES = [
   { id: "morning", title: "Your morning", description: "What does your morning look like?", emoji: "☀️" },
-  { id: "food", title: "What you ate", description: "Share your meal", emoji: "🍽️" },
+  { id: "coffee", title: "Your coffee", description: "Coffee, tea, or whatever's in your cup", emoji: "☕" },
   { id: "hands", title: "Your hands", description: "Show us your hands right now", emoji: "👐" },
   { id: "sky", title: "Your sky", description: "Look up. What do you see?", emoji: "🌤️" },
+  { id: "shoes", title: "Your shoes today", description: "What's carrying you around?", emoji: "👟" },
+  { id: "food", title: "What you ate", description: "Share your meal", emoji: "🍽️" },
+  { id: "instrument", title: "Your instrument", description: "What you play, or what's around", emoji: "🎸" },
+  { id: "view", title: "Your view", description: "What's in front of you right now", emoji: "🪟" },
+  { id: "movement", title: "Your movement", description: "Workout, walk, run, dance", emoji: "🏃" },
+  { id: "pets", title: "An animal", description: "Pet, wild, or neighbour's", emoji: "🐾" },
+  { id: "reading", title: "What you're reading", description: "Book, article, anything words", emoji: "📚" },
   { id: "commute", title: "Your commute", description: "How do you get around?", emoji: "🚌" },
+  { id: "listening", title: "What you're hearing", description: "Music, podcast, the world outside", emoji: "🎧" },
+  { id: "plant", title: "A plant near you", description: "House plant, tree, weed in the cracks", emoji: "🪴" },
   { id: "work", title: "Where you work", description: "Show your workspace", emoji: "💼" },
+  { id: "wearing", title: "What you're wearing", description: "Today's outfit, however small", emoji: "🧥" },
+  { id: "made", title: "Something you made", description: "Today, this week, ever — your hands made it", emoji: "🎨" },
+  { id: "night", title: "Your night", description: "Where you are after dark", emoji: "🌃" },
+  { id: "water", title: "Your water", description: "Bottle, glass, sea, rain — water around you", emoji: "💧" },
   { id: "joy", title: "Something joyful", description: "What made you smile today?", emoji: "😊" },
+  { id: "door", title: "Your front door", description: "Where you come and go", emoji: "🚪" },
+  { id: "wheels", title: "Your wheels", description: "Bike, board, car, stroller, anything that rolls", emoji: "🚲" },
+  { id: "ritual", title: "Your daily ritual", description: "The small thing you do every day", emoji: "🌀" },
   { id: "nature", title: "Nature near you", description: "Any plant, tree or sky", emoji: "🌿" },
-  { id: "pets", title: "An animal", description: "Pet, wild, or neighbor's", emoji: "🐾" },
+  { id: "playing", title: "What you play", description: "Game, sport, toy, hobby", emoji: "🎮" },
+  { id: "groceries", title: "Your groceries", description: "What you bought, what you have", emoji: "🛒" },
+  { id: "wall", title: "Your wall", description: "Whatever's hanging on it", emoji: "🖼️" },
+  { id: "handwriting", title: "Your handwriting", description: "A note, a list, a doodle", emoji: "✍️" },
+  { id: "weather", title: "Your weather", description: "Rain, sun, fog, snow — show us the day", emoji: "🌦️" },
+  { id: "smallthing", title: "A small good thing", description: "Tiny, easy to miss, made your day better", emoji: "✨" },
 ];
 
 // Themes that "feel" related — used as fallback when the active theme
@@ -627,11 +655,18 @@ export function getThemeChain(theme: string): string[] {
   return [theme, ...adj];
 }
 
+/**
+ * Today's challenge — UTC-anchored so the entire world is on the same
+ * theme at the same instant. Without this anchor, two users either side
+ * of the dateline would briefly see different daily challenges and the
+ * shared "we're all on this today" feeling would break. We compute days
+ * since the Unix epoch (a fixed UTC reference) and modulo into the
+ * rotation pool, so the theme rolls over at exactly 00:00 UTC each day
+ * for everyone.
+ */
 export function getTodaysChallenge(): typeof DAILY_CHALLENGES[0] {
-  const dayOfYear = Math.floor(
-    (Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000
-  );
-  return DAILY_CHALLENGES[dayOfYear % DAILY_CHALLENGES.length];
+  const daysSinceEpochUTC = Math.floor(Date.now() / 86_400_000);
+  return DAILY_CHALLENGES[daysSinceEpochUTC % DAILY_CHALLENGES.length];
 }
 
 export function getRandomPair(exclude?: string[]): [SamplePhoto, SamplePhoto] {
