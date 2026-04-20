@@ -76,8 +76,19 @@ function scoreCandidates(
     ? [...SAMPLE_PHOTOS, ...synthetic, ...extraPool]
     : extraPool;
 
+  // Excluded set + per-call URI dedupe. The synthetic generator picks
+  // randomly from small buckets so it routinely emits the same URI more
+  // than once per call; we want only the first occurrence to participate
+  // in scoring so a "same" verdict on one is enough to retire it.
+  const excludeSet = new Set(excludeUris);
+  const seenInPool = new Set<string>();
   const candidates: Scored[] = pool
-    .filter((p) => !excludeUris.includes(p.uri))
+    .filter((p) => {
+      if (excludeSet.has(p.uri)) return false;
+      if (seenInPool.has(p.uri)) return false;
+      seenInPool.add(p.uri);
+      return true;
+    })
     .map((p) => {
       const sharedTags = p.tags.filter((t) => myTagSet.has(t));
       const idx = chainIndex(p.theme);
@@ -168,7 +179,18 @@ function getTheirPhoto(
 export default function SwipeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { streakCount, myPhotos, addMatch, myCountryCode, myCountryName, myCountryFlag } = useApp();
+  const { streakCount, myPhotos, matches, addMatch, myCountryCode, myCountryName, myCountryFlag } = useApp();
+
+  // Every photo the user has ever reacted to (same OR different) — drawn
+  // from the persistent match history so reacted photos never come back
+  // even after remounts, theme changes, or backend votes that haven't
+  // landed yet. Built once per change to `matches`.
+  const reactedUris = React.useMemo(
+    () => new Set(matches.map((m) => m.theirPhoto)),
+    [matches],
+  );
+  const reactedUrisRef = useRef(reactedUris);
+  reactedUrisRef.current = reactedUris;
   const todaysChallenge = getTodaysChallenge();
 
   // Today's photo only — if the user's most recent upload is from a
@@ -219,7 +241,11 @@ export default function SwipeScreen() {
   // the same URI/theme but with different tags re-seeds the candidate pool.
   const myTagsKey = React.useMemo(() => [...myTags].sort().join("|"), [myTags]);
 
-  const seenRef = useRef<string[]>([myPhotoUri]);
+  // Seed the per-session seen list with EVERY photo the user has ever
+  // reacted to so they never come back. We still grow this on each swipe
+  // for fast in-memory dedupe, but it's the persistent `matches` history
+  // that survives remounts/tab switches/theme changes.
+  const seenRef = useRef<string[]>([myPhotoUri, ...reactedUris]);
 
   // Real candidates from the backend. Empty until the first fetch resolves;
   // SwipeScreen still renders something via SAMPLE_PHOTOS in dev / a graceful
@@ -320,9 +346,11 @@ export default function SwipeScreen() {
 
   // When the user uploads a new photo (which may carry a new theme/tags),
   // reset the candidate pool so we immediately match against the new context.
+  // We re-seed seenRef from the persistent reacted list so previously-judged
+  // photos still don't come back after a re-seed.
   useEffect(() => {
-    seenRef.current = [myPhotoUri];
-    const next = getTheirPhoto(activeTheme, myTags, [myPhotoUri], undefined, realPool);
+    seenRef.current = [myPhotoUri, ...reactedUrisRef.current];
+    const next = getTheirPhoto(activeTheme, myTags, seenRef.current, undefined, realPool);
     if (next) {
       setTheirPhoto(next.photo);
       setMatchedTheme(next.matchedTheme);
