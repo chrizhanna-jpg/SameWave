@@ -40,6 +40,14 @@ export interface Match {
   // couple of lifestyle/hobby tags) — used to surface similar interests
   // beyond the single photo subject.
   theirVibe?: string[];
+  // How many other people also said "same same" to the matched photo,
+  // bucketed by time. Populated asynchronously after a "same" verdict.
+  // Used by the reveal screen and discovery feed to show social weight.
+  matchStats?: {
+    sameLastHour: number;
+    sameLastDay: number;
+    sameAllTime: number;
+  };
 }
 
 export interface ConnectRequest {

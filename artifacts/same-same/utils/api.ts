@@ -173,6 +173,34 @@ export async function votePhoto(
   }
 }
 
+export interface MatchStats {
+  sameLastHour: number;
+  sameLastDay: number;
+  sameAllTime: number;
+}
+
+// How many other people swiped "same same" on this photo, broken down by
+// time window. Used by the reveal screen and discovery feed to show the
+// social weight of a match. Returns zeros on error (the UI then hides the
+// stat row entirely so we never show a misleading "0 others").
+export async function fetchMatchStats(photoId: string): Promise<MatchStats> {
+  try {
+    const base = getApiBase();
+    const res = await fetch(`${base}/api/photos/${photoId}/match-stats`, {
+      headers: await authedHeaders(),
+    });
+    if (!res.ok) return { sameLastHour: 0, sameLastDay: 0, sameAllTime: 0 };
+    const json = (await res.json()) as Partial<MatchStats>;
+    return {
+      sameLastHour: Number(json.sameLastHour ?? 0),
+      sameLastDay: Number(json.sameLastDay ?? 0),
+      sameAllTime: Number(json.sameAllTime ?? 0),
+    };
+  } catch {
+    return { sameLastHour: 0, sameLastDay: 0, sameAllTime: 0 };
+  }
+}
+
 export async function reportPhoto(photoId: string, reason?: string): Promise<boolean> {
   try {
     const base = getApiBase();

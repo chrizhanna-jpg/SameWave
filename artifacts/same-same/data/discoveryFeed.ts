@@ -5,6 +5,7 @@
 
 import { SAMPLE_PHOTOS, type SamplePhoto, DAILY_CHALLENGES } from "./samplePhotos";
 import { getGeoTier, getTimeTier, type GeoTier, type TimeTier } from "@/utils/celebrations";
+import { sampleMatchStats, type SampleMatchStats } from "@/utils/sampleStats";
 
 export interface DiscoveryItem {
   id: string;
@@ -19,6 +20,8 @@ export interface DiscoveryItem {
   timeTier: TimeTier;
   /** True if both posted in the same minute — the rarest celebration. */
   sameMinute: boolean;
+  /** How many other people also said "same same" to this match. */
+  echoStats: SampleMatchStats;
 }
 
 // Buckets photos by theme so we can pair "morning" with "morning" etc.
@@ -136,6 +139,8 @@ export function buildDiscoveryFeed(
       geoTier,
       timeTier,
       sameMinute: timeTier.kind === "minute",
+      // Stable per (a,b) pair so the count doesn't churn between renders.
+      echoStats: sampleMatchStats(`${a.id}|${b.id}`),
     });
   }
 

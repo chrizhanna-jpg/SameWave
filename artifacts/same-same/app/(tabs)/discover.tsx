@@ -184,6 +184,22 @@ function DiscoveryCard({ item }: { item: DiscoveryItem }) {
             {item.geoTier.label}
           </Text>
         </View>
+        {item.echoStats.sameAllTime > 1 && (
+          <View
+            style={[
+              styles.chip,
+              {
+                backgroundColor: colors.teal + "1a",
+                borderColor: colors.teal + "44",
+              },
+            ]}
+          >
+            <Text style={styles.chipEmoji}>🔁</Text>
+            <Text style={[styles.chipText, { color: colors.teal }]}>
+              {item.echoStats.sameAllTime.toLocaleString()} also
+            </Text>
+          </View>
+        )}
       </View>
     </View>
   );

@@ -316,6 +316,78 @@ export default function RevealScreen() {
             </View>
           </View>
 
+          {match.matchStats && match.matchStats.sameAllTime > 0 && (() => {
+            // Defensive coerce: if anything came back as null/NaN/undefined
+            // from the wire we treat it as 0 so .toLocaleString() never
+            // throws and the headline math stays sane.
+            const raw = match.matchStats!;
+            const n = (v: unknown) =>
+              typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0;
+            const s = {
+              sameLastHour: n(raw.sameLastHour),
+              sameLastDay: n(raw.sameLastDay),
+              sameAllTime: n(raw.sameAllTime),
+            };
+            // Build the punchiest line we can: prefer "in the last hour"
+            // when there's recent activity, otherwise fall back to day,
+            // otherwise total. This always shows ONE clean stat — extra
+            // detail goes in the smaller chip row below.
+            const headline =
+              s.sameLastHour > 0
+                ? { count: s.sameLastHour, when: "in the last hour" }
+                : s.sameLastDay > 0
+                ? { count: s.sameLastDay, when: "in the last day" }
+                : { count: s.sameAllTime, when: "all time" };
+            return (
+              <View
+                style={[
+                  styles.echoBox,
+                  {
+                    backgroundColor: colors.teal + "1a",
+                    borderColor: colors.teal + "55",
+                  },
+                ]}
+              >
+                <Text style={[styles.echoHeadline, { color: colors.teal }]}>
+                  {headline.count.toLocaleString()}{" "}
+                  <Text style={[styles.echoHeadlineSoft, { color: colors.teal }]}>
+                    {headline.count === 1 ? "other person also" : "others also"} said same same
+                  </Text>
+                </Text>
+                <Text style={[styles.echoSub, { color: colors.mutedForeground }]}>
+                  {headline.when} · {s.sameAllTime.toLocaleString()} total
+                </Text>
+                {(s.sameLastHour > 0 || s.sameLastDay > 0) && s.sameAllTime > 1 && (
+                  <View style={styles.echoChipRow}>
+                    {[
+                      { label: "Last hour", value: s.sameLastHour },
+                      { label: "Last day", value: s.sameLastDay },
+                      { label: "All time", value: s.sameAllTime },
+                    ].map((b) => (
+                      <View
+                        key={b.label}
+                        style={[
+                          styles.echoChip,
+                          {
+                            backgroundColor: colors.background,
+                            borderColor: colors.border,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.echoChipValue, { color: colors.foreground }]}>
+                          {b.value.toLocaleString()}
+                        </Text>
+                        <Text style={[styles.echoChipLabel, { color: colors.mutedForeground }]}>
+                          {b.label}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            );
+          })()}
+
           {(() => {
             const theirVibe = match.theirVibe ?? [];
             const shared = commonInterests(myVibe, theirVibe);
@@ -809,6 +881,51 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     gap: 10,
+  },
+  echoBox: {
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 8,
+  },
+  echoHeadline: {
+    fontSize: 22,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -0.4,
+  },
+  echoHeadlineSoft: {
+    fontSize: 16,
+    fontFamily: "Inter_500Medium",
+    letterSpacing: -0.2,
+  },
+  echoSub: {
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
+    letterSpacing: 0.2,
+  },
+  echoChipRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 6,
+  },
+  echoChip: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: "center",
+    gap: 2,
+  },
+  echoChipValue: {
+    fontSize: 16,
+    fontFamily: "Inter_700Bold",
+  },
+  echoChipLabel: {
+    fontSize: 10,
+    fontFamily: "Inter_500Medium",
+    letterSpacing: 0.3,
+    textTransform: "uppercase",
   },
   vibeLabel: {
     fontSize: 12,

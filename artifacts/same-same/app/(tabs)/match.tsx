@@ -33,7 +33,8 @@ import {
   ENABLE_SYNTHETIC_MATCHES,
   type SamplePhoto,
 } from "@/data/samplePhotos";
-import { fetchCandidates, votePhoto } from "@/utils/api";
+import { fetchCandidates, votePhoto, fetchMatchStats } from "@/utils/api";
+import { sampleMatchStats } from "@/utils/sampleStats";
 import { flagFor, nameFor } from "@/data/countries";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
 import { getGeoTier } from "@/utils/celebrations";
@@ -407,18 +408,41 @@ export default function SwipeScreen() {
           sharedTags: snapshotShared,
           theirVibe: expandToVibe(snapshotPhoto.tags ?? [], snapshotPhoto.uri),
         };
-        addMatch(match);
-        // Persist the verdict to the backend if this was a real (non-synthetic)
-        // candidate. Sample/curated photos won't have a server ID and skip
-        // cleanly.
         const liveId = realPhotoIdsRef.current.get(snapshotPhoto.uri);
+        // For "same" verdicts attach a stats payload so the reveal screen
+        // can show "X others matched on this in the last hour". We seed it
+        // immediately with deterministic sample numbers so the UI never
+        // flickers with empty zeros, then upgrade to live numbers below
+        // once the backend responds.
+        const matchWithStats: Match =
+          dir === "right"
+            ? { ...match, matchStats: sampleMatchStats(snapshotPhoto.uri) }
+            : match;
+        addMatch(matchWithStats);
         if (liveId) {
+          // Persist the verdict to the backend.
           votePhoto(liveId, dir === "right" ? "same" : "different").catch(() => {});
         }
         if (dir === "right") {
           // Show the lightweight in-card flash. It auto-dismisses (or the
           // user can tap "Open" to dive into the full /reveal screen).
-          setFlashMatch(match);
+          setFlashMatch(matchWithStats);
+          // Async-upgrade to live stats if this was a real backend photo.
+          // We only swap in the live numbers when there's at least one
+          // real "same" vote — otherwise the seeded sample numbers feel
+          // more like a populated app than a deflated empty one.
+          if (liveId) {
+            fetchMatchStats(liveId)
+              .then((stats) => {
+                if (stats.sameAllTime <= 0) return;
+                setFlashMatch((cur) =>
+                  cur && cur.id === matchWithStats.id
+                    ? { ...cur, matchStats: stats }
+                    : cur,
+                );
+              })
+              .catch(() => {});
+          }
         } else {
           // "Different" — silently move on, keep user's photo locked
           loadNextCandidate();

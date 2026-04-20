@@ -217,6 +217,43 @@ router.post("/photos/:id/vote", async (req, res) => {
   }
 });
 
+// ---- GET /api/photos/:id/match-stats --------------------------------------
+// Returns counts of "same" verdicts on this photo, broken down by time
+// window. Used by the reveal screen and the discovery feed to surface a
+// "you and N others matched on this" social signal.
+//
+//   { sameLastHour, sameLastDay, sameAllTime }
+//
+// Anyone can read these — they aggregate over public photo activity and
+// don't expose individual voter identities.
+router.get("/photos/:id/match-stats", async (req, res) => {
+  try {
+    const photoId = req.params.id;
+    const rows = await db.execute(sql`
+      SELECT
+        COUNT(*) FILTER (
+          WHERE v.created_at >= now() - interval '1 hour'
+        ) AS "sameLastHour",
+        COUNT(*) FILTER (
+          WHERE v.created_at >= now() - interval '1 day'
+        ) AS "sameLastDay",
+        COUNT(*) AS "sameAllTime"
+      FROM votes v
+      WHERE v.photo_id = ${photoId}
+        AND v.verdict = 'same'
+    `);
+    const r = (rows.rows[0] ?? {}) as Record<string, unknown>;
+    res.json({
+      sameLastHour: Number(r.sameLastHour ?? 0),
+      sameLastDay: Number(r.sameLastDay ?? 0),
+      sameAllTime: Number(r.sameAllTime ?? 0),
+    });
+  } catch (err) {
+    req.log.error({ err }, "match-stats query failed");
+    res.status(500).json({ error: "stats failed" });
+  }
+});
+
 // ---- POST /api/photos/:id/report ------------------------------------------
 // Body: { reason?: string }
 router.post("/photos/:id/report", async (req, res) => {
