@@ -74,6 +74,7 @@ const tierChipStyles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 4,
     marginTop: 2,
+    alignSelf: "stretch",
   },
   chip: {
     flexDirection: "row",
@@ -83,12 +84,15 @@ const tierChipStyles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 8,
     borderWidth: 1,
+    flexShrink: 1,
+    maxWidth: "100%",
   },
   emoji: { fontSize: 9 },
   text: {
     fontSize: 9,
     fontFamily: "Inter_700Bold",
     letterSpacing: 0.2,
+    flexShrink: 1,
   },
 });
 
