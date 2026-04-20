@@ -650,13 +650,34 @@ export default function SwipeScreen() {
                 You're all caught up
               </Text>
               <Text style={[styles.emptyStateBody, { color: colors.mutedForeground }]}>
-                You've seen every "{themeTitle.toLowerCase()}" moment we have right now. Check back soon — new photos arrive from across the world all the time.
+                You've seen every "{themeTitle.toLowerCase()}" moment we have right now. Post a new photo to start a fresh session, or check back soon for new arrivals from across the world.
               </Text>
               <TouchableOpacity
-                style={[styles.emptyStateBtn, { backgroundColor: colors.teal }]}
+                style={[styles.emptyStateBtn, { backgroundColor: colors.primary }]}
+                onPress={() => router.push("/camera")}
+                activeOpacity={0.85}
+              >
+                <Icon name="camera" size={16} color={colors.primaryForeground} />
+                <Text
+                  style={[
+                    styles.emptyStateBtnText,
+                    { color: colors.primaryForeground, marginLeft: 8 },
+                  ]}
+                >
+                  Post a new photo
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.emptyStateBtn,
+                  styles.emptyStateBtnGhost,
+                  { borderColor: colors.border, marginTop: 10 },
+                ]}
                 onPress={() => {
-                  // Re-shuffle the deck: clear the seen list (keep only the
-                  // user's own photo) and pull a fresh candidate.
+                  // "Show again" — re-shuffle the deck, ignoring even the
+                  // persistent reacted history. Useful if the user wants
+                  // to revisit photos they already swiped on without
+                  // posting a new photo.
                   seenRef.current = [myPhotoUri];
                   const next = getTheirPhoto(
                     activeTheme,
@@ -674,7 +695,11 @@ export default function SwipeScreen() {
                 }}
                 activeOpacity={0.85}
               >
-                <Text style={styles.emptyStateBtnText}>Start over</Text>
+                <Text
+                  style={[styles.emptyStateBtnText, { color: colors.mutedForeground }]}
+                >
+                  Show photos I've seen
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1044,10 +1069,17 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   emptyStateBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 12,
     paddingHorizontal: 28,
     borderRadius: 999,
     marginTop: 4,
+  },
+  emptyStateBtnGhost: {
+    backgroundColor: "transparent",
+    borderWidth: 1,
   },
   emptyStateBtnText: {
     color: "#001018",
