@@ -29,7 +29,11 @@ import {
   getThemeChain,
   TAG_LIBRARY,
   generateSyntheticCandidates,
+  ENABLE_SYNTHETIC_MATCHES,
+  type SamplePhoto,
 } from "@/data/samplePhotos";
+import { fetchCandidates, votePhoto } from "@/utils/api";
+import { flagFor, nameFor } from "@/data/countries";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
 import { getGeoTier } from "@/utils/celebrations";
 import type { Match } from "@/context/AppContext";
@@ -49,7 +53,8 @@ type Scored = {
 function scoreCandidates(
   preferredTheme: string,
   myTags: string[],
-  excludeUris: string[]
+  excludeUris: string[],
+  extraPool: SamplePhoto[] = [],
 ): Scored[] {
   const chain = getThemeChain(preferredTheme);
   const chainIndex = (theme: string) => {
@@ -58,17 +63,16 @@ function scoreCandidates(
   };
   const myTagSet = new Set(myTags);
 
-  // Dev/test builds blend in some synthetic candidates so users always see
-  // fresh material even after the curated pool repeats. The generator is
-  // hard-gated by ENABLE_SYNTHETIC_MATCHES (tied to __DEV__) and returns []
-  // in production builds — real users only ship.
-  // Test-build only: generate a deep pool of synthetic candidates so any
-  // AI-suggested theme always has plenty of fresh material to swipe (the
-  // curated SAMPLE_PHOTOS only cover ~9 themes — freeform AI themes need
-  // this top-up). Hard-gated by ENABLE_SYNTHETIC_MATCHES → returns [] in
-  // production builds.
+  // Production: pool is REAL candidates only (extraPool comes from
+  // /api/photos/candidates, populated by SwipeScreen below).
+  // Dev/Expo Go: blend curated SAMPLE_PHOTOS + synthetic generator + any
+  // real candidates the dev server happens to have. Synthetic generation is
+  // hard-gated by ENABLE_SYNTHETIC_MATCHES so a release build can never
+  // accidentally show invented matches.
   const synthetic = generateSyntheticCandidates(preferredTheme, myTags, 24);
-  const pool = [...SAMPLE_PHOTOS, ...synthetic];
+  const pool: SamplePhoto[] = ENABLE_SYNTHETIC_MATCHES
+    ? [...SAMPLE_PHOTOS, ...synthetic, ...extraPool]
+    : extraPool;
 
   const candidates: Scored[] = pool
     .filter((p) => !excludeUris.includes(p.uri))
@@ -102,10 +106,11 @@ function getTheirPhoto(
   preferredTheme: string,
   myTags: string[],
   excludeUris: string[] = [],
-  currentUri?: string
-): { photo: typeof SAMPLE_PHOTOS[number]; matchedTheme: string; sharedTags: string[] } {
+  currentUri?: string,
+  extraPool: SamplePhoto[] = [],
+): { photo: typeof SAMPLE_PHOTOS[number]; matchedTheme: string; sharedTags: string[] } | null {
   const pickFrom = (excl: string[]) => {
-    const ranked = scoreCandidates(preferredTheme, myTags, excl);
+    const ranked = scoreCandidates(preferredTheme, myTags, excl, extraPool);
     if (ranked.length === 0) return null;
     // Tight top-tier window (0.6 pts) so we only randomise between
     // genuinely-comparable matches, never reach for the next-best-thing.
@@ -127,6 +132,10 @@ function getTheirPhoto(
   const recycled = pickFrom(recycleExcl);
   if (recycled && recycled.photo.uri !== currentUri) return recycled;
   // Last-ditch: prefer a photo from the same theme, then chain, then any.
+  // ONLY in dev — production must never show curated SAMPLE_PHOTOS as if
+  // they were real users. SwipeScreen renders a "no matches yet" state
+  // when this returns null.
+  if (!ENABLE_SYNTHETIC_MATCHES) return null;
   const chain = getThemeChain(preferredTheme);
   const fallback =
     SAMPLE_PHOTOS.find((p) => p.theme === preferredTheme && p.uri !== currentUri) ??
@@ -182,15 +191,81 @@ export default function SwipeScreen() {
   const myTagsKey = React.useMemo(() => [...myTags].sort().join("|"), [myTags]);
 
   const seenRef = useRef<string[]>([myPhotoUri]);
+
+  // Real candidates from the backend. Empty until the first fetch resolves;
+  // SwipeScreen still renders something via SAMPLE_PHOTOS in dev / a graceful
+  // empty state in production.
+  const [realPool, setRealPool] = useState<SamplePhoto[]>([]);
+  // URI → backend photo ID, so handleSwipe can post the verdict to the right
+  // row. Populated when realPool is loaded; missing entries (e.g. curated
+  // SAMPLE_PHOTOS, synthetic candidates) skip the API call cleanly.
+  const realPhotoIdsRef = useRef<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchCandidates({ theme: activeTheme, tags: myTags, limit: 24 })
+      .then((cands) => {
+        if (cancelled) return;
+        const ids = new Map<string, string>();
+        const mapped: SamplePhoto[] = cands.map((c) => {
+          const code = (c.countryCode ?? "ZZ").toUpperCase();
+          const minutesAgo = Math.max(
+            1,
+            Math.round((Date.now() - new Date(c.createdAt).getTime()) / 60000),
+          );
+          ids.set(c.uri, c.id);
+          return {
+            id: `live-${c.id}`,
+            uri: c.uri,
+            country: nameFor(code) ?? "Somewhere",
+            countryCode: code,
+            countryFlag: flagFor(code),
+            theme: c.theme || activeTheme,
+            minutesAgo,
+            tags: c.tags,
+          };
+        });
+        realPhotoIdsRef.current = ids;
+        setRealPool(mapped);
+      })
+      .catch(() => {
+        if (!cancelled) setRealPool([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTheme, myTagsKey]);
+
+  const realPoolRef = useRef<SamplePhoto[]>(realPool);
+  realPoolRef.current = realPool;
+
+  // A placeholder rendered before the first real candidate arrives (and as
+  // a sentinel when the production pool runs dry — see `noMore` below).
+  const PLACEHOLDER_PHOTO: SamplePhoto = React.useMemo(
+    () => ({
+      id: "placeholder",
+      uri: myPhotoUri, // re-use user's photo as a neutral background
+      country: "",
+      countryCode: "",
+      countryFlag: "",
+      theme: activeTheme,
+      minutesAgo: 0,
+      tags: [],
+    }),
+    [myPhotoUri, activeTheme],
+  );
   const initial = React.useMemo(
-    () => getTheirPhoto(activeTheme, myTags, [myPhotoUri]),
+    () => getTheirPhoto(activeTheme, myTags, [myPhotoUri], undefined, realPool),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
-  const [theirPhoto, setTheirPhoto] = useState(initial.photo);
-  const [matchedTheme, setMatchedTheme] = useState<string>(initial.matchedTheme);
-  const [sharedTags, setSharedTags] = useState<string[]>(initial.sharedTags);
+  const [theirPhoto, setTheirPhoto] = useState(initial?.photo ?? PLACEHOLDER_PHOTO);
+  const [matchedTheme, setMatchedTheme] = useState<string>(initial?.matchedTheme ?? "");
+  const [sharedTags, setSharedTags] = useState<string[]>(initial?.sharedTags ?? []);
   const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
+  // True when the candidate pool is exhausted (production: no real photos
+  // matched the user's theme/tags and we can't fall back to fakes).
+  const [noMore, setNoMore] = useState<boolean>(initial == null);
 
   // Refs mirror state so callbacks stay stable and read latest values
   // without triggering re-creation (which previously caused stale closures
@@ -213,10 +288,15 @@ export default function SwipeScreen() {
   // reset the candidate pool so we immediately match against the new context.
   useEffect(() => {
     seenRef.current = [myPhotoUri];
-    const next = getTheirPhoto(activeTheme, myTags, [myPhotoUri]);
-    setTheirPhoto(next.photo);
-    setMatchedTheme(next.matchedTheme);
-    setSharedTags(next.sharedTags);
+    const next = getTheirPhoto(activeTheme, myTags, [myPhotoUri], undefined, realPool);
+    if (next) {
+      setTheirPhoto(next.photo);
+      setMatchedTheme(next.matchedTheme);
+      setSharedTags(next.sharedTags);
+      setNoMore(false);
+    } else {
+      setNoMore(true);
+    }
     isAnimatingOutRef.current = false;
     pan.setValue({ x: 0, y: 0 });
     cardScale.setValue(1);
@@ -233,6 +313,7 @@ export default function SwipeScreen() {
       myTagsRef.current,
       seenRef.current,
       currentUri,
+      realPoolRef.current,
     );
     // After the swipe-out animation, the native-driven transform is parked
     // off-screen. Calling setValue from JS does NOT reliably propagate back
@@ -252,9 +333,14 @@ export default function SwipeScreen() {
         useNativeDriver: true,
       }),
     ]).start(() => {
-      setTheirPhoto(next.photo);
-      setMatchedTheme(next.matchedTheme);
-      setSharedTags(next.sharedTags);
+      if (next) {
+        setTheirPhoto(next.photo);
+        setMatchedTheme(next.matchedTheme);
+        setSharedTags(next.sharedTags);
+        setNoMore(false);
+      } else {
+        setNoMore(true);
+      }
       isAnimatingOutRef.current = false;
     });
   }, [pan, cardScale, sameOpacity]);
@@ -262,6 +348,8 @@ export default function SwipeScreen() {
   const handleSwipe = useCallback(
     (dir: "left" | "right") => {
       if (isAnimatingOutRef.current) return;
+      // Don't record a swipe when there's nothing to swipe on.
+      if (noMore) return;
       isAnimatingOutRef.current = true;
 
       Haptics.impactAsync(
@@ -311,6 +399,13 @@ export default function SwipeScreen() {
           theirVibe: expandToVibe(snapshotPhoto.tags ?? [], snapshotPhoto.uri),
         };
         addMatch(match);
+        // Persist the verdict to the backend if this was a real (non-synthetic)
+        // candidate. Sample/curated photos won't have a server ID and skip
+        // cleanly.
+        const liveId = realPhotoIdsRef.current.get(snapshotPhoto.uri);
+        if (liveId) {
+          votePhoto(liveId, dir === "right" ? "same" : "different").catch(() => {});
+        }
         if (dir === "right") {
           router.push({
             pathname: "/reveal",

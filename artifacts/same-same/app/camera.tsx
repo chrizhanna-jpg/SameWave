@@ -22,7 +22,7 @@ import {
   getTodaysChallenge,
   TAG_LIBRARY,
 } from "@/data/samplePhotos";
-import { analyzePhoto } from "@/utils/api";
+import { analyzePhoto, uploadPhoto } from "@/utils/api";
 import { validatePhotoOrigin, type PhotoSource } from "@/utils/photoOrigin";
 
 const MAX_TAGS = 4;
@@ -51,8 +51,14 @@ function normalizeTheme(s: string): string {
 export default function CameraScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { addMyPhoto, myPhotos } = useApp();
+  const { addMyPhoto, myPhotos, myCountryCode } = useApp();
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
+  // Keep the raw base64 + mime alongside the URI so submit() can ship the
+  // bytes to the backend (the local URI isn't reachable from the server).
+  const selectedAssetRef = React.useRef<{
+    base64: string | null;
+    mimeType: string;
+  } | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const challenge = getTodaysChallenge();
   const [themeText, setThemeText] = useState<string>("");
@@ -120,6 +126,10 @@ export default function CameraScreen() {
     }
     resetForNewPhoto();
     setSelectedPhoto(asset.uri);
+    selectedAssetRef.current = {
+      base64: asset.base64 ?? null,
+      mimeType: asset.mimeType ?? "image/jpeg",
+    };
     analyzeSelected(asset);
     return true;
   };
@@ -235,6 +245,17 @@ export default function CameraScreen() {
       ? typed || normalizeTheme(challenge.title)
       : normalizeTheme(aiTheme) || normalizeTheme(challenge.title);
     addMyPhoto(selectedPhoto, finalTheme, merged);
+    // Fire-and-forget upload to the backend so other users can match against
+    // this photo. Local-only state stays the source of truth for *this*
+    // user's UI; the backend just makes the photo discoverable to others.
+    const captured = selectedAssetRef.current;
+    if (captured?.base64) {
+      uploadPhoto({
+        imageBase64: captured.base64,
+        mimeType: captured.mimeType,
+        countryCode: myCountryCode,
+      }).catch(() => {});
+    }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setTimeout(() => {
       router.back();
