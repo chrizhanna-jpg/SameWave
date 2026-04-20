@@ -62,7 +62,12 @@ function scoreCandidates(
   // fresh material even after the curated pool repeats. The generator is
   // hard-gated by ENABLE_SYNTHETIC_MATCHES (tied to __DEV__) and returns []
   // in production builds — real users only ship.
-  const synthetic = generateSyntheticCandidates(preferredTheme, myTags, 8);
+  // Test-build only: generate a deep pool of synthetic candidates so any
+  // AI-suggested theme always has plenty of fresh material to swipe (the
+  // curated SAMPLE_PHOTOS only cover ~9 themes — freeform AI themes need
+  // this top-up). Hard-gated by ENABLE_SYNTHETIC_MATCHES → returns [] in
+  // production builds.
+  const synthetic = generateSyntheticCandidates(preferredTheme, myTags, 24);
   const pool = [...SAMPLE_PHOTOS, ...synthetic];
 
   const candidates: Scored[] = pool
