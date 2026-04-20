@@ -73,20 +73,11 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="map"
-        options={{
-          title: "World",
-          tabBarIcon: ({ color }) => (
-            <Icon name="map" size={22} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
         name="profile"
         options={{
-          title: "Me",
+          title: "My World",
           tabBarIcon: ({ color }) => (
-            <Icon name="user" size={22} color={color} />
+            <Icon name="globe" size={22} color={color} />
           ),
         }}
       />
