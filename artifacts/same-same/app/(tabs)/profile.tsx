@@ -476,7 +476,7 @@ export default function ProfileScreen() {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-                Recent passes
+                Recent Different
               </Text>
               <Text style={[styles.sectionCount, { color: colors.mutedForeground }]}>
                 Changed your mind?
@@ -487,41 +487,57 @@ export default function ProfileScreen() {
                 <View
                   key={match.id}
                   style={[
-                    styles.matchRow,
+                    styles.passedCard,
                     {
                       backgroundColor: colors.card,
                       borderColor: colors.border,
-                      opacity: 0.92,
                     },
                   ]}
                 >
-                  <PhotoCard uri={match.myPhoto} size="sm" />
-                  <View style={styles.matchMeta}>
-                    <View style={styles.matchFlags}>
-                      <Text style={styles.matchFlag}>🌍</Text>
-                      <Icon name="arrow-right" size={12} color={colors.mutedForeground} />
-                      <Text style={styles.matchFlag}>{match.theirCountryFlag}</Text>
-                    </View>
-                    <Text style={[styles.matchCountry, { color: colors.foreground }]}>
+                  {/* Header — country flow + name on one full-width row */}
+                  <View style={styles.passedHeader}>
+                    <Text style={styles.matchFlag}>🌍</Text>
+                    <Icon name="arrow-right" size={12} color={colors.mutedForeground} />
+                    <Text style={styles.matchFlag}>{match.theirCountryFlag}</Text>
+                    <Text
+                      style={[styles.passedCountry, { color: colors.foreground }]}
+                      numberOfLines={1}
+                    >
                       {match.theirCountry}
                     </Text>
+                  </View>
+
+                  {/* Photos side-by-side, centered with arrow between */}
+                  <View style={styles.passedPhotos}>
+                    <PhotoCard uri={match.myPhoto} size="sm" />
+                    <Icon name="arrow-right" size={16} color={colors.mutedForeground} />
+                    <PhotoCard uri={match.theirPhoto} size="sm" />
+                  </View>
+
+                  {/* Tier chips — full row width, naturally wraps */}
+                  <View style={styles.passedChips}>
                     <MatchTierChips match={match} myCountryCode={myCountryCode} />
-                    <Text style={[styles.matchAction, { color: colors.mutedForeground }]}>
+                  </View>
+
+                  {/* Footer — verdict label + reconsider button */}
+                  <View style={styles.passedFooter}>
+                    <Text
+                      style={[styles.matchAction, { color: colors.mutedForeground }]}
+                    >
                       You said different
                     </Text>
+                    <TouchableOpacity
+                      onPress={() => reconsiderAsSame(match.id)}
+                      style={[
+                        styles.reconsiderBtn,
+                        { backgroundColor: colors.teal },
+                      ]}
+                      accessibilityLabel={`Mark photo from ${match.theirCountry} as Same Same`}
+                      hitSlop={8}
+                    >
+                      <Text style={styles.reconsiderBtnText}>Same Same</Text>
+                    </TouchableOpacity>
                   </View>
-                  <PhotoCard uri={match.theirPhoto} size="sm" />
-                  <TouchableOpacity
-                    onPress={() => reconsiderAsSame(match.id)}
-                    style={[
-                      styles.reconsiderBtn,
-                      { backgroundColor: colors.teal },
-                    ]}
-                    accessibilityLabel={`Mark photo from ${match.theirCountry} as Same Same`}
-                    hitSlop={8}
-                  >
-                    <Text style={styles.reconsiderBtnText}>Same Same</Text>
-                  </TouchableOpacity>
                 </View>
               ))}
             </View>
@@ -764,6 +780,38 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     textDecorationLine: "underline",
     marginTop: 2,
+  },
+  passedCard: {
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 10,
+  },
+  passedHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  passedCountry: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+    flexShrink: 1,
+    marginLeft: 2,
+  },
+  passedPhotos: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+  },
+  passedChips: {
+    alignItems: "flex-start",
+  },
+  passedFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
   },
   reconsiderBtn: {
     paddingHorizontal: 12,
