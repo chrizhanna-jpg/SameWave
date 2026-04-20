@@ -214,37 +214,56 @@ export default function RevealScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {isCelebrated && (
-          <Animated.View
-            style={[
-              styles.sameDayBanner,
-              {
-                backgroundColor:
-                  timeTier.rank >= 3 ? colors.gold + "2a" : colors.gold + "1f",
-                borderColor: colors.gold,
-                borderWidth: timeTier.rank >= 3 ? 2 : 1,
-                opacity: timeTier.rank >= 2 ? sparkleOpacity : 1,
-              },
-            ]}
-          >
-            <Text style={styles.sameDayEmoji}>{timeTier.emoji}</Text>
-            <View style={{ flex: 1 }}>
-              <View style={styles.tierTitleRow}>
-                <Text style={[styles.sameDayTitle, { color: colors.gold }]}>
-                  {timeTier.label}
-                </Text>
-                {timeTier.sparkles > 0 && (
-                  <Text style={[styles.tierSparkles, { color: colors.gold }]}>
-                    {"✨".repeat(timeTier.sparkles)}
+        {(() => {
+          // Single celebration banner that always renders. It folds together
+          // what used to be three separate elements (the celebration banner,
+          // the in-card tier chip row, and the standalone insight box) so the
+          // user gets one bold line instead of three saying similar things.
+          // For the rare "across the world" case it renders as a soft neutral
+          // pill instead of the loud gold treatment.
+          const isLoud = timeTier.rank >= 1;
+          const accent = isLoud ? colors.gold : colors.teal;
+          const narrative =
+            timeTier.kind === "minute"
+              ? `Right this minute, someone in ${match.theirCountry} is sharing the same thing.`
+              : timeTier.kind === "hour"
+              ? `Within the hour, someone in ${match.theirCountry} shared the same thing.`
+              : timeTier.kind === "day"
+              ? `Today, someone in ${match.theirCountry} shared the same thing.`
+              : timeTier.kind === "week"
+              ? `This week, someone in ${match.theirCountry} shared the same thing.`
+              : `Across the world, someone in ${match.theirCountry} shared the same thing.`;
+          return (
+            <Animated.View
+              style={[
+                styles.sameDayBanner,
+                {
+                  backgroundColor: accent + (isLoud ? "1f" : "14"),
+                  borderColor: accent + (isLoud ? "ff" : "55"),
+                  borderWidth: timeTier.rank >= 3 ? 2 : 1,
+                  opacity: timeTier.rank >= 2 ? sparkleOpacity : 1,
+                },
+              ]}
+            >
+              <Text style={styles.sameDayEmoji}>{timeTier.emoji}</Text>
+              <View style={{ flex: 1 }}>
+                <View style={styles.tierTitleRow}>
+                  <Text style={[styles.sameDayTitle, { color: accent }]}>
+                    {timeTier.label}
                   </Text>
-                )}
+                  {timeTier.sparkles > 0 && (
+                    <Text style={[styles.tierSparkles, { color: accent }]}>
+                      {"✨".repeat(timeTier.sparkles)}
+                    </Text>
+                  )}
+                </View>
+                <Text style={[styles.sameDaySub, { color: colors.foreground }]}>
+                  {narrative}
+                </Text>
               </View>
-              <Text style={[styles.sameDaySub, { color: colors.foreground }]}>
-                {timeTier.sub}
-              </Text>
-            </View>
-          </Animated.View>
-        )}
+            </Animated.View>
+          );
+        })()}
 
         <Animated.View
           style={{
@@ -282,6 +301,10 @@ export default function RevealScreen() {
             </View>
           </View>
 
+          {/* Photos sit side-by-side. We dropped the "Your photo / Their
+              photo" labels — the CountryReveal below already anchors which
+              side is which, and the timestamps below each photo carry the
+              "when did they post" signal that actually matters. */}
           <View style={styles.photoPair}>
             <View style={styles.photoWrapper}>
               <Image
@@ -289,12 +312,9 @@ export default function RevealScreen() {
                 style={styles.photo}
                 resizeMode="cover"
               />
-              <Text style={[styles.photoLabel, { color: colors.mutedForeground }]}>
-                Your photo
-              </Text>
               {match.myPhotoUploadedAt && (
                 <Text style={[styles.photoLabelTime, { color: colors.mutedForeground }]}>
-                  {timeAgo(new Date(match.myPhotoUploadedAt))}
+                  you · {timeAgo(new Date(match.myPhotoUploadedAt))}
                 </Text>
               )}
             </View>
@@ -305,12 +325,9 @@ export default function RevealScreen() {
                 style={styles.photo}
                 resizeMode="cover"
               />
-              <Text style={[styles.photoLabel, { color: colors.mutedForeground }]}>
-                Their photo
-              </Text>
               {match.theirPhotoMinutesAgo != null && (
                 <Text style={[styles.photoLabelTime, { color: colors.mutedForeground }]}>
-                  {timeAgo(simulatedPostedAt(match.theirPhotoMinutesAgo))}
+                  them · {timeAgo(simulatedPostedAt(match.theirPhotoMinutesAgo))}
                 </Text>
               )}
             </View>
@@ -338,52 +355,32 @@ export default function RevealScreen() {
                 : s.sameLastDay > 0
                 ? { count: s.sameLastDay, when: "in the last day" }
                 : { count: s.sameAllTime, when: "all time" };
+            // Compact one-line "echo" stat. We dropped the three-chip
+            // breakdown (last hour / last day / all time) since the
+            // headline already adapts to the most relevant window and
+            // the all-time number rides along in the sub. Less is more.
             return (
               <View
                 style={[
                   styles.echoBox,
                   {
-                    backgroundColor: colors.teal + "1a",
-                    borderColor: colors.teal + "55",
+                    backgroundColor: colors.teal + "14",
+                    borderColor: colors.teal + "44",
                   },
                 ]}
               >
                 <Text style={[styles.echoHeadline, { color: colors.teal }]}>
                   {headline.count.toLocaleString()}{" "}
                   <Text style={[styles.echoHeadlineSoft, { color: colors.teal }]}>
-                    {headline.count === 1 ? "other person also" : "others also"} said same same
+                    {headline.count === 1 ? "other also" : "others also"} said same same
                   </Text>
                 </Text>
                 <Text style={[styles.echoSub, { color: colors.mutedForeground }]}>
-                  {headline.when} · {s.sameAllTime.toLocaleString()} total
+                  {headline.when}
+                  {s.sameAllTime !== headline.count
+                    ? ` · ${s.sameAllTime.toLocaleString()} all-time`
+                    : ""}
                 </Text>
-                {(s.sameLastHour > 0 || s.sameLastDay > 0) && s.sameAllTime > 1 && (
-                  <View style={styles.echoChipRow}>
-                    {[
-                      { label: "Last hour", value: s.sameLastHour },
-                      { label: "Last day", value: s.sameLastDay },
-                      { label: "All time", value: s.sameAllTime },
-                    ].map((b) => (
-                      <View
-                        key={b.label}
-                        style={[
-                          styles.echoChip,
-                          {
-                            backgroundColor: colors.background,
-                            borderColor: colors.border,
-                          },
-                        ]}
-                      >
-                        <Text style={[styles.echoChipValue, { color: colors.foreground }]}>
-                          {b.value.toLocaleString()}
-                        </Text>
-                        <Text style={[styles.echoChipLabel, { color: colors.mutedForeground }]}>
-                          {b.label}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
               </View>
             );
           })()}
@@ -455,56 +452,28 @@ export default function RevealScreen() {
 
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-          <CountryReveal
-            leftCountry="Your Country"
-            leftFlag="🌍"
-            rightCountry={match.theirCountry}
-            rightFlag={match.theirCountryFlag}
-          />
-
-          <View style={styles.tierChipsRow}>
+          {/* CountryReveal carries the geographic story; we tag it with a
+              single small chip ("Same continent", "Across oceans", etc.)
+              so the geo tier stays visible without adding a whole row of
+              redundant chips below. */}
+          <View style={styles.countryRevealWrap}>
             <View
               style={[
-                styles.tierChip,
-                { backgroundColor: colors.teal + "18", borderColor: colors.teal + "55" },
+                styles.geoChip,
+                { backgroundColor: colors.teal + "14", borderColor: colors.teal + "44" },
               ]}
             >
-              <Text style={styles.tierChipEmoji}>{geoTier.emoji}</Text>
-              <Text style={[styles.tierChipText, { color: colors.teal }]}>
+              <Text style={styles.geoChipEmoji}>{geoTier.emoji}</Text>
+              <Text style={[styles.geoChipText, { color: colors.teal }]}>
                 {geoTier.label}
               </Text>
             </View>
-            <View
-              style={[
-                styles.tierChip,
-                { backgroundColor: colors.gold + "18", borderColor: colors.gold + "55" },
-              ]}
-            >
-              <Text style={styles.tierChipEmoji}>{timeTier.emoji}</Text>
-              <Text style={[styles.tierChipText, { color: colors.gold }]}>
-                {timeTier.label}
-              </Text>
-            </View>
-          </View>
-
-          <View
-            style={[
-              styles.insightBox,
-              { backgroundColor: colors.teal + "18", borderColor: colors.teal + "40" },
-            ]}
-          >
-            <Icon name="heart" size={16} color={colors.teal} />
-            <Text style={[styles.insightText, { color: colors.teal }]}>
-              {timeTier.kind === "minute"
-                ? `Right this minute, someone in ${match.theirCountry} is sharing the same thing.`
-                : timeTier.kind === "hour"
-                ? `Within the hour, someone in ${match.theirCountry} shared the same thing.`
-                : timeTier.kind === "day"
-                ? `Today, someone in ${match.theirCountry} shared the same thing.`
-                : timeTier.kind === "week"
-                ? `This week, someone in ${match.theirCountry} shared the same thing.`
-                : `Across the world, someone in ${match.theirCountry} shared the same thing.`}
-            </Text>
+            <CountryReveal
+              leftCountry="Your Country"
+              leftFlag="🌍"
+              rightCountry={match.theirCountry}
+              rightFlag={match.theirCountryFlag}
+            />
           </View>
 
           {!proUnlocked && (
@@ -515,42 +484,19 @@ export default function RevealScreen() {
         </ViewShot>
         </Animated.View>
 
-        <Animated.View
-          style={[
-            styles.statsRow,
-            { opacity: fadeIn },
-          ]}
-        >
-          <View style={[styles.statChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.statNum, { color: colors.primary }]}>
-              {matchedCountries.length}
-            </Text>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
-              countries
-            </Text>
-          </View>
-          <View style={[styles.statChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={styles.statEmoji}>{themeEmoji}</Text>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
-              {themeTitle.toLowerCase()}
-            </Text>
-          </View>
-          <View style={[styles.statChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.statNum, { color: timeTier.rank >= 2 ? colors.gold : colors.teal }]}>
-              {timeTier.kind === "minute"
-                ? "Now"
-                : timeTier.kind === "hour"
-                ? "Hour"
-                : timeTier.kind === "day"
-                ? "Today"
-                : timeTier.kind === "week"
-                ? "Week"
-                : "—"}
-            </Text>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
-              {timeTier.label.toLowerCase()}
-            </Text>
-          </View>
+        {/* Lifetime country count — the only stat outside the card that
+            isn't already shown inside it. The old row had three chips
+            (countries, theme, time tier) but theme and time tier already
+            live in the card above, so we keep just the unique number as
+            a slim inline pill. */}
+        <Animated.View style={[styles.lifetimePill, { opacity: fadeIn, backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={styles.lifetimePillEmoji}>🌍</Text>
+          <Text style={[styles.lifetimePillNum, { color: colors.primary }]}>
+            {matchedCountries.length}
+          </Text>
+          <Text style={[styles.lifetimePillLabel, { color: colors.mutedForeground }]}>
+            {matchedCountries.length === 1 ? "country matched · all-time" : "countries matched · all-time"}
+          </Text>
         </Animated.View>
 
         {/* Anonymous Connect Request CTA — viral hook: mystery reveal,
@@ -804,8 +750,8 @@ const styles = StyleSheet.create({
   revealCard: {
     borderRadius: 24,
     borderWidth: 1,
-    padding: 20,
-    gap: 18,
+    padding: 18,
+    gap: 14,
     overflow: "hidden",
   },
   newBadge: {
@@ -855,19 +801,12 @@ const styles = StyleSheet.create({
     height: 160,
     borderRadius: 12,
   },
-  photoLabel: {
+  photoLabelTime: {
     fontSize: 11,
     fontFamily: "Inter_500Medium",
     textAlign: "center",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  photoLabelTime: {
-    fontSize: 10,
-    fontFamily: "Inter_400Regular",
-    textAlign: "center",
     marginTop: 2,
-    opacity: 0.7,
+    letterSpacing: 0.3,
   },
   vsBar: {
     width: 1,
@@ -903,29 +842,45 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     letterSpacing: 0.2,
   },
-  echoChipRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 6,
-  },
-  echoChip: {
-    flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 6,
-    borderRadius: 10,
-    borderWidth: 1,
+  countryRevealWrap: {
     alignItems: "center",
-    gap: 2,
+    gap: 10,
   },
-  echoChipValue: {
-    fontSize: 16,
+  geoChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  geoChipEmoji: { fontSize: 12 },
+  geoChipText: {
+    fontSize: 11,
     fontFamily: "Inter_700Bold",
-  },
-  echoChipLabel: {
-    fontSize: 10,
-    fontFamily: "Inter_500Medium",
     letterSpacing: 0.3,
     textTransform: "uppercase",
+  },
+  lifetimePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    alignSelf: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  lifetimePillEmoji: { fontSize: 14 },
+  lifetimePillNum: {
+    fontSize: 15,
+    fontFamily: "Inter_700Bold",
+  },
+  lifetimePillLabel: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+    letterSpacing: 0.3,
   },
   vibeLabel: {
     fontSize: 12,
@@ -954,43 +909,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "Inter_600SemiBold",
   },
-  insightBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  insightText: {
-    flex: 1,
-    fontSize: 13,
-    fontFamily: "Inter_500Medium",
-    lineHeight: 18,
-  },
-  statsRow: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  statChip: {
-    flex: 1,
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingVertical: 14,
-    alignItems: "center",
-    gap: 4,
-  },
-  statNum: {
-    fontSize: 20,
-    fontFamily: "Inter_700Bold",
-  },
-  statEmoji: {
-    fontSize: 22,
-  },
-  statLabel: {
-    fontSize: 11,
-    fontFamily: "Inter_400Regular",
-  },
   nextBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -1011,27 +929,6 @@ const styles = StyleSheet.create({
   tierSparkles: {
     fontSize: 12,
     letterSpacing: 1,
-  },
-  tierChipsRow: {
-    flexDirection: "row",
-    gap: 8,
-    flexWrap: "wrap",
-    justifyContent: "center",
-  },
-  tierChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  tierChipEmoji: { fontSize: 14 },
-  tierChipText: {
-    fontSize: 12,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: 0.3,
   },
   watermark: {
     alignSelf: "center",
