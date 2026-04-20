@@ -73,17 +73,19 @@ function scoreCandidates(
       const inChain = idx >= 0;
       const sameTheme = p.theme === preferredTheme;
       // Tag overlap dominates. Then theme match. Then adjacency depth.
-      // Recency contributes — and same-day photos get an extra bump so a
-      // fresh, world-away match can still surface even when no tags overlap.
-      const isSameDay = p.minutesAgo <= 24 * 60;
+      // Recency is a small tiebreaker — never the headline signal — so a
+      // brand-new but totally unrelated photo can't outrank an older,
+      // genuinely similar one.
       const score =
-        sharedTags.length * 5 +
-        (sameTheme ? 3 : 0) +
-        (inChain && !sameTheme ? Math.max(0, 2 - idx * 0.5) : 0) +
-        Math.max(0, 1 - p.minutesAgo / 1440) +
-        (isSameDay ? 1.5 : 0);
+        sharedTags.length * 6 +
+        (sameTheme ? 4 : 0) +
+        (inChain && !sameTheme ? Math.max(0, 2 - idx * 0.6) : 0) +
+        Math.max(0, 0.6 - p.minutesAgo / 4320); // up to +0.6, decays over 3 days
       return { photo: p, score, sharedTags, inChain };
     })
+    // Hard floor: drop candidates with no tag overlap AND no theme/chain
+    // relationship — those were the "nothing like my photo" matches.
+    .filter((c) => c.sharedTags.length > 0 || c.inChain)
     .sort((a, b) => b.score - a.score);
   return candidates;
 }
@@ -100,11 +102,10 @@ function getTheirPhoto(
   const pickFrom = (excl: string[]) => {
     const ranked = scoreCandidates(preferredTheme, myTags, excl);
     if (ranked.length === 0) return null;
-    // Widen the top-tier window so repeated swipes don't keep landing on
-    // the same handful of high scorers. We sample from the top 8 within a
-    // 1.5-point band of the leader.
+    // Tight top-tier window (0.6 pts) so we only randomise between
+    // genuinely-comparable matches, never reach for the next-best-thing.
     const topScore = ranked[0].score;
-    const topTier = ranked.filter((c) => c.score >= topScore - 1.5).slice(0, 8);
+    const topTier = ranked.filter((c) => c.score >= topScore - 0.6).slice(0, 6);
     const pick = topTier[Math.floor(Math.random() * topTier.length)];
     return {
       photo: pick.photo,
@@ -120,12 +121,17 @@ function getTheirPhoto(
   const recycleExcl = currentUri ? [currentUri] : [];
   const recycled = pickFrom(recycleExcl);
   if (recycled && recycled.photo.uri !== currentUri) return recycled;
-  // Last-ditch: any photo other than current.
-  const fallback = SAMPLE_PHOTOS.find((p) => p.uri !== currentUri) ?? SAMPLE_PHOTOS[0];
+  // Last-ditch: prefer a photo from the same theme, then chain, then any.
+  const chain = getThemeChain(preferredTheme);
+  const fallback =
+    SAMPLE_PHOTOS.find((p) => p.theme === preferredTheme && p.uri !== currentUri) ??
+    SAMPLE_PHOTOS.find((p) => chain.includes(p.theme) && p.uri !== currentUri) ??
+    SAMPLE_PHOTOS.find((p) => p.uri !== currentUri) ??
+    SAMPLE_PHOTOS[0];
   return {
     photo: fallback,
     matchedTheme: fallback.theme,
-    sharedTags: [],
+    sharedTags: fallback.tags.filter((t) => myTags.includes(t)),
   };
 }
 

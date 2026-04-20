@@ -298,7 +298,7 @@ const SYNTH_COUNTRY_POOL: { country: string; code: string; flag: string }[] = [
 
 // Topical photo IDs grouped by theme — generator picks from these so
 // synthesized "matches" still feel relevant to what the user posted.
-const SYNTH_PHOTO_BANK: Record<string, string[]> = {
+const SYNTH_PHOTO_BANK = {
   morning: [
     "1497935586351-b67a49e012bf","1542990253-0d0f5be5f0ed","1559056199-641a0ac8b55e",
     "1497636577773-f1231844b336","1466637574441-749b8f19452f",
@@ -335,19 +335,40 @@ const SYNTH_PHOTO_BANK: Record<string, string[]> = {
     "1517423440428-a5a00ad493e8","1573865526739-10659fec78a5","1592194996308-7b43878e84a6",
     "1548247416-ec66f4900b2e","1587300003388-59208cc962cb","1437824368796-d7c7c0fb39b1",
   ],
-};
+  // New lifestyle buckets so lifestyle tags don't fall through to "joy".
+  active: [
+    "1518611012118-696072aa579a","1517836357463-d25dfeac3438","1571019613454-1cb2f99b2d8b",
+    "1545205597-3d9d02c29597","1506905925346-21bda4d32df4",
+  ],
+  creative: [
+    "1513475382585-d06e58bcb0e0","1455390582262-044cdead277a","1507003211169-0a1dd7228f2d",
+    "1499951360447-b19be8fe80f5","1481627834876-b7833e8f5570",
+  ],
+  home: [
+    "1505691938895-1758d7feb511","1416879595882-3373a0480b5b","1519710164239-da123dc03ef4",
+    "1462536943532-57a629f6cc60","1493663284031-b7e3aefcae8e",
+  ],
+  travel: [
+    "1488646953014-85cb44e25828","1502602898657-3e91760cbb34","1530789253388-582c481c54b0",
+    "1507525428034-b723cf961d3e","1512100356356-de1b84283e18",
+  ],
+} as const;
 
 // Map common tag IDs → SYNTH_PHOTO_BANK theme buckets so freeform user tags
 // still funnel to a sensible photo bucket.
 const TAG_TO_BUCKET: Record<string, keyof typeof SYNTH_PHOTO_BANK> = {
-  coffee: "morning", drink: "morning",
-  meal: "food", bread: "food",
-  art: "hands",
+  coffee: "morning", drink: "morning", warm: "morning", cozy: "home",
+  meal: "food", bread: "food", cooking: "food", baking: "food", dessert: "food", cafe: "food",
+  art: "creative", crafts: "creative", music: "creative", photography: "creative", reading: "creative", fashion: "creative",
   sunset: "sky", clouds: "sky", stars: "sky", night: "sky",
-  transit: "commute", city: "commute",
-  laptop: "work", desk: "work",
-  smile: "joy", celebration: "joy", people: "joy",
-  trees: "nature", mountains: "nature", outdoors: "nature", water: "nature",
+  transit: "commute", city: "travel",
+  laptop: "work", desk: "work", study: "work",
+  smile: "joy", celebration: "joy", people: "joy", party: "joy", friends: "joy", family: "joy", kids: "joy", dancing: "joy",
+  trees: "nature", mountains: "nature", outdoors: "nature", water: "nature", snow: "nature", beach: "travel",
+  hiking: "active", fitness: "active", yoga: "active", cycling: "active", running: "active", sports: "active",
+  travel: "travel",
+  home: "home", plants: "home", flowers: "home", garden: "home", vintage: "home",
+  gaming: "creative",
   dog: "pets", cat: "pets", animal: "pets", wildlife: "pets",
 };
 
@@ -361,14 +382,18 @@ function pickFromTheme(theme: string): keyof typeof SYNTH_PHOTO_BANK {
 // only shows tags that are actually plausible for the photo shown.
 const BUCKET_TAG_POOL: Record<keyof typeof SYNTH_PHOTO_BANK, string[]> = {
   morning: ["coffee", "warm", "cozy", "sunset", "drink"],
-  food: ["meal", "bread", "cooking", "baking", "dessert", "drink"],
+  food: ["meal", "bread", "cooking", "baking", "dessert", "drink", "cafe"],
   hands: ["art", "crafts", "people"],
   sky: ["sunset", "clouds", "stars", "night"],
   commute: ["transit", "city", "travel"],
   work: ["laptop", "desk", "study", "coffee"],
-  joy: ["smile", "celebration", "people", "party", "friends"],
-  nature: ["trees", "mountains", "outdoors", "water", "hiking"],
+  joy: ["smile", "celebration", "people", "party", "friends", "family", "kids", "dancing"],
+  nature: ["trees", "mountains", "outdoors", "water", "hiking", "snow"],
   pets: ["dog", "cat", "animal", "wildlife"],
+  active: ["fitness", "yoga", "hiking", "cycling", "running", "sports", "outdoors"],
+  creative: ["art", "music", "photography", "reading", "crafts", "fashion", "gaming"],
+  home: ["home", "plants", "flowers", "garden", "cozy", "vintage"],
+  travel: ["travel", "beach", "city", "outdoors", "mountains"],
 };
 
 // Builds synthetic candidates that look like real samples but are sampled
