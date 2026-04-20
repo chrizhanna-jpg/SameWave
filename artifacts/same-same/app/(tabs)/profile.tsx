@@ -18,6 +18,79 @@ import { BadgeCard } from "@/components/BadgeCard";
 import { PhotoCard } from "@/components/PhotoCard";
 import { CountryPickerModal } from "@/components/CountryPickerModal";
 import { tagEmoji, tagLabel } from "@/utils/interests";
+import { getGeoTier, getTimeTier } from "@/utils/celebrations";
+import type { Match } from "@/context/AppContext";
+
+function MatchTierChips({
+  match,
+  myCountryCode,
+}: {
+  match: Match;
+  myCountryCode?: string;
+}) {
+  const colors = useColors();
+  const time = getTimeTier(match.myPhotoUploadedAt, match.theirPhotoMinutesAgo);
+  const geo = getGeoTier(myCountryCode, match.theirCountryCode);
+  const timeColor =
+    time.kind === "minute"
+      ? colors.gold
+      : time.kind === "hour"
+      ? colors.teal
+      : colors.mutedForeground;
+  return (
+    <View style={tierChipStyles.row}>
+      <View
+        style={[
+          tierChipStyles.chip,
+          {
+            backgroundColor: timeColor + "1f",
+            borderColor: timeColor + "55",
+          },
+        ]}
+      >
+        <Text style={tierChipStyles.emoji}>{time.emoji}</Text>
+        <Text style={[tierChipStyles.text, { color: timeColor }]}>
+          {time.label}
+        </Text>
+      </View>
+      <View
+        style={[
+          tierChipStyles.chip,
+          { backgroundColor: colors.muted, borderColor: colors.border },
+        ]}
+      >
+        <Text style={tierChipStyles.emoji}>{geo.emoji}</Text>
+        <Text style={[tierChipStyles.text, { color: colors.foreground }]}>
+          {geo.label}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+const tierChipStyles = StyleSheet.create({
+  row: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 4,
+    marginTop: 2,
+  },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  emoji: { fontSize: 9 },
+  text: {
+    fontSize: 9,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.2,
+  },
+});
 
 export default function ProfileScreen() {
   const colors = useColors();
@@ -362,6 +435,7 @@ export default function ProfileScreen() {
                     <Text style={[styles.matchCountry, { color: colors.foreground }]}>
                       {match.theirCountry}
                     </Text>
+                    <MatchTierChips match={match} myCountryCode={myCountryCode} />
                     <TouchableOpacity
                       onPress={() => confirmPassInstead(match.id, match.theirCountry)}
                       hitSlop={8}
@@ -420,6 +494,7 @@ export default function ProfileScreen() {
                     <Text style={[styles.matchCountry, { color: colors.foreground }]}>
                       {match.theirCountry}
                     </Text>
+                    <MatchTierChips match={match} myCountryCode={myCountryCode} />
                     <Text style={[styles.matchAction, { color: colors.mutedForeground }]}>
                       You said different
                     </Text>

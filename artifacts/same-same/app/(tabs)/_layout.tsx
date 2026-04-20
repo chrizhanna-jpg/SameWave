@@ -64,6 +64,15 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="discover"
+        options={{
+          title: "Discover",
+          tabBarIcon: ({ color }) => (
+            <Icon name="zap" size={22} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="map"
         options={{
           title: "World",
