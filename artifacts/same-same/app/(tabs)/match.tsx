@@ -364,7 +364,7 @@ export default function SwipeScreen() {
             taglineColor={colors.mutedForeground}
           />
           <Text style={[styles.subtitle, { color: colors.mutedForeground, marginTop: 4 }]}>
-            {streakCount > 0 ? `${streakCount} matches` : "Find your same"}
+            {streakCount > 0 ? `${streakCount} matches` : "Find your similar"}
           </Text>
         </View>
         <TouchableOpacity

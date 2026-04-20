@@ -20,17 +20,17 @@ const STEPS = [
   {
     title: null,
     subtitle: null,
-    body: "Post a photo from your daily life. We pair it with a visually similar photo from someone, somewhere else in the world.",
+    body: "Every human is unique. But right now — somewhere across the world — someone is doing the same thing as you, photographing the same kind of moment, feeling the same way. SEMO finds them.",
   },
   {
     title: "Swipe to judge.",
     subtitle: "Then discover.",
-    body: "Is this moment 'Same Same' or 'Different'? You decide. Only then do we reveal where that photo was taken.",
+    body: "Same situation? Same activity? Same feeling? You call it. Tap 'Same Same' or 'Different', then we reveal where in the world that moment was captured.",
   },
   {
-    title: "Fill your world.",
-    subtitle: "One match at a time.",
-    body: "Every swipe connects you to a new country. Your World Map fills in as you discover how similar we all are.",
+    title: "Same same,",
+    subtitle: "but different.",
+    body: "We're not identical — we're similar. Fill your world map with strangers who share your moments, even though no two of you are alike.",
   },
 ];
 
