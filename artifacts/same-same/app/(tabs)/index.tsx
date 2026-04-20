@@ -48,7 +48,7 @@ export default function HomeScreen() {
             taglineColor={colors.mutedForeground}
           />
           <Text style={[styles.tagline, { color: colors.mutedForeground, marginTop: 10 }]}>
-            Similar, not the same.
+            Similar vibe.
           </Text>
         </View>
 
