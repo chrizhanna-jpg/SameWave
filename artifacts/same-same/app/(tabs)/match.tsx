@@ -127,27 +127,26 @@ function getTheirPhoto(
 
   const first = pickFrom(excludeUris);
   if (first && first.photo.uri !== currentUri) return first;
-  // Exhausted (or got the same photo back) — recycle, excluding only the
-  // current photo so we never repeat in place.
-  const recycleExcl = currentUri ? [currentUri] : [];
-  const recycled = pickFrom(recycleExcl);
-  if (recycled && recycled.photo.uri !== currentUri) return recycled;
-  // Last-ditch: prefer a photo from the same theme, then chain, then any.
-  // ONLY in dev — production must never show curated SAMPLE_PHOTOS as if
-  // they were real users. SwipeScreen renders a "no matches yet" state
-  // when this returns null.
+  // Pool genuinely exhausted for this session. We deliberately do NOT
+  // recycle already-seen photos — the swipe screen shows a "you've seen
+  // everything" state until new candidates appear (a fresh upload, the
+  // backend serving more real photos, etc.).
   if (!ENABLE_SYNTHETIC_MATCHES) return null;
-  const chain = getThemeChain(preferredTheme);
-  const fallback =
-    SAMPLE_PHOTOS.find((p) => p.theme === preferredTheme && p.uri !== currentUri) ??
-    SAMPLE_PHOTOS.find((p) => chain.includes(p.theme) && p.uri !== currentUri) ??
-    SAMPLE_PHOTOS.find((p) => p.uri !== currentUri) ??
-    SAMPLE_PHOTOS[0];
-  return {
-    photo: fallback,
-    matchedTheme: fallback.theme,
-    sharedTags: fallback.tags.filter((t) => myTags.includes(t)),
-  };
+  // Dev only: try the synthetic generator one more time with a wider
+  // exclusion list. The generator picks fresh randomised entries on each
+  // call, so a few of them may genuinely be unseen even when the curated
+  // pool is exhausted.
+  const excludeSet = new Set([...excludeUris, ...(currentUri ? [currentUri] : [])]);
+  const fresh = generateSyntheticCandidates(preferredTheme, myTags, 24)
+    .find((p) => !excludeSet.has(p.uri));
+  if (fresh) {
+    return {
+      photo: fresh,
+      matchedTheme: fresh.theme,
+      sharedTags: fresh.tags.filter((t) => myTags.includes(t)),
+    };
+  }
+  return null;
 }
 
 export default function SwipeScreen() {
@@ -312,8 +311,12 @@ export default function SwipeScreen() {
 
   const loadNextCandidate = useCallback(() => {
     const currentUri = theirPhotoRef.current.uri;
-    seenRef.current.push(currentUri);
-    if (seenRef.current.length > 30) seenRef.current = seenRef.current.slice(-15);
+    // Track every photo we've shown this session so the same image never
+    // comes back twice. The list is bounded only by how many photos exist
+    // in the pool, so it's effectively safe to let it grow unboundedly.
+    if (!seenRef.current.includes(currentUri)) {
+      seenRef.current.push(currentUri);
+    }
     const next = getTheirPhoto(
       activeThemeRef.current,
       myTagsRef.current,
@@ -550,7 +553,50 @@ export default function SwipeScreen() {
             </TouchableOpacity>
           </View>
         )}
-        {hasUploadedPhoto && (
+        {hasUploadedPhoto && noMore && (
+          <View style={[styles.cardWrapper, styles.emptyStateWrapper]}>
+            <View
+              style={[
+                styles.card,
+                styles.emptyStateCard,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <Text style={[styles.emptyStateEmoji]}>🌍</Text>
+              <Text style={[styles.emptyStateTitle, { color: colors.foreground }]}>
+                You're all caught up
+              </Text>
+              <Text style={[styles.emptyStateBody, { color: colors.mutedForeground }]}>
+                You've seen every "{themeTitle.toLowerCase()}" moment we have right now. Check back soon — new photos arrive from across the world all the time.
+              </Text>
+              <TouchableOpacity
+                style={[styles.emptyStateBtn, { backgroundColor: colors.teal }]}
+                onPress={() => {
+                  // Re-shuffle the deck: clear the seen list (keep only the
+                  // user's own photo) and pull a fresh candidate.
+                  seenRef.current = [myPhotoUri];
+                  const next = getTheirPhoto(
+                    activeTheme,
+                    myTags,
+                    seenRef.current,
+                    undefined,
+                    realPoolRef.current,
+                  );
+                  if (next) {
+                    setTheirPhoto(next.photo);
+                    setMatchedTheme(next.matchedTheme);
+                    setSharedTags(next.sharedTags);
+                    setNoMore(false);
+                  }
+                }}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.emptyStateBtnText}>Start over</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+        {hasUploadedPhoto && !noMore && (
         <Animated.View
           style={[
             styles.cardWrapper,
@@ -882,6 +928,46 @@ const styles = StyleSheet.create({
   },
   emptyCtaText: {
     color: "#fff",
+    fontFamily: "Inter_700Bold",
+    fontSize: 15,
+    letterSpacing: 0.2,
+  },
+  emptyStateWrapper: {
+    justifyContent: "center",
+  },
+  emptyStateCard: {
+    flex: 0,
+    paddingVertical: 40,
+    paddingHorizontal: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 14,
+    borderWidth: 1,
+  },
+  emptyStateEmoji: {
+    fontSize: 56,
+    marginBottom: 4,
+  },
+  emptyStateTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 22,
+    textAlign: "center",
+  },
+  emptyStateBody: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: "center",
+    marginBottom: 6,
+  },
+  emptyStateBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 28,
+    borderRadius: 999,
+    marginTop: 4,
+  },
+  emptyStateBtnText: {
+    color: "#001018",
     fontFamily: "Inter_700Bold",
     fontSize: 15,
     letterSpacing: 0.2,
