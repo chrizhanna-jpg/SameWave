@@ -20,6 +20,20 @@ export interface MyPhoto {
   uploadedAt: string;
   theme: string;
   tags?: string[];
+  /**
+   * Marked true when the photo failed our EXIF authenticity check
+   * (no camera metadata, AI software signature, etc). AI photos are
+   * shown with an "AI" badge and excluded from echo connections.
+   */
+  isAI?: boolean;
+}
+
+// Module-scoped registry of URIs flagged as AI. Kept in sync with the
+// `myPhotos` slice so any PhotoCard rendering one of these URIs can show
+// the AI badge without prop drilling. Sample photos use the same pattern.
+const AI_PHOTO_URIS: Set<string> = new Set();
+export function isAiPhoto(uri: string): boolean {
+  return AI_PHOTO_URIS.has(uri);
 }
 
 export interface Match {
@@ -139,7 +153,7 @@ interface AppContextValue extends AppState {
    */
   changeVerdict: (id: string, newVerdict: "same" | "different") => Match | null;
   setMyCountry: (code: string, name: string, flag: string) => void;
-  addMyPhoto: (uri: string, theme: string, tags?: string[]) => void;
+  addMyPhoto: (uri: string, theme: string, tags?: string[], isAI?: boolean) => void;
   completeOnboarding: () => void;
   resetOnboarding: () => void;
   unlockPro: () => void;
@@ -197,6 +211,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     loadState();
   }, []);
 
+  // Keep the AI URI registry in sync with myPhotos so PhotoCard can flag
+  // them anywhere they render — same pattern as the sample-photo registry.
+  useEffect(() => {
+    AI_PHOTO_URIS.clear();
+    for (const p of state.myPhotos) {
+      if (p.isAI) AI_PHOTO_URIS.add(p.uri);
+    }
+  }, [state.myPhotos]);
+
   const loadState = async () => {
     try {
       const stored = await AsyncStorage.getItem("samesame_state");
@@ -217,6 +240,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               uploadedAt: p.uploadedAt ?? new Date().toISOString(),
               theme: p.theme ?? "joy",
               tags: p.tags ?? [],
+              isAI: p.isAI ?? false,
             };
           }
         );
@@ -419,22 +443,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
-  const addMyPhoto = useCallback((uri: string, theme: string, tags?: string[]) => {
+  const addMyPhoto = useCallback((uri: string, theme: string, tags?: string[], isAI?: boolean) => {
     const photo: MyPhoto = {
       uri,
       uploadedAt: new Date().toISOString(),
       theme,
       tags: tags ?? [],
+      isAI: isAI ?? false,
     };
     setState((prev) => {
       const newState = { ...prev, myPhotos: [photo, ...prev.myPhotos] };
       saveState(newState);
       return newState;
     });
-    // Dev-only: schedule a fake echo against the photo we just uploaded
-    // so the user can see the notification flow without real network
-    // traffic. Real builds receive these via push.
-    if (__DEV__) {
+    // AI-flagged photos are excluded from echo connections — no fake
+    // echoes generated, no real ones either (camera.tsx skips backend
+    // upload when isAI is true).
+    if (__DEV__ && !photo.isAI) {
       setTimeout(
         () => {
           // buildFakeEcho uses SAMPLE_PHOTOS only — no closure stale-state risk

@@ -1,29 +1,28 @@
 import { Platform } from "react-native";
 import type * as ImagePicker from "expo-image-picker";
 
-// Echo only accepts authentic photos taken with the device's camera.
-// We reject AI-generated, downloaded, or otherwise-sourced images by
-// inspecting EXIF metadata. Camera-taken photos always pass.
+// Echo accepts both authentic camera photos AND AI-generated images, but we
+// detect AI images via EXIF and flag them so the rest of the app can:
+//   - mark them visually (PhotoCard "AI" badge)
+//   - exclude them from echo connections (no echoes generated for AI uploads)
 //
 // Strategy:
-//   - source === "camera": trust the in-app camera capture path.
-//   - source === "library": require camera EXIF (Make + Model + capture
-//     timestamp) AND no known AI-generator software signature.
-//
-// Web has no real device-camera path through expo-image-picker, and EXIF
-// support there is patchy. We bypass validation on web so the test/dev
-// preview keeps working — native release builds enforce the rule.
+//   - source === "camera": always trusted, never AI.
+//   - source === "library": inspect EXIF for AI-generator software signatures
+//     and missing camera metadata. Failing checks => looksAi = true.
+//   - Web bypasses EXIF inspection (picker support is patchy) — those uploads
+//     are treated as authentic.
 
 export type PhotoSource = "camera" | "library";
 
 export interface PhotoOriginResult {
-  ok: boolean;
+  /** True when the image looks AI-generated (or is missing camera EXIF). */
+  looksAi: boolean;
   reason?:
     | "no_exif"
     | "ai_software"
     | "no_camera_make_model"
     | "no_capture_date";
-  message?: string;
 }
 
 const AI_SOFTWARE_SIGNATURES = [
@@ -64,26 +63,21 @@ function readField(exif: Record<string, unknown>, ...keys: string[]): string {
   return "";
 }
 
-export function validatePhotoOrigin(
+export function detectPhotoOrigin(
   asset: ImagePicker.ImagePickerAsset,
   source: PhotoSource,
 ): PhotoOriginResult {
   // Camera path is trusted — the OS just took the photo for us.
-  if (source === "camera") return { ok: true };
+  if (source === "camera") return { looksAi: false };
 
-  // Web: skip validation (see file header for rationale).
-  if (Platform.OS === "web") return { ok: true };
+  // Web: skip EXIF inspection (see file header for rationale).
+  if (Platform.OS === "web") return { looksAi: false };
 
   const exif = (asset.exif ?? {}) as Record<string, unknown>;
   const hasAnyExif = Object.keys(exif).length > 0;
 
   if (!hasAnyExif) {
-    return {
-      ok: false,
-      reason: "no_exif",
-      message:
-        "This photo has no camera information. Echo only accepts photos taken with your device's camera.",
-    };
+    return { looksAi: true, reason: "no_exif" };
   }
 
   const software = readField(exif, "Software", "software").toLowerCase();
@@ -91,23 +85,13 @@ export function validatePhotoOrigin(
     software &&
     AI_SOFTWARE_SIGNATURES.some((sig) => software.includes(sig))
   ) {
-    return {
-      ok: false,
-      reason: "ai_software",
-      message:
-        "This photo looks AI-generated. Echo is for real moments — please take a photo with your camera.",
-    };
+    return { looksAi: true, reason: "ai_software" };
   }
 
   const make = readField(exif, "Make", "make");
   const model = readField(exif, "Model", "model");
   if (!make || !model) {
-    return {
-      ok: false,
-      reason: "no_camera_make_model",
-      message:
-        "This photo doesn't include camera details. Please take a fresh photo with your device's camera.",
-    };
+    return { looksAi: true, reason: "no_camera_make_model" };
   }
 
   const dateOriginal = readField(
@@ -119,13 +103,8 @@ export function validatePhotoOrigin(
     "{Exif}DateTimeOriginal",
   );
   if (!dateOriginal) {
-    return {
-      ok: false,
-      reason: "no_capture_date",
-      message:
-        "This photo is missing a capture timestamp. Please take a fresh photo with your device's camera.",
-    };
+    return { looksAi: true, reason: "no_capture_date" };
   }
 
-  return { ok: true };
+  return { looksAi: false };
 }

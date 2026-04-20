@@ -23,7 +23,7 @@ import {
   TAG_LIBRARY,
 } from "@/data/samplePhotos";
 import { analyzePhoto, uploadPhoto } from "@/utils/api";
-import { validatePhotoOrigin, type PhotoSource } from "@/utils/photoOrigin";
+import { detectPhotoOrigin, type PhotoSource } from "@/utils/photoOrigin";
 
 const MAX_TAGS = 4;
 const QUICK_THEMES = [
@@ -59,6 +59,11 @@ export default function CameraScreen() {
     base64: string | null;
     mimeType: string;
   } | null>(null);
+  // Set when EXIF inspection flags the picked image as AI-generated. Drives
+  // the "AI image" banner, the badge persisted on the photo, and the skip
+  // of the backend upload (so AI photos never appear in others' candidate
+  // pools and never trigger echo connections).
+  const [isAi, setIsAi] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const challenge = getTodaysChallenge();
   const [themeText, setThemeText] = useState<string>("");
@@ -109,22 +114,18 @@ export default function CameraScreen() {
   const visibleTags = showAllTags ? orderedTags : orderedTags.slice(0, INITIAL_TAGS);
   const hiddenCount = orderedTags.length - INITIAL_TAGS;
 
-  const acceptOrReject = (
+  const acceptPhoto = (
     asset: ImagePicker.ImagePickerAsset,
     source: PhotoSource,
   ) => {
-    const verdict = validatePhotoOrigin(asset, source);
-    if (!verdict.ok) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert(
-        "Photo not allowed",
-        verdict.message ??
-          "Echo only accepts photos taken with your device's camera.",
-        [{ text: "OK" }],
-      );
-      return false;
-    }
+    const verdict = detectPhotoOrigin(asset, source);
     resetForNewPhoto();
+    setIsAi(verdict.looksAi);
+    if (verdict.looksAi) {
+      // Soft heads-up — not blocking. The submit flow will mark the photo
+      // as AI and exclude it from echo connections.
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    }
     setSelectedPhoto(asset.uri);
     selectedAssetRef.current = {
       base64: asset.base64 ?? null,
@@ -149,7 +150,7 @@ export default function CameraScreen() {
       exif: true,
     });
     if (!result.canceled && result.assets[0]) {
-      acceptOrReject(result.assets[0], "library");
+      acceptPhoto(result.assets[0], "library");
     }
   };
 
@@ -180,7 +181,7 @@ export default function CameraScreen() {
       exif: true,
     });
     if (!result.canceled && result.assets[0]) {
-      acceptOrReject(result.assets[0], "camera");
+      acceptPhoto(result.assets[0], "camera");
     }
   };
 
@@ -244,12 +245,14 @@ export default function CameraScreen() {
     const finalTheme = themeEdited
       ? typed || normalizeTheme(challenge.title)
       : normalizeTheme(aiTheme) || normalizeTheme(challenge.title);
-    addMyPhoto(selectedPhoto, finalTheme, merged);
+    addMyPhoto(selectedPhoto, finalTheme, merged, isAi);
     // Fire-and-forget upload to the backend so other users can match against
     // this photo. Local-only state stays the source of truth for *this*
     // user's UI; the backend just makes the photo discoverable to others.
+    // AI-flagged photos are NOT uploaded — they should never appear in
+    // anyone else's candidate pool or generate echo connections.
     const captured = selectedAssetRef.current;
-    if (captured?.base64) {
+    if (captured?.base64 && !isAi) {
       uploadPhoto({
         imageBase64: captured.base64,
         mimeType: captured.mimeType,
@@ -325,6 +328,43 @@ export default function CameraScreen() {
               style={[styles.selectedImage, { borderColor: colors.border }]}
               resizeMode="cover"
             />
+
+            {isAi && (
+              <View
+                style={[
+                  styles.aiBanner,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.primary,
+                  },
+                ]}
+              >
+                <View style={styles.aiBannerRow}>
+                  <View
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 14,
+                      backgroundColor: colors.primary,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Text style={{ color: colors.primaryForeground, fontSize: 11, fontFamily: "Inter_700Bold" }}>
+                      AI
+                    </Text>
+                  </View>
+                  <View style={{ marginLeft: 10, flex: 1 }}>
+                    <Text style={[styles.aiBannerLabel, { color: colors.foreground }]}>
+                      Looks AI-generated
+                    </Text>
+                    <Text style={[styles.aiBannerLabel, { color: colors.mutedForeground, marginTop: 2 }]}>
+                      It'll be marked with an AI badge and won't count as an echo connection.
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            )}
 
             {(analyzing || aiTags.length > 0) && (
               <View
@@ -565,9 +605,9 @@ export default function CameraScreen() {
             </TouchableOpacity>
 
             <View style={[styles.authenticNote, { borderColor: colors.border }]}>
-              <Icon name="check" size={14} color={colors.teal} />
+              <Icon name="info" size={14} color={colors.mutedForeground} />
               <Text style={[styles.authenticNoteText, { color: colors.mutedForeground }]}>
-                Real photos only — AI-generated and downloaded images are blocked.
+                AI-generated images are welcome but get an AI badge and don't count as echo connections.
               </Text>
             </View>
           </View>

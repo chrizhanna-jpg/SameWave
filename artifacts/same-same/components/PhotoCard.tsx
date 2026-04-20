@@ -1,8 +1,9 @@
 import React from "react";
-import { Image, StyleSheet, View } from "react-native";
+import { Image, StyleSheet, Text, View } from "react-native";
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
 import { isSamplePhoto } from "@/data/samplePhotos";
+import { isAiPhoto } from "@/context/AppContext";
 
 interface Props {
   uri: string;
@@ -15,9 +16,21 @@ interface Props {
    * inside an avatar) or `true` to show it for synthetic candidates.
    */
   showSampleBadge?: boolean;
+  /**
+   * Force the "AI" badge on or off. By default the badge appears
+   * automatically when the URI matches a user photo flagged as
+   * AI-generated. Pass `false` to suppress.
+   */
+  showAiBadge?: boolean;
 }
 
-export function PhotoCard({ uri, size = "md", style, showSampleBadge }: Props) {
+export function PhotoCard({
+  uri,
+  size = "md",
+  style,
+  showSampleBadge,
+  showAiBadge,
+}: Props) {
   const colors = useColors();
 
   const dimensions = {
@@ -26,12 +39,15 @@ export function PhotoCard({ uri, size = "md", style, showSampleBadge }: Props) {
     lg: { width: "100%", height: 240, borderRadius: 20 },
   }[size];
 
-  // Auto-detect sample photos so the badge appears anywhere we render one
-  // — no callsite needs to know. Authors can still override per-instance.
-  const showBadge = showSampleBadge ?? isSamplePhoto(uri);
-  const badgeSize = size === "sm" ? 18 : size === "md" ? 22 : 26;
+  // Auto-detect sample + AI photos so the badges appear anywhere we render
+  // them — no callsite needs to know. AI badge takes precedence (more
+  // important provenance signal than "this is a curated sample").
+  const isAi = showAiBadge ?? isAiPhoto(uri);
+  const showSample = (showSampleBadge ?? isSamplePhoto(uri)) && !isAi;
+  const badgeSize = size === "sm" ? 20 : size === "md" ? 24 : 28;
   const iconSize = size === "sm" ? 10 : size === "md" ? 12 : 14;
   const badgeOffset = size === "sm" ? 4 : 6;
+  const aiFontSize = size === "sm" ? 9 : size === "md" ? 10 : 12;
 
   return (
     <View
@@ -55,7 +71,34 @@ export function PhotoCard({ uri, size = "md", style, showSampleBadge }: Props) {
         ]}
         resizeMode="cover"
       />
-      {showBadge && (
+      {isAi && (
+        <View
+          style={[
+            styles.aiBadge,
+            {
+              height: badgeSize,
+              borderRadius: badgeSize / 2,
+              top: badgeOffset,
+              right: badgeOffset,
+              paddingHorizontal: badgeSize / 2.5,
+              backgroundColor: colors.primary,
+            },
+          ]}
+          accessibilityLabel="AI-generated photo"
+        >
+          <Text
+            style={{
+              color: colors.primaryForeground,
+              fontSize: aiFontSize,
+              fontFamily: "Inter_700Bold",
+              letterSpacing: 0.5,
+            }}
+          >
+            AI
+          </Text>
+        </View>
+      )}
+      {showSample && (
         <View
           style={[
             styles.badge,
@@ -88,6 +131,11 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   badge: {
+    position: "absolute",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  aiBadge: {
     position: "absolute",
     alignItems: "center",
     justifyContent: "center",
