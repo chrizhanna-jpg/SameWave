@@ -171,15 +171,28 @@ export default function SwipeScreen() {
   const { streakCount, myPhotos, addMatch, myCountryCode, myCountryName, myCountryFlag } = useApp();
   const todaysChallenge = getTodaysChallenge();
 
+  // Today's photo only — if the user's most recent upload is from a
+  // previous UTC day (yesterday's challenge or older), we don't pre-load
+  // it into the matching screen. They get the upload prompt instead, so
+  // each session starts fresh against today's challenge.
+  const todaysPhoto = React.useMemo(() => {
+    if (myPhotos.length === 0) return undefined;
+    const todayUtcDay = Math.floor(Date.now() / 86_400_000);
+    const p = myPhotos[0];
+    const uploadedUtcDay = Math.floor(
+      new Date(p.uploadedAt).getTime() / 86_400_000,
+    );
+    return uploadedUtcDay === todayUtcDay ? p : undefined;
+  }, [myPhotos]);
+
   // User's photo is LOCKED for the session — only changes when they upload a new one
   const myPhotoData = React.useMemo<{ uri: string; uploadedAt: string; theme: string; tags: string[] }>(() => {
-    if (myPhotos.length > 0) {
-      const p = myPhotos[0];
+    if (todaysPhoto) {
       return {
-        uri: p.uri,
-        uploadedAt: p.uploadedAt,
-        theme: p.theme,
-        tags: p.tags ?? [],
+        uri: todaysPhoto.uri,
+        uploadedAt: todaysPhoto.uploadedAt,
+        theme: todaysPhoto.theme,
+        tags: todaysPhoto.tags ?? [],
       };
     }
     const sample = SAMPLE_PHOTOS[0];
@@ -189,7 +202,7 @@ export default function SwipeScreen() {
       theme: sample.theme,
       tags: sample.tags,
     };
-  }, [myPhotos]);
+  }, [todaysPhoto]);
 
   const myPhotoUri = myPhotoData.uri;
   const activeTheme = myPhotoData.theme;
@@ -506,7 +519,10 @@ export default function SwipeScreen() {
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
-  const hasUploadedPhoto = myPhotos.length > 0;
+  // Treat the user as "no photo for today" if their last upload is from a
+  // previous UTC day — this makes Start Matching prompt for a fresh photo
+  // each new daily-challenge cycle instead of recycling yesterday's.
+  const hasUploadedPhoto = todaysPhoto !== undefined;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
