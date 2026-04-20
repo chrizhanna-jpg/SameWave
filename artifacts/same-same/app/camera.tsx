@@ -14,6 +14,7 @@ import { router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
+import { LoadingGlobe } from "@/components/LoadingGlobe";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
@@ -314,18 +315,32 @@ export default function CameraScreen() {
                   },
                 ]}
               >
-                <Text style={[styles.aiBannerLabel, { color: colors.mutedForeground }]}>
-                  {analyzing ? "Analyzing your photo…" : "AI spotted"}
-                </Text>
-                {!analyzing && (
-                  <Text style={[styles.aiBannerTags, { color: colors.foreground }]}>
-                    {aiTags
-                      .map((id) => {
-                        const t = TAG_LIBRARY.find((x) => x.id === id);
-                        return t ? `${t.emoji} ${t.label}` : id;
-                      })
-                      .join("  ·  ")}
-                  </Text>
+                {analyzing ? (
+                  <View style={styles.aiBannerRow}>
+                    <LoadingGlobe size={28} />
+                    <Text
+                      style={[
+                        styles.aiBannerLabel,
+                        { color: colors.mutedForeground, marginLeft: 10 },
+                      ]}
+                    >
+                      Analyzing your photo…
+                    </Text>
+                  </View>
+                ) : (
+                  <>
+                    <Text style={[styles.aiBannerLabel, { color: colors.mutedForeground }]}>
+                      AI spotted
+                    </Text>
+                    <Text style={[styles.aiBannerTags, { color: colors.foreground }]}>
+                      {aiTags
+                        .map((id) => {
+                          const t = TAG_LIBRARY.find((x) => x.id === id);
+                          return t ? `${t.emoji} ${t.label}` : id;
+                        })
+                        .join("  ·  ")}
+                    </Text>
+                  </>
                 )}
               </View>
             )}
@@ -775,6 +790,10 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 12,
     borderWidth: 1,
+  },
+  aiBannerRow: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   aiBannerLabel: {
     fontSize: 10,
