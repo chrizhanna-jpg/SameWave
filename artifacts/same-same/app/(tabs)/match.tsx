@@ -138,7 +138,7 @@ function getTheirPhoto(
 export default function SwipeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { streakCount, myPhotos, addMatch } = useApp();
+  const { streakCount, myPhotos, addMatch, myCountryCode, myCountryName, myCountryFlag } = useApp();
   const todaysChallenge = getTodaysChallenge();
 
   // User's photo is LOCKED for the session — only changes when they upload a new one
@@ -292,7 +292,7 @@ export default function SwipeScreen() {
           id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
           myPhoto: snapshotMyUri,
           theirPhoto: snapshotPhoto.uri,
-          myCountry: "You",
+          myCountry: myCountryName ?? "You",
           theirCountry: snapshotPhoto.country,
           theirCountryFlag: snapshotPhoto.countryFlag,
           theirCountryCode: snapshotPhoto.countryCode,
@@ -319,7 +319,7 @@ export default function SwipeScreen() {
         }
       });
     },
-    [sharedTags, myPhotoData.uploadedAt, pan.x, cardScale, loadNextCandidate, addMatch]
+    [sharedTags, myPhotoData.uploadedAt, pan.x, cardScale, loadNextCandidate, addMatch, myCountryName]
   );
 
   const panResponder = useRef(
@@ -497,10 +497,11 @@ export default function SwipeScreen() {
               >
                 <Text style={[styles.photoTagText, { color: "#fff" }]}>
                   {/* Hint at distance without spoiling the country reveal.
-                      Without device location this lands at "Same Planet"; once
-                      we have geolocation it can become Same Continent / Country. */}
-                  {getGeoTier(undefined, theirPhoto.countryCode).emoji}{" "}
-                  {getGeoTier(undefined, theirPhoto.countryCode).label.toLowerCase()}
+                      Uses the user's chosen home country (from onboarding /
+                      profile) to surface Same Country / Same Continent /
+                      Same Planet labels. */}
+                  {getGeoTier(myCountryCode, theirPhoto.countryCode).emoji}{" "}
+                  {getGeoTier(myCountryCode, theirPhoto.countryCode).label.toLowerCase()}
                 </Text>
                 <Text style={[styles.photoTagTime, { color: "rgba(255,255,255,0.75)" }]}>
                   {timeAgo(simulatedPostedAt(theirPhoto.minutesAgo))}

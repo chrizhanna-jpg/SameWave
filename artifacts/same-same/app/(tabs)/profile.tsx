@@ -16,6 +16,7 @@ import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { BadgeCard } from "@/components/BadgeCard";
 import { PhotoCard } from "@/components/PhotoCard";
+import { CountryPickerModal } from "@/components/CountryPickerModal";
 import { tagEmoji, tagLabel } from "@/utils/interests";
 
 export default function ProfileScreen() {
@@ -35,7 +36,12 @@ export default function ProfileScreen() {
     unreadIncoming,
     pendingOutgoing,
     myVibe,
+    myCountryCode,
+    myCountryName,
+    myCountryFlag,
+    setMyCountry,
   } = useApp();
+  const [countryPickerOpen, setCountryPickerOpen] = React.useState(false);
   // Split history by verdict — confirmed Same Same matches drive the
   // journey, recent "different" passes get their own reconsider section.
   const confirmedMatches = React.useMemo(
@@ -228,6 +234,36 @@ export default function ProfileScreen() {
             )}
           </View>
         )}
+
+        <TouchableOpacity
+          onPress={() => setCountryPickerOpen(true)}
+          activeOpacity={0.85}
+          style={[
+            styles.connectionsRow,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+          accessibilityLabel="Set your home country"
+        >
+          <View
+            style={[
+              styles.connectionsIcon,
+              { backgroundColor: colors.teal + "22" },
+            ]}
+          >
+            <Text style={{ fontSize: 18 }}>{myCountryFlag ?? "🌍"}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.connectionsTitle, { color: colors.foreground }]}>
+              {myCountryCode ? "You're in" : "Set your country"}
+            </Text>
+            <Text style={[styles.connectionsSub, { color: colors.mutedForeground }]}>
+              {myCountryName
+                ? `${myCountryName} — used for Same Country / Same Continent`
+                : "So we can celebrate same-country & same-continent matches"}
+            </Text>
+          </View>
+          <Icon name="chevron-right" size={18} color={colors.mutedForeground} />
+        </TouchableOpacity>
 
         <TouchableOpacity
           onPress={() => router.push("/connections")}
@@ -431,6 +467,14 @@ export default function ProfileScreen() {
           </View>
         )}
       </ScrollView>
+
+      <CountryPickerModal
+        visible={countryPickerOpen}
+        onClose={() => setCountryPickerOpen(false)}
+        onSelect={(c) => setMyCountry(c.code, c.name, c.flag)}
+        selectedCode={myCountryCode}
+        title="Where in the world are you?"
+      />
     </View>
   );
 }

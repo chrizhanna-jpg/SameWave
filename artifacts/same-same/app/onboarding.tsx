@@ -13,32 +13,43 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { SemoGlobeLogo } from "@/components/SemoGlobeLogo";
+import { CountryPickerModal } from "@/components/CountryPickerModal";
 
 const { width } = Dimensions.get("window");
 
 const STEPS = [
   {
+    kind: "intro" as const,
     title: null,
     subtitle: null,
     body: "Every human is unique. But right now — somewhere across the world — someone is doing the same thing as you, photographing the same kind of moment, feeling the same way. SEMO finds them.",
   },
   {
+    kind: "intro" as const,
     title: "Swipe to judge.",
     subtitle: "Then discover.",
     body: "Same situation? Same activity? Same feeling? You call it. Tap 'Same Same' or 'Different', then we reveal where in the world that moment was captured.",
   },
   {
+    kind: "intro" as const,
     title: "Same same,",
     subtitle: "but different.",
     body: "We're not identical — we're similar. Fill your world map with strangers who share your moments, even though no two of you are alike.",
+  },
+  {
+    kind: "country" as const,
+    title: "Where are you?",
+    subtitle: null,
+    body: "We use your country to celebrate when you match with someone close — same country, same continent, same little planet.",
   },
 ];
 
 export default function OnboardingScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { completeOnboarding } = useApp();
+  const { completeOnboarding, myCountryCode, myCountryName, myCountryFlag, setMyCountry } = useApp();
   const [step, setStep] = React.useState(0);
+  const [pickerOpen, setPickerOpen] = React.useState(false);
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -90,6 +101,8 @@ export default function OnboardingScreen() {
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
 
   const isHeroStep = step === 0;
+  const currentStep = STEPS[step];
+  const isCountryStep = currentStep.kind === "country";
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -118,14 +131,14 @@ export default function OnboardingScreen() {
           },
         ]}
       >
-        {STEPS[step].title && (
+        {currentStep.title && (
           <Text style={[styles.title, { color: colors.foreground }]}>
-            {STEPS[step].title}
+            {currentStep.title}
           </Text>
         )}
-        {STEPS[step].subtitle && (
+        {currentStep.subtitle && (
           <Text style={[styles.subtitle, { color: colors.primary }]}>
-            {STEPS[step].subtitle}
+            {currentStep.subtitle}
           </Text>
         )}
         <Text
@@ -135,8 +148,42 @@ export default function OnboardingScreen() {
             isHeroStep && styles.bodyHero,
           ]}
         >
-          {STEPS[step].body}
+          {currentStep.body}
         </Text>
+
+        {isCountryStep && (
+          <TouchableOpacity
+            onPress={() => setPickerOpen(true)}
+            activeOpacity={0.85}
+            style={[
+              styles.countryRow,
+              {
+                backgroundColor: colors.card,
+                borderColor: myCountryCode ? colors.teal + "55" : colors.border,
+              },
+            ]}
+            accessibilityLabel="Pick your country"
+          >
+            <Text style={styles.countryRowFlag}>
+              {myCountryFlag ?? "🌍"}
+            </Text>
+            <Text
+              style={[
+                styles.countryRowText,
+                {
+                  color: myCountryCode
+                    ? colors.foreground
+                    : colors.mutedForeground,
+                },
+              ]}
+            >
+              {myCountryName ?? "Tap to pick your country"}
+            </Text>
+            <Text style={[styles.countryRowChange, { color: colors.teal }]}>
+              {myCountryCode ? "Change" : "Choose"}
+            </Text>
+          </TouchableOpacity>
+        )}
       </Animated.View>
 
       <View
@@ -171,7 +218,7 @@ export default function OnboardingScreen() {
           </Text>
         </TouchableOpacity>
 
-        {step < STEPS.length - 1 && (
+        {(step < STEPS.length - 1 || (isCountryStep && !myCountryCode)) && (
           <TouchableOpacity
             onPress={() => {
               completeOnboarding();
@@ -179,11 +226,19 @@ export default function OnboardingScreen() {
             }}
           >
             <Text style={[styles.skip, { color: colors.mutedForeground }]}>
-              Skip
+              {isCountryStep ? "Skip — I'll set it later" : "Skip"}
             </Text>
           </TouchableOpacity>
         )}
       </View>
+
+      <CountryPickerModal
+        visible={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onSelect={(c) => setMyCountry(c.code, c.name, c.flag)}
+        selectedCode={myCountryCode}
+        title="Where in the world are you?"
+      />
     </View>
   );
 }
@@ -266,5 +321,29 @@ const styles = StyleSheet.create({
   skip: {
     fontSize: 14,
     fontFamily: "Inter_500Medium",
+  },
+  countryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderRadius: 18,
+    borderWidth: 1,
+    marginTop: 24,
+    width: "100%",
+  },
+  countryRowFlag: {
+    fontSize: 24,
+  },
+  countryRowText: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: "Inter_500Medium",
+  },
+  countryRowChange: {
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.3,
   },
 });

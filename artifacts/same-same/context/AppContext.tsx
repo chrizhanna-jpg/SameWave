@@ -85,6 +85,11 @@ interface AppState {
   connectRequests: ConnectRequest[];
   myDefaultPlatform?: string; // remembered preference
   myDefaultHandle?: string;
+  // User's "home" country — drives the Same Country / Same Continent
+  // celebrations and labels the user side of every match record.
+  myCountryCode?: string;
+  myCountryName?: string;
+  myCountryFlag?: string;
 }
 
 interface AppContextValue extends AppState {
@@ -98,6 +103,7 @@ interface AppContextValue extends AppState {
    * Returns the updated match (with any newly-earned badges) or null.
    */
   changeVerdict: (id: string, newVerdict: "same" | "different") => Match | null;
+  setMyCountry: (code: string, name: string, flag: string) => void;
   addMyPhoto: (uri: string, theme: string, tags?: string[]) => void;
   completeOnboarding: () => void;
   resetOnboarding: () => void;
@@ -352,6 +358,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  const setMyCountry = useCallback(
+    (code: string, name: string, flag: string) => {
+      setState((prev) => {
+        const newState: AppState = {
+          ...prev,
+          myCountryCode: code,
+          myCountryName: name,
+          myCountryFlag: flag,
+        };
+        saveState(newState);
+        return newState;
+      });
+    },
+    [],
+  );
+
   const addMyPhoto = useCallback((uri: string, theme: string, tags?: string[]) => {
     setState((prev) => {
       const photo: MyPhoto = {
@@ -594,6 +616,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addMatch,
         removeMatch,
         changeVerdict,
+        setMyCountry,
         addMyPhoto,
         completeOnboarding,
         resetOnboarding,

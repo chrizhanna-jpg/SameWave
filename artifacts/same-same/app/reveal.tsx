@@ -45,6 +45,7 @@ export default function RevealScreen() {
     myDefaultPlatform,
     myDefaultHandle,
     myVibe,
+    myCountryCode,
   } = useApp();
   const [match, setMatch] = useState<Match | null>(null);
   const [sharing, setSharing] = useState(false);
@@ -170,10 +171,9 @@ export default function RevealScreen() {
 
   // Tiered celebrations: closer in time = bigger deal.
   const timeTier = getTimeTier(match.myPhotoUploadedAt, match.theirPhotoMinutesAgo);
-  // Geography tier — without device geolocation we don't yet know the user's
-  // country, so this currently lands at "Same Planet" for everyone. It will
-  // unlock Same Country / Same Continent once we ship location.
-  const geoTier = getGeoTier(undefined, match.theirCountryCode);
+  // Geography tier — uses the user's chosen home country (set in onboarding
+  // / profile). Falls back to "Same Planet" if they skipped picking one.
+  const geoTier = getGeoTier(myCountryCode, match.theirCountryCode);
   const isCelebrated = timeTier.rank >= 1; // anything from week up
 
   const themeMeta = DAILY_CHALLENGES.find(
