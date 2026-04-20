@@ -356,6 +356,21 @@ function pickFromTheme(theme: string): keyof typeof SYNTH_PHOTO_BANK {
   return "joy";
 }
 
+// What tags genuinely describe each synthetic photo bucket. Used to honestly
+// label generated candidates so the "Both have …" chip on the match screen
+// only shows tags that are actually plausible for the photo shown.
+const BUCKET_TAG_POOL: Record<keyof typeof SYNTH_PHOTO_BANK, string[]> = {
+  morning: ["coffee", "warm", "cozy", "sunset", "drink"],
+  food: ["meal", "bread", "cooking", "baking", "dessert", "drink"],
+  hands: ["art", "crafts", "people"],
+  sky: ["sunset", "clouds", "stars", "night"],
+  commute: ["transit", "city", "travel"],
+  work: ["laptop", "desk", "study", "coffee"],
+  joy: ["smile", "celebration", "people", "party", "friends"],
+  nature: ["trees", "mountains", "outdoors", "water", "hiking"],
+  pets: ["dog", "cat", "animal", "wildlife"],
+};
+
 // Builds synthetic candidates that look like real samples but are sampled
 // dynamically. Stable-ish ids (synth-…) so React lists don't thrash.
 export function generateSyntheticCandidates(
@@ -376,11 +391,18 @@ export function generateSyntheticCandidates(
     const photoId = photoIds[Math.floor(Math.random() * photoIds.length)];
     const c = SYNTH_COUNTRY_POOL[Math.floor(Math.random() * SYNTH_COUNTRY_POOL.length)];
     const minutesAgo = Math.floor(Math.random() * 60 * 24 * 3); // up to 3 days ago
-    // Carry a couple of the user's tags into the synthetic photo so the
-    // matcher has something to bite on (otherwise score = pure recency).
-    const synthTags = myTags.slice(0, 2).length > 0
-      ? myTags.slice(0, 2)
-      : [bucketKey];
+    // Tag the synthetic photo with bucket-appropriate tags ONLY. Never carry
+    // the user's own tags onto an unrelated image — that caused the "Both
+    // have …" chip to lie. We deliberately keep at most one overlap with
+    // the user's tags so the score isn't dominated by recency, but only if
+    // that overlap is actually plausible for this bucket.
+    const bucketTags = BUCKET_TAG_POOL[bucketKey] ?? [bucketKey];
+    const overlap = myTags.find((t) => bucketTags.includes(t));
+    const shuffled = [...bucketTags].sort(() => Math.random() - 0.5);
+    const picked = shuffled.slice(0, 2 + Math.floor(Math.random() * 2));
+    const synthTagsSet = new Set(picked);
+    if (overlap) synthTagsSet.add(overlap);
+    const synthTags = Array.from(synthTagsSet);
     out.push({
       id: `synth-${photoId}-${c.code}-${i}`,
       uri: `https://images.unsplash.com/photo-${photoId}?w=400`,
