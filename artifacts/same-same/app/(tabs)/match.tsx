@@ -83,20 +83,35 @@ function scoreCandidates(
       const idx = chainIndex(p.theme);
       const inChain = idx >= 0;
       const sameTheme = p.theme === preferredTheme;
-      // Tag overlap dominates. Then theme match. Then adjacency depth.
-      // Recency is a small tiebreaker — never the headline signal — so a
-      // brand-new but totally unrelated photo can't outrank an older,
-      // genuinely similar one.
+      // SCORING — theme dominates. The previous weights had per-tag = 6
+      // and same-theme = 4, which meant a single weak vibe match (e.g.
+      // "warm" appearing on both a hand photo and a kayak) outranked
+      // actual same-subject photos. The user's chosen theme ("Your
+      // hands", "Your morning", etc.) is by far the strongest signal we
+      // have without true visual ML, so a same-theme photo with zero tag
+      // overlap now outranks a different-theme photo sharing one tag.
       const score =
-        sharedTags.length * 6 +
-        (sameTheme ? 4 : 0) +
-        (inChain && !sameTheme ? Math.max(0, 2 - idx * 0.6) : 0) +
+        (sameTheme ? 10 : 0) +
+        sharedTags.length * 4 +
+        (inChain && !sameTheme ? Math.max(0, 3 - idx * 1) : 0) +
         Math.max(0, 0.6 - p.minutesAgo / 4320); // up to +0.6, decays over 3 days
       return { photo: p, score, sharedTags, inChain };
     })
-    // Hard floor: drop candidates with no tag overlap AND no theme/chain
-    // relationship — those were the "nothing like my photo" matches.
-    .filter((c) => c.sharedTags.length > 0 || c.inChain)
+    // Hard floor — only show genuinely related photos. A candidate must
+    // satisfy at least one of:
+    //   (a) same theme as the user's photo  ← the dominant signal
+    //   (b) ≥ 2 shared tags                 ← multi-tag overlap is real
+    //   (c) chain-adjacent AND ≥ 1 shared tag (mild bleed between
+    //       neighbouring themes is OK only if there's also a tag link)
+    // Single-tag-only crossovers (the kayak-with-"warm" failure mode)
+    // are dropped outright.
+    .filter((c) => {
+      const sameTheme = c.photo.theme === preferredTheme;
+      if (sameTheme) return true;
+      if (c.sharedTags.length >= 2) return true;
+      if (c.inChain && c.sharedTags.length >= 1) return true;
+      return false;
+    })
     .sort((a, b) => b.score - a.score);
   return candidates;
 }

@@ -470,9 +470,18 @@ export function generateSyntheticCandidates(
 ): SamplePhoto[] {
   // Hard gate: never synthesize in production builds.
   if (!ENABLE_SYNTHETIC_MATCHES) return [];
-  // Choose a relevant photo bucket: prefer a tag-derived bucket, fall back
-  // to the user's theme.
+  // Bucket selection priority — theme FIRST, then tag-derived. Previously
+  // we let a vibe tag (like "warm" or "cozy") pick the bucket before the
+  // theme, which caused embarrassing mismatches: a hand photo tagged
+  // "warm" would funnel into the "morning" bucket and surface coffee /
+  // sunrise / kayak shots instead of other hand photos. The user's
+  // explicit theme choice ("Your hands") is by far the strongest signal
+  // we have, so it always wins when it maps to a real bucket.
+  const themeBucket = preferredTheme in SYNTH_PHOTO_BANK
+    ? (preferredTheme as keyof typeof SYNTH_PHOTO_BANK)
+    : null;
   const bucketKey =
+    themeBucket ??
     (myTags.map((t) => TAG_TO_BUCKET[t]).find(Boolean) as keyof typeof SYNTH_PHOTO_BANK | undefined) ??
     pickFromTheme(preferredTheme);
   const photoIds = SYNTH_PHOTO_BANK[bucketKey];
