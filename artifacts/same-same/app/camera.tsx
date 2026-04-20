@@ -134,6 +134,7 @@ export default function CameraScreen() {
       quality: 0.8,
       allowsEditing: true,
       aspect: [1, 1],
+      base64: true,
       exif: true,
     });
     if (!result.canceled && result.assets[0]) {
