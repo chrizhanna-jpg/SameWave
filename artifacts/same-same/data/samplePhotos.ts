@@ -251,6 +251,55 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   { id: "50", uri: "https://images.unsplash.com/photo-1527525443983-6e60c75fff46?w=400", country: "Philippines", countryCode: "PH", countryFlag: "🇵🇭", theme: "joy", minutesAgo: 88, tags: ["people","smile","celebration"] },
   { id: "51", uri: "https://images.unsplash.com/photo-1441829266145-6d4bfb7a3a48?w=400", country: "Tanzania", countryCode: "TZ", countryFlag: "🇹🇿", theme: "nature", minutesAgo: 350, tags: ["wildlife","animal","outdoors"] },
   { id: "52", uri: "https://images.unsplash.com/photo-1437824368796-d7c7c0fb39b1?w=400", country: "Botswana", countryCode: "BW", countryFlag: "🇧🇼", theme: "pets", minutesAgo: 1100, tags: ["wildlife","animal","outdoors"] },
+  // ── Launch-day pool expansion ──────────────────────────────────────────
+  // Each entry below uses a Unsplash image already proven loadable in
+  // SYNTH_PHOTO_BANK. Tags are intentionally narrow — only what is
+  // visually undeniable in the photo — to keep "Both have …" honest.
+  // Coffee / morning
+  { id: "53", uri: "https://images.unsplash.com/photo-1497935586351-b67a49e012bf?w=400", country: "Czechia", countryCode: "CZ", countryFlag: "🇨🇿", theme: "morning", minutesAgo: 19, tags: ["coffee","drink","cafe"] },
+  { id: "54", uri: "https://images.unsplash.com/photo-1542990253-0d0f5be5f0ed?w=400", country: "Denmark", countryCode: "DK", countryFlag: "🇩🇰", theme: "morning", minutesAgo: 92, tags: ["coffee","drink","warm"] },
+  { id: "55", uri: "https://images.unsplash.com/photo-1497636577773-f1231844b336?w=400", country: "Austria", countryCode: "AT", countryFlag: "🇦🇹", theme: "morning", minutesAgo: 250, tags: ["coffee","drink"] },
+  { id: "56", uri: "https://images.unsplash.com/photo-1466637574441-749b8f19452f?w=400", country: "Hungary", countryCode: "HU", countryFlag: "🇭🇺", theme: "morning", minutesAgo: 410, tags: ["coffee","cafe"] },
+  // Food / meals
+  { id: "57", uri: "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?w=400", country: "Israel", countryCode: "IL", countryFlag: "🇮🇱", theme: "food", minutesAgo: 27, tags: ["meal","cooking"] },
+  { id: "58", uri: "https://images.unsplash.com/photo-1473093295043-cdd812d0e601?w=400", country: "Lebanon", countryCode: "LB", countryFlag: "🇱🇧", theme: "food", minutesAgo: 105, tags: ["meal","bread"] },
+  { id: "59", uri: "https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=400", country: "Sri Lanka", countryCode: "LK", countryFlag: "🇱🇰", theme: "food", minutesAgo: 340, tags: ["meal","cooking","warm"] },
+  { id: "60", uri: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400", country: "Malaysia", countryCode: "MY", countryFlag: "🇲🇾", theme: "food", minutesAgo: 56, tags: ["meal"] },
+  // Workspace / desk
+  { id: "61", uri: "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=400", country: "Estonia", countryCode: "EE", countryFlag: "🇪🇪", theme: "work", minutesAgo: 44, tags: ["laptop","desk","study"] },
+  { id: "62", uri: "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=400", country: "Poland", countryCode: "PL", countryFlag: "🇵🇱", theme: "work", minutesAgo: 168, tags: ["laptop","desk","coffee"] },
+  // Sky / sunsets
+  { id: "63", uri: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=400", country: "Madagascar", countryCode: "MG", countryFlag: "🇲🇬", theme: "sky", minutesAgo: 33, tags: ["sunset","clouds","outdoors"] },
+  { id: "64", uri: "https://images.unsplash.com/photo-1532274402911-5a369e4c4bb5?w=400", country: "Croatia", countryCode: "HR", countryFlag: "🇭🇷", theme: "sky", minutesAgo: 470, tags: ["sunset","clouds","water","outdoors"] },
+  { id: "65", uri: "https://images.unsplash.com/photo-1437604766819-5e0c5b8a40e9?w=400", country: "Cambodia", countryCode: "KH", countryFlag: "🇰🇭", theme: "sky", minutesAgo: 880, tags: ["sunset","clouds","warm"] },
+  // Hands / making
+  { id: "66", uri: "https://images.unsplash.com/photo-1531913764164-f85c52e6e654?w=400", country: "Bolivia", countryCode: "BO", countryFlag: "🇧🇴", theme: "hands", minutesAgo: 70, tags: ["art","crafts"] },
+  { id: "67", uri: "https://images.unsplash.com/photo-1455218873509-8097305ee378?w=400", country: "Ghana", countryCode: "GH", countryFlag: "🇬🇭", theme: "hands", minutesAgo: 290, tags: ["art","people"] },
+  { id: "68", uri: "https://images.unsplash.com/photo-1525373698358-041e3a460346?w=400", country: "Pakistan", countryCode: "PK", countryFlag: "🇵🇰", theme: "hands", minutesAgo: 615, tags: ["crafts","people"] },
+  // Joy / smiles
+  { id: "69", uri: "https://images.unsplash.com/photo-1488161628813-04466f872be2?w=400", country: "Ecuador", countryCode: "EC", countryFlag: "🇪🇨", theme: "joy", minutesAgo: 36, tags: ["people","smile","friends"] },
+  // Commute / city
+  { id: "70", uri: "https://images.unsplash.com/photo-1502920917128-1aa500764cbd?w=400", country: "Taiwan", countryCode: "TW", countryFlag: "🇹🇼", theme: "commute", minutesAgo: 110, tags: ["city","transit","night"] },
+  // Pets reused with new countries (these images are well-loved animals)
+  { id: "71", uri: "https://images.unsplash.com/photo-1548247416-ec66f4900b2e?w=400", country: "Latvia", countryCode: "LV", countryFlag: "🇱🇻", theme: "pets", minutesAgo: 50, tags: ["cat","animal"] },
+  { id: "72", uri: "https://images.unsplash.com/photo-1592194996308-7b43878e84a6?w=400", country: "Romania", countryCode: "RO", countryFlag: "🇷🇴", theme: "pets", minutesAgo: 200, tags: ["dog","animal","outdoors","smile"] },
+  // Active / outdoors movement
+  { id: "73", uri: "https://images.unsplash.com/photo-1518611012118-696072aa579a?w=400", country: "Slovenia", countryCode: "SI", countryFlag: "🇸🇮", theme: "nature", minutesAgo: 80, tags: ["hiking","outdoors","mountains"] },
+  { id: "74", uri: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=400", country: "Bulgaria", countryCode: "BG", countryFlag: "🇧🇬", theme: "nature", minutesAgo: 220, tags: ["running","fitness","outdoors"] },
+  { id: "75", uri: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400", country: "Costa Rica", countryCode: "CR", countryFlag: "🇨🇷", theme: "nature", minutesAgo: 460, tags: ["yoga","fitness","outdoors"] },
+  { id: "76", uri: "https://images.unsplash.com/photo-1545205597-3d9d02c29597?w=400", country: "Lithuania", countryCode: "LT", countryFlag: "🇱🇹", theme: "nature", minutesAgo: 700, tags: ["cycling","outdoors"] },
+  // Home / cozy
+  { id: "77", uri: "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=400", country: "Norway", countryCode: "NO", countryFlag: "🇳🇴", theme: "morning", minutesAgo: 60, tags: ["home","cozy","plants"] },
+  { id: "78", uri: "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=400", country: "Slovakia", countryCode: "SK", countryFlag: "🇸🇰", theme: "morning", minutesAgo: 320, tags: ["plants","home","flowers"] },
+  { id: "79", uri: "https://images.unsplash.com/photo-1462536943532-57a629f6cc60?w=400", country: "Iceland", countryCode: "IS", countryFlag: "🇮🇸", theme: "morning", minutesAgo: 540, tags: ["home","cozy","vintage"] },
+  // Travel / cityscapes
+  { id: "80", uri: "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=400", country: "United Arab Emirates", countryCode: "AE", countryFlag: "🇦🇪", theme: "commute", minutesAgo: 95, tags: ["travel","city"] },
+  { id: "81", uri: "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=400", country: "France", countryCode: "FR", countryFlag: "🇫🇷", theme: "commute", minutesAgo: 260, tags: ["travel","city","outdoors"] },
+  { id: "82", uri: "https://images.unsplash.com/photo-1530789253388-582c481c54b0?w=400", country: "Cuba", countryCode: "CU", countryFlag: "🇨🇺", theme: "joy", minutesAgo: 145, tags: ["travel","people","warm"] },
+  { id: "83", uri: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400", country: "Maldives", countryCode: "MV", countryFlag: "🇲🇻", theme: "nature", minutesAgo: 380, tags: ["beach","water","outdoors","sunset"] },
+  { id: "84", uri: "https://images.unsplash.com/photo-1512100356356-de1b84283e18?w=400", country: "Greece", countryCode: "GR", countryFlag: "🇬🇷", theme: "nature", minutesAgo: 710, tags: ["beach","water","outdoors","warm"] },
+  // Wildlife
+  { id: "85", uri: "https://images.unsplash.com/photo-1441829266145-6d4bfb7a3a48?w=400", country: "Namibia", countryCode: "NA", countryFlag: "🇳🇦", theme: "nature", minutesAgo: 520, tags: ["wildlife","animal","outdoors"] },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────
