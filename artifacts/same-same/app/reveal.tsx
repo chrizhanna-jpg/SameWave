@@ -36,7 +36,6 @@ export default function RevealScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
   const {
-    addMatch,
     matchedCountries,
     proUnlocked,
     unlockPro,
@@ -106,11 +105,10 @@ export default function RevealScreen() {
         const m = JSON.parse(params.matchData as string) as Match;
         setMatch(m);
 
-        // Save the match immediately — every "Same Same" counts
-        if (!savedRef.current) {
-          savedRef.current = true;
-          addMatch(m);
-        }
+        // The match is already persisted by the swipe handler in match.tsx
+        // before navigating here — calling addMatch again would create a
+        // duplicate row with the same id (React duplicate-key warning).
+        savedRef.current = true;
 
         Animated.parallel([
           Animated.timing(fadeIn, {
