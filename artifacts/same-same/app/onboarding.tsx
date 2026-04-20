@@ -34,7 +34,7 @@ const STEPS = [
     kind: "intro" as const,
     title: "Same same,",
     subtitle: "but different.",
-    body: "We're not identical — we're similar. Fill your world map with strangers who share your moments, even though no two of you are alike.",
+    body: "We're not identical — we're similar. Fill your world map with strangers who share your moments, even though no two of us are alike.",
   },
   {
     kind: "country" as const,
