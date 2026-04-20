@@ -16,8 +16,8 @@ const SIZE_MAP = {
 
 // Compact typographic wordmark used in places that don't have the full
 // globe lockup (e.g. the match-screen header). The globe-integrated
-// version lives in SemoGlobeLogo.
-export function SemoLogo({
+// version lives in EchoGlobeLogo.
+export function EchoLogo({
   size = "md",
   color = "#0F172A",
   showTagline = true,
@@ -32,7 +32,7 @@ export function SemoLogo({
           { color, fontSize: s.word, letterSpacing: s.letterSpacing },
         ]}
       >
-        SEMO
+        ECHO
       </Text>
       {showTagline && (
         <Text
@@ -64,4 +64,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default SemoLogo;
+export default EchoLogo;

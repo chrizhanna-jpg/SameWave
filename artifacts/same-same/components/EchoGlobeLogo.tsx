@@ -9,15 +9,15 @@ type Props = {
   showTagline?: boolean;
 };
 
-// Hero lockup: SEMO label sits across the globe (the "world" is part of
+// Hero lockup: ECHO label sits across the globe (the "world" is part of
 // the logo). "same same" tagline below.
-export function SemoGlobeLogo({
+export function EchoGlobeLogo({
   globeSize = 190,
   color = "#FFFFFF",
   taglineColor = "rgba(255,255,255,0.65)",
   showTagline = true,
 }: Props) {
-  // Word size scales with the globe so SEMO always sits comfortably across
+  // Word size scales with the globe so ECHO always sits comfortably across
   // the equator. No plate — the text floats directly on the globe with a
   // soft dark glow behind it for legibility against the rotating colours.
   const wordSize = Math.round(globeSize * 0.24);
@@ -50,7 +50,7 @@ export function SemoGlobeLogo({
               },
             ]}
           >
-            SEMO
+            ECHO
           </Text>
         </View>
       </View>
@@ -104,4 +104,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default SemoGlobeLogo;
+export default EchoGlobeLogo;

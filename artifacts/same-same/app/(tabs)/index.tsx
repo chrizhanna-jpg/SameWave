@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
-import { SemoGlobeLogo } from "@/components/SemoGlobeLogo";
+import { EchoGlobeLogo } from "@/components/EchoGlobeLogo";
 import { getTodaysChallenge } from "@/data/samplePhotos";
 
 const { width } = Dimensions.get("window");
@@ -42,7 +42,7 @@ export default function HomeScreen() {
       >
         {/* Hero — globe IS the logo */}
         <View style={styles.hero}>
-          <SemoGlobeLogo
+          <EchoGlobeLogo
             globeSize={200}
             color="#FFFFFF"
             taglineColor={colors.mutedForeground}

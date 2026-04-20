@@ -12,7 +12,7 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
-import { SemoGlobeLogo } from "@/components/SemoGlobeLogo";
+import { EchoGlobeLogo } from "@/components/EchoGlobeLogo";
 import { CountryPickerModal } from "@/components/CountryPickerModal";
 
 const { width } = Dimensions.get("window");
@@ -22,7 +22,7 @@ const STEPS = [
     kind: "intro" as const,
     title: null,
     subtitle: null,
-    body: "Every human is unique. But right now — somewhere across the world — someone is doing the same thing as you, photographing the same kind of moment, feeling the same way. SEMO finds them.",
+    body: "Every human is unique. But right now — somewhere across the world — someone is doing the same thing as you, photographing the same kind of moment, feeling the same way. Echo finds them.",
   },
   {
     kind: "intro" as const,
@@ -113,7 +113,7 @@ export default function OnboardingScreen() {
         ]}
       >
         <Animated.View style={{ transform: [{ scale: globeScale }], alignItems: "center" }}>
-          <SemoGlobeLogo
+          <EchoGlobeLogo
             globeSize={isHeroStep ? 200 : 120}
             color="#FFFFFF"
             taglineColor={colors.mutedForeground}

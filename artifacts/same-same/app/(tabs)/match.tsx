@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Icon } from "@/components/Icon";
 import { MatchHearts } from "@/components/MatchHearts";
-import { SemoLogo } from "@/components/SemoLogo";
+import { EchoLogo } from "@/components/EchoLogo";
 import { expandToVibe } from "@/utils/interests";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
@@ -367,7 +367,7 @@ export default function SwipeScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPadding + 8 }]}>
         <View>
-          <SemoLogo
+          <EchoLogo
             size="sm"
             color={colors.foreground}
             taglineColor={colors.mutedForeground}

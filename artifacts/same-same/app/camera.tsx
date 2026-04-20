@@ -112,7 +112,7 @@ export default function CameraScreen() {
       Alert.alert(
         "Photo not allowed",
         verdict.message ??
-          "SEMO only accepts photos taken with your device's camera.",
+          "Echo only accepts photos taken with your device's camera.",
         [{ text: "OK" }],
       );
       return false;
