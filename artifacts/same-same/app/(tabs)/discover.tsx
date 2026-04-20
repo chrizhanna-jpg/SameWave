@@ -155,6 +155,9 @@ function DiscoveryCard({ item }: { item: DiscoveryItem }) {
         </View>
       </View>
 
+      {/* Three fixed-width chip slots so the layout stays uniform as the
+          feed scrolls — time tier always left, geo tier always centre,
+          echo count always right, regardless of label length. */}
       <View style={styles.chipRow}>
         <View
           style={[
@@ -165,8 +168,11 @@ function DiscoveryCard({ item }: { item: DiscoveryItem }) {
             },
           ]}
         >
-          <Text style={[styles.chipEmoji]}>{item.timeTier.emoji}</Text>
-          <Text style={[styles.chipText, { color: headlineColor }]}>
+          <Text style={styles.chipEmoji}>{item.timeTier.emoji}</Text>
+          <Text
+            style={[styles.chipText, { color: headlineColor }]}
+            numberOfLines={1}
+          >
             {item.timeTier.label}
           </Text>
         </View>
@@ -180,26 +186,37 @@ function DiscoveryCard({ item }: { item: DiscoveryItem }) {
           ]}
         >
           <Text style={styles.chipEmoji}>{item.geoTier.emoji}</Text>
-          <Text style={[styles.chipText, { color: colors.foreground }]}>
+          <Text
+            style={[styles.chipText, { color: colors.foreground }]}
+            numberOfLines={1}
+          >
             {item.geoTier.label}
           </Text>
         </View>
-        {item.echoStats.sameAllTime > 1 && (
-          <View
-            style={[
-              styles.chip,
-              {
-                backgroundColor: colors.teal + "1a",
-                borderColor: colors.teal + "44",
-              },
-            ]}
-          >
-            <Text style={styles.chipEmoji}>🔁</Text>
-            <Text style={[styles.chipText, { color: colors.teal }]}>
-              {item.echoStats.sameAllTime.toLocaleString()} also
-            </Text>
-          </View>
-        )}
+        <View
+          style={[
+            styles.chip,
+            item.echoStats.sameAllTime > 1
+              ? {
+                  backgroundColor: colors.teal + "1a",
+                  borderColor: colors.teal + "44",
+                }
+              : { backgroundColor: "transparent", borderColor: "transparent" },
+          ]}
+        >
+          {item.echoStats.sameAllTime > 1 && (
+            <>
+              <Text style={styles.chipEmoji}>🔁</Text>
+              <Text
+                style={[styles.chipText, { color: colors.teal }]}
+                numberOfLines={1}
+              >
+                {item.echoStats.sameAllTime.toLocaleString()}{" "}
+                {item.echoStats.sameAllTime === 1 ? "echo" : "echoes"}
+              </Text>
+            </>
+          )}
+        </View>
       </View>
     </View>
   );
@@ -302,15 +319,18 @@ const styles = StyleSheet.create({
   },
   chipRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
+    alignItems: "stretch",
     gap: 8,
   },
   chip: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: 5,
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     paddingVertical: 5,
+    minWidth: 0,
     borderRadius: 12,
     borderWidth: 1,
   },
