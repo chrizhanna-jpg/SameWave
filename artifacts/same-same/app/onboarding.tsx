@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { GlobeAnimation } from "@/components/GlobeAnimation";
+import { SemoLogo } from "@/components/SemoLogo";
 
 const { width } = Dimensions.get("window");
 
@@ -103,15 +104,14 @@ export default function OnboardingScreen() {
           <GlobeAnimation size={isHeroStep ? 200 : 110} />
         </Animated.View>
 
-        <Animated.Text
-          style={[
-            styles.appName,
-            { color: colors.primary },
-            isHeroStep && styles.appNameLarge,
-          ]}
-        >
-          Same Same
-        </Animated.Text>
+        <Animated.View style={{ alignItems: "center", marginTop: 8 }}>
+          <SemoLogo
+            size={isHeroStep ? "lg" : "md"}
+            color={colors.foreground}
+            accent={colors.primary}
+            taglineColor={colors.mutedForeground}
+          />
+        </Animated.View>
       </View>
 
       <Animated.View

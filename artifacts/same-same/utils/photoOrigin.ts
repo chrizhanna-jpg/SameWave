@@ -1,7 +1,7 @@
 import { Platform } from "react-native";
 import type * as ImagePicker from "expo-image-picker";
 
-// Same Same only accepts authentic photos taken with the device's camera.
+// SEMO only accepts authentic photos taken with the device's camera.
 // We reject AI-generated, downloaded, or otherwise-sourced images by
 // inspecting EXIF metadata. Camera-taken photos always pass.
 //
@@ -82,7 +82,7 @@ export function validatePhotoOrigin(
       ok: false,
       reason: "no_exif",
       message:
-        "This photo has no camera information. Same Same only accepts photos taken with your device's camera.",
+        "This photo has no camera information. SEMO only accepts photos taken with your device's camera.",
     };
   }
 
@@ -95,7 +95,7 @@ export function validatePhotoOrigin(
       ok: false,
       reason: "ai_software",
       message:
-        "This photo looks AI-generated. Same Same is for real moments — please take a photo with your camera.",
+        "This photo looks AI-generated. SEMO is for real moments — please take a photo with your camera.",
     };
   }
 

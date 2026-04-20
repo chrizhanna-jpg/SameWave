@@ -15,6 +15,7 @@ import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { GlobeAnimation } from "@/components/GlobeAnimation";
+import { SemoLogo } from "@/components/SemoLogo";
 import { getTodaysChallenge } from "@/data/samplePhotos";
 
 const { width } = Dimensions.get("window");
@@ -43,10 +44,15 @@ export default function HomeScreen() {
         {/* Hero Globe */}
         <View style={styles.hero}>
           <GlobeAnimation size={190} />
-          <Text style={[styles.appName, { color: colors.foreground }]}>
-            Same Same
-          </Text>
-          <Text style={[styles.tagline, { color: colors.mutedForeground }]}>
+          <View style={{ alignItems: "center", marginTop: 8 }}>
+            <SemoLogo
+              size="lg"
+              color={colors.foreground}
+              accent={colors.teal}
+              taglineColor={colors.mutedForeground}
+            />
+          </View>
+          <Text style={[styles.tagline, { color: colors.mutedForeground, marginTop: 8 }]}>
             One world. Daily moments.
           </Text>
         </View>

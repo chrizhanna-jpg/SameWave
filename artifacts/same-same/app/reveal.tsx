@@ -76,7 +76,7 @@ export default function RevealScreen() {
         } else {
           await Sharing.shareAsync(uri, {
             mimeType: "image/jpeg",
-            dialogTitle: "Share your Same Same",
+            dialogTitle: "Share your SEMO",
           });
         }
       }
@@ -439,7 +439,7 @@ export default function RevealScreen() {
 
           {!proUnlocked && (
             <View style={styles.watermark}>
-              <Text style={styles.watermarkText}>Same Same · samesame.app</Text>
+              <Text style={styles.watermarkText}>SEMO · same same</Text>
             </View>
           )}
         </ViewShot>
@@ -626,7 +626,7 @@ export default function RevealScreen() {
 
             <Text style={styles.paywallSparkle}>✨</Text>
             <Text style={[styles.paywallTitle, { color: colors.foreground }]}>
-              Same Same Pro
+              SEMO Pro
             </Text>
             <Text style={[styles.paywallPrice, { color: colors.gold }]}>
               £1 · one-time, lifetime

@@ -16,7 +16,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Icon } from "@/components/Icon";
-import { MirrorHeart } from "@/components/MirrorHeart";
+import { MatchHearts } from "@/components/MatchHearts";
+import { SemoLogo } from "@/components/SemoLogo";
 import { expandToVibe } from "@/utils/interests";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
@@ -357,10 +358,13 @@ export default function SwipeScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPadding + 8 }]}>
         <View>
-          <Text style={[styles.appTitle, { color: colors.foreground }]}>
-            Same Same
-          </Text>
-          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+          <SemoLogo
+            size="sm"
+            color={colors.foreground}
+            accent={colors.teal}
+            taglineColor={colors.mutedForeground}
+          />
+          <Text style={[styles.subtitle, { color: colors.mutedForeground, marginTop: 4 }]}>
             {streakCount > 0 ? `${streakCount} matches` : "Find your same"}
           </Text>
         </View>
@@ -538,7 +542,7 @@ export default function SwipeScreen() {
                 activeOpacity={0.85}
                 accessibilityLabel="Same Same"
               >
-                <MirrorHeart size={28} color="#001018" />
+                <MatchHearts size={30} color="#001018" />
               </TouchableOpacity>
             </View>
           </View>
