@@ -26,7 +26,7 @@ const STEPS = [
   },
   {
     kind: "intro" as const,
-    title: "Swipe to judge.",
+    title: "Swipe to echo.",
     subtitle: "Then discover.",
     body: "Same situation? Same activity? Same feeling? You call it. Tap 'Same Same' or 'Different', then we reveal where in the world that moment was captured.",
   },
