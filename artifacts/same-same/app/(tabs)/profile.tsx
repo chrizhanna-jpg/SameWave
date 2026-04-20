@@ -1,6 +1,5 @@
 import React from "react";
 import {
-  Alert,
   Platform,
   ScrollView,
   StyleSheet,
@@ -9,99 +8,61 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { BadgeCard } from "@/components/BadgeCard";
-import { PhotoCard } from "@/components/PhotoCard";
 import { CountryPickerModal } from "@/components/CountryPickerModal";
 import { tagEmoji, tagLabel } from "@/utils/interests";
-import { getGeoTier, getTimeTier } from "@/utils/celebrations";
-import type { Match } from "@/context/AppContext";
 
-function MatchTierChips({
-  match,
-  myCountryCode,
+/**
+ * Tappable row used to deep-link from the Me tab into a sub-screen.
+ * Matches the visual language of the existing Connections row so all
+ * "open another screen" affordances feel consistent.
+ */
+function NavRow({
+  icon,
+  tint,
+  title,
+  subtitle,
+  onPress,
+  accessibilityLabel,
 }: {
-  match: Match;
-  myCountryCode?: string;
+  icon: string;
+  tint: string;
+  title: string;
+  subtitle: string;
+  onPress: () => void;
+  accessibilityLabel: string;
 }) {
   const colors = useColors();
-  const time = getTimeTier(match.myPhotoUploadedAt, match.theirPhotoMinutesAgo);
-  const geo = getGeoTier(myCountryCode, match.theirCountryCode);
-  const timeColor =
-    time.kind === "minute"
-      ? colors.gold
-      : time.kind === "hour"
-      ? colors.teal
-      : colors.mutedForeground;
-  // Compact label for the chip — the full "Same Continent · Europe" string is
-  // too long for the narrow history-row column, so we surface just the most
-  // distinctive bit (continent name, or short tier name).
-  const geoShort =
-    geo.kind === "continent"
-      ? geo.label.replace(/^Same Continent · /i, "")
-      : geo.kind === "country"
-      ? "Same country"
-      : "Same planet";
   return (
-    <View style={tierChipStyles.row}>
-      <View
-        style={[
-          tierChipStyles.chip,
-          {
-            backgroundColor: timeColor + "1f",
-            borderColor: timeColor + "55",
-          },
-        ]}
-      >
-        <Text
-          style={[tierChipStyles.text, { color: timeColor }]}
-          numberOfLines={1}
-        >
-          {time.emoji} {time.label}
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.85}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      style={[
+        styles.connectionsRow,
+        { backgroundColor: colors.card, borderColor: colors.border },
+      ]}
+    >
+      <View style={[styles.connectionsIcon, { backgroundColor: tint + "22" }]}>
+        <Icon name={icon as never} size={18} color={tint} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.connectionsTitle, { color: colors.foreground }]}>
+          {title}
+        </Text>
+        <Text style={[styles.connectionsSub, { color: colors.mutedForeground }]}>
+          {subtitle}
         </Text>
       </View>
-      <View
-        style={[
-          tierChipStyles.chip,
-          { backgroundColor: colors.muted, borderColor: colors.border },
-        ]}
-      >
-        <Text
-          style={[tierChipStyles.text, { color: colors.foreground }]}
-          numberOfLines={1}
-        >
-          {geo.emoji} {geoShort}
-        </Text>
-      </View>
-    </View>
+      <Icon name="chevron-right" size={18} color={colors.mutedForeground} />
+    </TouchableOpacity>
   );
 }
-
-const tierChipStyles = StyleSheet.create({
-  row: {
-    flexDirection: "column",
-    alignItems: "flex-start",
-    gap: 3,
-    marginTop: 2,
-  },
-  chip: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignSelf: "flex-start",
-    maxWidth: "100%",
-  },
-  text: {
-    fontSize: 9,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: 0.2,
-  },
-});
 
 export default function ProfileScreen() {
   const colors = useColors();
@@ -114,8 +75,6 @@ export default function ProfileScreen() {
     badges,
     myPhotos,
     getWorldMapCoverage,
-    removeMatch,
-    changeVerdict,
     connectRequests,
     unreadIncoming,
     pendingOutgoing,
@@ -128,21 +87,23 @@ export default function ProfileScreen() {
     setMyCountry,
   } = useApp();
   const [countryPickerOpen, setCountryPickerOpen] = React.useState(false);
-  // Split history by verdict — confirmed Same Same matches drive the
-  // journey, recent "different" passes get their own reconsider section.
-  const confirmedMatches = React.useMemo(
-    () => matches.filter((m) => m.verdict === "same"),
+  // Counts for the deep-link rows. The full lists live on dedicated
+  // sub-screens (`/match-history`, `/passes`, `/my-photos`) so the Me
+  // tab stays scannable as a stats / identity surface.
+  const confirmedCount = React.useMemo(
+    () => matches.filter((m) => m.verdict === "same").length,
     [matches],
   );
-  const passedMatches = React.useMemo(
-    () => matches.filter((m) => m.verdict === "different"),
+  const passedCount = React.useMemo(
+    () => matches.filter((m) => m.verdict === "different").length,
     [matches],
   );
   // Tags I keep matching on across all my matches — answers the question
   // "what kinds of moments and people do I keep finding?".
   const recurringMatchTags = React.useMemo(() => {
     const counts = new Map<string, number>();
-    for (const m of confirmedMatches) {
+    for (const m of matches) {
+      if (m.verdict !== "same") continue;
       for (const t of m.sharedTags ?? []) {
         counts.set(t, (counts.get(t) ?? 0) + 1);
       }
@@ -152,66 +113,11 @@ export default function ProfileScreen() {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
       .map(([t, n]) => ({ tag: t, count: n }));
-  }, [confirmedMatches]);
+  }, [matches]);
 
-  const reconsiderAsSame = (id: string) => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const flipped = changeVerdict(id, "same");
-    if (flipped) {
-      router.push({
-        pathname: "/reveal",
-        params: { matchData: JSON.stringify(flipped) },
-      });
-    }
-  };
-
-  const confirmPassInstead = (id: string, country: string) => {
-    const doFlip = () => {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      changeVerdict(id, "different");
-    };
-    if (Platform.OS === "web") {
-      // eslint-disable-next-line no-alert
-      if (typeof window !== "undefined" && window.confirm(`Move your match with ${country} into Recent passes? Your country count will update.`)) {
-        doFlip();
-      }
-      return;
-    }
-    Alert.alert(
-      "Change to Different?",
-      `This moves your match with ${country} out of your matches. You can change it back any time.`,
-      [
-        { text: "Keep as match", style: "cancel" },
-        { text: "Mark as Different", style: "destructive", onPress: doFlip },
-      ],
-    );
-  };
   const connectionsCount = connectRequests.filter(
     (r) => r.status === "accepted",
   ).length;
-
-  const confirmUndo = (id: string, country: string) => {
-    const doRemove = () => {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      removeMatch(id);
-    };
-    if (Platform.OS === "web") {
-      // RN Alert on web doesn't render buttons; fall back to window.confirm.
-      // eslint-disable-next-line no-alert
-      if (typeof window !== "undefined" && window.confirm(`Undo this match with ${country}? This removes it from your history.`)) {
-        doRemove();
-      }
-      return;
-    }
-    Alert.alert(
-      "Undo this match?",
-      `This removes your match with ${country} from your history. Earned badges stay.`,
-      [
-        { text: "Keep", style: "cancel" },
-        { text: "Undo match", style: "destructive", onPress: doRemove },
-      ],
-    );
-  };
 
   const earnedBadges = badges.filter((b) => b.earned).length;
 
@@ -465,145 +371,47 @@ export default function ProfileScreen() {
           </ScrollView>
         </View>
 
-        {confirmedMatches.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-                Match History
-              </Text>
-              <Text style={[styles.sectionCount, { color: colors.mutedForeground }]}>
-                Tap to change
-              </Text>
-            </View>
-            <View style={styles.matchList}>
-              {confirmedMatches.slice(0, 10).map((match) => (
-                <View
-                  key={match.id}
-                  style={[
-                    styles.matchRow,
-                    { backgroundColor: colors.card, borderColor: colors.border },
-                  ]}
-                >
-                  <PhotoCard uri={match.myPhoto} size="sm" />
-                  <View style={styles.matchMeta}>
-                    <View style={styles.matchFlags}>
-                      <Text style={styles.matchFlag}>🌍</Text>
-                      <Icon name="arrow-right" size={12} color={colors.mutedForeground} />
-                      <Text style={styles.matchFlag}>{match.theirCountryFlag}</Text>
-                    </View>
-                    <Text style={[styles.matchCountry, { color: colors.foreground }]}>
-                      {match.theirCountry}
-                    </Text>
-                    <MatchTierChips match={match} myCountryCode={myCountryCode} />
-                    <TouchableOpacity
-                      onPress={() => confirmPassInstead(match.id, match.theirCountry)}
-                      hitSlop={8}
-                      accessibilityLabel={`Change match with ${match.theirCountry} to Different`}
-                    >
-                      <Text style={[styles.matchAction, { color: colors.mutedForeground }]}>
-                        Change to Different
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                  <PhotoCard uri={match.theirPhoto} size="sm" />
-                  <TouchableOpacity
-                    onPress={() => confirmUndo(match.id, match.theirCountry)}
-                    style={[styles.undoBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
-                    accessibilityLabel={`Remove match with ${match.theirCountry} from history`}
-                    hitSlop={8}
-                  >
-                    <Icon name="trash-2" size={14} color={colors.mutedForeground} />
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
+        {/* Three nav rows replace the long inline lists. Each opens a
+            dedicated screen so the Me tab stays scannable. Mirrors the
+            visual pattern of the existing Connections row above. */}
+        <NavRow
+          icon="heart"
+          tint={colors.teal}
+          title="Match History"
+          subtitle={
+            confirmedCount === 0
+              ? "No matches yet"
+              : `${confirmedCount} ${confirmedCount === 1 ? "match" : "matches"} · tap to change`
+          }
+          onPress={() => router.push("/match-history")}
+          accessibilityLabel="Open full match history"
+        />
 
-        {passedMatches.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-                Recent Different
-              </Text>
-              <Text style={[styles.sectionCount, { color: colors.mutedForeground }]}>
-                Changed your mind?
-              </Text>
-            </View>
-            <View style={styles.matchList}>
-              {passedMatches.slice(0, 10).map((match) => (
-                <View
-                  key={match.id}
-                  style={[
-                    styles.passedCard,
-                    {
-                      backgroundColor: colors.card,
-                      borderColor: colors.border,
-                    },
-                  ]}
-                >
-                  {/* Header — country flow + name on one full-width row */}
-                  <View style={styles.passedHeader}>
-                    <Text style={styles.matchFlag}>🌍</Text>
-                    <Icon name="arrow-right" size={12} color={colors.mutedForeground} />
-                    <Text style={styles.matchFlag}>{match.theirCountryFlag}</Text>
-                    <Text
-                      style={[styles.passedCountry, { color: colors.foreground }]}
-                      numberOfLines={1}
-                    >
-                      {match.theirCountry}
-                    </Text>
-                  </View>
+        <NavRow
+          icon="x"
+          tint={colors.mutedForeground}
+          title="Recent Different"
+          subtitle={
+            passedCount === 0
+              ? "Nothing to reconsider"
+              : `${passedCount} ${passedCount === 1 ? "pass" : "passes"} · changed your mind?`
+          }
+          onPress={() => router.push("/passes")}
+          accessibilityLabel="Open recent passes"
+        />
 
-                  {/* Photos side-by-side, centered with arrow between */}
-                  <View style={styles.passedPhotos}>
-                    <PhotoCard uri={match.myPhoto} size="sm" />
-                    <Icon name="arrow-right" size={16} color={colors.mutedForeground} />
-                    <PhotoCard uri={match.theirPhoto} size="sm" />
-                  </View>
-
-                  {/* Tier chips — full row width, naturally wraps */}
-                  <View style={styles.passedChips}>
-                    <MatchTierChips match={match} myCountryCode={myCountryCode} />
-                  </View>
-
-                  {/* Footer — verdict label + reconsider button */}
-                  <View style={styles.passedFooter}>
-                    <Text
-                      style={[styles.matchAction, { color: colors.mutedForeground }]}
-                    >
-                      You said different
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => reconsiderAsSame(match.id)}
-                      style={[
-                        styles.reconsiderBtn,
-                        { backgroundColor: colors.teal },
-                      ]}
-                      accessibilityLabel={`Mark photo from ${match.theirCountry} as Same Same`}
-                      hitSlop={8}
-                    >
-                      <Text style={styles.reconsiderBtnText}>Same Same</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {myPhotos.length > 0 && (
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-              My Photos
-            </Text>
-            <View style={styles.photoGrid}>
-              {myPhotos.slice(0, 9).map((photo, i) => (
-                <PhotoCard key={i} uri={photo.uri} size="sm" style={styles.gridPhoto} />
-              ))}
-            </View>
-          </View>
-        )}
+        <NavRow
+          icon="camera"
+          tint={colors.gold}
+          title="My Photos"
+          subtitle={
+            myPhotos.length === 0
+              ? "No photos posted yet"
+              : `${myPhotos.length} ${myPhotos.length === 1 ? "photo" : "photos"} posted`
+          }
+          onPress={() => router.push("/my-photos")}
+          accessibilityLabel="Open your posted photos"
+        />
 
         {matches.length === 0 && (
           <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -828,116 +636,6 @@ const styles = StyleSheet.create({
   badgeScroll: {
     marginHorizontal: -20,
     paddingHorizontal: 20,
-  },
-  matchList: {
-    gap: 8,
-  },
-  matchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    padding: 10,
-    borderRadius: 16,
-    borderWidth: 1,
-  },
-  matchMeta: {
-    flex: 1,
-    gap: 3,
-  },
-  matchFlags: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  matchFlag: {
-    fontSize: 16,
-  },
-  matchCountry: {
-    fontSize: 13,
-    fontFamily: "Inter_600SemiBold",
-  },
-  matchScore: {
-    fontSize: 12,
-    fontFamily: "Inter_500Medium",
-  },
-  matchAction: {
-    fontSize: 11,
-    fontFamily: "Inter_500Medium",
-    textDecorationLine: "underline",
-    marginTop: 2,
-  },
-  passedCard: {
-    padding: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    gap: 10,
-  },
-  passedHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  passedCountry: {
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
-    flexShrink: 1,
-    marginLeft: 2,
-  },
-  passedPhotos: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-  },
-  passedChips: {
-    alignItems: "flex-start",
-  },
-  passedFooter: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  reconsiderBtn: {
-    paddingHorizontal: 12,
-    height: 32,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  reconsiderBtnText: {
-    fontSize: 11,
-    fontFamily: "Inter_700Bold",
-    color: "#001018",
-    letterSpacing: 0.3,
-  },
-  matchVerdict: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  matchVerdictText: {
-    fontSize: 11,
-    fontFamily: "Inter_700Bold",
-  },
-  undoBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  photoGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  gridPhoto: {
-    width: 100,
-    height: 100,
   },
   emptyCard: {
     padding: 32,

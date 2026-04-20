@@ -1,0 +1,214 @@
+import React from "react";
+import {
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Icon } from "@/components/Icon";
+import { useColors } from "@/hooks/useColors";
+import { useApp } from "@/context/AppContext";
+import { PhotoCard } from "@/components/PhotoCard";
+import { tagEmoji, tagLabel } from "@/utils/interests";
+import { timeAgo } from "@/utils/timeAgo";
+
+export default function MyPhotosScreen() {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const { myPhotos } = useApp();
+
+  const topPadding = Platform.OS === "web" ? 8 : insets.top;
+  const bottomPadding = Platform.OS === "web" ? 24 : insets.bottom + 24;
+
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.header, { paddingTop: topPadding + 8 }]}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={[styles.backBtn, { borderColor: colors.border }]}
+          hitSlop={8}
+          accessibilityLabel="Back"
+        >
+          <Icon name="chevron-left" size={20} color={colors.foreground} />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.headerTitle, { color: colors.foreground }]}>
+            My Photos
+          </Text>
+          <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
+            {myPhotos.length}{" "}
+            {myPhotos.length === 1 ? "photo posted" : "photos posted"}
+          </Text>
+        </View>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: bottomPadding },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        {myPhotos.length === 0 ? (
+          <View
+            style={[
+              styles.emptyCard,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
+            <Icon name="camera" size={32} color={colors.mutedForeground} />
+            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+              No photos yet
+            </Text>
+            <Text style={[styles.emptyDesc, { color: colors.mutedForeground }]}>
+              Take today's challenge to post your first photo and start
+              receiving echoes from around the world.
+            </Text>
+          </View>
+        ) : (
+          myPhotos.map((photo, i) => (
+            <View
+              key={`${photo.uri}-${i}`}
+              style={[
+                styles.photoRow,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <PhotoCard uri={photo.uri} size="md" />
+              <View style={styles.photoMeta}>
+                <Text
+                  style={[styles.photoTheme, { color: colors.foreground }]}
+                  numberOfLines={1}
+                >
+                  {photo.theme}
+                </Text>
+                <Text
+                  style={[styles.photoTime, { color: colors.mutedForeground }]}
+                >
+                  {timeAgo(new Date(photo.uploadedAt))}
+                </Text>
+                {photo.tags && photo.tags.length > 0 && (
+                  <View style={styles.tagRow}>
+                    {photo.tags.slice(0, 4).map((t) => (
+                      <View
+                        key={t}
+                        style={[
+                          styles.tagChip,
+                          {
+                            backgroundColor: colors.teal + "1a",
+                            borderColor: colors.teal + "44",
+                          },
+                        ]}
+                      >
+                        <Text style={styles.tagEmoji}>{tagEmoji(t)}</Text>
+                        <Text
+                          style={[styles.tagText, { color: colors.teal }]}
+                          numberOfLines={1}
+                        >
+                          {tagLabel(t)}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            </View>
+          ))
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -0.5,
+  },
+  headerSub: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    marginTop: 2,
+  },
+  content: {
+    paddingHorizontal: 16,
+    gap: 10,
+  },
+  photoRow: {
+    flexDirection: "row",
+    gap: 12,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  photoMeta: { flex: 1, gap: 4 },
+  photoTheme: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+    textTransform: "capitalize",
+  },
+  photoTime: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+  },
+  tagRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 5,
+    marginTop: 6,
+  },
+  tagChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  tagEmoji: { fontSize: 10 },
+  tagText: {
+    fontSize: 10,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.2,
+  },
+  emptyCard: {
+    padding: 28,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignItems: "center",
+    gap: 10,
+    marginTop: 32,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontFamily: "Inter_700Bold",
+  },
+  emptyDesc: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+    lineHeight: 19,
+  },
+});
