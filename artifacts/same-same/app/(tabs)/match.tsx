@@ -386,11 +386,13 @@ export default function SwipeScreen() {
       </View>
 
       <View style={[styles.challengeBar, { borderColor: colors.border }]}>
-        <Text style={styles.challengeEmoji}>{themeEmoji}</Text>
+        <Text style={styles.challengeEmoji}>
+          {hasUploadedPhoto ? themeEmoji : todaysChallenge.emoji}
+        </Text>
         <Text style={[styles.challengeText, { color: colors.mutedForeground }]}>
-          Matching:{" "}
+          {hasUploadedPhoto ? "Matching: " : "Today's prompt: "}
           <Text style={{ color: colors.foreground, fontFamily: "Inter_600SemiBold" }}>
-            {themeTitle}
+            {hasUploadedPhoto ? themeTitle : todaysChallenge.title}
           </Text>
         </Text>
         {hasUploadedPhoto && (
@@ -403,7 +405,7 @@ export default function SwipeScreen() {
         )}
       </View>
 
-      {matchedTheme !== activeTheme && (() => {
+      {hasUploadedPhoto && matchedTheme !== activeTheme && (() => {
         const nearby = DAILY_CHALLENGES.find((c) => c.id === matchedTheme);
         if (!nearby) return null;
         return (
@@ -418,6 +420,34 @@ export default function SwipeScreen() {
       })()}
 
       <View style={styles.cardArea}>
+        {!hasUploadedPhoto && (
+          <View
+            style={[
+              styles.emptyCard,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
+            <View style={[styles.emptyIcon, { backgroundColor: colors.primary + "22" }]}>
+              <Icon name="camera" size={32} color={colors.primary} />
+            </View>
+            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+              Add your photo to start matching
+            </Text>
+            <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
+              Share a moment from today and we'll find someone, somewhere in the world,
+              who shared something similar.
+            </Text>
+            <TouchableOpacity
+              onPress={() => router.push("/camera")}
+              style={[styles.emptyCta, { backgroundColor: colors.primary }]}
+              activeOpacity={0.85}
+            >
+              <Icon name="camera" size={18} color="#fff" />
+              <Text style={styles.emptyCtaText}>Add your photo</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {hasUploadedPhoto && (
         <Animated.View
           style={[
             styles.cardWrapper,
@@ -556,6 +586,7 @@ export default function SwipeScreen() {
             </View>
           </View>
         </Animated.View>
+        )}
       </View>
 
       {/* Fullscreen image viewer */}
@@ -675,6 +706,50 @@ const styles = StyleSheet.create({
   cardWrapper: {
     width: CARD_WIDTH,
     flex: 1,
+  },
+  emptyCard: {
+    width: CARD_WIDTH,
+    borderRadius: 24,
+    borderWidth: 1,
+    paddingVertical: 36,
+    paddingHorizontal: 24,
+    alignItems: "center",
+    gap: 14,
+  },
+  emptyIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontFamily: "Inter_700Bold",
+    textAlign: "center",
+    letterSpacing: -0.3,
+  },
+  emptySub: {
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  emptyCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 22,
+    borderRadius: 999,
+    marginTop: 8,
+  },
+  emptyCtaText: {
+    color: "#fff",
+    fontFamily: "Inter_700Bold",
+    fontSize: 15,
+    letterSpacing: 0.2,
   },
   card: {
     width: CARD_WIDTH,
