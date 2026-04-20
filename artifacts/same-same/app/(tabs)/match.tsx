@@ -222,15 +222,29 @@ export default function SwipeScreen() {
       seenRef.current,
       currentUri,
     );
-    // Reset animated values BEFORE updating state so the next render
-    // paints the new photo at center, not at the off-screen end position.
-    pan.setValue({ x: 0, y: 0 });
-    cardScale.setValue(1);
+    // After the swipe-out animation, the native-driven transform is parked
+    // off-screen. Calling setValue from JS does NOT reliably propagate back
+    // through useNativeDriver — the card stays invisible on subsequent taps.
+    // Use a 0-duration animation so the native driver itself performs the
+    // reset, then update photo state.
     sameOpacity.setValue(0);
-    setTheirPhoto(next.photo);
-    setMatchedTheme(next.matchedTheme);
-    setSharedTags(next.sharedTags);
-    isAnimatingOutRef.current = false;
+    Animated.parallel([
+      Animated.timing(pan, {
+        toValue: { x: 0, y: 0 },
+        duration: 0,
+        useNativeDriver: true,
+      }),
+      Animated.timing(cardScale, {
+        toValue: 1,
+        duration: 0,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setTheirPhoto(next.photo);
+      setMatchedTheme(next.matchedTheme);
+      setSharedTags(next.sharedTags);
+      isAnimatingOutRef.current = false;
+    });
   }, [pan, cardScale, sameOpacity]);
 
   const handleSwipe = useCallback(
