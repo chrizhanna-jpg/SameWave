@@ -37,6 +37,15 @@ function MatchTierChips({
       : time.kind === "hour"
       ? colors.teal
       : colors.mutedForeground;
+  // Compact label for the chip — the full "Same Continent · Europe" string is
+  // too long for the narrow history-row column, so we surface just the most
+  // distinctive bit (continent name, or short tier name).
+  const geoShort =
+    geo.kind === "continent"
+      ? geo.label.replace(/^Same Continent · /i, "")
+      : geo.kind === "country"
+      ? "Same country"
+      : "Same planet";
   return (
     <View style={tierChipStyles.row}>
       <View
@@ -48,9 +57,11 @@ function MatchTierChips({
           },
         ]}
       >
-        <Text style={tierChipStyles.emoji}>{time.emoji}</Text>
-        <Text style={[tierChipStyles.text, { color: timeColor }]}>
-          {time.label}
+        <Text
+          style={[tierChipStyles.text, { color: timeColor }]}
+          numberOfLines={1}
+        >
+          {time.emoji} {time.label}
         </Text>
       </View>
       <View
@@ -59,9 +70,11 @@ function MatchTierChips({
           { backgroundColor: colors.muted, borderColor: colors.border },
         ]}
       >
-        <Text style={tierChipStyles.emoji}>{geo.emoji}</Text>
-        <Text style={[tierChipStyles.text, { color: colors.foreground }]}>
-          {geo.label}
+        <Text
+          style={[tierChipStyles.text, { color: colors.foreground }]}
+          numberOfLines={1}
+        >
+          {geo.emoji} {geoShort}
         </Text>
       </View>
     </View>
@@ -70,29 +83,23 @@ function MatchTierChips({
 
 const tierChipStyles = StyleSheet.create({
   row: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 4,
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 3,
     marginTop: 2,
-    alignSelf: "stretch",
   },
   chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 8,
     borderWidth: 1,
-    flexShrink: 1,
+    alignSelf: "flex-start",
     maxWidth: "100%",
   },
-  emoji: { fontSize: 9 },
   text: {
     fontSize: 9,
     fontFamily: "Inter_700Bold",
     letterSpacing: 0.2,
-    flexShrink: 1,
   },
 });
 
