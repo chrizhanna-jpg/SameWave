@@ -14,8 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
-import { GlobeAnimation } from "@/components/GlobeAnimation";
-import { SemoLogo } from "@/components/SemoLogo";
+import { SemoGlobeLogo } from "@/components/SemoGlobeLogo";
 import { getTodaysChallenge } from "@/data/samplePhotos";
 
 const { width } = Dimensions.get("window");
@@ -41,18 +40,14 @@ export default function HomeScreen() {
           { paddingTop: topPadding + 16, paddingBottom: bottomPadding + 100 },
         ]}
       >
-        {/* Hero Globe */}
+        {/* Hero — globe IS the logo */}
         <View style={styles.hero}>
-          <GlobeAnimation size={190} />
-          <View style={{ alignItems: "center", marginTop: 8 }}>
-            <SemoLogo
-              size="lg"
-              color={colors.foreground}
-              accent={colors.teal}
-              taglineColor={colors.mutedForeground}
-            />
-          </View>
-          <Text style={[styles.tagline, { color: colors.mutedForeground, marginTop: 8 }]}>
+          <SemoGlobeLogo
+            globeSize={200}
+            color="#FFFFFF"
+            taglineColor={colors.mutedForeground}
+          />
+          <Text style={[styles.tagline, { color: colors.mutedForeground, marginTop: 10 }]}>
             One world. Daily moments.
           </Text>
         </View>

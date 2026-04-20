@@ -361,7 +361,6 @@ export default function SwipeScreen() {
           <SemoLogo
             size="sm"
             color={colors.foreground}
-            accent={colors.teal}
             taglineColor={colors.mutedForeground}
           />
           <Text style={[styles.subtitle, { color: colors.mutedForeground, marginTop: 4 }]}>
