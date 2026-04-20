@@ -6,6 +6,7 @@ import React, {
   useEffect,
   useState,
 } from "react";
+import { SAMPLE_PHOTOS } from "@/data/samplePhotos";
 
 export interface MatchedCountry {
   code: string;
@@ -73,6 +74,31 @@ export interface ConnectRequest {
   seen: boolean;
 }
 
+/**
+ * An "echo" — someone else somewhere swiped same-same on a photo I posted.
+ * This is the inverse of a Match (which captures a swipe I made on someone
+ * else's photo). Echoes feed the Me-tab notification bell.
+ */
+export interface EchoNotification {
+  id: string;
+  /** URI of MY photo they connected to. */
+  myPhoto: string;
+  /** Theme my photo was posted under (used for narrative copy). */
+  myPhotoTheme?: string;
+  /** Their photo that paired with mine. */
+  theirPhoto: string;
+  theirCountry: string;
+  theirCountryFlag: string;
+  theirCountryCode: string;
+  /** How fresh their photo was when they swiped. */
+  theirPhotoMinutesAgo?: number;
+  sharedTags?: string[];
+  /** When they swiped same-same (ISO). */
+  timestamp: string;
+  /** Has the user opened the notifications view since this arrived? */
+  seen: boolean;
+}
+
 export interface Badge {
   id: string;
   name: string;
@@ -91,6 +117,7 @@ interface AppState {
   onboardingComplete: boolean;
   proUnlocked: boolean;
   connectRequests: ConnectRequest[];
+  echoes: EchoNotification[];
   myDefaultPlatform?: string; // remembered preference
   myDefaultHandle?: string;
   // User's "home" country — drives the Same Country / Same Continent
@@ -129,6 +156,10 @@ interface AppContextValue extends AppState {
   unreadIncoming: number;
   pendingOutgoing: number;
   hasOutgoingForMatch: (matchId: string) => boolean;
+  // Echo notifications (others connecting to my photos)
+  markEchoSeen: (id: string) => void;
+  markAllEchoesSeen: () => void;
+  unreadEchoes: number;
 }
 
 const defaultBadges: Badge[] = [
@@ -154,6 +185,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     onboardingComplete: false,
     proUnlocked: false,
     connectRequests: [],
+    echoes: [],
   });
   // Mutable ref so simulated-response timeouts can read latest state
   const stateRef = React.useRef(state);
@@ -197,11 +229,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             }
             return r;
           });
+        // Cap stored echoes at 50, oldest-trimmed, so storage stays bounded.
+        const migratedEchoes: EchoNotification[] = Array.isArray(parsed.echoes)
+          ? parsed.echoes.slice(0, 50)
+          : [];
         setState((prev) => ({
           ...prev,
           ...parsed,
           myPhotos: migratedPhotos,
           connectRequests: migratedRequests,
+          echoes: migratedEchoes,
           badges: defaultBadges.map((b) => {
             const stored = parsed.badges?.find((sb: Badge) => sb.id === b.id);
             return stored ? { ...b, ...stored } : b;
@@ -383,17 +420,55 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const addMyPhoto = useCallback((uri: string, theme: string, tags?: string[]) => {
+    const photo: MyPhoto = {
+      uri,
+      uploadedAt: new Date().toISOString(),
+      theme,
+      tags: tags ?? [],
+    };
     setState((prev) => {
-      const photo: MyPhoto = {
-        uri,
-        uploadedAt: new Date().toISOString(),
-        theme,
-        tags: tags ?? [],
-      };
       const newState = { ...prev, myPhotos: [photo, ...prev.myPhotos] };
       saveState(newState);
       return newState;
     });
+    // Dev-only: schedule a fake echo against the photo we just uploaded
+    // so the user can see the notification flow without real network
+    // traffic. Real builds receive these via push.
+    if (__DEV__) {
+      setTimeout(
+        () => {
+          // buildFakeEcho uses SAMPLE_PHOTOS only — no closure stale-state risk
+          const sameTheme = SAMPLE_PHOTOS.filter((p) => p.theme === photo.theme);
+          const pool = sameTheme.length > 0 ? sameTheme : SAMPLE_PHOTOS;
+          if (pool.length === 0) return;
+          const sample = pool[Math.floor(Math.random() * pool.length)];
+          const myTagSet = new Set(photo.tags ?? []);
+          const sharedTags = sample.tags.filter((t) => myTagSet.has(t));
+          const echo: EchoNotification = {
+            id: `echo_${Date.now().toString(36)}_${Math.random()
+              .toString(36)
+              .slice(2, 6)}`,
+            myPhoto: photo.uri,
+            myPhotoTheme: photo.theme,
+            theirPhoto: sample.uri,
+            theirCountry: sample.country,
+            theirCountryFlag: sample.countryFlag,
+            theirCountryCode: sample.countryCode,
+            theirPhotoMinutesAgo: sample.minutesAgo,
+            sharedTags,
+            timestamp: new Date().toISOString(),
+            seen: false,
+          };
+          setState((prev) => {
+            const newEchoes = [echo, ...prev.echoes].slice(0, 50);
+            const newState = { ...prev, echoes: newEchoes };
+            saveState(newState);
+            return newState;
+          });
+        },
+        8000 + Math.random() * 12000,
+      );
+    }
   }, []);
 
   const completeOnboarding = useCallback(() => {
@@ -591,6 +666,99 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [state.connectRequests],
   );
 
+  // --- Echo notifications (others connecting to my photos) ---
+  //
+  // In production these would arrive via push from the backend whenever
+  // another user swiped same-same on a photo I posted. For dev we
+  // synthesize a small stream off the existing sample photo bank so the
+  // notification UI is observable without a backend.
+
+  const addEcho = useCallback((echo: EchoNotification) => {
+    setState((prev) => {
+      // Cap at 50, newest-first.
+      const newEchoes = [echo, ...prev.echoes].slice(0, 50);
+      const newState: AppState = { ...prev, echoes: newEchoes };
+      saveState(newState);
+      return newState;
+    });
+  }, []);
+
+  const markEchoSeen = useCallback((id: string) => {
+    setState((prev) => {
+      let changed = false;
+      const newEchoes = prev.echoes.map((e) => {
+        if (e.id === id && !e.seen) {
+          changed = true;
+          return { ...e, seen: true };
+        }
+        return e;
+      });
+      if (!changed) return prev;
+      const newState = { ...prev, echoes: newEchoes };
+      saveState(newState);
+      return newState;
+    });
+  }, []);
+
+  const markAllEchoesSeen = useCallback(() => {
+    setState((prev) => {
+      if (prev.echoes.every((e) => e.seen)) return prev;
+      const newEchoes = prev.echoes.map((e) => ({ ...e, seen: true }));
+      const newState = { ...prev, echoes: newEchoes };
+      saveState(newState);
+      return newState;
+    });
+  }, []);
+
+  const unreadEchoes = state.echoes.filter((e) => !e.seen).length;
+
+  // Build a single fake echo against one of my photos. Prefers stranger
+  // photos with the same theme so the pairing reads naturally.
+  const buildFakeEcho = useCallback(
+    (myPhoto: MyPhoto): EchoNotification | null => {
+      const sameTheme = SAMPLE_PHOTOS.filter((p) => p.theme === myPhoto.theme);
+      const pool = sameTheme.length > 0 ? sameTheme : SAMPLE_PHOTOS;
+      if (pool.length === 0) return null;
+      const sample = pool[Math.floor(Math.random() * pool.length)];
+      const myTagSet = new Set(myPhoto.tags ?? []);
+      const sharedTags = sample.tags.filter((t) => myTagSet.has(t));
+      const id = `echo_${Date.now().toString(36)}_${Math.random()
+        .toString(36)
+        .slice(2, 6)}`;
+      return {
+        id,
+        myPhoto: myPhoto.uri,
+        myPhotoTheme: myPhoto.theme,
+        theirPhoto: sample.uri,
+        theirCountry: sample.country,
+        theirCountryFlag: sample.countryFlag,
+        theirCountryCode: sample.countryCode,
+        theirPhotoMinutesAgo: sample.minutesAgo,
+        sharedTags,
+        timestamp: new Date().toISOString(),
+        seen: false,
+      };
+    },
+    [],
+  );
+
+  // Dev-only seeder: if the user has photos but no echoes yet, drop one
+  // in shortly after first load so the bell isn't perpetually empty for
+  // anyone testing the feature without yet uploading a fresh photo.
+  React.useEffect(() => {
+    if (!__DEV__) return;
+    if (state.myPhotos.length === 0) return;
+    if (state.echoes.length > 0) return;
+    const t = setTimeout(() => {
+      const myPhoto = stateRef.current.myPhotos[0];
+      if (!myPhoto) return;
+      const echo = buildFakeEcho(myPhoto);
+      if (echo) addEcho(echo);
+    }, 4000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.myPhotos.length, state.echoes.length]);
+
   // "My vibe" is the user's interest fingerprint. Posted-photo tags weigh more
   // than match-derived tags, but both contribute so the user sees a vibe form
   // even before they've uploaded their own photo (e.g. during the first
@@ -636,6 +804,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         unreadIncoming,
         pendingOutgoing,
         hasOutgoingForMatch,
+        markEchoSeen,
+        markAllEchoesSeen,
+        unreadEchoes,
       }}
     >
       {children}

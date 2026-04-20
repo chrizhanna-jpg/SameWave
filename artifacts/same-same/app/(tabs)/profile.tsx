@@ -119,6 +119,8 @@ export default function ProfileScreen() {
     connectRequests,
     unreadIncoming,
     pendingOutgoing,
+    unreadEchoes,
+    echoes,
     myVibe,
     myCountryCode,
     myCountryName,
@@ -222,6 +224,52 @@ export default function ProfileScreen() {
         <Text style={[styles.headerTitle, { color: colors.foreground }]}>
           My Journey
         </Text>
+        <TouchableOpacity
+          onPress={() => router.push("/echoes")}
+          activeOpacity={0.8}
+          style={[
+            styles.bellBtn,
+            {
+              backgroundColor:
+                unreadEchoes > 0 ? colors.teal : colors.card,
+              borderColor: unreadEchoes > 0 ? colors.teal : colors.border,
+            },
+          ]}
+          accessibilityLabel={
+            unreadEchoes > 0
+              ? `${unreadEchoes} new echo${unreadEchoes === 1 ? "" : "es"}`
+              : "Echoes — others connecting to your photos"
+          }
+          hitSlop={6}
+        >
+          <Icon
+            name="bell"
+            size={18}
+            color={unreadEchoes > 0 ? "#001018" : colors.foreground}
+          />
+          {unreadEchoes > 0 && (
+            <View
+              style={[
+                styles.bellBadge,
+                { backgroundColor: colors.gold, borderColor: colors.background },
+              ]}
+            >
+              <Text style={styles.bellBadgeText}>
+                {unreadEchoes > 9 ? "9+" : unreadEchoes}
+              </Text>
+            </View>
+          )}
+          {unreadEchoes === 0 && echoes.length > 0 && (
+            // Subtle dot when there are echoes already seen — gives the
+            // bell something to "remember" so it doesn't look dormant.
+            <View
+              style={[
+                styles.bellDot,
+                { backgroundColor: colors.mutedForeground },
+              ]}
+            />
+          )}
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -588,6 +636,43 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 20,
     paddingBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  bellBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bellBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bellBadgeText: {
+    fontSize: 10,
+    fontFamily: "Inter_700Bold",
+    color: "#001018",
+  },
+  bellDot: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    opacity: 0.6,
   },
   headerTitle: {
     fontSize: 22,
