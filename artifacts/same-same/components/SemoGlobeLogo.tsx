@@ -18,11 +18,9 @@ export function SemoGlobeLogo({
   showTagline = true,
 }: Props) {
   // Word size scales with the globe so SEMO always sits comfortably across
-  // the equator. The label has a translucent dark plate behind it so it
-  // reads cleanly against any of the globe's colours.
-  const wordSize = Math.round(globeSize * 0.22);
-  const plateH = Math.round(wordSize * 1.4);
-  const plateW = Math.round(globeSize * 0.78);
+  // the equator. No plate — the text floats directly on the globe with a
+  // soft dark glow behind it for legibility against the rotating colours.
+  const wordSize = Math.round(globeSize * 0.24);
   const taglineSize = Math.max(11, Math.round(globeSize * 0.07));
 
   return (
@@ -34,7 +32,7 @@ export function SemoGlobeLogo({
         ]}
       >
         <GlobeAnimation size={globeSize} />
-        {/* Label overlay — sits across the equator */}
+        {/* Label overlay — sits across the equator, transparent */}
         <View
           pointerEvents="none"
           style={[
@@ -42,29 +40,18 @@ export function SemoGlobeLogo({
             { width: globeSize, height: globeSize },
           ]}
         >
-          <View
+          <Text
             style={[
-              styles.plate,
+              styles.word,
               {
-                width: plateW,
-                height: plateH,
-                borderRadius: plateH / 2,
+                color,
+                fontSize: wordSize,
+                letterSpacing: Math.round(wordSize * 0.18),
               },
             ]}
           >
-            <Text
-              style={[
-                styles.word,
-                {
-                  color,
-                  fontSize: wordSize,
-                  letterSpacing: Math.round(wordSize * 0.18),
-                },
-              ]}
-            >
-              SEMO
-            </Text>
-          </View>
+            SEMO
+          </Text>
         </View>
       </View>
       {showTagline && (
@@ -101,22 +88,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  plate: {
-    backgroundColor: "rgba(2, 16, 33, 0.72)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 209, 102, 0.55)",
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 6,
-  },
   word: {
     fontFamily: "Inter_700Bold",
     textAlign: "center",
     includeFontPadding: false,
+    textShadowColor: "rgba(0, 0, 0, 0.85)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
   },
   tagline: {
     fontFamily: "Inter_500Medium",
