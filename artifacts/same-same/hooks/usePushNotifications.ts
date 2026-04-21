@@ -1,19 +1,42 @@
 import { useEffect, useRef } from "react";
 import { Platform } from "react-native";
 import Constants from "expo-constants";
-import * as Device from "expo-device";
-import * as Notifications from "expo-notifications";
 import { router } from "expo-router";
 import { registerPushToken } from "@/utils/api";
 import { useToast } from "@/components/ToastHost";
+// Type-only import — never loads the native module at runtime, so it
+// can't trigger the Expo Go SDK 53 "remote push removed" exception.
+import type * as NotificationsType from "expo-notifications";
 
-// Expo Go (SDK 53+) stripped out remote-push support. Touching the
-// notifications module in Expo Go throws synchronously and cascades a
-// root-layout crash, so we detect the runtime up front and turn the
-// whole hook into a no-op there. A real dev/production build behaves
-// normally. `appOwnership === 'expo'` is the documented signal for
-// "running inside Expo Go".
-const IS_EXPO_GO = Constants.appOwnership === "expo";
+// Expo Go (SDK 53+) stripped out remote-push support. Even *importing*
+// `expo-notifications` triggers a synchronous native exception there,
+// which previously cascaded into a root-layout crash. We detect the
+// runtime up front and only `require()` the module on real
+// dev/production builds. Two flags so we catch both legacy and
+// current Expo runtime indicators.
+const IS_EXPO_GO =
+  Constants.appOwnership === "expo" ||
+  Constants.executionEnvironment === "storeClient";
+
+let Notifications: typeof NotificationsType | null = null;
+if (!IS_EXPO_GO) {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    Notifications = require("expo-notifications") as typeof NotificationsType;
+  } catch {
+    Notifications = null;
+  }
+}
+
+let Device: typeof import("expo-device") | null = null;
+if (!IS_EXPO_GO) {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    Device = require("expo-device") as typeof import("expo-device");
+  } catch {
+    Device = null;
+  }
+}
 
 // Foreground display behaviour. We surface foreground notifications via
 // our own in-app toast (see ToastHost) instead of the OS banner, which
@@ -21,7 +44,7 @@ const IS_EXPO_GO = Constants.appOwnership === "expo";
 // the OS keep the entry in the notification list, play the sound, and
 // bump the badge so behaviour is identical to a backgrounded delivery
 // minus the visible banner.
-if (!IS_EXPO_GO) {
+if (Notifications) {
   try {
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
@@ -32,15 +55,14 @@ if (!IS_EXPO_GO) {
       }),
     });
   } catch {
-    // Some environments (web, bare imports during SSR) can't set the
-    // handler; the hook itself still no-ops below if anything goes
-    // wrong, so swallow.
+    // Some environments (web, SSR) can't set the handler; the hook
+    // itself still no-ops below if anything goes wrong.
   }
 }
 
 // Map a notification's `data.deepLink` into an in-app navigation. The
-// server sends `/echoes` for both pending and mutual events; if we ever
-// add a per-pair deep link we can branch here.
+// server sends `/echoes` for pending offers and `/echo-pair?a=&b=` for
+// mutual matches.
 function navigateFromData(data: Record<string, unknown> | undefined) {
   if (!data) return;
   const deepLink = typeof data.deepLink === "string" ? data.deepLink : null;
@@ -61,10 +83,9 @@ function navigateFromData(data: Record<string, unknown> | undefined) {
 }
 
 async function registerForPushAsync(): Promise<string | null> {
-  // Only physical devices can get an Expo push token; emulators and the
-  // web preview return null and we just skip registration. Expo Go on
-  // SDK 53+ also can't receive remote pushes, so skip there too.
-  if (IS_EXPO_GO) return null;
+  if (!Notifications || !Device) return null;
+  // Only physical devices can get an Expo push token; emulators and
+  // the web preview return null and we just skip registration.
   if (!Device.isDevice) return null;
 
   if (Platform.OS === "android") {
@@ -113,16 +134,17 @@ async function registerForPushAsync(): Promise<string | null> {
  *   4. Handles a cold-start tap (app launched FROM a notification).
  *
  * Safe to call once at the root. All side effects are idempotent.
+ * In Expo Go the entire hook is a no-op.
  */
 export function usePushNotifications() {
-  const responseSub = useRef<Notifications.Subscription | null>(null);
-  const receivedSub = useRef<Notifications.Subscription | null>(null);
+  const responseSub = useRef<NotificationsType.Subscription | null>(null);
+  const receivedSub = useRef<NotificationsType.Subscription | null>(null);
   const { showToast } = useToast();
 
   useEffect(() => {
-    // Expo Go can't subscribe to remote pushes — bail early so we
-    // never call into the (removed) native module.
-    if (IS_EXPO_GO) return;
+    // Expo Go can't subscribe to remote pushes — bail.
+    if (!Notifications) return;
+    const N = Notifications;
     let cancelled = false;
 
     (async () => {
@@ -139,7 +161,7 @@ export function usePushNotifications() {
 
     // Tap on a notification while the app is foregrounded or
     // backgrounded → deep link.
-    responseSub.current = Notifications.addNotificationResponseReceivedListener(
+    responseSub.current = N.addNotificationResponseReceivedListener(
       (response) => {
         const data = response.notification.request.content.data as
           | Record<string, unknown>
@@ -152,27 +174,23 @@ export function usePushNotifications() {
     // banner is suppressed (see setNotificationHandler above) so we show
     // our own in-app toast that deep-links the same way the push tap
     // would.
-    receivedSub.current = Notifications.addNotificationReceivedListener(
-      (notification) => {
-        const content = notification.request.content;
-        const data = content.data as Record<string, unknown> | undefined;
-        // The toast is a one-of-a-kind surface reserved for the echo
-        // loop, so the title is always branded with the word "Echo"
-        // (mutual vs incoming offer) regardless of the server-side
-        // copy. This keeps the moment feeling distinct from a generic
-        // notification.
-        const state = typeof data?.state === "string" ? data.state : null;
-        const brandedTitle =
-          state === "mutual" ? "Echo matched ✨" : "New Echo 💫";
-        const body =
-          content.body ?? "Someone just echoed your photo — tap to view.";
-        showToast({
-          title: brandedTitle,
-          body,
-          onPress: () => navigateFromData(data),
-        });
-      },
-    );
+    receivedSub.current = N.addNotificationReceivedListener((notification) => {
+      const content = notification.request.content;
+      const data = content.data as Record<string, unknown> | undefined;
+      // The toast is a one-of-a-kind surface reserved for the echo
+      // loop, so the title is always branded with the word "Echo"
+      // (mutual vs incoming offer) regardless of the server-side copy.
+      const state = typeof data?.state === "string" ? data.state : null;
+      const brandedTitle =
+        state === "mutual" ? "Echo matched ✨" : "New Echo 💫";
+      const body =
+        content.body ?? "Someone just echoed your photo — tap to view.";
+      showToast({
+        title: brandedTitle,
+        body,
+        onPress: () => navigateFromData(data),
+      });
+    });
 
     // Cold-start tap: app was killed and the user opened it FROM a
     // notification. The response is captured before any listener is
@@ -180,7 +198,7 @@ export function usePushNotifications() {
     // expo-router's root navigator has mounted before we navigate.
     (async () => {
       try {
-        const last = await Notifications.getLastNotificationResponseAsync();
+        const last = await N.getLastNotificationResponseAsync();
         if (cancelled || !last) return;
         const data = last.notification.request.content.data as
           | Record<string, unknown>
