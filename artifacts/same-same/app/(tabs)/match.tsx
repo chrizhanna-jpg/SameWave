@@ -180,7 +180,7 @@ function getTheirPhoto(
 export default function SwipeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { streakCount, myPhotos, matches, addMatch, myCountryCode, myCountryName, myCountryFlag } = useApp();
+  const { streakCount, myPhotos, matches, addMatch, refreshEchoes, myCountryCode, myCountryName, myCountryFlag } = useApp();
 
   // Every photo the user has ever reacted to (same OR different) — drawn
   // from the persistent match history so reacted photos never come back
@@ -477,8 +477,22 @@ export default function SwipeScreen() {
             : match;
         addMatch(matchWithStats);
         if (liveId) {
-          // Persist the verdict to the backend.
-          votePhoto(liveId, dir === "right" ? "same" : "different").catch(() => {});
+          // Persist the verdict to the backend. Pass the user's currently-
+          // active backend photo ID so the server can pair the two and
+          // record an echo offer (or promote to mutual when complementary).
+          const voterPhotoId = todaysPhoto?.backendId;
+          votePhoto(
+            liveId,
+            dir === "right" ? "same" : "different",
+            voterPhotoId,
+          )
+            .then((result) => {
+              if (result.echo === "pending" || result.echo === "mutual") {
+                // Refresh local echo lists so the inbox + bell catch up.
+                refreshEchoes();
+              }
+            })
+            .catch(() => {});
         }
         if (dir === "right") {
           // Show the lightweight in-card flash. It auto-dismisses (or the

@@ -112,7 +112,8 @@ export default function ProfileScreen() {
     unreadIncoming,
     pendingOutgoing,
     unreadEchoes,
-    echoes,
+    mutualEchoes,
+    pendingEchoes,
     myVibe,
     myCountryCode,
     myCountryName,
@@ -207,7 +208,7 @@ export default function ProfileScreen() {
               </Text>
             </View>
           )}
-          {unreadEchoes === 0 && echoes.length > 0 && (
+          {unreadEchoes === 0 && (mutualEchoes.length + pendingEchoes.length) > 0 && (
             // Subtle dot when there are echoes already seen — gives the
             // bell something to "remember" so it doesn't look dormant.
             <View

@@ -3,6 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { db, photosTable, votesTable, reportsTable } from "@workspace/db";
 import { resolveUserFromRequest } from "../lib/users";
 import { analyzePhoto } from "../lib/photoAnalysis";
+import { recordEchoOffer } from "./echoes";
 
 const router: IRouter = Router();
 
@@ -216,12 +217,17 @@ router.post("/photos/:id/vote", async (req, res) => {
       res.status(401).json({ error: "missing or invalid X-Device-Id" });
       return;
     }
-    const verdict = (req.body ?? {}).verdict;
+    const body = (req.body ?? {}) as { verdict?: unknown; voterPhotoId?: unknown };
+    const verdict = body.verdict;
     if (verdict !== "same" && verdict !== "different") {
       res.status(400).json({ error: "verdict must be 'same' or 'different'" });
       return;
     }
     const photoId = req.params.id;
+    const voterPhotoId =
+      typeof body.voterPhotoId === "string" && body.voterPhotoId.length > 0
+        ? body.voterPhotoId
+        : null;
 
     // Idempotent: re-voting upserts the verdict.
     await db
@@ -232,7 +238,23 @@ router.post("/photos/:id/vote", async (req, res) => {
         set: { verdict },
       });
 
-    res.json({ ok: true });
+    // If a "same" vote was made while the user was representing one of
+    // their own photos, also create / promote an echo offer for the pair.
+    let echoState: "pending" | "mutual" | "skipped" = "skipped";
+    if (verdict === "same" && voterPhotoId) {
+      try {
+        const result = await recordEchoOffer({
+          voterUserId: user.id,
+          voterPhotoId,
+          targetPhotoId: photoId,
+        });
+        echoState = result.state;
+      } catch (err) {
+        req.log.error({ err }, "echo offer write failed");
+      }
+    }
+
+    res.json({ ok: true, echo: echoState });
   } catch (err) {
     req.log.error({ err }, "vote failed");
     res.status(500).json({ error: "vote failed" });

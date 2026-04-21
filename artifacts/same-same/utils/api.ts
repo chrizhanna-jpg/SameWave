@@ -156,20 +156,41 @@ export async function fetchCandidates(input: {
   }
 }
 
+export interface VoteResult {
+  ok: boolean;
+  /**
+   * Did this vote create or promote an echo offer? "skipped" when no
+   * voterPhotoId was sent (or self-vote / missing photo). "pending" when
+   * we recorded a one-way offer. "mutual" when the other side had
+   * already offered and this vote completes the loop.
+   */
+  echo: "pending" | "mutual" | "skipped";
+}
+
+/**
+ * Cast a vote on someone else's photo. When `voterPhotoId` is supplied,
+ * the server also creates / promotes an echo offer between the two
+ * photos (skipped silently for self-votes or missing photos).
+ */
 export async function votePhoto(
   photoId: string,
   verdict: "same" | "different",
-): Promise<boolean> {
+  voterPhotoId?: string,
+): Promise<VoteResult> {
   try {
     const base = getApiBase();
     const res = await fetch(`${base}/api/photos/${photoId}/vote`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(await authedHeaders()) },
-      body: JSON.stringify({ verdict }),
+      body: JSON.stringify({ verdict, voterPhotoId: voterPhotoId ?? null }),
     });
-    return res.ok;
+    if (!res.ok) return { ok: false, echo: "skipped" };
+    const json = (await res.json().catch(() => ({}))) as { echo?: string };
+    const echo =
+      json.echo === "mutual" || json.echo === "pending" ? json.echo : "skipped";
+    return { ok: true, echo };
   } catch {
-    return false;
+    return { ok: false, echo: "skipped" };
   }
 }
 
@@ -198,6 +219,212 @@ export async function fetchMatchStats(photoId: string): Promise<MatchStats> {
     };
   } catch {
     return { sameLastHour: 0, sameLastDay: 0, sameAllTime: 0 };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Echoes — server-backed reciprocation loop.
+// ─────────────────────────────────────────────────────────────────────────
+
+export interface ServerEchoSide {
+  id: string;
+  uri: string;
+  countryCode: string | null;
+  country: string;
+  countryFlag: string;
+}
+
+export interface ServerEcho {
+  id: string;
+  state: "pending" | "mutual";
+  theme: string;
+  createdAt: string;
+  mutualAt: string | null;
+  mine: ServerEchoSide;
+  theirs: ServerEchoSide;
+}
+
+// Map ISO-3166-1 alpha-2 → display name + flag emoji. Mirrors the same
+// helpers used elsewhere on mobile so all surfaces show identical labels.
+import { flagFor, nameFor } from "@/data/countries";
+
+function decorateSide(side: {
+  id: string;
+  uri: string;
+  countryCode: string | null;
+}): ServerEchoSide {
+  const code = (side.countryCode ?? "").toUpperCase();
+  return {
+    id: side.id,
+    uri: side.uri,
+    countryCode: code || null,
+    country: code ? nameFor(code) ?? "Somewhere" : "Somewhere",
+    countryFlag: code ? flagFor(code) : "🌍",
+  };
+}
+
+function decorateEcho(raw: {
+  id: string;
+  state: string;
+  theme: string;
+  createdAt: string;
+  mutualAt: string | null;
+  mine: { id: string; uri: string; countryCode: string | null };
+  theirs: { id: string; uri: string; countryCode: string | null };
+}): ServerEcho {
+  return {
+    id: raw.id,
+    state: raw.state === "mutual" ? "mutual" : "pending",
+    theme: raw.theme ?? "",
+    createdAt: raw.createdAt,
+    mutualAt: raw.mutualAt ?? null,
+    mine: decorateSide(raw.mine),
+    theirs: decorateSide(raw.theirs),
+  };
+}
+
+export async function fetchEchoesInbox(): Promise<ServerEcho[]> {
+  try {
+    const base = getApiBase();
+    const res = await fetch(`${base}/api/echoes/inbox`, {
+      headers: await authedHeaders(),
+    });
+    if (!res.ok) return [];
+    const json = (await res.json()) as { echoes?: unknown[] };
+    return Array.isArray(json.echoes)
+      ? json.echoes.map((e) => decorateEcho(e as Parameters<typeof decorateEcho>[0]))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchEchoesMine(): Promise<ServerEcho[]> {
+  try {
+    const base = getApiBase();
+    const res = await fetch(`${base}/api/echoes/mine`, {
+      headers: await authedHeaders(),
+    });
+    if (!res.ok) return [];
+    const json = (await res.json()) as { echoes?: unknown[] };
+    return Array.isArray(json.echoes)
+      ? json.echoes.map((e) => decorateEcho(e as Parameters<typeof decorateEcho>[0]))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function respondEcho(
+  id: string,
+  verdict: "same" | "different",
+): Promise<{ ok: boolean; state: "mutual" | "declined" | "unknown" }> {
+  try {
+    const base = getApiBase();
+    const res = await fetch(`${base}/api/echoes/${id}/respond`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(await authedHeaders()) },
+      body: JSON.stringify({ verdict }),
+    });
+    if (!res.ok) return { ok: false, state: "unknown" };
+    const json = (await res.json().catch(() => ({}))) as { state?: string };
+    const state =
+      json.state === "mutual"
+        ? "mutual"
+        : json.state === "declined"
+        ? "declined"
+        : "unknown";
+    return { ok: true, state };
+  } catch {
+    return { ok: false, state: "unknown" };
+  }
+}
+
+export interface ThemeEchoCount {
+  theme: string;
+  count: number;
+}
+
+export async function fetchEchoCountsByTheme(): Promise<ThemeEchoCount[]> {
+  try {
+    const base = getApiBase();
+    const res = await fetch(`${base}/api/echoes/by-theme`);
+    if (!res.ok) return [];
+    const json = (await res.json()) as { themes?: ThemeEchoCount[] };
+    return Array.isArray(json.themes) ? json.themes : [];
+  } catch {
+    return [];
+  }
+}
+
+export interface ThemeEchoPair {
+  echoId: string;
+  theme: string;
+  mutualAt: string | null;
+  a: ServerEchoSide;
+  b: ServerEchoSide;
+}
+
+export async function fetchEchoesByTheme(theme: string): Promise<{
+  theme: string;
+  count: number;
+  pairs: ThemeEchoPair[];
+}> {
+  try {
+    const base = getApiBase();
+    const res = await fetch(
+      `${base}/api/echoes/theme/${encodeURIComponent(theme)}`,
+    );
+    if (!res.ok) return { theme, count: 0, pairs: [] };
+    const json = (await res.json()) as {
+      theme?: string;
+      count?: number;
+      pairs?: Array<{
+        echoId: string;
+        theme: string;
+        mutualAt: string | null;
+        a: { id: string; uri: string; countryCode: string | null };
+        b: { id: string; uri: string; countryCode: string | null };
+      }>;
+    };
+    const pairs = Array.isArray(json.pairs)
+      ? json.pairs.map((p) => ({
+          echoId: p.echoId,
+          theme: p.theme ?? theme,
+          mutualAt: p.mutualAt ?? null,
+          a: decorateSide(p.a),
+          b: decorateSide(p.b),
+        }))
+      : [];
+    return { theme: json.theme ?? theme, count: json.count ?? pairs.length, pairs };
+  } catch {
+    return { theme, count: 0, pairs: [] };
+  }
+}
+
+export interface PhotoPairResult {
+  a: ServerEchoSide & { theme: string };
+  b: ServerEchoSide & { theme: string };
+}
+
+export async function fetchPair(aId: string, bId: string): Promise<PhotoPairResult | null> {
+  try {
+    const base = getApiBase();
+    const res = await fetch(
+      `${base}/api/echoes/pair?a=${encodeURIComponent(aId)}&b=${encodeURIComponent(bId)}`,
+    );
+    if (!res.ok) return null;
+    const json = (await res.json()) as {
+      a?: { id: string; uri: string; countryCode: string | null; theme: string };
+      b?: { id: string; uri: string; countryCode: string | null; theme: string };
+    };
+    if (!json.a || !json.b) return null;
+    return {
+      a: { ...decorateSide(json.a), theme: json.a.theme ?? "" },
+      b: { ...decorateSide(json.b), theme: json.b.theme ?? "" },
+    };
+  } catch {
+    return null;
   }
 }
 

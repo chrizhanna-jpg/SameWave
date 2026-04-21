@@ -26,6 +26,8 @@ function RootLayoutNav() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="reveal" options={{ headerShown: false, presentation: "modal" }} />
       <Stack.Screen name="camera" options={{ headerShown: false, presentation: "modal" }} />
+      <Stack.Screen name="echoes" options={{ headerShown: false }} />
+      <Stack.Screen name="echo-pair" options={{ headerShown: false, presentation: "modal" }} />
     </Stack>
   );
 }

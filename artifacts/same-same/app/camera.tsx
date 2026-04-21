@@ -51,7 +51,7 @@ function normalizeTheme(s: string): string {
 export default function CameraScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { addMyPhoto, myPhotos, myCountryCode } = useApp();
+  const { addMyPhoto, setMyPhotoBackendId, myPhotos, myCountryCode } = useApp();
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   // Keep the raw base64 + mime alongside the URI so submit() can ship the
   // bytes to the backend (the local URI isn't reachable from the server).
@@ -253,11 +253,19 @@ export default function CameraScreen() {
     // anyone else's candidate pool or generate echo connections.
     const captured = selectedAssetRef.current;
     if (captured?.base64 && !isAi) {
+      const localUri = selectedPhoto;
       uploadPhoto({
         imageBase64: captured.base64,
         mimeType: captured.mimeType,
         countryCode: myCountryCode,
-      }).catch(() => {});
+      })
+        .then((res) => {
+          // Store the backend ID back onto the local photo record so future
+          // votes against this photo can flag it as the voter's side and
+          // form echo offers.
+          if (res?.id && localUri) setMyPhotoBackendId(localUri, res.id);
+        })
+        .catch(() => {});
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setTimeout(() => {

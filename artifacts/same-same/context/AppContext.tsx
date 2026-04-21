@@ -4,9 +4,15 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
-import { SAMPLE_PHOTOS } from "@/data/samplePhotos";
+import {
+  fetchEchoesInbox,
+  fetchEchoesMine,
+  respondEcho as respondEchoApi,
+  type ServerEcho,
+} from "@/utils/api";
 
 export interface MatchedCountry {
   code: string;
@@ -26,6 +32,13 @@ export interface MyPhoto {
    * shown with an "AI" badge and excluded from echo connections.
    */
   isAI?: boolean;
+  /**
+   * Backend ID returned from the photos upload API once the photo lands
+   * on the server. Needed when this photo participates in an echo offer
+   * (the vote endpoint pairs the candidate photo with this ID). Absent
+   * for AI photos (never uploaded) or while an upload is still in flight.
+   */
+  backendId?: string;
 }
 
 // Module-scoped registry of URIs flagged as AI. Kept in sync with the
@@ -89,28 +102,33 @@ export interface ConnectRequest {
 }
 
 /**
- * An "echo" — someone else somewhere swiped same-same on a photo I posted.
- * This is the inverse of a Match (which captures a swipe I made on someone
- * else's photo). Echoes feed the Me-tab notification bell.
+ * An echo — a pair of photos two strangers both swiped same-same on.
+ * The shape mirrors the server response and is framed from the requesting
+ * user's perspective (`mine` is always one of my photos, `theirs` is
+ * always the stranger's).
+ *
+ * "pending" → the other side tapped first; I haven't responded yet. This
+ *             is what surfaces in the inbox.
+ * "mutual"  → both sides have tapped same-same. Real echo.
  */
-export interface EchoNotification {
+export type EchoState = "pending" | "mutual";
+
+export interface PhotoSide {
   id: string;
-  /** URI of MY photo they connected to. */
-  myPhoto: string;
-  /** Theme my photo was posted under (used for narrative copy). */
-  myPhotoTheme?: string;
-  /** Their photo that paired with mine. */
-  theirPhoto: string;
-  theirCountry: string;
-  theirCountryFlag: string;
-  theirCountryCode: string;
-  /** How fresh their photo was when they swiped. */
-  theirPhotoMinutesAgo?: number;
-  sharedTags?: string[];
-  /** When they swiped same-same (ISO). */
-  timestamp: string;
-  /** Has the user opened the notifications view since this arrived? */
-  seen: boolean;
+  uri: string;
+  countryCode: string | null;
+  country: string;
+  countryFlag: string;
+}
+
+export interface EchoCard {
+  id: string;
+  state: EchoState;
+  theme: string;
+  createdAt: string;
+  mutualAt: string | null;
+  mine: PhotoSide;
+  theirs: PhotoSide;
 }
 
 export interface Badge {
@@ -131,7 +149,12 @@ interface AppState {
   onboardingComplete: boolean;
   proUnlocked: boolean;
   connectRequests: ConnectRequest[];
-  echoes: EchoNotification[];
+  /** Pending offers waiting on me to respond (other side tapped first). */
+  pendingEchoes: EchoCard[];
+  /** Mutual echoes I'm involved in (both sides tapped). */
+  mutualEchoes: EchoCard[];
+  /** ISO timestamp of the last time the user opened the echoes inbox. */
+  echoesSeenAt?: string;
   myDefaultPlatform?: string; // remembered preference
   myDefaultHandle?: string;
   // User's "home" country — drives the Same Country / Same Continent
@@ -154,6 +177,13 @@ interface AppContextValue extends AppState {
   changeVerdict: (id: string, newVerdict: "same" | "different") => Match | null;
   setMyCountry: (code: string, name: string, flag: string) => void;
   addMyPhoto: (uri: string, theme: string, tags?: string[], isAI?: boolean) => void;
+  /**
+   * Patch a previously-added local photo with the backend ID returned by
+   * the upload API. Called from the camera screen once the network round
+   * trip completes; safe to call before or after the photo is consumed
+   * by the swipe deck.
+   */
+  setMyPhotoBackendId: (uri: string, backendId: string) => void;
   completeOnboarding: () => void;
   resetOnboarding: () => void;
   unlockPro: () => void;
@@ -170,10 +200,18 @@ interface AppContextValue extends AppState {
   unreadIncoming: number;
   pendingOutgoing: number;
   hasOutgoingForMatch: (matchId: string) => boolean;
-  // Echo notifications (others connecting to my photos)
-  markEchoSeen: (id: string) => void;
+  // ── Echoes (server-backed reciprocation loop) ──────────────────────
+  /** Mark every visible inbox item as seen (clears the unread bell). */
   markAllEchoesSeen: () => void;
   unreadEchoes: number;
+  /** Fetch fresh inbox + mutual lists from the server. Safe to call often. */
+  refreshEchoes: () => Promise<void>;
+  /**
+   * Respond to a pending offer. "same" promotes it to mutual; "different"
+   * deletes it. Optimistically updates local state and reconciles with
+   * the server response.
+   */
+  respondToEcho: (id: string, verdict: "same" | "different") => Promise<"mutual" | "declined" | "error">;
 }
 
 const defaultBadges: Badge[] = [
@@ -199,7 +237,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     onboardingComplete: false,
     proUnlocked: false,
     connectRequests: [],
-    echoes: [],
+    pendingEchoes: [],
+    mutualEchoes: [],
   });
   // Mutable ref so simulated-response timeouts can read latest state
   const stateRef = React.useRef(state);
@@ -241,6 +280,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               theme: p.theme ?? "joy",
               tags: p.tags ?? [],
               isAI: p.isAI ?? false,
+              // Preserve the backend ID across restarts so votes from
+              // already-uploaded photos still create echo offers.
+              backendId:
+                typeof p.backendId === "string" && p.backendId.length > 0
+                  ? p.backendId
+                  : undefined,
             };
           }
         );
@@ -253,16 +298,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             }
             return r;
           });
-        // Cap stored echoes at 50, oldest-trimmed, so storage stays bounded.
-        const migratedEchoes: EchoNotification[] = Array.isArray(parsed.echoes)
-          ? parsed.echoes.slice(0, 50)
-          : [];
         setState((prev) => ({
           ...prev,
           ...parsed,
           myPhotos: migratedPhotos,
           connectRequests: migratedRequests,
-          echoes: migratedEchoes,
+          // Echoes always come from the server now — drop any legacy
+          // locally-simulated entries from older app versions.
+          pendingEchoes: [],
+          mutualEchoes: [],
+          echoesSeenAt: typeof parsed.echoesSeenAt === "string" ? parsed.echoesSeenAt : undefined,
           badges: defaultBadges.map((b) => {
             const stored = parsed.badges?.find((sb: Badge) => sb.id === b.id);
             return stored ? { ...b, ...stored } : b;
@@ -456,44 +501,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       saveState(newState);
       return newState;
     });
-    // AI-flagged photos are excluded from echo connections — no fake
-    // echoes generated, no real ones either (camera.tsx skips backend
-    // upload when isAI is true).
-    if (__DEV__ && !photo.isAI) {
-      setTimeout(
-        () => {
-          // buildFakeEcho uses SAMPLE_PHOTOS only — no closure stale-state risk
-          const sameTheme = SAMPLE_PHOTOS.filter((p) => p.theme === photo.theme);
-          const pool = sameTheme.length > 0 ? sameTheme : SAMPLE_PHOTOS;
-          if (pool.length === 0) return;
-          const sample = pool[Math.floor(Math.random() * pool.length)];
-          const myTagSet = new Set(photo.tags ?? []);
-          const sharedTags = sample.tags.filter((t) => myTagSet.has(t));
-          const echo: EchoNotification = {
-            id: `echo_${Date.now().toString(36)}_${Math.random()
-              .toString(36)
-              .slice(2, 6)}`,
-            myPhoto: photo.uri,
-            myPhotoTheme: photo.theme,
-            theirPhoto: sample.uri,
-            theirCountry: sample.country,
-            theirCountryFlag: sample.countryFlag,
-            theirCountryCode: sample.countryCode,
-            theirPhotoMinutesAgo: sample.minutesAgo,
-            sharedTags,
-            timestamp: new Date().toISOString(),
-            seen: false,
-          };
-          setState((prev) => {
-            const newEchoes = [echo, ...prev.echoes].slice(0, 50);
-            const newState = { ...prev, echoes: newEchoes };
-            saveState(newState);
-            return newState;
-          });
-        },
-        8000 + Math.random() * 12000,
-      );
-    }
+  }, []);
+
+  const setMyPhotoBackendId = useCallback((uri: string, backendId: string) => {
+    setState((prev) => {
+      let changed = false;
+      const newPhotos = prev.myPhotos.map((p) => {
+        if (p.uri === uri && p.backendId !== backendId) {
+          changed = true;
+          return { ...p, backendId };
+        }
+        return p;
+      });
+      if (!changed) return prev;
+      const newState = { ...prev, myPhotos: newPhotos };
+      saveState(newState);
+      return newState;
+    });
   }, []);
 
   const completeOnboarding = useCallback(() => {
@@ -691,98 +715,108 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [state.connectRequests],
   );
 
-  // --- Echo notifications (others connecting to my photos) ---
+  // --- Echoes (server-backed) -----------------------------------------
   //
-  // In production these would arrive via push from the backend whenever
-  // another user swiped same-same on a photo I posted. For dev we
-  // synthesize a small stream off the existing sample photo bank so the
-  // notification UI is observable without a backend.
+  // The inbox + mutual list both live on the server. We refresh on mount,
+  // when the app foregrounds (handled by callers via refreshEchoes), and
+  // every time the user opens the inbox screen. There's no local-only
+  // echo state any more — the simulated dev push has been retired now
+  // that the loop is real.
 
-  const addEcho = useCallback((echo: EchoNotification) => {
-    setState((prev) => {
-      // Cap at 50, newest-first.
-      const newEchoes = [echo, ...prev.echoes].slice(0, 50);
-      const newState: AppState = { ...prev, echoes: newEchoes };
-      saveState(newState);
-      return newState;
-    });
-  }, []);
-
-  const markEchoSeen = useCallback((id: string) => {
-    setState((prev) => {
-      let changed = false;
-      const newEchoes = prev.echoes.map((e) => {
-        if (e.id === id && !e.seen) {
-          changed = true;
-          return { ...e, seen: true };
-        }
-        return e;
+  const refreshEchoes = useCallback(async () => {
+    try {
+      const [inbox, mine] = await Promise.all([
+        fetchEchoesInbox(),
+        fetchEchoesMine(),
+      ]);
+      setState((prev) => {
+        const newState: AppState = {
+          ...prev,
+          pendingEchoes: inbox,
+          mutualEchoes: mine,
+        };
+        saveState(newState);
+        return newState;
       });
-      if (!changed) return prev;
-      const newState = { ...prev, echoes: newEchoes };
-      saveState(newState);
-      return newState;
-    });
+    } catch {
+      // Network failure — leave existing lists in place. The inbox screen
+      // shows an empty state when both lists are empty, which is fine.
+    }
   }, []);
+
+  // First load + lightweight 30s poll. We don't need push notifications
+  // for MVP; the user will see new offers when they next foreground the
+  // app or open the inbox.
+  React.useEffect(() => {
+    refreshEchoes();
+    const id = setInterval(refreshEchoes, 30_000);
+    return () => clearInterval(id);
+  }, [refreshEchoes]);
 
   const markAllEchoesSeen = useCallback(() => {
+    const nowIso = new Date().toISOString();
     setState((prev) => {
-      if (prev.echoes.every((e) => e.seen)) return prev;
-      const newEchoes = prev.echoes.map((e) => ({ ...e, seen: true }));
-      const newState = { ...prev, echoes: newEchoes };
+      if (prev.echoesSeenAt === nowIso) return prev;
+      const newState: AppState = { ...prev, echoesSeenAt: nowIso };
       saveState(newState);
       return newState;
     });
   }, []);
 
-  const unreadEchoes = state.echoes.filter((e) => !e.seen).length;
-
-  // Build a single fake echo against one of my photos. Prefers stranger
-  // photos with the same theme so the pairing reads naturally.
-  const buildFakeEcho = useCallback(
-    (myPhoto: MyPhoto): EchoNotification | null => {
-      const sameTheme = SAMPLE_PHOTOS.filter((p) => p.theme === myPhoto.theme);
-      const pool = sameTheme.length > 0 ? sameTheme : SAMPLE_PHOTOS;
-      if (pool.length === 0) return null;
-      const sample = pool[Math.floor(Math.random() * pool.length)];
-      const myTagSet = new Set(myPhoto.tags ?? []);
-      const sharedTags = sample.tags.filter((t) => myTagSet.has(t));
-      const id = `echo_${Date.now().toString(36)}_${Math.random()
-        .toString(36)
-        .slice(2, 6)}`;
-      return {
-        id,
-        myPhoto: myPhoto.uri,
-        myPhotoTheme: myPhoto.theme,
-        theirPhoto: sample.uri,
-        theirCountry: sample.country,
-        theirCountryFlag: sample.countryFlag,
-        theirCountryCode: sample.countryCode,
-        theirPhotoMinutesAgo: sample.minutesAgo,
-        sharedTags,
-        timestamp: new Date().toISOString(),
-        seen: false,
-      };
+  const respondToEcho = useCallback(
+    async (id: string, verdict: "same" | "different") => {
+      // Optimistic: pull the offer out of the pending list immediately so
+      // the UI feels instant. We reconcile against the server response.
+      const target = stateRef.current.pendingEchoes.find((e) => e.id === id);
+      if (!target) return "error" as const;
+      setState((prev) => {
+        const newPending = prev.pendingEchoes.filter((e) => e.id !== id);
+        const newMutual =
+          verdict === "same"
+            ? [
+                {
+                  ...target,
+                  state: "mutual" as const,
+                  mutualAt: new Date().toISOString(),
+                },
+                ...prev.mutualEchoes,
+              ]
+            : prev.mutualEchoes;
+        const newState: AppState = {
+          ...prev,
+          pendingEchoes: newPending,
+          mutualEchoes: newMutual,
+        };
+        saveState(newState);
+        return newState;
+      });
+      try {
+        const result = await respondEchoApi(id, verdict);
+        if (!result.ok) {
+          // Roll back: re-fetch authoritative state from the server.
+          await refreshEchoes();
+          return "error" as const;
+        }
+        return result.state === "mutual" ? "mutual" : "declined";
+      } catch {
+        await refreshEchoes();
+        return "error" as const;
+      }
     },
-    [],
+    [refreshEchoes],
   );
 
-  // Dev-only seeder: if the user has photos but no echoes yet, drop one
-  // in shortly after first load so the bell isn't perpetually empty for
-  // anyone testing the feature without yet uploading a fresh photo.
-  React.useEffect(() => {
-    if (!__DEV__) return;
-    if (state.myPhotos.length === 0) return;
-    if (state.echoes.length > 0) return;
-    const t = setTimeout(() => {
-      const myPhoto = stateRef.current.myPhotos[0];
-      if (!myPhoto) return;
-      const echo = buildFakeEcho(myPhoto);
-      if (echo) addEcho(echo);
-    }, 4000);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.myPhotos.length, state.echoes.length]);
+  // Unread count: pending offers received since the user last opened the
+  // inbox. If the user has never opened it, every pending offer counts.
+  const unreadEchoes = React.useMemo(() => {
+    const seenAt = state.echoesSeenAt
+      ? new Date(state.echoesSeenAt).getTime()
+      : 0;
+    return state.pendingEchoes.filter((e) => {
+      const ts = e.createdAt ? new Date(e.createdAt).getTime() : 0;
+      return ts > seenAt;
+    }).length;
+  }, [state.pendingEchoes, state.echoesSeenAt]);
 
   // "My vibe" is the user's interest fingerprint. Posted-photo tags weigh more
   // than match-derived tags, but both contribute so the user sees a vibe form
@@ -819,6 +853,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         changeVerdict,
         setMyCountry,
         addMyPhoto,
+        setMyPhotoBackendId,
         completeOnboarding,
         resetOnboarding,
         unlockPro,
@@ -829,9 +864,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         unreadIncoming,
         pendingOutgoing,
         hasOutgoingForMatch,
-        markEchoSeen,
         markAllEchoesSeen,
         unreadEchoes,
+        refreshEchoes,
+        respondToEcho,
       }}
     >
       {children}
