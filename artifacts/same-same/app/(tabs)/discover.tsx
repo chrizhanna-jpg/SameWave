@@ -211,8 +211,7 @@ function DiscoveryCard({ item }: { item: DiscoveryItem }) {
                 style={[styles.chipText, { color: colors.teal }]}
                 numberOfLines={1}
               >
-                {item.echoStats.sameAllTime.toLocaleString()}{" "}
-                {item.echoStats.sameAllTime === 1 ? "echo" : "echoes"}
+                {item.echoStats.sameAllTime.toLocaleString()} echo
               </Text>
             </>
           )}
