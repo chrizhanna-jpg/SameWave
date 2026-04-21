@@ -174,6 +174,14 @@ function DiscoveryCard({ item }: { item: DiscoveryItem }) {
           >
             <Icon name="zap" size={12} color={colors.teal} />
           </View>
+          {item.echoStats.sameAllTime > 1 ? (
+            <Text
+              style={[styles.connectorCount, { color: colors.teal }]}
+              numberOfLines={1}
+            >
+              {item.echoStats.sameAllTime.toLocaleString()}
+            </Text>
+          ) : null}
           <View
             style={[
               styles.connectorLine,
@@ -196,9 +204,10 @@ function DiscoveryCard({ item }: { item: DiscoveryItem }) {
         </View>
       </View>
 
-      {/* Three fixed-width chip slots so the layout stays uniform as the
-          feed scrolls — time tier always left, geo tier always centre,
-          echo count always right, regardless of label length. */}
+      {/* Two equal-width chip slots so the time + geo tiers always
+          render at the same size on every card and never clip their
+          labels. The echo count moved up to the connector badge between
+          the photos. */}
       <View style={styles.chipRow}>
         <View
           style={[
@@ -233,29 +242,6 @@ function DiscoveryCard({ item }: { item: DiscoveryItem }) {
           >
             {item.geoTier.label}
           </Text>
-        </View>
-        <View
-          style={[
-            styles.chip,
-            item.echoStats.sameAllTime > 1
-              ? {
-                  backgroundColor: colors.teal + "1a",
-                  borderColor: colors.teal + "44",
-                }
-              : { backgroundColor: "transparent", borderColor: "transparent" },
-          ]}
-        >
-          {item.echoStats.sameAllTime > 1 && (
-            <>
-              <Text style={styles.chipEmoji}>🔁</Text>
-              <Text
-                style={[styles.chipText, { color: colors.teal }]}
-                numberOfLines={1}
-              >
-                {item.echoStats.sameAllTime.toLocaleString()} echo{item.echoStats.sameAllTime === 1 ? "" : "es"}
-              </Text>
-            </>
-          )}
         </View>
       </View>
     </TouchableOpacity>
@@ -356,6 +342,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
+  },
+  connectorCount: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.2,
+    marginTop: 4,
   },
   chipRow: {
     flexDirection: "row",
