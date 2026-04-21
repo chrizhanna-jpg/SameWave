@@ -4,7 +4,6 @@ import Animated, {
   Easing,
   useAnimatedProps,
   useSharedValue,
-  withDelay,
   withRepeat,
   withTiming,
 } from "react-native-reanimated";
@@ -30,8 +29,15 @@ type SparkleSpec = {
   rotation: number;
   color: string;
   dur: number;
-  delay: number;
-  maxOpacity: number;
+  // Starting phase (0..1) so each sparkle is already mid-shimmer the
+  // moment the screen mounts — no fade-in delay.
+  phase: number;
+  // How far this sparkle drifts horizontally over a full cycle, in px.
+  drift: number;
+  // Peak twinkle amplitude added to the base opacity.
+  amp: number;
+  // Always-on baseline so the field is visible from the first frame.
+  base: number;
 };
 
 function Sparkle({
@@ -42,23 +48,37 @@ function Sparkle({
   rotation,
   color,
   dur,
-  delay,
-  maxOpacity,
+  phase,
+  drift,
+  amp,
+  base,
 }: Omit<SparkleSpec, "key">) {
-  const t = useSharedValue(0);
+  // Continuous time in cycles. Starts at the sparkle's phase so it's
+  // already partway through the twinkle when mounted.
+  const t = useSharedValue(phase);
   useEffect(() => {
-    t.value = withDelay(
-      delay,
-      withRepeat(
-        withTiming(1, { duration: dur, easing: Easing.inOut(Easing.quad) }),
-        -1,
-        true,
-      ),
+    // Linear ramp from `phase` → `phase + 1` repeatedly. Sin/cos in the
+    // animated props derives the actual smooth twinkle + drift.
+    t.value = withRepeat(
+      withTiming(phase + 1, { duration: dur, easing: Easing.linear }),
+      -1,
+      false,
     );
-  }, [dur, delay, t]);
-  const animatedProps = useAnimatedProps(() => ({
-    opacity: 0.04 + t.value * maxOpacity,
-  }));
+  }, [dur, phase, t]);
+
+  const animatedProps = useAnimatedProps(() => {
+    const TAU = Math.PI * 2;
+    // 0..1 sine wave for the brightness twinkle.
+    const tw = 0.5 + 0.5 * Math.sin(t.value * TAU);
+    // Slower, offset wave for the lateral drift so motion feels
+    // independent of the brightness pulse.
+    const dx = drift * Math.sin(t.value * TAU * 0.5 + phase * TAU);
+    return {
+      opacity: base + amp * tw,
+      cx: cx + dx,
+    };
+  });
+
   return (
     <AnimatedEllipse
       animatedProps={animatedProps}
@@ -85,13 +105,13 @@ type Props = {
 
 /**
  * Background-only shimmer that mimics sunlight glittering on calm ocean
- * waves — the relaxing twinkle you see standing on a beach. Renders
- * absolutely-positioned streaks that softly fade in and out at different
- * rates so no two specks pulse together. Pointer-events disabled so it
- * never intercepts taps.
+ * waves — fine specks that are already visible the instant the screen
+ * mounts, then drift sideways and twinkle softly so the field reads as
+ * living water rather than a static texture. Pointer-events disabled so
+ * it never intercepts taps.
  */
 export function OceanShimmer({
-  count = 38,
+  count = 44,
   tint = "#7FE7DC",
   highlight = "#FFFFFF",
   seed = 7,
@@ -102,13 +122,18 @@ export function OceanShimmer({
     return Array.from({ length: count }).map((_, i) => {
       const cx = rnd() * width;
       const cy = rnd() * height;
-      // Thin, wide ellipses read as wave-top light streaks rather than dots.
-      const rx = 8 + rnd() * 22;
-      const ry = 1 + rnd() * 1.6;
+      // Finer streaks — smaller and thinner than before so individual
+      // specks barely register up close but blend into a glittering
+      // surface across the whole screen.
+      const rx = 4 + rnd() * 11;
+      const ry = 0.5 + rnd() * 0.9;
       const rotation = -18 + rnd() * 36;
-      const dur = 1600 + rnd() * 2800;
-      const delay = rnd() * 2400;
-      const isHighlight = rnd() > 0.72;
+      // Slower cycles → calmer, more meditative shimmer.
+      const dur = 2400 + rnd() * 3600;
+      const phase = rnd();
+      // 2–6 px lateral drift — visible but never agitating.
+      const drift = 2 + rnd() * 4;
+      const isHighlight = rnd() > 0.78;
       return {
         key: i,
         cx,
@@ -117,9 +142,13 @@ export function OceanShimmer({
         ry,
         rotation,
         dur,
-        delay,
+        phase,
+        drift,
         color: isHighlight ? highlight : tint,
-        maxOpacity: isHighlight ? 0.5 : 0.32,
+        // Subtle: never fully opaque, always a present-but-quiet baseline
+        // so the field is there from mount and only modulates gently.
+        base: isHighlight ? 0.1 : 0.07,
+        amp: isHighlight ? 0.22 : 0.13,
       };
     });
   }, [count, width, height, tint, highlight, seed]);
@@ -137,8 +166,10 @@ export function OceanShimmer({
             rotation={s.rotation}
             color={s.color}
             dur={s.dur}
-            delay={s.delay}
-            maxOpacity={s.maxOpacity}
+            phase={s.phase}
+            drift={s.drift}
+            amp={s.amp}
+            base={s.base}
           />
         ))}
       </Svg>
