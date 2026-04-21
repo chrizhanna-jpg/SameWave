@@ -7,20 +7,36 @@ import { router } from "expo-router";
 import { registerPushToken } from "@/utils/api";
 import { useToast } from "@/components/ToastHost";
 
+// Expo Go (SDK 53+) stripped out remote-push support. Touching the
+// notifications module in Expo Go throws synchronously and cascades a
+// root-layout crash, so we detect the runtime up front and turn the
+// whole hook into a no-op there. A real dev/production build behaves
+// normally. `appOwnership === 'expo'` is the documented signal for
+// "running inside Expo Go".
+const IS_EXPO_GO = Constants.appOwnership === "expo";
+
 // Foreground display behaviour. We surface foreground notifications via
 // our own in-app toast (see ToastHost) instead of the OS banner, which
 // feels intrusive when the user is already inside the app. We still let
 // the OS keep the entry in the notification list, play the sound, and
 // bump the badge so behaviour is identical to a backgrounded delivery
 // minus the visible banner.
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: false,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+if (!IS_EXPO_GO) {
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowBanner: false,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      }),
+    });
+  } catch {
+    // Some environments (web, bare imports during SSR) can't set the
+    // handler; the hook itself still no-ops below if anything goes
+    // wrong, so swallow.
+  }
+}
 
 // Map a notification's `data.deepLink` into an in-app navigation. The
 // server sends `/echoes` for both pending and mutual events; if we ever
@@ -46,7 +62,9 @@ function navigateFromData(data: Record<string, unknown> | undefined) {
 
 async function registerForPushAsync(): Promise<string | null> {
   // Only physical devices can get an Expo push token; emulators and the
-  // web preview return null and we just skip registration.
+  // web preview return null and we just skip registration. Expo Go on
+  // SDK 53+ also can't receive remote pushes, so skip there too.
+  if (IS_EXPO_GO) return null;
   if (!Device.isDevice) return null;
 
   if (Platform.OS === "android") {
@@ -102,6 +120,9 @@ export function usePushNotifications() {
   const { showToast } = useToast();
 
   useEffect(() => {
+    // Expo Go can't subscribe to remote pushes — bail early so we
+    // never call into the (removed) native module.
+    if (IS_EXPO_GO) return;
     let cancelled = false;
 
     (async () => {
