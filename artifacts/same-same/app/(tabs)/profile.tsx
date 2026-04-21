@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  Image,
   Platform,
   ScrollView,
   StyleSheet,
@@ -121,6 +122,12 @@ export default function ProfileScreen() {
     setMyCountry,
   } = useApp();
   const [countryPickerOpen, setCountryPickerOpen] = React.useState(false);
+  // Region flag grids are collapsed by default — the user wanted a more
+  // scannable My World tab. Tapping a region's header toggles its grid.
+  const [expandedRegions, setExpandedRegions] = React.useState<Record<string, boolean>>({});
+  const toggleRegion = React.useCallback((name: string) => {
+    setExpandedRegions((prev) => ({ ...prev, [name]: !prev[name] }));
+  }, []);
   // Counts for the deep-link rows. The full lists live on dedicated
   // sub-screens (`/match-history`, `/passes`, `/my-photos`) so the Me
   // tab stays scannable as a stats / identity surface.
@@ -252,6 +259,85 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* ─────────────── Recent matches preview ───────────────
+            Shows a peek of the user's most recent "same" verdicts so the
+            tab leads with their actual journey, not stats. The "See all"
+            tap opens the full /match-history screen — same destination
+            as the NavRow below. */}
+        {confirmedCount > 0 && (
+          <View style={styles.recentMatchSection}>
+            <View style={styles.recentMatchHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+                Recent matches
+              </Text>
+              <TouchableOpacity
+                onPress={() => router.push("/match-history")}
+                activeOpacity={0.7}
+                hitSlop={8}
+                style={styles.seeAllBtn}
+                accessibilityLabel="See all matches"
+              >
+                <Text style={[styles.seeAllText, { color: colors.primary }]}>
+                  See all {confirmedCount}
+                </Text>
+                <Icon name="chevron-right" size={14} color={colors.primary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.recentMatchScroll}
+            >
+              {matches
+                .filter((m) => m.verdict === "same")
+                .slice(0, 8)
+                .map((m) => (
+                  <TouchableOpacity
+                    key={m.id}
+                    activeOpacity={0.85}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/reveal",
+                        params: { matchData: JSON.stringify(m) },
+                      })
+                    }
+                    style={[
+                      styles.recentMatchCard,
+                      { backgroundColor: colors.card, borderColor: colors.border },
+                    ]}
+                  >
+                    <Image
+                      source={{ uri: m.theirPhoto }}
+                      style={styles.recentMatchImage}
+                    />
+                    <View style={styles.recentMatchOverlay}>
+                      <Text style={styles.recentMatchFlag}>
+                        {m.theirCountryFlag}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Match History deep-link row — moved up so it sits right with
+            the recent-matches preview rather than buried below the world
+            map. The preview already shows a portion; this row gives the
+            full count + tap target. */}
+        <NavRow
+          icon="heart"
+          tint={colors.teal}
+          title="Match History"
+          subtitle={
+            confirmedCount === 0
+              ? "No matches yet — start swiping to fill your journey"
+              : `${confirmedCount} ${confirmedCount === 1 ? "match" : "matches"} · tap to revisit or change`
+          }
+          onPress={() => router.push("/match-history")}
+          accessibilityLabel="Open full match history"
+        />
+
         {/* ─────────────── World Map (merged in from old World tab) ─────────────── */}
         <View style={styles.worldHeader}>
           <Text style={[styles.worldHeaderTitle, { color: colors.foreground }]}>
@@ -352,9 +438,14 @@ export default function ProfileScreen() {
             matchedCodes.has(c),
           ).length;
           const pct = Math.round((matched / region.countries.length) * 100);
+          const expanded = !!expandedRegions[region.name];
           return (
-            <View
+            <TouchableOpacity
               key={region.name}
+              onPress={() => toggleRegion(region.name)}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel={`${region.name}, ${matched} of ${region.countries.length} matched, ${expanded ? "tap to collapse" : "tap to expand flags"}`}
               style={[
                 styles.regionCard,
                 { backgroundColor: colors.card, borderColor: colors.border },
@@ -364,11 +455,18 @@ export default function ProfileScreen() {
                 <Text style={[styles.regionName, { color: colors.foreground }]}>
                   {region.name}
                 </Text>
-                <Text
-                  style={[styles.regionCount, { color: colors.mutedForeground }]}
-                >
-                  {matched}/{region.countries.length}
-                </Text>
+                <View style={styles.regionHeaderRight}>
+                  <Text
+                    style={[styles.regionCount, { color: colors.mutedForeground }]}
+                  >
+                    {matched}/{region.countries.length}
+                  </Text>
+                  <Icon
+                    name={expanded ? "chevron-up" : "chevron-down"}
+                    size={16}
+                    color={colors.mutedForeground}
+                  />
+                </View>
               </View>
               <View
                 style={[styles.regionTrack, { backgroundColor: colors.secondary }]}
@@ -383,20 +481,22 @@ export default function ProfileScreen() {
                   ]}
                 />
               </View>
-              <View style={styles.flagRow}>
-                {region.countries.map((code, i) => (
-                  <Text
-                    key={code}
-                    style={[
-                      styles.flagItem,
-                      { opacity: matchedCodes.has(code) ? 1 : 0.2 },
-                    ]}
-                  >
-                    {region.flags[i]}
-                  </Text>
-                ))}
-              </View>
-            </View>
+              {expanded && (
+                <View style={styles.flagRow}>
+                  {region.countries.map((code, i) => (
+                    <Text
+                      key={code}
+                      style={[
+                        styles.flagItem,
+                        { opacity: matchedCodes.has(code) ? 1 : 0.2 },
+                      ]}
+                    >
+                      {region.flags[i]}
+                    </Text>
+                  ))}
+                </View>
+              )}
+            </TouchableOpacity>
           );
         })}
 
@@ -564,22 +664,8 @@ export default function ProfileScreen() {
           </ScrollView>
         </View>
 
-        {/* Three nav rows replace the long inline lists. Each opens a
-            dedicated screen so the Me tab stays scannable. Mirrors the
-            visual pattern of the existing Connections row above. */}
-        <NavRow
-          icon="heart"
-          tint={colors.teal}
-          title="Match History"
-          subtitle={
-            confirmedCount === 0
-              ? "No matches yet"
-              : `${confirmedCount} ${confirmedCount === 1 ? "match" : "matches"} · tap to change`
-          }
-          onPress={() => router.push("/match-history")}
-          accessibilityLabel="Open full match history"
-        />
-
+        {/* Match History was moved up next to the Recent matches preview.
+            Recent passes + My Photos remain here as deep-link rows. */}
         <NavRow
           icon="x"
           tint={colors.mutedForeground}
@@ -727,6 +813,56 @@ const styles = StyleSheet.create({
     width: 1,
     height: 36,
     backgroundColor: "rgba(255,255,255,0.2)",
+  },
+  recentMatchSection: {
+    gap: 12,
+  },
+  recentMatchHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  seeAllBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+  },
+  seeAllText: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+  },
+  recentMatchScroll: {
+    gap: 10,
+    paddingRight: 4,
+  },
+  recentMatchCard: {
+    width: 96,
+    height: 96,
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: "hidden",
+    position: "relative",
+  },
+  recentMatchImage: {
+    width: "100%",
+    height: "100%",
+  },
+  recentMatchOverlay: {
+    position: "absolute",
+    bottom: 6,
+    left: 6,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderRadius: 999,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  recentMatchFlag: {
+    fontSize: 16,
+  },
+  regionHeaderRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
   vibeCard: {
     padding: 16,
