@@ -129,42 +129,64 @@ router.get("/photos/candidates", async (req, res) => {
           )}]::text[]`
         : sql`ARRAY[]::text[]`;
 
+    // Content-hash-based dedupe. We hash a 4 KB prefix of the base64 bytes
+    // (cheap, near-zero collision risk for distinct JPEGs since the prefix
+    // includes header + entropy-rich early scanlines). This catches:
+    //   1. Multiple DB rows carrying the same image (e.g. seed dupes).
+    //   2. Future cases of two users uploading the identical file.
+    // Excluding by content_hash means voting on EITHER copy hides BOTH from
+    // the user's deck, and DISTINCT ON inside the same query prevents two
+    // copies from appearing in a single candidates response.
     const rows = await db.execute(sql`
-      SELECT
-        p.id,
-        p.theme,
-        p.tags,
-        p.country_code AS "countryCode",
-        p.bytes_base64 AS "bytesBase64",
-        p.mime_type AS "mimeType",
-        p.created_at AS "createdAt",
-        cardinality(ARRAY(SELECT unnest(p.tags) INTERSECT SELECT unnest(${tagsExpr}))) AS tag_overlap,
-        CASE
-          WHEN ${theme} = '' THEN 0
-          WHEN p.theme = ${theme} THEN 5
-          WHEN p.theme ILIKE '%' || ${theme} || '%' OR ${theme} ILIKE '%' || p.theme || '%' THEN 2
-          ELSE 0
-        END AS theme_score
-      FROM photos p
-      WHERE p.status = 'active'
-        AND p.user_id <> ${user.id}
-        AND p.report_count < ${REPORT_HIDE_THRESHOLD}
-        AND (p.expires_at IS NULL OR p.expires_at > now())
-        AND p.id NOT IN (
-          SELECT v.photo_id FROM votes v WHERE v.voter_user_id = ${user.id}
-        )
-      ORDER BY
-        (
-          cardinality(ARRAY(SELECT unnest(p.tags) INTERSECT SELECT unnest(${tagsExpr})))
-          + CASE
-              WHEN ${theme} = '' THEN 0
-              WHEN p.theme = ${theme} THEN 5
-              WHEN p.theme ILIKE '%' || ${theme} || '%' OR ${theme} ILIKE '%' || p.theme || '%' THEN 2
-              ELSE 0
-            END
-          + random() * 0.5
-        ) DESC,
-        p.created_at DESC
+      WITH scored AS (
+        SELECT
+          p.id,
+          p.theme,
+          p.tags,
+          p.country_code AS "countryCode",
+          p.bytes_base64 AS "bytesBase64",
+          p.mime_type AS "mimeType",
+          p.created_at AS "createdAt",
+          md5(substring(p.bytes_base64 from 1 for 4096)) AS content_hash,
+          cardinality(ARRAY(SELECT unnest(p.tags) INTERSECT SELECT unnest(${tagsExpr}))) AS tag_overlap,
+          CASE
+            WHEN ${theme} = '' THEN 0
+            WHEN p.theme = ${theme} THEN 5
+            WHEN p.theme ILIKE '%' || ${theme} || '%' OR ${theme} ILIKE '%' || p.theme || '%' THEN 2
+            ELSE 0
+          END AS theme_score,
+          (
+            cardinality(ARRAY(SELECT unnest(p.tags) INTERSECT SELECT unnest(${tagsExpr})))
+            + CASE
+                WHEN ${theme} = '' THEN 0
+                WHEN p.theme = ${theme} THEN 5
+                WHEN p.theme ILIKE '%' || ${theme} || '%' OR ${theme} ILIKE '%' || p.theme || '%' THEN 2
+                ELSE 0
+              END
+            + random() * 0.5
+          ) AS rank_score
+        FROM photos p
+        WHERE p.status = 'active'
+          AND p.user_id <> ${user.id}
+          AND p.report_count < ${REPORT_HIDE_THRESHOLD}
+          AND (p.expires_at IS NULL OR p.expires_at > now())
+          AND p.id NOT IN (
+            SELECT v.photo_id FROM votes v WHERE v.voter_user_id = ${user.id}
+          )
+          AND md5(substring(p.bytes_base64 from 1 for 4096)) NOT IN (
+            SELECT md5(substring(p2.bytes_base64 from 1 for 4096))
+            FROM votes v
+            JOIN photos p2 ON p2.id = v.photo_id
+            WHERE v.voter_user_id = ${user.id}
+          )
+      ),
+      deduped AS (
+        SELECT DISTINCT ON (content_hash) *
+        FROM scored
+        ORDER BY content_hash, rank_score DESC, "createdAt" DESC
+      )
+      SELECT * FROM deduped
+      ORDER BY rank_score DESC, "createdAt" DESC
       LIMIT ${limit}
     `);
 
