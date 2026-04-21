@@ -261,18 +261,33 @@ export default function SwipeScreen() {
   // on the backend) are preserved.
   useEffect(() => {
     const seen = new Set(seenRef.current);
-    let grew = false;
     reactedUris.forEach((uri) => {
       if (!seen.has(uri)) {
         seenRef.current.push(uri);
         seen.add(uri);
-        grew = true;
       }
     });
-    // No state update needed — seenRef is consulted on the NEXT
-    // loadNextCandidate / candidate-pool refresh. We just want to make
-    // sure the in-memory exclusion list is current.
-    void grew;
+    // CRITICAL: if the photo currently on screen is one the user has
+    // already reacted to (e.g., it was picked at mount before AsyncStorage
+    // hydrated `matches`, or another tab logged a verdict for the same
+    // URI), swap it out for a fresh one. Without this re-pick the user
+    // sees a "ghost" repeat as the very next card.
+    const currentUri = theirPhotoRef.current?.uri;
+    if (currentUri && reactedUris.has(currentUri)) {
+      const next = getTheirPhoto(
+        activeThemeRef.current,
+        myTagsRef.current,
+        seenRef.current,
+        currentUri,
+        realPoolRef.current,
+      );
+      if (next) {
+        setTheirPhoto(next.photo);
+        setMatchedTheme(next.matchedTheme);
+        setSharedTags(next.sharedTags);
+        setNoMore(false);
+      }
+    }
   }, [reactedUris]);
 
   // Real candidates from the backend. Empty until the first fetch resolves;
