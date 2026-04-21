@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Image,
   Platform,
@@ -6,13 +6,16 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
+import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
 import { OceanShimmer } from "@/components/OceanShimmer";
 import { useColors } from "@/hooks/useColors";
 import { buildDiscoveryFeed, type DiscoveryItem } from "@/data/discoveryFeed";
+import { fetchEchoCountsByTheme } from "@/utils/api";
 
 export default function DiscoverScreen() {
   const colors = useColors();
@@ -28,13 +31,39 @@ export default function DiscoverScreen() {
     return () => clearInterval(id);
   }, []);
 
-  const items = useMemo(() => buildDiscoveryFeed(14, windowKey), [windowKey]);
+  const baseItems = useMemo(() => buildDiscoveryFeed(14, windowKey), [windowKey]);
+
+  // Real per-theme echo counts from the server. Refreshed on mount, on
+  // pull-to-refresh, and whenever the auto-rotate ticks. The discover
+  // feed itself is still synthesised (we don't have enough live volume
+  // to fill 14 cards), but the echo count chip on each card now reflects
+  // actual mutual echoes across all users for that theme.
+  const [themeCounts, setThemeCounts] = useState<Map<string, number>>(new Map());
+  const refreshCounts = useCallback(async () => {
+    const themes = await fetchEchoCountsByTheme();
+    setThemeCounts(new Map(themes.map((t) => [t.theme, t.count])));
+  }, []);
+  useEffect(() => {
+    refreshCounts();
+  }, [refreshCounts, windowKey]);
+
+  const items = useMemo(
+    () =>
+      baseItems.map((item) => {
+        const real = themeCounts.get(item.theme);
+        if (real === undefined) return item;
+        return {
+          ...item,
+          echoStats: { ...item.echoStats, sameAllTime: real },
+        };
+      }),
+    [baseItems, themeCounts],
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
     setWindowKey(Date.now().toString());
-    // Tiny artificial delay so the spinner is perceptible.
-    setTimeout(() => setRefreshing(false), 500);
+    refreshCounts().finally(() => setRefreshing(false));
   };
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
@@ -84,7 +113,14 @@ function DiscoveryCard({ item }: { item: DiscoveryItem }) {
       : colors.mutedForeground;
 
   return (
-    <View
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={() =>
+        router.push({
+          pathname: "/echoes-theme/[theme]",
+          params: { theme: item.theme, title: item.themeTitle, emoji: item.themeEmoji },
+        })
+      }
       style={[
         styles.card,
         {
@@ -219,7 +255,7 @@ function DiscoveryCard({ item }: { item: DiscoveryItem }) {
           )}
         </View>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 

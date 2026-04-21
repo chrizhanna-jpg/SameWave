@@ -412,6 +412,7 @@ export async function fetchPair(aId: string, bId: string): Promise<PhotoPairResu
     const base = getApiBase();
     const res = await fetch(
       `${base}/api/echoes/pair?a=${encodeURIComponent(aId)}&b=${encodeURIComponent(bId)}`,
+      { headers: await authedHeaders() },
     );
     if (!res.ok) return null;
     const json = (await res.json()) as {

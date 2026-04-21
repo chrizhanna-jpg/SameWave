@@ -465,11 +465,11 @@ router.get("/echoes/pair", async (req, res) => {
       res.status(404).json({ error: "pair not found" });
       return;
     }
-    if (a.userId !== user.id && b.userId !== user.id) {
-      // Caller is not part of this echo — refuse, even if mutual exists.
-      res.status(403).json({ error: "not your echo" });
-      return;
-    }
+    // Anonymity-preserving read model: we only return image bytes,
+    // country codes, and theme — no usernames, device IDs, or emails — so
+    // any signed-in user may view any *mutual* echo pair (this is what
+    // powers the public Discover theme grids). The mutual-state guard
+    // above prevents IDOR against pending offers / arbitrary photos.
     res.json({
       a: {
         id: a.id,
