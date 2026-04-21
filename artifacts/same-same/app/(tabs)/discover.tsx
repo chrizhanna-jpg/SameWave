@@ -47,16 +47,19 @@ export default function DiscoverScreen() {
     refreshCounts();
   }, [refreshCounts, windowKey]);
 
+  // Always pull the count from the server. Themes the server doesn't
+  // mention are themes with zero mutual echoes — show 0, never the
+  // synthetic sample value. The chip itself is hidden when the count
+  // isn't > 1 (see DiscoveryCard) so 0/1 themes don't display the chip.
   const items = useMemo(
     () =>
-      baseItems.map((item) => {
-        const real = themeCounts.get(item.theme);
-        if (real === undefined) return item;
-        return {
-          ...item,
-          echoStats: { ...item.echoStats, sameAllTime: real },
-        };
-      }),
+      baseItems.map((item) => ({
+        ...item,
+        echoStats: {
+          ...item.echoStats,
+          sameAllTime: themeCounts.get(item.theme) ?? 0,
+        },
+      })),
     [baseItems, themeCounts],
   );
 
