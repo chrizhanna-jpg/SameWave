@@ -50,7 +50,7 @@ export function EchoGlobeLogo({
               },
             ]}
           >
-            ECHO
+            echo
           </Text>
         </View>
       </View>
