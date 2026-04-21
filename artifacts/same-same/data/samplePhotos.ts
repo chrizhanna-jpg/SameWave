@@ -331,12 +331,11 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   { id: "86", uri: "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=400", country: "Finland", countryCode: "FI", countryFlag: "🇫🇮", theme: "furniture", minutesAgo: 48, tags: ["home","cozy","vintage"] },
   { id: "87", uri: "https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?w=400", country: "Japan", countryCode: "JP", countryFlag: "🇯🇵", theme: "furniture", minutesAgo: 210, tags: ["home","cozy"] },
   { id: "88", uri: "https://images.unsplash.com/photo-1519710164239-da123dc03ef4?w=400", country: "Italy", countryCode: "IT", countryFlag: "🇮🇹", theme: "furniture", minutesAgo: 540, tags: ["home","vintage"] },
-  // Games (board game / strategy / play). The first two are widely-used
-  // Unsplash photos of chess boards and tabletop pieces; verify in app
-  // and swap if either fails to load.
+  // Games (board game / strategy / play). Only one verified-loadable
+  // Unsplash ID for now (chess board) — the previous two IDs returned
+  // blank images and were removed. Add new ones only after confirming
+  // they load.
   { id: "89", uri: "https://images.unsplash.com/photo-1529699211952-734e80c4d42b?w=400", country: "Germany", countryCode: "DE", countryFlag: "🇩🇪", theme: "games", minutesAgo: 33, tags: ["gaming","play","hobby"] },
-  { id: "90", uri: "https://images.unsplash.com/photo-1611996575749-79a3a250f948?w=400", country: "Korea, South", countryCode: "KR", countryFlag: "🇰🇷", theme: "games", minutesAgo: 180, tags: ["gaming","play"] },
-  { id: "91", uri: "https://images.unsplash.com/photo-1606503826748-29e0e0a9f3c7?w=400", country: "Brazil", countryCode: "BR", countryFlag: "🇧🇷", theme: "games", minutesAgo: 415, tags: ["gaming","friends","play"] },
   // Hobbies — reusing creative-bucket shots that already represent
   // clearly hobby-style activities (music, photography, crafts).
   { id: "92", uri: "https://images.unsplash.com/photo-1455390582262-044cdead277a?w=400", country: "Argentina", countryCode: "AR", countryFlag: "🇦🇷", theme: "hobbies", minutesAgo: 60, tags: ["music","hobby"] },
@@ -351,7 +350,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   // nature pool that genuinely read as "rocks".
   { id: "98", uri: "https://images.unsplash.com/photo-1483450388369-9ed95738483c?w=400", country: "Iceland", countryCode: "IS", countryFlag: "🇮🇸", theme: "rocks", minutesAgo: 70, tags: ["rocks","mountains","outdoors"] },
   { id: "99", uri: "https://images.unsplash.com/photo-1418065460487-3e41a6c84dc5?w=400", country: "Chile", countryCode: "CL", countryFlag: "🇨🇱", theme: "rocks", minutesAgo: 240, tags: ["rocks","mountains","outdoors"] },
-  { id: "100", uri: "https://images.unsplash.com/photo-1518152006812-edab29b069ac?w=400", country: "Jordan", countryCode: "JO", countryFlag: "🇯🇴", theme: "rocks", minutesAgo: 480, tags: ["rocks","outdoors"] },
+  // (id 100 removed — photo 1518152006812 was a microscope, not rocks.)
   // Plants — close-ups of plants/flowers/garden, distinct from the broader
   // "nature" landscape shots.
   { id: "101", uri: "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=400", country: "Netherlands", countryCode: "NL", countryFlag: "🇳🇱", theme: "plants", minutesAgo: 40, tags: ["plants","flowers","garden"] },
@@ -494,7 +493,11 @@ const SYNTH_PHOTO_BANK = {
     "1462536943532-57a629f6cc60","1416879595882-3373a0480b5b",
   ],
   games: [
-    "1529699211952-734e80c4d42b","1611996575749-79a3a250f948","1606503826748-29e0e0a9f3c7",
+    // Only verified-loadable IDs. The two previous candidates
+    // (1611996575749, 1606503826748) returned blank images and were
+    // removed. Until we have more confirmed game photos, the bucket
+    // intentionally only holds the chess shot.
+    "1529699211952-734e80c4d42b",
   ],
   hobbies: [
     "1455390582262-044cdead277a","1481627834876-b7833e8f5570","1507003211169-0a1dd7228f2d",
@@ -508,7 +511,10 @@ const SYNTH_PHOTO_BANK = {
     "1518509562904-e7ef99cddc85","1441829266145-6d4bfb7a3a48",
   ],
   rocks: [
-    "1483450388369-9ed95738483c","1418065460487-3e41a6c84dc5","1518152006812-edab29b069ac",
+    // 1518152006812 removed — that ID is a microscope photo, not a
+    // rock. Remaining IDs are mountain / cliff faces from the existing
+    // nature pool that visibly read as rocks.
+    "1483450388369-9ed95738483c","1418065460487-3e41a6c84dc5",
     "1469474968028-56623f02e42e","1470770841072-f978cf4d019e",
   ],
   plants: [
