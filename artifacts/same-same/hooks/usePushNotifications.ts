@@ -135,11 +135,18 @@ export function usePushNotifications() {
       (notification) => {
         const content = notification.request.content;
         const data = content.data as Record<string, unknown> | undefined;
-        const title = content.title ?? undefined;
+        // The toast is a one-of-a-kind surface reserved for the echo
+        // loop, so the title is always branded with the word "Echo"
+        // (mutual vs incoming offer) regardless of the server-side
+        // copy. This keeps the moment feeling distinct from a generic
+        // notification.
+        const state = typeof data?.state === "string" ? data.state : null;
+        const brandedTitle =
+          state === "mutual" ? "Echo matched ✨" : "New Echo 💫";
         const body =
           content.body ?? "Someone just echoed your photo — tap to view.";
         showToast({
-          title,
+          title: brandedTitle,
           body,
           onPress: () => navigateFromData(data),
         });
