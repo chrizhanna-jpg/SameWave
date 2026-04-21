@@ -349,8 +349,12 @@ router.get("/echoes/by-theme", async (_req, res) => {
 });
 
 // ---- GET /api/echoes/theme/:theme -----------------------------------------
-// All photos that participate in mutual echoes for a given theme — flattened
-// so the mobile grid view can render straight from this list.
+// Every photo that participates in a mutual echo for the given theme. We
+// flatten each pair into TWO photo entries (one per side), each carrying
+// its own ID + the partner photo ID so the grid can deep-link straight
+// to the read-only pair view. Returns up to 1000 entries (sane upper
+// bound for one screen — we'll add cursor pagination if/when any single
+// theme exceeds that volume).
 router.get("/echoes/theme/:theme", async (req, res) => {
   try {
     const theme = String(req.params.theme).toLowerCase().trim();
@@ -366,7 +370,7 @@ router.get("/echoes/theme/:theme", async (req, res) => {
         WHERE e.state = 'mutual'
           AND e.theme = ${theme}
         ORDER BY e.mutual_at DESC NULLS LAST
-        LIMIT 100
+        LIMIT 500
       )
       SELECT
         pr.echo_id AS "echoId",
@@ -385,22 +389,48 @@ router.get("/echoes/theme/:theme", async (req, res) => {
       JOIN photos ph ON ph.id = pr.photo_high_id
     `);
 
-    const pairs = (rows.rows as Array<Record<string, unknown>>).map((r) => ({
-      echoId: String(r.echoId),
-      theme: String(r.theme ?? ""),
-      mutualAt: (r.mutualAt as string | Date | null) ?? null,
-      a: {
-        id: String(r.photoLowId),
-        uri: `data:${String(r.lowMime)};base64,${String(r.lowBytes)}`,
-        countryCode: (r.lowCountry as string | null) ?? null,
-      },
-      b: {
-        id: String(r.photoHighId),
-        uri: `data:${String(r.highMime)};base64,${String(r.highBytes)}`,
-        countryCode: (r.highCountry as string | null) ?? null,
-      },
-    }));
-    res.json({ theme, count: pairs.length, pairs });
+    const photos: Array<{
+      echoId: string;
+      theme: string;
+      mutualAt: string | Date | null;
+      photo: { id: string; uri: string; countryCode: string | null };
+      partnerPhotoId: string;
+    }> = [];
+    for (const raw of rows.rows as Array<Record<string, unknown>>) {
+      const echoId = String(raw.echoId);
+      const themeStr = String(raw.theme ?? "");
+      const mutualAt = (raw.mutualAt as string | Date | null) ?? null;
+      const lowId = String(raw.photoLowId);
+      const highId = String(raw.photoHighId);
+      photos.push({
+        echoId,
+        theme: themeStr,
+        mutualAt,
+        photo: {
+          id: lowId,
+          uri: `data:${String(raw.lowMime)};base64,${String(raw.lowBytes)}`,
+          countryCode: (raw.lowCountry as string | null) ?? null,
+        },
+        partnerPhotoId: highId,
+      });
+      photos.push({
+        echoId,
+        theme: themeStr,
+        mutualAt,
+        photo: {
+          id: highId,
+          uri: `data:${String(raw.highMime)};base64,${String(raw.highBytes)}`,
+          countryCode: (raw.highCountry as string | null) ?? null,
+        },
+        partnerPhotoId: lowId,
+      });
+    }
+    res.json({
+      theme,
+      // count = total pairs in this theme (matches /by-theme aggregation)
+      count: Math.floor(photos.length / 2),
+      photos,
+    });
   } catch (err) {
     req.log.error({ err }, "echoes theme failed");
     res.status(500).json({ error: "theme failed" });

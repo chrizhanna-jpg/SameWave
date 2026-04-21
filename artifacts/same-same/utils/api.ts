@@ -357,48 +357,54 @@ export async function fetchEchoCountsByTheme(): Promise<ThemeEchoCount[]> {
   }
 }
 
-export interface ThemeEchoPair {
+export interface ThemeEchoPhoto {
   echoId: string;
   theme: string;
   mutualAt: string | null;
-  a: ServerEchoSide;
-  b: ServerEchoSide;
+  photo: ServerEchoSide;
+  // ID of the other photo in this pair, used to deep-link into the
+  // read-only `/echo-pair?a=&b=` view from a single tile tap.
+  partnerPhotoId: string;
 }
 
 export async function fetchEchoesByTheme(theme: string): Promise<{
   theme: string;
   count: number;
-  pairs: ThemeEchoPair[];
+  photos: ThemeEchoPhoto[];
 }> {
   try {
     const base = getApiBase();
     const res = await fetch(
       `${base}/api/echoes/theme/${encodeURIComponent(theme)}`,
     );
-    if (!res.ok) return { theme, count: 0, pairs: [] };
+    if (!res.ok) return { theme, count: 0, photos: [] };
     const json = (await res.json()) as {
       theme?: string;
       count?: number;
-      pairs?: Array<{
+      photos?: Array<{
         echoId: string;
         theme: string;
         mutualAt: string | null;
-        a: { id: string; uri: string; countryCode: string | null };
-        b: { id: string; uri: string; countryCode: string | null };
+        photo: { id: string; uri: string; countryCode: string | null };
+        partnerPhotoId: string;
       }>;
     };
-    const pairs = Array.isArray(json.pairs)
-      ? json.pairs.map((p) => ({
+    const photos = Array.isArray(json.photos)
+      ? json.photos.map((p) => ({
           echoId: p.echoId,
           theme: p.theme ?? theme,
           mutualAt: p.mutualAt ?? null,
-          a: decorateSide(p.a),
-          b: decorateSide(p.b),
+          photo: decorateSide(p.photo),
+          partnerPhotoId: p.partnerPhotoId,
         }))
       : [];
-    return { theme: json.theme ?? theme, count: json.count ?? pairs.length, pairs };
+    return {
+      theme: json.theme ?? theme,
+      count: json.count ?? Math.floor(photos.length / 2),
+      photos,
+    };
   } catch {
-    return { theme, count: 0, pairs: [] };
+    return { theme, count: 0, photos: [] };
   }
 }
 

@@ -14,7 +14,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
-import { fetchEchoesByTheme, type ThemeEchoPair } from "@/utils/api";
+import { fetchEchoesByTheme, type ThemeEchoPhoto } from "@/utils/api";
 
 export default function EchoesThemeScreen() {
   const colors = useColors();
@@ -28,14 +28,14 @@ export default function EchoesThemeScreen() {
   const title = String(params.title ?? theme);
   const emoji = String(params.emoji ?? "✨");
 
-  const [pairs, setPairs] = useState<ThemeEchoPair[]>([]);
+  const [photos, setPhotos] = useState<ThemeEchoPhoto[]>([]);
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = async () => {
     const result = await fetchEchoesByTheme(theme);
-    setPairs(result.pairs);
+    setPhotos(result.photos);
     setCount(result.count);
   };
 
@@ -77,6 +77,7 @@ export default function EchoesThemeScreen() {
           </Text>
           <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
             {count.toLocaleString()} mutual echo{count === 1 ? "" : "es"}
+            {photos.length > 0 ? ` · ${photos.length} photos` : ""}
           </Text>
         </View>
       </View>
@@ -85,9 +86,9 @@ export default function EchoesThemeScreen() {
         <View style={styles.center}>
           <ActivityIndicator color={colors.primary} />
         </View>
-      ) : pairs.length === 0 ? (
+      ) : photos.length === 0 ? (
         <View style={styles.center}>
-          <Text style={styles.emoji}>🌱</Text>
+          <Text style={styles.bigEmoji}>🌱</Text>
           <Text style={[styles.empty, { color: colors.mutedForeground }]}>
             No echoes here yet. Tap same-same on a {title.toLowerCase()} photo
             and start one.
@@ -107,14 +108,14 @@ export default function EchoesThemeScreen() {
             />
           }
         >
-          {pairs.map((pair) => (
+          {photos.map((entry) => (
             <TouchableOpacity
-              key={pair.echoId}
+              key={`${entry.echoId}:${entry.photo.id}`}
               activeOpacity={0.85}
               onPress={() =>
                 router.push({
                   pathname: "/echo-pair",
-                  params: { a: pair.a.id, b: pair.b.id },
+                  params: { a: entry.photo.id, b: entry.partnerPhotoId },
                 })
               }
               style={[
@@ -122,24 +123,18 @@ export default function EchoesThemeScreen() {
                 { backgroundColor: colors.card, borderColor: colors.border },
               ]}
             >
-              <View style={styles.tileImages}>
-                <Image
-                  source={{ uri: thumbUri(pair.a.uri) }}
-                  style={styles.tileImage}
-                />
-                <Image
-                  source={{ uri: thumbUri(pair.b.uri) }}
-                  style={styles.tileImage}
-                />
-              </View>
-              <View style={styles.tileFlags}>
-                <Text style={styles.tileFlag}>{pair.a.countryFlag}</Text>
-                <Icon
-                  name="arrow-right"
-                  size={12}
-                  color={colors.mutedForeground}
-                />
-                <Text style={styles.tileFlag}>{pair.b.countryFlag}</Text>
+              <Image
+                source={{ uri: thumbUri(entry.photo.uri) }}
+                style={styles.tileImage}
+              />
+              <View style={styles.tileFlagRow}>
+                <Text style={styles.tileFlag}>{entry.photo.countryFlag}</Text>
+                <Text
+                  style={[styles.tileCountry, { color: colors.foreground }]}
+                  numberOfLines={1}
+                >
+                  {entry.photo.country}
+                </Text>
               </View>
             </TouchableOpacity>
           ))}
@@ -189,7 +184,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 19,
   },
-  emoji: { fontSize: 32 },
+  bigEmoji: { fontSize: 32 },
   grid: {
     paddingHorizontal: 12,
     flexDirection: "row",
@@ -197,19 +192,23 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   tile: {
-    width: "48%",
+    width: "31%",
     borderRadius: 14,
     borderWidth: 1,
-    padding: 8,
+    padding: 6,
     gap: 6,
   },
-  tileImages: { flexDirection: "row", gap: 4 },
-  tileImage: { flex: 1, aspectRatio: 1, borderRadius: 8 },
-  tileFlags: {
+  tileImage: { width: "100%", aspectRatio: 1, borderRadius: 8 },
+  tileFlagRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
+    gap: 4,
+    paddingHorizontal: 2,
   },
-  tileFlag: { fontSize: 16 },
+  tileFlag: { fontSize: 13 },
+  tileCountry: {
+    flex: 1,
+    fontSize: 10,
+    fontFamily: "Inter_500Medium",
+  },
 });
