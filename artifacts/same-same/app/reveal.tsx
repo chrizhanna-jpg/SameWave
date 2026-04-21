@@ -477,8 +477,11 @@ export default function RevealScreen() {
           </View>
 
           {!proUnlocked && (
-            <View style={styles.watermark}>
-              <Text style={styles.watermarkText}>ECHO · same same</Text>
+            <View style={[styles.watermark, { backgroundColor: colors.primary + "26", borderColor: colors.primary + "55" }]}>
+              <Text style={styles.watermarkSparkle}>✨</Text>
+              <Text style={[styles.watermarkText, { color: colors.primary }]}>
+                echo · same same
+              </Text>
             </View>
           )}
         </ViewShot>
@@ -932,16 +935,21 @@ const styles = StyleSheet.create({
   },
   watermark: {
     alignSelf: "center",
-    marginTop: -4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 6,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  watermarkSparkle: {
+    fontSize: 12,
   },
   watermarkText: {
-    fontSize: 11,
-    fontFamily: "Inter_600SemiBold",
-    color: "rgba(255,255,255,0.55)",
+    fontSize: 12,
+    fontFamily: "Inter_700Bold",
     letterSpacing: 0.5,
   },
   connectCta: {
