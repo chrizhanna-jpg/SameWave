@@ -14,12 +14,17 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppProvider } from "@/context/AppContext";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
 
 function RootLayoutNav() {
+  // Wire device push registration + tap-to-deep-link. Mounted inside
+  // AppProvider so navigation context is available before we call
+  // router.push from a notification response.
+  usePushNotifications();
   return (
     <Stack screenOptions={{ headerBackTitle: "Back", headerShown: false }}>
       <Stack.Screen name="onboarding" options={{ headerShown: false }} />

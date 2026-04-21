@@ -59,6 +59,12 @@
         {
           "locationAlwaysAndWhenInUsePermission": "Echo uses your country (not precise location) to celebrate matches with people nearby."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#071828"
+        }
       ]
     ],
     "experiments": {

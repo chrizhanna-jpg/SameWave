@@ -435,6 +435,30 @@ export async function fetchPair(aId: string, bId: string): Promise<PhotoPairResu
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Push tokens — Expo Push API delivery to this device.
+// ─────────────────────────────────────────────────────────────────────────
+
+export async function registerPushToken(input: {
+  token: string;
+  platform?: "ios" | "android" | "web";
+}): Promise<boolean> {
+  try {
+    const base = getApiBase();
+    const res = await fetch(`${base}/api/push-tokens`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(await authedHeaders()) },
+      body: JSON.stringify({
+        token: input.token,
+        platform: input.platform ?? "unknown",
+      }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function reportPhoto(photoId: string, reason?: string): Promise<boolean> {
   try {
     const base = getApiBase();

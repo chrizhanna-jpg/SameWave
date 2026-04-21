@@ -2,6 +2,8 @@ import { Router, type IRouter } from "express";
 import { and, desc, eq, or, sql } from "drizzle-orm";
 import { db, echoesTable, photosTable } from "@workspace/db";
 import { resolveUserFromRequest } from "../lib/users";
+import { sendPushToUser } from "../lib/push";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -72,6 +74,26 @@ export async function recordEchoOffer(input: {
   );
   const echoTheme = pair.lowPayload.theme || pair.highPayload.theme || "";
 
+  // Read the row's current state BEFORE we upsert so we can detect a
+  // genuine state transition (no row → pending, or pending → mutual)
+  // and only fire a push on those edges. Without this, repeating the
+  // same vote (clients retry, idempotent re-tap, etc.) would keep
+  // re-sending the same notification and spam the recipient.
+  const existingRows = await db
+    .select({
+      state: echoesTable.state,
+      pendingFromUserId: echoesTable.pendingFromUserId,
+    })
+    .from(echoesTable)
+    .where(
+      and(
+        eq(echoesTable.photoLowId, pair.lowId),
+        eq(echoesTable.photoHighId, pair.highId),
+      ),
+    )
+    .limit(1);
+  const before = existingRows[0];
+
   // Atomic upsert. The conflict path checks whether the existing row's
   // `pending_from_user_id` is the OTHER user — if so, the new tap
   // completes the loop and we promote to mutual. Otherwise the row stays
@@ -120,6 +142,44 @@ export async function recordEchoOffer(input: {
 
   const row = upserted[0];
   if (!row) return { state: "skipped" };
+
+  // Detect the actual state transition. Only fire pushes on real edges:
+  //   - no row before, pending after        → fresh offer push
+  //   - pending before, mutual after        → mutual completion push
+  // Re-voting the same direction (or re-voting after the pair is
+  // already mutual) hits neither edge and silently no-ops, so the
+  // recipient isn't spammed.
+  const wasNew = !before;
+  const becameMutual =
+    !!before && before.state === "pending" && row.state === "mutual";
+  const recipientUserId =
+    pair.lowPayload.userId === voterUserId
+      ? pair.highPayload.userId
+      : pair.lowPayload.userId;
+  const echoId = row.id;
+  if (becameMutual) {
+    // Both sides care: the responder (voterUserId) just tapped and the
+    // original offerer (recipientUserId) needs to know it stuck.
+    void Promise.allSettled([
+      sendPushToUser(recipientUserId, {
+        title: "Same same! ✨",
+        body: "You both echoed each other. Tap to see your match.",
+        data: { deepLink: "/echoes", echoId, state: "mutual" },
+      }),
+      sendPushToUser(voterUserId, {
+        title: "Same same! ✨",
+        body: "They echoed you back. Tap to see your match.",
+        data: { deepLink: "/echoes", echoId, state: "mutual" },
+      }),
+    ]).catch((err) => logger.error({ err }, "echo push (mutual) failed"));
+  } else if (wasNew) {
+    void sendPushToUser(recipientUserId, {
+      title: "Someone echoed your photo",
+      body: "A stranger said same same. Tap back to make it mutual.",
+      data: { deepLink: "/echoes", echoId, state: "pending" },
+    }).catch((err) => logger.error({ err }, "echo push (pending) failed"));
+  }
+
   return { state: row.state === "mutual" ? "mutual" : "pending", id: row.id };
 }
 
@@ -316,6 +376,22 @@ router.post("/echoes/:id/respond", async (req, res) => {
         mutualAt: new Date(),
       })
       .where(eq(echoesTable.id, echoId));
+
+    // The OTHER side of the pair (whoever made the original offer) is
+    // the one who needs to know — the responder is already in-app. Fire
+    // a "it's mutual!" push at them. Best-effort, never blocks.
+    const otherUserId =
+      echo.userLowId === user.id ? echo.userHighId : echo.userLowId;
+    void sendPushToUser(otherUserId, {
+      title: "Same same! ✨",
+      body: "They echoed you back. Tap to see your match.",
+      data: {
+        deepLink: "/echoes",
+        echoId,
+        state: "mutual",
+      },
+    }).catch((err) => req.log.error({ err }, "echo push (respond) failed"));
+
     res.json({ ok: true, state: "mutual" });
   } catch (err) {
     req.log.error({ err }, "echo respond failed");
