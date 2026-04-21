@@ -15,6 +15,7 @@ import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { EchoGlobeLogo } from "@/components/EchoGlobeLogo";
+import { OceanShimmer } from "@/components/OceanShimmer";
 import { getTodaysChallenge } from "@/data/samplePhotos";
 
 const { width } = Dimensions.get("window");
@@ -33,6 +34,7 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <OceanShimmer />
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
