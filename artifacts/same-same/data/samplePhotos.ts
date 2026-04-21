@@ -249,7 +249,8 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   { id: "36", uri: "https://images.unsplash.com/photo-1444080748397-f442aa95c3e5?w=400", country: "Egypt", countryCode: "EG", countryFlag: "🇪🇬", theme: "sky", minutesAgo: 41, tags: ["sunset","clouds","outdoors","warm"] },
   { id: "37", uri: "https://images.unsplash.com/photo-1419833173245-f59e1b93f9ee?w=400", country: "Portugal", countryCode: "PT", countryFlag: "🇵🇹", theme: "sky", minutesAgo: 220, tags: ["sunset","clouds","water","outdoors"] },
   { id: "38", uri: "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=400", country: "Nepal", countryCode: "NP", countryFlag: "🇳🇵", theme: "sky", minutesAgo: 770, tags: ["clouds","mountains","outdoors","warm"] },
-  { id: "39", uri: "https://images.unsplash.com/photo-1517524206127-48bbd363f3d7?w=400", country: "Indonesia", countryCode: "ID", countryFlag: "🇮🇩", theme: "hands", minutesAgo: 26, tags: ["art","people"] },
+  // id 39 (workshop person, no hands in frame) reclassified to "work".
+  { id: "39", uri: "https://images.unsplash.com/photo-1517524206127-48bbd363f3d7?w=400", country: "Indonesia", countryCode: "ID", countryFlag: "🇮🇩", theme: "work", minutesAgo: 26, tags: ["people","desk"] },
   { id: "40", uri: "https://images.unsplash.com/photo-1521336575822-6da63fb45455?w=400", country: "Colombia", countryCode: "CO", countryFlag: "🇨🇴", theme: "hands", minutesAgo: 380, tags: ["art","warm"] },
   { id: "41", uri: "https://images.unsplash.com/photo-1517242810446-cc8951b2be40?w=400", country: "Senegal", countryCode: "SN", countryFlag: "🇸🇳", theme: "hands", minutesAgo: 105, tags: ["people","art"] },
   { id: "42", uri: "https://images.unsplash.com/photo-1517423440428-a5a00ad493e8?w=400", country: "Russia", countryCode: "RU", countryFlag: "🇷🇺", theme: "pets", minutesAgo: 60, tags: ["dog","animal","outdoors"] },
@@ -284,10 +285,12 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   { id: "63", uri: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=400", country: "Madagascar", countryCode: "MG", countryFlag: "🇲🇬", theme: "sky", minutesAgo: 33, tags: ["sunset","clouds","outdoors"] },
   { id: "64", uri: "https://images.unsplash.com/photo-1532274402911-5a369e4c4bb5?w=400", country: "Croatia", countryCode: "HR", countryFlag: "🇭🇷", theme: "sky", minutesAgo: 470, tags: ["sunset","clouds","water","outdoors"] },
   { id: "65", uri: "https://images.unsplash.com/photo-1437604766819-5e0c5b8a40e9?w=400", country: "Cambodia", countryCode: "KH", countryFlag: "🇰🇭", theme: "sky", minutesAgo: 880, tags: ["sunset","clouds","warm"] },
-  // Hands / making
-  { id: "66", uri: "https://images.unsplash.com/photo-1531913764164-f85c52e6e654?w=400", country: "Bolivia", countryCode: "BO", countryFlag: "🇧🇴", theme: "hands", minutesAgo: 70, tags: ["art","crafts"] },
-  { id: "67", uri: "https://images.unsplash.com/photo-1455218873509-8097305ee378?w=400", country: "Ghana", countryCode: "GH", countryFlag: "🇬🇭", theme: "hands", minutesAgo: 290, tags: ["art","people"] },
-  { id: "68", uri: "https://images.unsplash.com/photo-1525373698358-041e3a460346?w=400", country: "Pakistan", countryCode: "PK", countryFlag: "🇵🇰", theme: "hands", minutesAgo: 615, tags: ["crafts","people"] },
+  // Hands / making — entries kept only when the image visibly features
+  // hands. Two previous entries (1531913764164 and 1455218873509)
+  // didn't actually show hands and were reclassified to "nature".
+  { id: "66", uri: "https://images.unsplash.com/photo-1531913764164-f85c52e6e654?w=400", country: "Bolivia", countryCode: "BO", countryFlag: "🇧🇴", theme: "nature", minutesAgo: 70, tags: ["outdoors","trees"] },
+  { id: "67", uri: "https://images.unsplash.com/photo-1455218873509-8097305ee378?w=400", country: "Ghana", countryCode: "GH", countryFlag: "🇬🇭", theme: "nature", minutesAgo: 290, tags: ["trees","outdoors","water"] },
+  { id: "68", uri: "https://images.unsplash.com/photo-1525373698358-041e3a460346?w=400", country: "Pakistan", countryCode: "PK", countryFlag: "🇵🇰", theme: "made", minutesAgo: 615, tags: ["crafts","people"] },
   // Joy / smiles
   { id: "69", uri: "https://images.unsplash.com/photo-1488161628813-04466f872be2?w=400", country: "Ecuador", countryCode: "EC", countryFlag: "🇪🇨", theme: "joy", minutesAgo: 36, tags: ["people","smile","friends"] },
   // Commute / city
@@ -378,10 +381,13 @@ const SYNTH_PHOTO_BANK = {
     "1540189549336-e6e99c3679fe","1473093295043-cdd812d0e601","1467003909585-2f8a72700288",
     "1546069901-ba9599a7e63c",
   ],
+  // Hands bucket — only IDs that visibly feature hands as the subject.
+  // Anything ambiguous (workshop scenes, forests, generic "people"
+  // shots) belongs in work/nature/joy instead, otherwise the "Your
+  // hands" theme matches photos that don't show hands.
   hands: [
-    "1558769132-cb1aea458c5e","1574169208507-84376144848b","1517524206127-48bbd363f3d7",
-    "1521336575822-6da63fb45455","1517242810446-cc8951b2be40","1531913764164-f85c52e6e654",
-    "1455218873509-8097305ee378","1525373698358-041e3a460346",
+    "1558769132-cb1aea458c5e","1574169208507-84376144848b",
+    "1521336575822-6da63fb45455","1517242810446-cc8951b2be40",
   ],
   sky: [
     "1559827260-dc66d52bef19","1419242902214-272b3f66ee7a","1500382017468-9049fed747ef",
