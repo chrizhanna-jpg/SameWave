@@ -37,6 +37,12 @@ const STEPS = [
     body: "We're not identical — we're similar. Fill your world map with strangers who share your moments and tune into the same vibe, anywhere on earth.",
   },
   {
+    kind: "intro" as const,
+    title: "Echo back.",
+    subtitle: "Make it mutual.",
+    body: "When a stranger says 'Same Same' to one of your photos, it lands in your Echoes inbox. Tap back to confirm the vibe — when you both echo, the moment goes mutual and joins your shared map. Stay anonymous: only countries, never names.",
+  },
+  {
     kind: "country" as const,
     title: "Where are you?",
     subtitle: null,
