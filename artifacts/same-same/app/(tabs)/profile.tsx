@@ -239,8 +239,10 @@ export default function ProfileScreen() {
             </View>
             <View style={[styles.heroDivider]} />
             <View style={styles.heroStat}>
-              <Text style={styles.heroStatNum}>{streakCount}</Text>
-              <Text style={styles.heroStatLabel}>streak</Text>
+              <Text style={styles.heroStatNum}>
+                {mutualEchoes.length + pendingEchoes.length}
+              </Text>
+              <Text style={styles.heroStatLabel}>echoes</Text>
             </View>
             <View style={[styles.heroDivider]} />
             <View style={styles.heroStat}>
