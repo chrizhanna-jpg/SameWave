@@ -10,6 +10,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Icon } from "@/components/Icon";
+import { OceanShimmer } from "@/components/OceanShimmer";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { BadgeCard } from "@/components/BadgeCard";
@@ -166,6 +167,7 @@ export default function ProfileScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <OceanShimmer />
       <View style={[styles.header, { paddingTop: topPadding + 8 }]}>
         <Text style={[styles.headerTitle, { color: colors.foreground }]}>
           My Journey

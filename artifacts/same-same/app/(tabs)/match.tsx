@@ -19,6 +19,7 @@ import { Icon } from "@/components/Icon";
 import { MatchHearts } from "@/components/MatchHearts";
 import { MatchFlash } from "@/components/MatchFlash";
 import { EchoLogo } from "@/components/EchoLogo";
+import { OceanShimmer } from "@/components/OceanShimmer";
 import { expandToVibe } from "@/utils/interests";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
@@ -554,6 +555,7 @@ export default function SwipeScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <OceanShimmer />
       <View style={[styles.header, { paddingTop: topPadding + 8 }]}>
         <View>
           <EchoLogo

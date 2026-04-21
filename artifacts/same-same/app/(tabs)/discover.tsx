@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
+import { OceanShimmer } from "@/components/OceanShimmer";
 import { useColors } from "@/hooks/useColors";
 import { buildDiscoveryFeed, type DiscoveryItem } from "@/data/discoveryFeed";
 
@@ -41,6 +42,7 @@ export default function DiscoverScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <OceanShimmer />
       <View style={[styles.header, { paddingTop: topPadding + 8 }]}>
         <Text style={[styles.headerTitle, { color: colors.foreground }]}>
           Right now, around the world
