@@ -75,14 +75,18 @@ export default function EchoPairScreen() {
             {pair.a.theme || pair.b.theme || "shared moment"}
           </Text>
           <View style={styles.pairColumn}>
-            <PairSide side={pair.a} label="yours" />
+            {/* Neutral country-only labelling: this view is opened both
+                from the user's own inbox AND from public Discover theme
+                tiles, so we never assert "yours" vs "theirs". The flag +
+                country line is enough context. */}
+            <PairSide side={pair.a} />
             <View
               style={[
                 styles.divider,
                 { backgroundColor: colors.border },
               ]}
             />
-            <PairSide side={pair.b} label="theirs" />
+            <PairSide side={pair.b} />
           </View>
           <Text style={[styles.footer, { color: colors.mutedForeground }]}>
             Two strangers, same vibe.
@@ -93,30 +97,19 @@ export default function EchoPairScreen() {
   );
 }
 
-function PairSide({
-  side,
-  label,
-}: {
-  side: PhotoPairResult["a"];
-  label: string;
-}) {
+function PairSide({ side }: { side: PhotoPairResult["a"] }) {
   const colors = useColors();
   return (
     <View style={styles.side}>
       <Image source={{ uri: side.uri }} style={styles.bigPhoto} />
       <View style={styles.sideMeta}>
         <Text style={styles.flag}>{side.countryFlag}</Text>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text
-            style={[styles.country, { color: colors.foreground }]}
-            numberOfLines={1}
-          >
-            {side.country}
-          </Text>
-          <Text style={[styles.label, { color: colors.mutedForeground }]}>
-            {label}
-          </Text>
-        </View>
+        <Text
+          style={[styles.country, { color: colors.foreground }]}
+          numberOfLines={1}
+        >
+          {side.country}
+        </Text>
       </View>
     </View>
   );

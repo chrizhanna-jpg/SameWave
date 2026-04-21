@@ -201,7 +201,6 @@ router.get("/echoes/inbox", async (req, res) => {
         AND e.pending_from_user_id IS NOT NULL
         AND e.pending_from_user_id <> ${user.id}
       ORDER BY e.created_at DESC
-      LIMIT 100
     `);
     const echoes = (rows.rows as Array<Record<string, unknown>>).map((r) =>
       buildEchoCard(r, user.id),
@@ -245,7 +244,6 @@ router.get("/echoes/mine", async (req, res) => {
       WHERE e.state = 'mutual'
         AND (e.user_low_id = ${user.id} OR e.user_high_id = ${user.id})
       ORDER BY e.mutual_at DESC NULLS LAST, e.created_at DESC
-      LIMIT 200
     `);
     const echoes = (rows.rows as Array<Record<string, unknown>>).map((r) =>
       buildEchoCard(r, user.id),
@@ -370,7 +368,6 @@ router.get("/echoes/theme/:theme", async (req, res) => {
         WHERE e.state = 'mutual'
           AND e.theme = ${theme}
         ORDER BY e.mutual_at DESC NULLS LAST
-        LIMIT 500
       )
       SELECT
         pr.echo_id AS "echoId",
