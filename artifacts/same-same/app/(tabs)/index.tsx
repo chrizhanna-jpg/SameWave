@@ -54,32 +54,40 @@ export default function HomeScreen() {
 
         {/* Stats row */}
         <View style={styles.statsRow}>
-          <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.statNum, { color: colors.primary }]}>
+          <View style={styles.statItem}>
+            <Text style={[styles.statNum, { color: colors.foreground }]}>
               {streakCount}
             </Text>
-            <Icon name="zap" size={14} color={colors.gold} style={styles.statIcon} />
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
-              Streak
-            </Text>
+            <View style={styles.statLabelRow}>
+              <Icon name="zap" size={12} color={colors.gold} />
+              <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
+                Streak
+              </Text>
+            </View>
           </View>
-          <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.statNum, { color: colors.primary }]}>
+          <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
+          <View style={styles.statItem}>
+            <Text style={[styles.statNum, { color: colors.foreground }]}>
               {totalMatches}
             </Text>
-            <Icon name="layers" size={14} color={colors.teal} style={styles.statIcon} />
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
-              Matches
-            </Text>
+            <View style={styles.statLabelRow}>
+              <Icon name="layers" size={12} color={colors.teal} />
+              <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
+                Matches
+              </Text>
+            </View>
           </View>
-          <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.statNum, { color: colors.primary }]}>
+          <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
+          <View style={styles.statItem}>
+            <Text style={[styles.statNum, { color: colors.foreground }]}>
               {matchedCountries.length}
             </Text>
-            <Icon name="globe" size={14} color={colors.accent} style={styles.statIcon} />
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
-              Countries
-            </Text>
+            <View style={styles.statLabelRow}>
+              <Icon name="globe" size={12} color={colors.accent} />
+              <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
+                Countries
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -220,28 +228,35 @@ const styles = StyleSheet.create({
   },
   statsRow: {
     flexDirection: "row",
-    gap: 12,
     width: "100%",
+    alignItems: "center",
+    justifyContent: "space-around",
+    paddingVertical: 8,
   },
-  statCard: {
+  statItem: {
     flex: 1,
     alignItems: "center",
-    paddingVertical: 16,
-    borderRadius: 28,
-    borderWidth: 0,
-    gap: 4,
+    gap: 6,
+  },
+  statDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 36,
+    opacity: 0.5,
   },
   statNum: {
-    fontSize: 24,
+    fontSize: 26,
     fontFamily: "Inter_700Bold",
     letterSpacing: -0.5,
   },
-  statIcon: {
-    marginTop: -2,
+  statLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
   },
   statLabel: {
     fontSize: 11,
     fontFamily: "Inter_500Medium",
+    letterSpacing: 0.2,
   },
   challengeCard: {
     width: "100%",
