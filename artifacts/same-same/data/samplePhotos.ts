@@ -341,16 +341,14 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   { id: "92", uri: "https://images.unsplash.com/photo-1455390582262-044cdead277a?w=400", country: "Argentina", countryCode: "AR", countryFlag: "🇦🇷", theme: "hobbies", minutesAgo: 60, tags: ["music","hobby"] },
   { id: "93", uri: "https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=400", country: "Australia", countryCode: "AU", countryFlag: "🇦🇺", theme: "hobbies", minutesAgo: 175, tags: ["photography","hobby"] },
   { id: "94", uri: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400", country: "Vietnam", countryCode: "VN", countryFlag: "🇻🇳", theme: "hobbies", minutesAgo: 320, tags: ["crafts","hobby"] },
-  // Birds — wildlife photos that visibly feature birds in the existing
-  // pool; the second is a popular Unsplash bird-in-flight shot.
-  { id: "95", uri: "https://images.unsplash.com/photo-1444464666168-49d633b86797?w=400", country: "Kenya", countryCode: "KE", countryFlag: "🇰🇪", theme: "birds", minutesAgo: 25, tags: ["bird","wildlife","outdoors"] },
+  // Birds — only the NZ parrot is confirmed to render correctly; the
+  // other Unsplash IDs we tried (Kenya 1444464666168, Peru 1518509562904)
+  // either come back blank or aren't visibly birds, so they're removed.
   { id: "96", uri: "https://images.unsplash.com/photo-1452570053594-1b985d6ea890?w=400", country: "New Zealand", countryCode: "NZ", countryFlag: "🇳🇿", theme: "birds", minutesAgo: 130, tags: ["bird","wildlife","outdoors"] },
-  { id: "97", uri: "https://images.unsplash.com/photo-1518509562904-e7ef99cddc85?w=400", country: "Peru", countryCode: "PE", countryFlag: "🇵🇪", theme: "birds", minutesAgo: 290, tags: ["bird","wildlife"] },
-  // Rocks — mountain / cliff / stone-formation shots from the existing
-  // nature pool that genuinely read as "rocks".
-  { id: "98", uri: "https://images.unsplash.com/photo-1483450388369-9ed95738483c?w=400", country: "Iceland", countryCode: "IS", countryFlag: "🇮🇸", theme: "rocks", minutesAgo: 70, tags: ["rocks","mountains","outdoors"] },
-  { id: "99", uri: "https://images.unsplash.com/photo-1418065460487-3e41a6c84dc5?w=400", country: "Chile", countryCode: "CL", countryFlag: "🇨🇱", theme: "rocks", minutesAgo: 240, tags: ["rocks","mountains","outdoors"] },
-  // (id 100 removed — photo 1518152006812 was a microscope, not rocks.)
+  // Rocks theme removed — every Unsplash ID we tried in this bucket
+  // displayed as something else (airplane interior, misty forest, mountain
+  // landscape) so it broke the "this is a rock" promise of the prompt.
+  // The theme will return only when we have verified rock photos.
   // Plants — close-ups of plants/flowers/garden, distinct from the broader
   // "nature" landscape shots.
   { id: "101", uri: "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=400", country: "Netherlands", countryCode: "NL", countryFlag: "🇳🇱", theme: "plants", minutesAgo: 40, tags: ["plants","flowers","garden"] },
@@ -504,19 +502,13 @@ const SYNTH_PHOTO_BANK = {
     "1513475382585-d06e58bcb0e0","1499951360447-b19be8fe80f5",
   ],
   birds: [
-    // Wildlife shots from the existing nature/pets pools — a couple of
-    // these are large mammals and will be filtered out as new bird
-    // photos are confirmed; kept for now so the bucket is never empty.
-    "1444464666168-49d633b86797","1452570053594-1b985d6ea890",
-    "1518509562904-e7ef99cddc85","1441829266145-6d4bfb7a3a48",
+    // Only the NZ parrot is verified to render as a bird. Other Unsplash
+    // IDs we tried (1444464666168, 1518509562904, 1441829266145) came back
+    // blank or weren't visibly birds. Re-add new ones only when verified.
+    "1452570053594-1b985d6ea890",
   ],
-  rocks: [
-    // 1518152006812 removed — that ID is a microscope photo, not a
-    // rock. Remaining IDs are mountain / cliff faces from the existing
-    // nature pool that visibly read as rocks.
-    "1483450388369-9ed95738483c","1418065460487-3e41a6c84dc5",
-    "1469474968028-56623f02e42e","1470770841072-f978cf4d019e",
-  ],
+  // (rocks bucket removed — see SAMPLE_PHOTOS comment near the rocks
+  // entries for the same reason. Add back when we have verified rocks.)
   plants: [
     "1416879595882-3373a0480b5b","1497206365907-f5e630693df0","1545241047-6083a3684587",
     "1505691938895-1758d7feb511","1462536943532-57a629f6cc60",
@@ -540,7 +532,6 @@ const TAG_TO_BUCKET: Record<string, keyof typeof SYNTH_PHOTO_BANK> = {
   gaming: "games", play: "games",
   dog: "pets", cat: "pets", animal: "pets", wildlife: "pets",
   bird: "birds",
-  rocks: "rocks", stone: "rocks",
   hobby: "hobbies",
 };
 
@@ -570,7 +561,6 @@ const BUCKET_TAG_POOL: Record<keyof typeof SYNTH_PHOTO_BANK, string[]> = {
   games: ["gaming", "play", "hobby", "friends"],
   hobbies: ["hobby", "music", "photography", "crafts", "reading", "gaming"],
   birds: ["bird", "wildlife", "outdoors", "animal"],
-  rocks: ["rocks", "stone", "mountains", "outdoors"],
   plants: ["plants", "flowers", "garden", "trees"],
 };
 
@@ -693,8 +683,6 @@ export const TAG_LIBRARY: { id: string; emoji: string; label: string }[] = [
   { id: "hobby", emoji: "🧶", label: "Hobby" },
   { id: "play", emoji: "🎲", label: "Play" },
   { id: "bird", emoji: "🐦", label: "Bird" },
-  { id: "rocks", emoji: "🪨", label: "Rocks" },
-  { id: "stone", emoji: "🪨", label: "Stone" },
 ];
 
 // Suggested tag IDs surfaced first per theme on the camera screen.
@@ -716,7 +704,6 @@ export const SUGGESTED_TAGS_BY_THEME: Record<string, string[]> = {
   games: ["gaming", "play", "hobby", "friends"],
   hobbies: ["hobby", "music", "photography", "crafts", "reading"],
   birds: ["bird", "wildlife", "outdoors", "animal"],
-  rocks: ["rocks", "mountains", "outdoors"],
   plants: ["plants", "flowers", "garden", "trees"],
 };
 
@@ -765,7 +752,7 @@ export const DAILY_CHALLENGES = [
   { id: "games", title: "What you're playing", description: "Board game, video game, cards, anything", emoji: "🎲" },
   { id: "hobbies", title: "Your hobby right now", description: "What you've been into lately", emoji: "🧶" },
   { id: "birds", title: "A bird you spotted", description: "Backyard, balcony, park, anywhere", emoji: "🐦" },
-  { id: "rocks", title: "An interesting rock", description: "Pebble, boulder, cliff face, crystal", emoji: "🪨" },
+  // (rocks challenge removed — see SAMPLE_PHOTOS rocks comment.)
   { id: "plants", title: "A plant you noticed", description: "House plant, tree, weed, flower — close-up", emoji: "🪴" },
 ];
 
@@ -779,13 +766,12 @@ export const THEME_ADJACENCY: Record<string, string[]> = {
   commute: ["morning", "work", "sky"],
   work: ["commute", "hands"],
   joy: ["pets", "food", "hands"],
-  nature: ["sky", "pets", "birds", "rocks", "plants"],
+  nature: ["sky", "pets", "birds", "plants"],
   pets: ["nature", "joy", "birds"],
   furniture: ["home", "hobbies"],
   games: ["hobbies", "joy", "playing"],
   hobbies: ["games", "creative", "made"],
   birds: ["nature", "pets", "plants"],
-  rocks: ["nature", "sky"],
   plants: ["nature", "home", "furniture"],
 };
 
