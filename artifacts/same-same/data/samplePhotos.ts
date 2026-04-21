@@ -251,8 +251,13 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   { id: "38", uri: "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=400", country: "Nepal", countryCode: "NP", countryFlag: "🇳🇵", theme: "sky", minutesAgo: 770, tags: ["clouds","mountains","outdoors","warm"] },
   // id 39 (workshop person, no hands in frame) reclassified to "work".
   { id: "39", uri: "https://images.unsplash.com/photo-1517524206127-48bbd363f3d7?w=400", country: "Indonesia", countryCode: "ID", countryFlag: "🇮🇩", theme: "work", minutesAgo: 26, tags: ["people","desk"] },
-  { id: "40", uri: "https://images.unsplash.com/photo-1521336575822-6da63fb45455?w=400", country: "Colombia", countryCode: "CO", countryFlag: "🇨🇴", theme: "hands", minutesAgo: 380, tags: ["art","warm"] },
-  { id: "41", uri: "https://images.unsplash.com/photo-1517242810446-cc8951b2be40?w=400", country: "Senegal", countryCode: "SN", countryFlag: "🇸🇳", theme: "hands", minutesAgo: 105, tags: ["people","art"] },
+  // id 40 (Colombia kayak, photo 1521336575822) and id 41 (Senegal Lego
+  // chicken figurine, photo 1517242810446) were previously misclassified
+  // as "hands" — neither image actually shows hands. Reclassified to
+  // nature (kayak on water) and joy (toy/figurine) so the "Your hands"
+  // theme is honest about what it surfaces.
+  { id: "40", uri: "https://images.unsplash.com/photo-1521336575822-6da63fb45455?w=400", country: "Colombia", countryCode: "CO", countryFlag: "🇨🇴", theme: "nature", minutesAgo: 380, tags: ["water","outdoors"] },
+  { id: "41", uri: "https://images.unsplash.com/photo-1517242810446-cc8951b2be40?w=400", country: "Senegal", countryCode: "SN", countryFlag: "🇸🇳", theme: "joy", minutesAgo: 105, tags: ["art"] },
   { id: "42", uri: "https://images.unsplash.com/photo-1517423440428-a5a00ad493e8?w=400", country: "Russia", countryCode: "RU", countryFlag: "🇷🇺", theme: "pets", minutesAgo: 60, tags: ["dog","animal","outdoors"] },
   { id: "43", uri: "https://images.unsplash.com/photo-1573865526739-10659fec78a5?w=400", country: "Vietnam", countryCode: "VN", countryFlag: "🇻🇳", theme: "pets", minutesAgo: 240, tags: ["cat","animal"] },
   { id: "44", uri: "https://images.unsplash.com/photo-1592194996308-7b43878e84a6?w=400", country: "Belgium", countryCode: "BE", countryFlag: "🇧🇪", theme: "pets", minutesAgo: 480, tags: ["dog","animal","smile","outdoors"] },
@@ -384,10 +389,11 @@ const SYNTH_PHOTO_BANK = {
   // Hands bucket — only IDs that visibly feature hands as the subject.
   // Anything ambiguous (workshop scenes, forests, generic "people"
   // shots) belongs in work/nature/joy instead, otherwise the "Your
-  // hands" theme matches photos that don't show hands.
+  // hands" theme matches photos that don't show hands. The two IDs
+  // 1521336575822 (kayak) and 1517242810446 (toy figurine) were
+  // removed for exactly this reason.
   hands: [
     "1558769132-cb1aea458c5e","1574169208507-84376144848b",
-    "1521336575822-6da63fb45455","1517242810446-cc8951b2be40",
   ],
   sky: [
     "1559827260-dc66d52bef19","1419242902214-272b3f66ee7a","1500382017468-9049fed747ef",
