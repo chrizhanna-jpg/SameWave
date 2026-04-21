@@ -394,6 +394,11 @@ const SYNTH_PHOTO_BANK = {
   // removed for exactly this reason.
   hands: [
     "1558769132-cb1aea458c5e","1574169208507-84376144848b",
+    // Hands-forward "work" shots — both visibly feature hands as the
+    // subject (hands at a laptop / hand writing on a whiteboard), so
+    // they double as honest hands content even though they also live
+    // in the work theme.
+    "1517245386807-bb43f82c33c4","1531403009284-440f080d1e12",
   ],
   sky: [
     "1559827260-dc66d52bef19","1419242902214-272b3f66ee7a","1500382017468-9049fed747ef",
