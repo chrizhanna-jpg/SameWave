@@ -4,6 +4,7 @@ import { Icon } from "@/components/Icon";
 import React from "react";
 import { Platform, StyleSheet, View, useColorScheme } from "react-native";
 import { useColors } from "@/hooks/useColors";
+import { useApp } from "@/context/AppContext";
 
 export default function TabLayout() {
   const colors = useColors();
@@ -12,6 +13,12 @@ export default function TabLayout() {
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
   const isAndroid = Platform.OS === "android";
+  // Unread echo count drives a small badge on the My World tab so the
+  // "someone connected with your photo" signal is visible from any tab,
+  // not just when the user is already on the My Journey screen.
+  const { unreadEchoes } = useApp();
+  const echoBadge =
+    unreadEchoes > 0 ? (unreadEchoes > 9 ? "9+" : String(unreadEchoes)) : undefined;
 
   return (
     <Tabs
@@ -79,6 +86,17 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => (
             <Icon name="globe" size={22} color={color} />
           ),
+          tabBarBadge: echoBadge,
+          tabBarBadgeStyle: {
+            backgroundColor: colors.gold,
+            color: "#001018",
+            fontSize: 10,
+            fontWeight: "700",
+            minWidth: 16,
+            height: 16,
+            lineHeight: 16,
+            paddingHorizontal: 4,
+          },
         }}
       />
     </Tabs>
