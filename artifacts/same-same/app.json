@@ -14,13 +14,26 @@
       "backgroundColor": "#071828"
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "app.echo.samesame",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Echo uses your camera to take photos of your day so you can match with people sharing similar moments.",
+        "NSPhotoLibraryUsageDescription": "Echo lets you pick a photo from your library to share as today's moment.",
+        "NSLocationWhenInUseUsageDescription": "Echo uses your country (not precise location) to celebrate matches with people nearby."
+      }
     },
     "android": {
+      "package": "app.echo.samesame",
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#071828"
-      }
+      },
+      "permissions": [
+        "CAMERA",
+        "READ_MEDIA_IMAGES",
+        "ACCESS_COARSE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/images/icon.png"
@@ -34,11 +47,28 @@
       ],
       "expo-font",
       "expo-web-browser",
-      "expo-image-picker"
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Echo needs access to your photo library so you can share a photo of today.",
+          "cameraPermission": "Echo needs your camera so you can take a photo of today."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Echo uses your country (not precise location) to celebrate matches with people nearby."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": ""
+      }
     }
   }
 }
