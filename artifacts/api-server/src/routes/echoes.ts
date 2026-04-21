@@ -159,17 +159,24 @@ export async function recordEchoOffer(input: {
   const echoId = row.id;
   if (becameMutual) {
     // Both sides care: the responder (voterUserId) just tapped and the
-    // original offerer (recipientUserId) needs to know it stuck.
+    // original offerer (recipientUserId) needs to know it stuck. Mutual
+    // taps deep-link straight into the side-by-side pair view (the
+    // celebration moment) so the user lands on the actual match
+    // instead of the inbox list. The pair endpoint requires mutual
+    // state, which we've just promoted to, so the link will resolve.
+    const pairLink = `/echo-pair?a=${encodeURIComponent(
+      pair.lowId,
+    )}&b=${encodeURIComponent(pair.highId)}`;
     void Promise.allSettled([
       sendPushToUser(recipientUserId, {
         title: "Same same! ✨",
         body: "You both echoed each other. Tap to see your match.",
-        data: { deepLink: "/echoes", echoId, state: "mutual" },
+        data: { deepLink: pairLink, echoId, state: "mutual" },
       }),
       sendPushToUser(voterUserId, {
         title: "Same same! ✨",
         body: "They echoed you back. Tap to see your match.",
-        data: { deepLink: "/echoes", echoId, state: "mutual" },
+        data: { deepLink: pairLink, echoId, state: "mutual" },
       }),
     ]).catch((err) => logger.error({ err }, "echo push (mutual) failed"));
   } else if (wasNew) {
@@ -379,14 +386,18 @@ router.post("/echoes/:id/respond", async (req, res) => {
 
     // The OTHER side of the pair (whoever made the original offer) is
     // the one who needs to know — the responder is already in-app. Fire
-    // a "it's mutual!" push at them. Best-effort, never blocks.
+    // a "it's mutual!" push at them. Deep-link straight to the pair
+    // view since the row is now mutual. Best-effort, never blocks.
     const otherUserId =
       echo.userLowId === user.id ? echo.userHighId : echo.userLowId;
+    const pairLink = `/echo-pair?a=${encodeURIComponent(
+      echo.photoLowId,
+    )}&b=${encodeURIComponent(echo.photoHighId)}`;
     void sendPushToUser(otherUserId, {
       title: "Same same! ✨",
       body: "They echoed you back. Tap to see your match.",
       data: {
-        deepLink: "/echoes",
+        deepLink: pairLink,
         echoId,
         state: "mutual",
       },
