@@ -320,6 +320,43 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   { id: "84", uri: "https://images.unsplash.com/photo-1512100356356-de1b84283e18?w=400", country: "Greece", countryCode: "GR", countryFlag: "🇬🇷", theme: "nature", minutesAgo: 710, tags: ["beach","water","outdoors","warm"] },
   // Wildlife
   { id: "85", uri: "https://images.unsplash.com/photo-1441829266145-6d4bfb7a3a48?w=400", country: "Namibia", countryCode: "NA", countryFlag: "🇳🇦", theme: "nature", minutesAgo: 520, tags: ["wildlife","animal","outdoors"] },
+  // ── Themes added later: furniture / games / hobbies / birds / rocks / plants ──
+  // Photo IDs here are intentionally drawn from the same Unsplash photos
+  // already proven loadable elsewhere in this file — picked because they
+  // honestly fit the new theme too (e.g. a "cozy home interior" is also
+  // a furniture shot, a "wildlife outdoors" shot is also a bird/animal
+  // shot, a "mountains/cliffs" shot doubles as a rocks shot). This keeps
+  // the new themes visibly populated without risking broken image URLs.
+  // Furniture
+  { id: "86", uri: "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=400", country: "Finland", countryCode: "FI", countryFlag: "🇫🇮", theme: "furniture", minutesAgo: 48, tags: ["home","cozy","vintage"] },
+  { id: "87", uri: "https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?w=400", country: "Japan", countryCode: "JP", countryFlag: "🇯🇵", theme: "furniture", minutesAgo: 210, tags: ["home","cozy"] },
+  { id: "88", uri: "https://images.unsplash.com/photo-1519710164239-da123dc03ef4?w=400", country: "Italy", countryCode: "IT", countryFlag: "🇮🇹", theme: "furniture", minutesAgo: 540, tags: ["home","vintage"] },
+  // Games (board game / strategy / play). The first two are widely-used
+  // Unsplash photos of chess boards and tabletop pieces; verify in app
+  // and swap if either fails to load.
+  { id: "89", uri: "https://images.unsplash.com/photo-1529699211952-734e80c4d42b?w=400", country: "Germany", countryCode: "DE", countryFlag: "🇩🇪", theme: "games", minutesAgo: 33, tags: ["gaming","play","hobby"] },
+  { id: "90", uri: "https://images.unsplash.com/photo-1611996575749-79a3a250f948?w=400", country: "Korea, South", countryCode: "KR", countryFlag: "🇰🇷", theme: "games", minutesAgo: 180, tags: ["gaming","play"] },
+  { id: "91", uri: "https://images.unsplash.com/photo-1606503826748-29e0e0a9f3c7?w=400", country: "Brazil", countryCode: "BR", countryFlag: "🇧🇷", theme: "games", minutesAgo: 415, tags: ["gaming","friends","play"] },
+  // Hobbies — reusing creative-bucket shots that already represent
+  // clearly hobby-style activities (music, photography, crafts).
+  { id: "92", uri: "https://images.unsplash.com/photo-1455390582262-044cdead277a?w=400", country: "Argentina", countryCode: "AR", countryFlag: "🇦🇷", theme: "hobbies", minutesAgo: 60, tags: ["music","hobby"] },
+  { id: "93", uri: "https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=400", country: "Australia", countryCode: "AU", countryFlag: "🇦🇺", theme: "hobbies", minutesAgo: 175, tags: ["photography","hobby"] },
+  { id: "94", uri: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400", country: "Vietnam", countryCode: "VN", countryFlag: "🇻🇳", theme: "hobbies", minutesAgo: 320, tags: ["crafts","hobby"] },
+  // Birds — wildlife photos that visibly feature birds in the existing
+  // pool; the second is a popular Unsplash bird-in-flight shot.
+  { id: "95", uri: "https://images.unsplash.com/photo-1444464666168-49d633b86797?w=400", country: "Kenya", countryCode: "KE", countryFlag: "🇰🇪", theme: "birds", minutesAgo: 25, tags: ["bird","wildlife","outdoors"] },
+  { id: "96", uri: "https://images.unsplash.com/photo-1452570053594-1b985d6ea890?w=400", country: "New Zealand", countryCode: "NZ", countryFlag: "🇳🇿", theme: "birds", minutesAgo: 130, tags: ["bird","wildlife","outdoors"] },
+  { id: "97", uri: "https://images.unsplash.com/photo-1518509562904-e7ef99cddc85?w=400", country: "Peru", countryCode: "PE", countryFlag: "🇵🇪", theme: "birds", minutesAgo: 290, tags: ["bird","wildlife"] },
+  // Rocks — mountain / cliff / stone-formation shots from the existing
+  // nature pool that genuinely read as "rocks".
+  { id: "98", uri: "https://images.unsplash.com/photo-1483450388369-9ed95738483c?w=400", country: "Iceland", countryCode: "IS", countryFlag: "🇮🇸", theme: "rocks", minutesAgo: 70, tags: ["rocks","mountains","outdoors"] },
+  { id: "99", uri: "https://images.unsplash.com/photo-1418065460487-3e41a6c84dc5?w=400", country: "Chile", countryCode: "CL", countryFlag: "🇨🇱", theme: "rocks", minutesAgo: 240, tags: ["rocks","mountains","outdoors"] },
+  { id: "100", uri: "https://images.unsplash.com/photo-1518152006812-edab29b069ac?w=400", country: "Jordan", countryCode: "JO", countryFlag: "🇯🇴", theme: "rocks", minutesAgo: 480, tags: ["rocks","outdoors"] },
+  // Plants — close-ups of plants/flowers/garden, distinct from the broader
+  // "nature" landscape shots.
+  { id: "101", uri: "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=400", country: "Netherlands", countryCode: "NL", countryFlag: "🇳🇱", theme: "plants", minutesAgo: 40, tags: ["plants","flowers","garden"] },
+  { id: "102", uri: "https://images.unsplash.com/photo-1497206365907-f5e630693df0?w=400", country: "Thailand", countryCode: "TH", countryFlag: "🇹🇭", theme: "plants", minutesAgo: 150, tags: ["flowers","plants"] },
+  { id: "103", uri: "https://images.unsplash.com/photo-1545241047-6083a3684587?w=400", country: "Vietnam", countryCode: "VN", countryFlag: "🇻🇳", theme: "plants", minutesAgo: 360, tags: ["plants","garden"] },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -446,6 +483,38 @@ const SYNTH_PHOTO_BANK = {
     "1507525428034-b723cf961d3e","1512100356356-de1b84283e18","1444080748397-f442aa95c3e5",
     "1419833173245-f59e1b93f9ee",
   ],
+  // ── New themes (furniture / games / hobbies / birds / rocks / plants) ──
+  // Buckets reuse photo IDs already proven loadable in the curated
+  // SAMPLE_PHOTOS pool above wherever an existing photo honestly fits
+  // the new theme, plus a few new IDs flagged in comments. The synth
+  // generator just picks one URL + one country pair, so the buckets
+  // mostly need ~4–6 reliable IDs each to feel varied.
+  furniture: [
+    "1505691938895-1758d7feb511","1493663284031-b7e3aefcae8e","1519710164239-da123dc03ef4",
+    "1462536943532-57a629f6cc60","1416879595882-3373a0480b5b",
+  ],
+  games: [
+    "1529699211952-734e80c4d42b","1611996575749-79a3a250f948","1606503826748-29e0e0a9f3c7",
+  ],
+  hobbies: [
+    "1455390582262-044cdead277a","1481627834876-b7833e8f5570","1507003211169-0a1dd7228f2d",
+    "1513475382585-d06e58bcb0e0","1499951360447-b19be8fe80f5",
+  ],
+  birds: [
+    // Wildlife shots from the existing nature/pets pools — a couple of
+    // these are large mammals and will be filtered out as new bird
+    // photos are confirmed; kept for now so the bucket is never empty.
+    "1444464666168-49d633b86797","1452570053594-1b985d6ea890",
+    "1518509562904-e7ef99cddc85","1441829266145-6d4bfb7a3a48",
+  ],
+  rocks: [
+    "1483450388369-9ed95738483c","1418065460487-3e41a6c84dc5","1518152006812-edab29b069ac",
+    "1469474968028-56623f02e42e","1470770841072-f978cf4d019e",
+  ],
+  plants: [
+    "1416879595882-3373a0480b5b","1497206365907-f5e630693df0","1545241047-6083a3684587",
+    "1505691938895-1758d7feb511","1462536943532-57a629f6cc60",
+  ],
 } as const;
 
 // Map common tag IDs → SYNTH_PHOTO_BANK theme buckets so freeform user tags
@@ -462,8 +531,11 @@ const TAG_TO_BUCKET: Record<string, keyof typeof SYNTH_PHOTO_BANK> = {
   hiking: "active", fitness: "active", yoga: "active", cycling: "active", running: "active", sports: "active",
   travel: "travel",
   home: "home", plants: "home", flowers: "home", garden: "home", vintage: "home",
-  gaming: "creative",
+  gaming: "games", play: "games",
   dog: "pets", cat: "pets", animal: "pets", wildlife: "pets",
+  bird: "birds",
+  rocks: "rocks", stone: "rocks",
+  hobby: "hobbies",
 };
 
 function pickFromTheme(theme: string): keyof typeof SYNTH_PHOTO_BANK {
@@ -488,6 +560,12 @@ const BUCKET_TAG_POOL: Record<keyof typeof SYNTH_PHOTO_BANK, string[]> = {
   creative: ["art", "music", "photography", "reading", "crafts", "fashion", "gaming"],
   home: ["home", "plants", "flowers", "garden", "cozy", "vintage"],
   travel: ["travel", "beach", "city", "outdoors", "mountains"],
+  furniture: ["home", "cozy", "vintage"],
+  games: ["gaming", "play", "hobby", "friends"],
+  hobbies: ["hobby", "music", "photography", "crafts", "reading", "gaming"],
+  birds: ["bird", "wildlife", "outdoors", "animal"],
+  rocks: ["rocks", "stone", "mountains", "outdoors"],
+  plants: ["plants", "flowers", "garden", "trees"],
 };
 
 // Builds synthetic candidates that look like real samples but are sampled
@@ -606,6 +684,11 @@ export const TAG_LIBRARY: { id: string; emoji: string; label: string }[] = [
   { id: "cozy", emoji: "🛋️", label: "Cozy" },
   { id: "work", emoji: "💻", label: "Work" },
   { id: "study", emoji: "📖", label: "Study" },
+  { id: "hobby", emoji: "🧶", label: "Hobby" },
+  { id: "play", emoji: "🎲", label: "Play" },
+  { id: "bird", emoji: "🐦", label: "Bird" },
+  { id: "rocks", emoji: "🪨", label: "Rocks" },
+  { id: "stone", emoji: "🪨", label: "Stone" },
 ];
 
 // Suggested tag IDs surfaced first per theme on the camera screen.
@@ -623,6 +706,12 @@ export const SUGGESTED_TAGS_BY_THEME: Record<string, string[]> = {
   creative: ["art", "music", "photography", "reading", "crafts", "fashion"],
   home: ["home", "plants", "flowers", "garden", "cozy", "vintage"],
   travel: ["travel", "beach", "mountains", "city", "outdoors"],
+  furniture: ["home", "cozy", "vintage"],
+  games: ["gaming", "play", "hobby", "friends"],
+  hobbies: ["hobby", "music", "photography", "crafts", "reading"],
+  birds: ["bird", "wildlife", "outdoors", "animal"],
+  rocks: ["rocks", "mountains", "outdoors"],
+  plants: ["plants", "flowers", "garden", "trees"],
 };
 
 // The daily challenge pool. One theme is shown to the entire world each
@@ -663,6 +752,15 @@ export const DAILY_CHALLENGES = [
   { id: "handwriting", title: "Your handwriting", description: "A note, a list, a doodle", emoji: "✍️" },
   { id: "weather", title: "Your weather", description: "Rain, sun, fog, snow — show us the day", emoji: "🌦️" },
   { id: "smallthing", title: "A small good thing", description: "Tiny, easy to miss, made your day better", emoji: "✨" },
+  // ── New themes added later — interleaved into the rotation by virtue
+  // of being appended (the daily index walks the full list, so the gap
+  // between any two related themes stays large).
+  { id: "furniture", title: "Your favourite chair", description: "Sofa, stool, bench, the seat you love", emoji: "🪑" },
+  { id: "games", title: "What you're playing", description: "Board game, video game, cards, anything", emoji: "🎲" },
+  { id: "hobbies", title: "Your hobby right now", description: "What you've been into lately", emoji: "🧶" },
+  { id: "birds", title: "A bird you spotted", description: "Backyard, balcony, park, anywhere", emoji: "🐦" },
+  { id: "rocks", title: "An interesting rock", description: "Pebble, boulder, cliff face, crystal", emoji: "🪨" },
+  { id: "plants", title: "A plant you noticed", description: "House plant, tree, weed, flower — close-up", emoji: "🪴" },
 ];
 
 // Themes that "feel" related — used as fallback when the active theme
@@ -675,8 +773,14 @@ export const THEME_ADJACENCY: Record<string, string[]> = {
   commute: ["morning", "work", "sky"],
   work: ["commute", "hands"],
   joy: ["pets", "food", "hands"],
-  nature: ["sky", "pets"],
-  pets: ["nature", "joy"],
+  nature: ["sky", "pets", "birds", "rocks", "plants"],
+  pets: ["nature", "joy", "birds"],
+  furniture: ["home", "hobbies"],
+  games: ["hobbies", "joy", "playing"],
+  hobbies: ["games", "creative", "made"],
+  birds: ["nature", "pets", "plants"],
+  rocks: ["nature", "sky"],
+  plants: ["nature", "home", "furniture"],
 };
 
 export function getThemeChain(theme: string): string[] {
