@@ -196,6 +196,65 @@ export function OceanShimmer({
       }
     }
 
+    // ── Gap-fill pass ──────────────────────────────────────────────────
+    // The crest layout above leaves visible blank areas between waves.
+    // Scatter additional "stray" sparkles uniformly across the whole
+    // viewport, but bias their placement away from existing crest
+    // sparkles so they preferentially land in the empty gaps. They're
+    // a touch smaller and dimmer than crest sparkles so the wave-line
+    // structure is still the dominant pattern.
+    const strayCount = Math.round(count * 0.9);
+    const minDist = Math.min(width, height) * 0.07;
+    for (let i = 0; i < strayCount; i++) {
+      let cx = 0;
+      let cy = 0;
+      // A few attempts at a "lonely" spot — pick the candidate with the
+      // largest distance to its nearest existing sparkle. Keeps the new
+      // points in blank areas without a hard reject loop.
+      let bestDist = -1;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const tx = rnd() * width;
+        const ty = rnd() * height;
+        let nearest = Infinity;
+        for (const s of specs) {
+          const dx = s.cx - tx;
+          const dy = s.cy - ty;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < nearest) nearest = d2;
+          if (nearest < minDist * minDist) break;
+        }
+        if (nearest > bestDist) {
+          bestDist = nearest;
+          cx = tx;
+          cy = ty;
+        }
+      }
+
+      const rx = 3 + rnd() * 8;
+      const ry = 0.4 + rnd() * 0.8;
+      // Stray sparkles tilt freely — they're not riding a wave crest,
+      // so a fully random rotation reads as scattered glints.
+      const rotation = rnd() * 180;
+      const dur = 2600 + rnd() * 4000;
+      const phase = rnd();
+      const drift = 1.5 + rnd() * 3.5;
+      const isHighlight = rnd() > 0.82;
+      specs.push({
+        key: 100000 + i,
+        cx,
+        cy,
+        rx,
+        ry,
+        rotation,
+        dur,
+        phase,
+        drift,
+        color: isHighlight ? highlight : tint,
+        base: isHighlight ? 0.08 : 0.05,
+        amp: isHighlight ? 0.18 : 0.1,
+      });
+    }
+
     return specs;
   }, [count, width, height, tint, highlight, seed]);
 
