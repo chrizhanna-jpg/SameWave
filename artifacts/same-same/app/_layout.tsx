@@ -13,6 +13,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ToastHost } from "@/components/ToastHost";
 import { AppProvider } from "@/context/AppContext";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 
@@ -60,7 +61,9 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <AppProvider>
             <GestureHandlerRootView style={{ flex: 1 }}>
-              <RootLayoutNav />
+              <ToastHost>
+                <RootLayoutNav />
+              </ToastHost>
             </GestureHandlerRootView>
           </AppProvider>
         </QueryClientProvider>

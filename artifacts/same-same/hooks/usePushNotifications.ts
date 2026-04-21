@@ -5,13 +5,17 @@ import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import { router } from "expo-router";
 import { registerPushToken } from "@/utils/api";
+import { useToast } from "@/components/ToastHost";
 
-// Foreground display behaviour. We want banner + sound when an echo
-// arrives while the app is open so the user doesn't miss it just
-// because they're sitting on Discover.
+// Foreground display behaviour. We surface foreground notifications via
+// our own in-app toast (see ToastHost) instead of the OS banner, which
+// feels intrusive when the user is already inside the app. We still let
+// the OS keep the entry in the notification list, play the sound, and
+// bump the badge so behaviour is identical to a backgrounded delivery
+// minus the visible banner.
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowBanner: true,
+    shouldShowBanner: false,
     shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
@@ -94,6 +98,8 @@ async function registerForPushAsync(): Promise<string | null> {
  */
 export function usePushNotifications() {
   const responseSub = useRef<Notifications.Subscription | null>(null);
+  const receivedSub = useRef<Notifications.Subscription | null>(null);
+  const { showToast } = useToast();
 
   useEffect(() => {
     let cancelled = false;
@@ -121,6 +127,25 @@ export function usePushNotifications() {
       },
     );
 
+    // A notification arrived while the app is foregrounded. The OS
+    // banner is suppressed (see setNotificationHandler above) so we show
+    // our own in-app toast that deep-links the same way the push tap
+    // would.
+    receivedSub.current = Notifications.addNotificationReceivedListener(
+      (notification) => {
+        const content = notification.request.content;
+        const data = content.data as Record<string, unknown> | undefined;
+        const title = content.title ?? undefined;
+        const body =
+          content.body ?? "Someone just echoed your photo — tap to view.";
+        showToast({
+          title,
+          body,
+          onPress: () => navigateFromData(data),
+        });
+      },
+    );
+
     // Cold-start tap: app was killed and the user opened it FROM a
     // notification. The response is captured before any listener is
     // attached, so we have to read it explicitly. Defer slightly so
@@ -142,6 +167,8 @@ export function usePushNotifications() {
       cancelled = true;
       responseSub.current?.remove();
       responseSub.current = null;
+      receivedSub.current?.remove();
+      receivedSub.current = null;
     };
-  }, []);
+  }, [showToast]);
 }
