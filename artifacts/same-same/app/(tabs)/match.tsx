@@ -311,9 +311,20 @@ export default function SwipeScreen() {
     [myPhotoUri, activeTheme],
   );
   const initial = React.useMemo(
-    () => getTheirPhoto(activeTheme, myTags, [myPhotoUri], undefined, realPool),
+    () =>
+      getTheirPhoto(
+        activeTheme,
+        myTags,
+        // Exclude the user's own photo AND every photo they've ever
+        // swiped on (same OR different). Without this, the first card
+        // after a remount/tab-switch could re-show a previously-saved
+        // photo, since `seenRef` is only consulted for SUBSEQUENT picks.
+        [myPhotoUri, ...reactedUris],
+        undefined,
+        realPool,
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [],
   );
   const [theirPhoto, setTheirPhoto] = useState(initial?.photo ?? PLACEHOLDER_PHOTO);
   const [matchedTheme, setMatchedTheme] = useState<string>(initial?.matchedTheme ?? "");
