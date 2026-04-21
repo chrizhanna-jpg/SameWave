@@ -248,6 +248,33 @@ export default function SwipeScreen() {
   // that survives remounts/tab switches/theme changes.
   const seenRef = useRef<string[]>([myPhotoUri, ...reactedUris]);
 
+  // Merge any newly-reacted URIs into seenRef whenever `matches` grows.
+  // This catches two cases the original mount-only seed missed:
+  //   1. AsyncStorage hydrates `matches` AFTER SwipeScreen mounts, so the
+  //      initial seed had an empty reactedUris and persisted "different"
+  //      verdicts could come back.
+  //   2. `addMatch` runs during a swipe but the candidate-pool reset
+  //      effect below only depends on theme/tags/photo URI, so newly-
+  //      added reactions weren't merged in until a re-seed event fired.
+  // We intentionally MERGE rather than overwrite so per-session URIs
+  // pushed by loadNextCandidate (photos shown but not yet "matched"
+  // on the backend) are preserved.
+  useEffect(() => {
+    const seen = new Set(seenRef.current);
+    let grew = false;
+    reactedUris.forEach((uri) => {
+      if (!seen.has(uri)) {
+        seenRef.current.push(uri);
+        seen.add(uri);
+        grew = true;
+      }
+    });
+    // No state update needed — seenRef is consulted on the NEXT
+    // loadNextCandidate / candidate-pool refresh. We just want to make
+    // sure the in-memory exclusion list is current.
+    void grew;
+  }, [reactedUris]);
+
   // Real candidates from the backend. Empty until the first fetch resolves;
   // SwipeScreen still renders something via SAMPLE_PHOTOS in dev / a graceful
   // empty state in production.
