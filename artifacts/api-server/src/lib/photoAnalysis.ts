@@ -6,12 +6,13 @@ const ALLOWED_TAGS = [
   "coffee", "drink", "meal", "bread", "dessert", "cooking", "baking", "warm", "cafe",
   "trees", "sunset", "clouds", "stars", "night", "mountains", "outdoors",
   "water", "beach", "snow", "plants", "flowers", "garden",
-  "dog", "cat", "animal", "wildlife",
+  "dog", "cat", "animal", "wildlife", "bird",
   "people", "smile", "celebration", "family", "friends", "party", "kids",
   "art", "photography", "music", "reading", "crafts", "fashion",
   "fitness", "yoga", "hiking", "cycling", "running", "sports", "dancing", "gaming",
   "travel", "home", "vintage", "cozy", "work", "study",
   "city", "transit", "desk", "laptop",
+  "hobby", "play",
 ];
 
 const PROMPT = `You are analyzing a daily-life photo for a global "find people who share your moments and interests" app.

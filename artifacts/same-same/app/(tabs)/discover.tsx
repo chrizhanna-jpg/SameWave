@@ -15,6 +15,7 @@ import { Icon } from "@/components/Icon";
 import { OceanShimmer } from "@/components/OceanShimmer";
 import { useColors } from "@/hooks/useColors";
 import { buildDiscoveryFeed, type DiscoveryItem } from "@/data/discoveryFeed";
+import { isSamplePhoto } from "@/data/samplePhotos";
 import { fetchEchoCountsByTheme } from "@/utils/api";
 
 export default function DiscoverScreen() {
@@ -147,7 +148,14 @@ function DiscoveryCard({ item }: { item: DiscoveryItem }) {
 
       <View style={styles.photosRow}>
         <View style={styles.photoCol}>
-          <Image source={{ uri: thumbUri(item.a.uri) }} style={styles.photo} />
+          <View style={styles.photoWrap}>
+            <Image source={{ uri: thumbUri(item.a.uri) }} style={styles.photo} />
+            {isSamplePhoto(item.a.uri) && (
+              <View style={styles.sampleBadge} accessibilityLabel="Sample photo">
+                <Icon name="globe" size={11} color="#ffffff" />
+              </View>
+            )}
+          </View>
           <View style={styles.flagRow}>
             <Text style={styles.flag}>{item.a.countryFlag}</Text>
             <Text
@@ -191,7 +199,14 @@ function DiscoveryCard({ item }: { item: DiscoveryItem }) {
         </View>
 
         <View style={styles.photoCol}>
-          <Image source={{ uri: thumbUri(item.b.uri) }} style={styles.photo} />
+          <View style={styles.photoWrap}>
+            <Image source={{ uri: thumbUri(item.b.uri) }} style={styles.photo} />
+            {isSamplePhoto(item.b.uri) && (
+              <View style={styles.sampleBadge} accessibilityLabel="Sample photo">
+                <Icon name="globe" size={11} color="#ffffff" />
+              </View>
+            )}
+          </View>
           <View style={styles.flagRow}>
             <Text style={styles.flag}>{item.b.countryFlag}</Text>
             <Text
@@ -310,10 +325,27 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   photoCol: { flex: 1, gap: 8, alignItems: "center" },
-  photo: {
+  photoWrap: {
     width: "100%",
     aspectRatio: 1,
     borderRadius: 14,
+    overflow: "hidden",
+    position: "relative",
+  },
+  photo: {
+    width: "100%",
+    height: "100%",
+  },
+  sampleBadge: {
+    position: "absolute",
+    top: 5,
+    right: 5,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "rgba(0, 0, 0, 0.55)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   flagRow: {
     flexDirection: "row",
