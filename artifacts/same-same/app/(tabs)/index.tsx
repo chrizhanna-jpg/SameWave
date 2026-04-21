@@ -23,13 +23,19 @@ const { width } = Dimensions.get("window");
 export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { streakCount, matches, matchedCountries, myPhotos, resetOnboarding } = useApp();
+  const { matches, matchedCountries, myPhotos, resetOnboarding } = useApp();
   const challenge = getTodaysChallenge();
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
 
-  const totalMatches = matches.length;
+  // Only confirmed ("same") swipes count as matches. Previously this used
+  // matches.length, which inflated the number with every "different"
+  // verdict — making the home screen disagree with My Journey.
+  const totalMatches = React.useMemo(
+    () => matches.filter((m) => m.verdict === "same").length,
+    [matches],
+  );
   const hasUploadedPhoto = myPhotos.length > 0;
 
   return (
@@ -56,18 +62,6 @@ export default function HomeScreen() {
 
         {/* Stats row */}
         <View style={styles.statsRow}>
-          <View style={styles.statItem}>
-            <Text style={[styles.statNum, { color: colors.foreground }]}>
-              {streakCount}
-            </Text>
-            <View style={styles.statLabelRow}>
-              <Icon name="zap" size={12} color={colors.gold} />
-              <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
-                Streak
-              </Text>
-            </View>
-          </View>
-          <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
           <View style={styles.statItem}>
             <Text style={[styles.statNum, { color: colors.foreground }]}>
               {totalMatches}
