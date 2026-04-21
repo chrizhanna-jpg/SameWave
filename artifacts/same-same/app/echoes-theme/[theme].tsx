@@ -33,20 +33,25 @@ export default function EchoesThemeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  // `aliveRef` lets both the initial load and pull-to-refresh skip
+  // their state writes if the screen has been popped off the stack
+  // before the fetch resolved — avoids a "setState on unmounted" warn.
+  const aliveRef = React.useRef(true);
   const load = async () => {
     const result = await fetchEchoesByTheme(theme);
+    if (!aliveRef.current) return;
     setPhotos(result.photos);
     setCount(result.count);
   };
 
   useEffect(() => {
-    let alive = true;
+    aliveRef.current = true;
     (async () => {
       await load();
-      if (alive) setLoading(false);
+      if (aliveRef.current) setLoading(false);
     })();
     return () => {
-      alive = false;
+      aliveRef.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [theme]);
@@ -54,7 +59,7 @@ export default function EchoesThemeScreen() {
   const onRefresh = async () => {
     setRefreshing(true);
     await load();
-    setRefreshing(false);
+    if (aliveRef.current) setRefreshing(false);
   };
 
   const topPadding = Platform.OS === "web" ? 16 : insets.top + 8;
