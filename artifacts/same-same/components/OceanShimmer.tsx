@@ -119,38 +119,84 @@ export function OceanShimmer({
   const { width, height } = Dimensions.get("window");
   const sparkles = useMemo<SparkleSpec[]>(() => {
     const rnd = mulberry32(seed);
-    return Array.from({ length: count }).map((_, i) => {
-      const cx = rnd() * width;
-      const cy = rnd() * height;
-      // Finer streaks — smaller and thinner than before so individual
-      // specks barely register up close but blend into a glittering
-      // surface across the whole screen.
-      const rx = 4 + rnd() * 11;
-      const ry = 0.5 + rnd() * 0.9;
-      const rotation = -18 + rnd() * 36;
-      // Slower cycles → calmer, more meditative shimmer.
-      const dur = 2400 + rnd() * 3600;
-      const phase = rnd();
-      // 2–6 px lateral drift — visible but never agitating.
-      const drift = 2 + rnd() * 4;
-      const isHighlight = rnd() > 0.78;
-      return {
-        key: i,
-        cx,
-        cy,
-        rx,
-        ry,
-        rotation,
-        dur,
-        phase,
-        drift,
-        color: isHighlight ? highlight : tint,
-        // Subtle: never fully opaque, always a present-but-quiet baseline
-        // so the field is there from mount and only modulates gently.
-        base: isHighlight ? 0.1 : 0.07,
-        amp: isHighlight ? 0.22 : 0.13,
-      };
-    });
+    const specs: SparkleSpec[] = [];
+
+    // Real ocean shimmer doesn't scatter evenly — sunlight rides the
+    // wave crests, so the bright specks line up into rough, broken
+    // diagonals. We model that by laying down a handful of gently
+    // curved "crests" across the screen and threading sparkles along
+    // each one, with small perpendicular jitter so the lines feel
+    // hand-drawn rather than ruled.
+    const crestCount = 6;
+    const perCrest = Math.max(4, Math.round(count / crestCount));
+    // All crests share roughly the same tilt — like waves rolling in
+    // from one direction — with a tiny per-crest variation.
+    const baseAngleDeg = -14;
+
+    for (let c = 0; c < crestCount; c++) {
+      const angleDeg = baseAngleDeg + (rnd() - 0.5) * 10;
+      const angle = (angleDeg * Math.PI) / 180;
+      const dirX = Math.cos(angle);
+      const dirY = Math.sin(angle);
+      // Perpendicular axis — jitter direction.
+      const perpX = -dirY;
+      const perpY = dirX;
+
+      // Anchor each crest somewhere on the screen and let the line
+      // stretch ±diag in either direction so it crosses the viewport.
+      const anchorX = rnd() * width;
+      const anchorY = rnd() * height;
+      const diag = Math.hypot(width, height) * 0.6;
+      // Each crest gets its own gentle sine wobble — amplitude and
+      // wavelength — so it reads as a wave rather than a straight line.
+      const wobbleAmp = 6 + rnd() * 14;
+      const wobbleFreq = 0.004 + rnd() * 0.006;
+      const wobblePhase = rnd() * Math.PI * 2;
+
+      for (let i = 0; i < perCrest; i++) {
+        // Position along the crest, with slight random spacing so the
+        // specks don't feel mechanically distributed.
+        const tAlong = (i + rnd() * 0.7 - 0.35) / (perCrest - 1 || 1);
+        const along = (tAlong - 0.5) * 2 * diag;
+        const wobble =
+          Math.sin(along * wobbleFreq + wobblePhase) * wobbleAmp;
+        // Small extra perpendicular jitter so the crest line isn't
+        // perfectly clean.
+        const jitter = (rnd() - 0.5) * 8;
+        const offset = wobble + jitter;
+        const cx = anchorX + dirX * along + perpX * offset;
+        const cy = anchorY + dirY * along + perpY * offset;
+        if (cx < -40 || cx > width + 40 || cy < -40 || cy > height + 40) {
+          continue;
+        }
+
+        const rx = 4 + rnd() * 11;
+        const ry = 0.5 + rnd() * 0.9;
+        // Streaks tilt with the crest they belong to — that's what
+        // sells the "lined up on a wave" look.
+        const rotation = angleDeg + (rnd() - 0.5) * 14;
+        const dur = 2400 + rnd() * 3600;
+        const phase = rnd();
+        const drift = 2 + rnd() * 4;
+        const isHighlight = rnd() > 0.78;
+        specs.push({
+          key: c * 1000 + i,
+          cx,
+          cy,
+          rx,
+          ry,
+          rotation,
+          dur,
+          phase,
+          drift,
+          color: isHighlight ? highlight : tint,
+          base: isHighlight ? 0.1 : 0.07,
+          amp: isHighlight ? 0.22 : 0.13,
+        });
+      }
+    }
+
+    return specs;
   }, [count, width, height, tint, highlight, seed]);
 
   return (
