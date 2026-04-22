@@ -30,6 +30,7 @@ router.post("/photos", async (req, res) => {
       imageBase64?: unknown;
       mimeType?: unknown;
       countryCode?: unknown;
+      musicGenre?: unknown;
     };
     const b64 = typeof body.imageBase64 === "string" ? body.imageBase64 : "";
     if (!b64) {
@@ -58,6 +59,26 @@ router.post("/photos", async (req, res) => {
     const stripped = b64.replace(/^data:[^;]+;base64,/, "");
     const { theme, tags } = await analyzePhoto({ base64: stripped, mimeType });
 
+    // Music-vibe genre chosen on the client. Whitelisted to the canonical
+    // set defined in artifacts/same-same/data/musicLibrary.ts — anything
+    // outside the list is rejected to null so a malformed/legacy/malicious
+    // client can't store a value the playback path can't resolve (which
+    // would crash `pickClipForSeed` on the receiving side).
+    const ALLOWED_MUSIC_GENRES = new Set([
+      "classic",
+      "rock",
+      "metal",
+      "synth",
+      "country",
+      "funk",
+      "alternative",
+    ]);
+    const musicGenre =
+      typeof body.musicGenre === "string" &&
+      ALLOWED_MUSIC_GENRES.has(body.musicGenre)
+        ? body.musicGenre
+        : null;
+
     const [row] = await db
       .insert(photosTable)
       .values({
@@ -67,6 +88,7 @@ router.post("/photos", async (req, res) => {
         theme,
         tags,
         countryCode,
+        musicGenre,
         status: "active",
         expiresAt: new Date(Date.now() + RETENTION_MS),
       })
@@ -74,11 +96,17 @@ router.post("/photos", async (req, res) => {
         id: photosTable.id,
         theme: photosTable.theme,
         tags: photosTable.tags,
+        musicGenre: photosTable.musicGenre,
         createdAt: photosTable.createdAt,
         expiresAt: photosTable.expiresAt,
       });
 
-    res.status(201).json({ id: row.id, theme: row.theme, tags: row.tags });
+    res.status(201).json({
+      id: row.id,
+      theme: row.theme,
+      tags: row.tags,
+      musicGenre: row.musicGenre,
+    });
   } catch (err) {
     req.log.error({ err }, "photo upload failed");
     res.status(500).json({ error: "upload failed" });
@@ -145,6 +173,7 @@ router.get("/photos/candidates", async (req, res) => {
           p.theme,
           p.tags,
           p.country_code AS "countryCode",
+          p.music_genre AS "musicGenre",
           p.bytes_base64 AS "bytesBase64",
           p.mime_type AS "mimeType",
           p.created_at AS "createdAt",
@@ -196,6 +225,7 @@ router.get("/photos/candidates", async (req, res) => {
       theme: String(r.theme ?? ""),
       tags: Array.isArray(r.tags) ? (r.tags as string[]) : [],
       countryCode: (r.countryCode as string | null) ?? null,
+      musicGenre: (r.musicGenre as string | null) ?? null,
       uri: `data:${String(r.mimeType)};base64,${String(r.bytesBase64)}`,
       createdAt: r.createdAt as string | Date,
       score: Number(r.tag_overlap ?? 0) + Number(r.theme_score ?? 0),

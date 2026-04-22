@@ -40,6 +40,14 @@ export interface MyPhoto {
    * for AI photos (never uploaded) or while an upload is still in flight.
    */
   backendId?: string;
+  /**
+   * Music vibe for this photo (e.g. "classic", "rock"). Picked at upload
+   * time — AI suggests, the user can swap. Lives on the photo so the
+   * matching client knows which clip to play when this photo is in the
+   * deck. Optional for backwards compatibility with photos uploaded
+   * before the feature shipped.
+   */
+  musicGenre?: string;
 }
 
 // Module-scoped registry of URIs flagged as AI. Kept in sync with the
@@ -185,7 +193,13 @@ interface AppContextValue extends AppState {
    */
   changeVerdict: (id: string, newVerdict: "same" | "different") => Match | null;
   setMyCountry: (code: string, name: string, flag: string) => void;
-  addMyPhoto: (uri: string, theme: string, tags?: string[], isAI?: boolean) => void;
+  addMyPhoto: (
+    uri: string,
+    theme: string,
+    tags?: string[],
+    isAI?: boolean,
+    musicGenre?: string,
+  ) => void;
   /**
    * Patch a previously-added local photo with the backend ID returned by
    * the upload API. Called from the camera screen once the network round
@@ -558,13 +572,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
-  const addMyPhoto = useCallback((uri: string, theme: string, tags?: string[], isAI?: boolean) => {
+  const addMyPhoto = useCallback((
+    uri: string,
+    theme: string,
+    tags?: string[],
+    isAI?: boolean,
+    musicGenre?: string,
+  ) => {
     const photo: MyPhoto = {
       uri,
       uploadedAt: new Date().toISOString(),
       theme,
       tags: tags ?? [],
       isAI: isAI ?? false,
+      musicGenre: musicGenre,
     };
     setState((prev) => {
       const newState = { ...prev, myPhotos: [photo, ...prev.myPhotos] };

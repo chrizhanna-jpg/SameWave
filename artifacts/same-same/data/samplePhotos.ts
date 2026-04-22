@@ -9,6 +9,12 @@ export interface SamplePhoto {
   theme: string;
   minutesAgo: number;
   tags: string[];
+  /**
+   * Music vibe label paired with this photo. Optional so legacy sample
+   * data without an explicit pick still loads — the match screen falls
+   * back to suggestGenre(theme, tags) at render time when missing.
+   */
+  musicGenre?: string;
 }
 
 // Helper used by PhotoCard to know whether to overlay the "sample" globe

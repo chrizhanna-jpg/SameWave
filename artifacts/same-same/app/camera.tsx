@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Image,
@@ -24,6 +24,13 @@ import {
 } from "@/data/samplePhotos";
 import { analyzePhoto, uploadPhoto } from "@/utils/api";
 import { detectPhotoOrigin, type PhotoSource } from "@/utils/photoOrigin";
+import {
+  MUSIC_LIBRARY,
+  pickClipForSeed,
+  suggestGenre,
+  type MusicGenre,
+} from "@/data/musicLibrary";
+import { playClip, stop as stopAudio } from "@/utils/audio";
 
 const MAX_TAGS = 4;
 const QUICK_THEMES = [
@@ -83,6 +90,17 @@ export default function CameraScreen() {
   // Mirror of aiTags so submit() can read the freshest value after awaiting
   // an in-flight analysis (state closures would be stale).
   const aiTagsRef = useRef<string[]>([]);
+
+  // Music vibe — AI suggests an initial genre based on theme + tags as
+  // soon as analysis completes; the user can swap by tapping a chip
+  // (which also plays a quick preview of the new clip). `genreEdited`
+  // mirrors the theme-edited flag: once the user taps a chip, we stop
+  // auto-overwriting their pick when later analysis comes in.
+  const [musicGenre, setMusicGenre] = useState<MusicGenre | null>(null);
+  const [genreEdited, setGenreEdited] = useState(false);
+  const genreEditedRef = useRef(false);
+  const musicGenreRef = useRef<MusicGenre | null>(null);
+  musicGenreRef.current = musicGenre;
 
   const toggleTag = (id: string) => {
     setSelectedTags((prev) => {
@@ -161,6 +179,44 @@ export default function CameraScreen() {
     setThemeText("");
     setThemeEdited(false);
     themeEditedRef.current = false;
+    // Reset the music vibe so the next photo gets its own AI suggestion.
+    setMusicGenre(null);
+    setGenreEdited(false);
+    genreEditedRef.current = false;
+    void stopAudio();
+  };
+
+  // Once AI analysis lands (or when the user types a theme that changes
+  // the suggestion), pick a genre — but only if the user hasn't already
+  // picked one themselves. This is the "AI suggests first clip" piece.
+  useEffect(() => {
+    if (genreEditedRef.current) return;
+    if (!selectedPhoto) return;
+    const themeForSuggestion = themeEditedRef.current
+      ? normalizeTheme(themeText)
+      : aiTheme;
+    if (!themeForSuggestion && aiTags.length === 0) return;
+    const g = suggestGenre(themeForSuggestion, aiTags);
+    setMusicGenre(g);
+  }, [aiTheme, aiTags, themeText, selectedPhoto]);
+
+  // Tear down audio when leaving the screen entirely (back nav, etc).
+  useEffect(() => {
+    return () => {
+      void stopAudio();
+    };
+  }, []);
+
+  const handleGenreTap = (g: MusicGenre) => {
+    setMusicGenre(g);
+    setGenreEdited(true);
+    genreEditedRef.current = true;
+    Haptics.selectionAsync().catch(() => {});
+    // Tap = swap + play. Use the photo URI as the seed so the same
+    // photo→genre combo always picks the same clip.
+    const seed = selectedPhoto ?? "preview";
+    const clip = pickClipForSeed(g, seed);
+    void playClip(clip.url);
   };
 
   const takePhoto = async () => {
@@ -245,7 +301,15 @@ export default function CameraScreen() {
     const finalTheme = themeEdited
       ? typed || normalizeTheme(challenge.title)
       : normalizeTheme(aiTheme) || normalizeTheme(challenge.title);
-    addMyPhoto(selectedPhoto, finalTheme, merged, isAi);
+    // Lock in a final genre — user pick wins; otherwise AI suggestion
+    // from the just-analysed theme + merged tags. We compute on submit
+    // so a brief race (user submits before AI returns) still records
+    // a sensible vibe instead of nothing.
+    const finalGenre: MusicGenre =
+      musicGenreRef.current ?? suggestGenre(finalTheme, merged);
+    addMyPhoto(selectedPhoto, finalTheme, merged, isAi, finalGenre);
+    // Stop the preview clip — user is leaving the screen.
+    void stopAudio();
     // Fire-and-forget upload to the backend so other users can match against
     // this photo. Local-only state stays the source of truth for *this*
     // user's UI; the backend just makes the photo discoverable to others.
@@ -258,6 +322,7 @@ export default function CameraScreen() {
         imageBase64: captured.base64,
         mimeType: captured.mimeType,
         countryCode: myCountryCode,
+        musicGenre: finalGenre,
       })
         .then((res) => {
           // Store the backend ID back onto the local photo record so future
@@ -560,10 +625,63 @@ export default function CameraScreen() {
               </View>
             </View>
 
+            <View style={styles.themeSection}>
+              <View style={styles.tagSectionHeader}>
+                <Text style={[styles.themeSectionLabel, { color: colors.mutedForeground }]}>
+                  Music vibe
+                </Text>
+                {musicGenre && (
+                  <Text style={[styles.tagCount, { color: colors.mutedForeground }]}>
+                    {genreEdited ? "your pick" : "AI pick · tap to swap"}
+                  </Text>
+                )}
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.musicChips}
+              >
+                {MUSIC_LIBRARY.map((g) => {
+                  const active = musicGenre === g.id;
+                  return (
+                    <TouchableOpacity
+                      key={g.id}
+                      onPress={() => handleGenreTap(g.id)}
+                      activeOpacity={0.85}
+                      style={[
+                        styles.musicChip,
+                        {
+                          backgroundColor: active ? colors.primary : colors.card,
+                          borderColor: active ? colors.primary : colors.border,
+                        },
+                      ]}
+                    >
+                      <Text style={styles.musicChipEmoji}>{g.emoji}</Text>
+                      <Text
+                        style={[
+                          styles.musicChipLabel,
+                          {
+                            color: active
+                              ? colors.primaryForeground
+                              : colors.foreground,
+                          },
+                        ]}
+                      >
+                        {g.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
             <View style={styles.actionButtons}>
               <TouchableOpacity
                 style={[styles.retakeBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-                onPress={() => setSelectedPhoto(null)}
+                onPress={() => {
+                  void stopAudio();
+                  setSelectedPhoto(null);
+                }}
               >
                 <Icon name="refresh-cw" size={18} color={colors.foreground} />
                 <Text style={[styles.retakeBtnText, { color: colors.foreground }]}>
@@ -894,5 +1012,27 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
     paddingVertical: 4,
+  },
+  musicChips: {
+    flexDirection: "row",
+    gap: 8,
+    paddingVertical: 4,
+    paddingRight: 12,
+  },
+  musicChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  musicChipEmoji: {
+    fontSize: 16,
+  },
+  musicChipLabel: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
   },
 });

@@ -39,6 +39,13 @@ export const photosTable = pgTable(
 
     countryCode: varchar("country_code", { length: 2 }),
 
+    // Music vibe (the "vibe clip" feature). Lower-case genre id from
+    // artifacts/same-same/data/musicLibrary.ts (e.g. "classic", "rock").
+    // Nullable so the column is backwards-compatible with photos
+    // uploaded before the feature shipped — the client falls back to
+    // its local suggestGenre() in that case.
+    musicGenre: varchar("music_genre", { length: 32 }),
+
     // Lifecycle.
     status: varchar("status", { length: 16 }).notNull().default("active"),
     reportCount: integer("report_count").notNull().default(0),

@@ -97,12 +97,14 @@ export interface UploadedPhoto {
   id: string;
   theme: string;
   tags: string[];
+  musicGenre: string | null;
 }
 
 export async function uploadPhoto(input: {
   imageBase64: string;
   mimeType?: string;
   countryCode?: string;
+  musicGenre?: string;
 }): Promise<UploadedPhoto | null> {
   try {
     const base = getApiBase();
@@ -118,6 +120,7 @@ export async function uploadPhoto(input: {
       id: json.id,
       theme: json.theme ?? "",
       tags: Array.isArray(json.tags) ? json.tags : [],
+      musicGenre: typeof json.musicGenre === "string" ? json.musicGenre : null,
     };
   } catch {
     return null;
@@ -129,6 +132,8 @@ export interface CandidatePhoto {
   theme: string;
   tags: string[];
   countryCode: string | null;
+  /** Music vibe label; null for legacy photos uploaded pre-feature. */
+  musicGenre: string | null;
   uri: string; // data: URI (MVP) — server returns inline base64
   createdAt: string;
   score: number;

@@ -35,6 +35,20 @@ import {
   type SamplePhoto,
 } from "@/data/samplePhotos";
 import { fetchCandidates, votePhoto, fetchMatchStats } from "@/utils/api";
+import {
+  getGenre,
+  pickClipForSeed,
+  suggestGenre,
+  type MusicGenre,
+} from "@/data/musicLibrary";
+import {
+  isMuted as audioIsMuted,
+  onMuteChange,
+  pause as pauseAudio,
+  playClip,
+  setMuted as setAudioMuted,
+  stop as stopAudio,
+} from "@/utils/audio";
 import { sampleMatchStats } from "@/utils/sampleStats";
 import { flagFor, nameFor } from "@/data/countries";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
@@ -343,6 +357,7 @@ export default function SwipeScreen() {
             theme: c.theme || activeTheme,
             minutesAgo,
             tags: c.tags,
+            musicGenre: c.musicGenre ?? undefined,
           };
         });
         realPhotoIdsRef.current = ids;
@@ -462,6 +477,54 @@ export default function SwipeScreen() {
     sessionDisplayedRef.current.add(k);
     markPhotoSeen(k);
   }, [theirPhoto.uri, myPhotoKey, markPhotoSeen]);
+
+  // Music-vibe playback. When a new card lands we play the clip that
+  // belongs to *their* photo (their pick — the user is hearing how the
+  // stranger paired the moment, not their own taste). Falls back to a
+  // local suggestion when the candidate is a sample / synthetic photo
+  // that never carried a saved genre.
+  const [muted, setMutedState] = useState<boolean>(audioIsMuted());
+  useEffect(() => {
+    return onMuteChange(setMutedState);
+  }, []);
+  useEffect(() => {
+    if (!theirPhoto?.uri) return;
+    // Don't play over the placeholder card (which is just the user's
+    // own photo as a backdrop) or once the deck is exhausted.
+    if (theirPhoto.id === "placeholder" || noMore) {
+      void pauseAudio();
+      return;
+    }
+    // Don't play while a fullscreen image modal is open — the modal is
+    // a "look at this in detail" surface, audio competes with that.
+    if (fullscreenUri !== null) {
+      void pauseAudio();
+      return;
+    }
+    // Resolve the genre defensively: a stored value that isn't in the
+    // canonical library (legacy upload, server bug, hand-crafted JSON)
+    // falls back to a fresh local suggestion instead of crashing the
+    // playback path on a missing entry.
+    const stored = theirPhoto.musicGenre;
+    const genre: MusicGenre = (stored && getGenre(stored)?.id) ||
+      suggestGenre(theirPhoto.theme, theirPhoto.tags);
+    const clip = pickClipForSeed(genre, theirPhoto.uri);
+    void playClip(clip.url);
+  }, [theirPhoto.uri, theirPhoto.id, theirPhoto.musicGenre, theirPhoto.theme, noMore, fullscreenUri]);
+
+  // Stop audio entirely when the screen unmounts (tab switch, navigation
+  // away). pauseAudio handles app backgrounding internally via AppState.
+  useEffect(() => {
+    return () => {
+      void stopAudio();
+    };
+  }, []);
+
+  const toggleMute = useCallback(() => {
+    const next = !audioIsMuted();
+    setAudioMuted(next);
+    Haptics.selectionAsync().catch(() => {});
+  }, []);
 
   const loadNextCandidate = useCallback(() => {
     const currentUri = theirPhotoRef.current.uri;
@@ -674,13 +737,34 @@ export default function SwipeScreen() {
             {streakCount > 0 ? `${streakCount} matches` : "Find your similar"}
           </Text>
         </View>
-        <TouchableOpacity
-          onPress={() => router.push("/camera")}
-          style={[styles.cameraBtn, { backgroundColor: colors.primary }]}
-          activeOpacity={0.85}
-        >
-          <Icon name="camera" size={20} color="#fff" />
-        </TouchableOpacity>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <TouchableOpacity
+            onPress={toggleMute}
+            style={[
+              styles.cameraBtn,
+              {
+                backgroundColor: colors.card,
+                borderWidth: 1,
+                borderColor: colors.border,
+              },
+            ]}
+            activeOpacity={0.85}
+            accessibilityLabel={muted ? "Unmute vibe music" : "Mute vibe music"}
+          >
+            <Icon
+              name={muted ? "volume-x" : "volume-2"}
+              size={18}
+              color={colors.foreground}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => router.push("/camera")}
+            style={[styles.cameraBtn, { backgroundColor: colors.primary }]}
+            activeOpacity={0.85}
+          >
+            <Icon name="camera" size={20} color="#fff" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={[styles.challengeBar, { borderColor: colors.border }]}>
