@@ -279,8 +279,8 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   { id: "48", uri: "https://images.unsplash.com/photo-1530103862676-de8c9debad1d?w=400", country: "Mexico", countryCode: "MX", countryFlag: "🇲🇽", theme: "joy", minutesAgo: 22, tags: ["people","smile","celebration"] },
   { id: "49", uri: "https://images.unsplash.com/photo-1543610892-0b1f7e6d8ac1?w=400", country: "Nigeria", countryCode: "NG", countryFlag: "🇳🇬", theme: "joy", minutesAgo: 195, tags: ["people","smile","celebration"] },
   { id: "50", uri: "https://images.unsplash.com/photo-1527525443983-6e60c75fff46?w=400", country: "Philippines", countryCode: "PH", countryFlag: "🇵🇭", theme: "joy", minutesAgo: 88, tags: ["people","smile","celebration"] },
-  { id: "51", uri: "https://images.unsplash.com/photo-1441829266145-6d4bfb7a3a48?w=400", country: "Tanzania", countryCode: "TZ", countryFlag: "🇹🇿", theme: "nature", minutesAgo: 350, tags: ["wildlife","animal","outdoors"] },
-  { id: "52", uri: "https://images.unsplash.com/photo-1437824368796-d7c7c0fb39b1?w=400", country: "Botswana", countryCode: "BW", countryFlag: "🇧🇼", theme: "pets", minutesAgo: 1100, tags: ["wildlife","animal","outdoors"] },
+  { id: "51", uri: "https://images.unsplash.com/photo-1472396961693-142e6e269027?w=400", country: "Tanzania", countryCode: "TZ", countryFlag: "🇹🇿", theme: "nature", minutesAgo: 350, tags: ["wildlife","animal","outdoors"] },
+  { id: "52", uri: "https://images.unsplash.com/photo-1564349683136-77e08dba1ef7?w=400", country: "Botswana", countryCode: "BW", countryFlag: "🇧🇼", theme: "pets", minutesAgo: 1100, tags: ["wildlife","animal","outdoors"] },
   // ── Launch-day pool expansion ──────────────────────────────────────────
   // Each entry below uses a Unsplash image already proven loadable in
   // SYNTH_PHOTO_BANK. Tags are intentionally narrow — only what is
@@ -301,7 +301,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   // Sky / sunsets
   { id: "63", uri: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=400", country: "Madagascar", countryCode: "MG", countryFlag: "🇲🇬", theme: "sky", minutesAgo: 33, tags: ["sunset","clouds","outdoors"] },
   { id: "64", uri: "https://images.unsplash.com/photo-1532274402911-5a369e4c4bb5?w=400", country: "Croatia", countryCode: "HR", countryFlag: "🇭🇷", theme: "sky", minutesAgo: 470, tags: ["sunset","clouds","water","outdoors"] },
-  { id: "65", uri: "https://images.unsplash.com/photo-1437604766819-5e0c5b8a40e9?w=400", country: "Cambodia", countryCode: "KH", countryFlag: "🇰🇭", theme: "sky", minutesAgo: 880, tags: ["sunset","clouds","warm"] },
+  { id: "65", uri: "https://images.unsplash.com/photo-1495344517868-8ebaf0a2044a?w=400", country: "Cambodia", countryCode: "KH", countryFlag: "🇰🇭", theme: "sky", minutesAgo: 880, tags: ["sunset","clouds","warm"] },
   // Hands / making — entries kept only when the image visibly features
   // hands. Two previous entries (1531913764164 and 1455218873509)
   // didn't actually show hands and were reclassified to "nature".
@@ -460,7 +460,7 @@ const SYNTH_PHOTO_BANK = {
   sky: [
     "1559827260-dc66d52bef19","1419242902214-272b3f66ee7a","1500382017468-9049fed747ef",
     "1444080748397-f442aa95c3e5","1419833173245-f59e1b93f9ee","1470071459604-3b5ec3a7fe05",
-    "1500530855697-b586d89ba3ee","1532274402911-5a369e4c4bb5","1437604766819-5e0c5b8a40e9",
+    "1500530855697-b586d89ba3ee","1532274402911-5a369e4c4bb5","1495344517868-8ebaf0a2044a",
   ],
   commute: [
     "1544620347-c4fd4a3d5957","1513635269975-59663e0ac1ad","1480714378408-67cf0d13bc1b",
@@ -477,12 +477,12 @@ const SYNTH_PHOTO_BANK = {
   nature: [
     "1506905925346-21bda4d32df4","1518548419970-58e3b4079ab2","1483450388369-9ed95738483c",
     "1469474968028-56623f02e42e","1418065460487-3e41a6c84dc5","1470770841072-f978cf4d019e",
-    "1472214103451-9374bd1c798e","1502082553048-f009c37129b9","1441829266145-6d4bfb7a3a48",
+    "1472214103451-9374bd1c798e","1502082553048-f009c37129b9","1472396961693-142e6e269027",
     "1500382017468-9049fed747ef",
   ],
   pets: [
     "1548247416-ec66f4900b2e","1587300003388-59208cc962cb","1517423440428-a5a00ad493e8",
-    "1573865526739-10659fec78a5","1592194996308-7b43878e84a6","1437824368796-d7c7c0fb39b1",
+    "1573865526739-10659fec78a5","1592194996308-7b43878e84a6","1564349683136-77e08dba1ef7",
   ],
   // New lifestyle buckets so lifestyle tags don't fall through to "joy".
   active: [
