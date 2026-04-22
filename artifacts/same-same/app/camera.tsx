@@ -30,7 +30,7 @@ import {
   suggestGenre,
   type MusicGenre,
 } from "@/data/musicLibrary";
-import { playClip, stop as stopAudio } from "@/utils/audio";
+import { markUserInteracted, playClip, stop as stopAudio } from "@/utils/audio";
 
 const MAX_TAGS = 4;
 const QUICK_THEMES = [
@@ -208,6 +208,9 @@ export default function CameraScreen() {
   }, []);
 
   const handleGenreTap = (g: MusicGenre) => {
+    // Tapping a vibe chip is an explicit consent to play audio — open
+    // the cold-start gate so the preview clip actually sounds.
+    markUserInteracted();
     setMusicGenre(g);
     setGenreEdited(true);
     genreEditedRef.current = true;

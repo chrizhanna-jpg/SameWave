@@ -20,6 +20,33 @@ let muted = false;
 const muteListeners = new Set<(m: boolean) => void>();
 let appStateSub: { remove: () => void } | null = null;
 
+// Cold-start gesture gate. Music must NEVER play before the user has
+// performed at least one explicit interaction in this session — opening
+// the app and seeing a tab swap in is not consent to play audio. Every
+// playClip call no-ops until markUserInteracted() flips this. The flag
+// resets on every JS reload (which is what cold-start means in Expo),
+// so a fresh launch is always silent until the user touches something.
+let userInteracted = false;
+const interactionListeners = new Set<() => void>();
+export function markUserInteracted(): void {
+  if (userInteracted) return;
+  userInteracted = true;
+  interactionListeners.forEach((cb) => cb());
+  interactionListeners.clear();
+}
+export function hasUserInteracted(): boolean {
+  return userInteracted;
+}
+/** Subscribe once: callback fires the first time the user interacts. */
+export function onUserInteracted(cb: () => void): () => void {
+  if (userInteracted) {
+    cb();
+    return () => {};
+  }
+  interactionListeners.add(cb);
+  return () => interactionListeners.delete(cb);
+}
+
 async function ensureAudioMode() {
   // Run once. Allows playback while the device is on silent (otherwise
   // iOS swallows everything) and ducks other audio so a brief vibe clip
@@ -73,6 +100,10 @@ export async function playClip(url: string | undefined | null): Promise<void> {
     await pause();
     return;
   }
+  // Cold-start gate: silently no-op until the user has actually
+  // interacted. This prevents a freshly-launched app from blasting
+  // music before the user even sees the first frame.
+  if (!userInteracted) return;
   ensureAppStateHook();
   await audioModeReady();
   const token = ++playToken;

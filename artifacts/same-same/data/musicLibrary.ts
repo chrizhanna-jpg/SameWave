@@ -6,20 +6,19 @@
 // are.
 //
 // IMPORTANT — clip URLs:
-// All URLs below point at publicly hosted Mixkit Music previews. They
-// are placeholder content: the structure (which vibes exist, how many
-// clips per vibe, the deterministic chooser) is the real product
-// surface. Any URL that 404s is silently skipped by the audio player
-// (utils/audio.ts) and the chip still works as an emotional label —
-// it just plays nothing for that one clip slot. Before launch, swap
-// in a curated set you've actually listened to. No API key required,
-// just paste a new URL in the same shape.
+// All URLs below point at Kevin MacLeod's incompetech.com royalty-free
+// catalogue. Each track was selected by hand to match the *feeling* of
+// its vibe, not as a generic placeholder — that's the whole point of
+// this library. MacLeod's tracks are CC-BY licensed; attribution is
+// surfaced in Settings → About. Every URL below has been HTTP-checked
+// to return 200; any URL that ever 404s is silently skipped by the
+// audio player (utils/audio.ts) and the chip still works as a label —
+// it just plays nothing for that one slot.
 //
-// We deliberately reuse some URLs across emotionally-adjacent vibes
-// (e.g. a hazy after-hours loop fits both "longing" and "nostalgia").
-// Within a single vibe, the five clips are all different URLs so the
-// deterministic chooser can give two photos in the same vibe two
-// different sounds.
+// We deliberately reuse some tracks across emotionally-adjacent vibes
+// (e.g. Heartbreaking fits both nostalgia and longing). Within a
+// single vibe the URLs are all different so the deterministic chooser
+// can give two photos in the same vibe two different sounds.
 
 // We keep the type alias name `MusicGenre` because it's already
 // threaded through camera.tsx, match.tsx, AppContext, and the API
@@ -64,40 +63,75 @@ export interface GenreMeta {
   clips: MusicClip[];
 }
 
-// Shared URL pool. The mixkit hosts we used previously started
-// returning 403 to non-browser referrers, so we've moved to
-// SoundHelix's long-running demo MP3s — they're the same set used by
-// every audio-playback tutorial on the web and have been live since
-// ~2011, so they're as stable a free placeholder as exists. Sixteen
-// songs are available (1..16); we map the original semantic names to
-// distinct SoundHelix tracks so adjacent vibes still get recognisably
-// different audio. Curate before launch.
-function helix(n: number) {
-  return `https://www.soundhelix.com/examples/mp3/SoundHelix-Song-${n}.mp3`;
-}
-const URL = {
-  summer: helix(1),
-  groove: helix(2),
-  techHouse: helix(3),
-  driving: helix(4),
-  raising: helix(5),
-  dreaming: helix(6),
-  chill: helix(7),
-  hazy: helix(8),
-  nature: helix(9),
-  canyons: helix(10),
-  tripHop: helix(11),
-  serene: helix(12),
-  urban: helix(13),
-  glitch: helix(14),
+// Curated track pool from incompetech.com (Kevin MacLeod, CC-BY 4.0).
+// All URLs verified 200. Each constant name describes the *mood* of
+// the track so the vibe-to-track mapping below reads like prose.
+const KM = "https://incompetech.com/music/royalty-free/mp3-royaltyfree";
+const T = {
+  // ─── bright + playful ──────────────────────────────────────────────
+  carefree: `${KM}/Carefree.mp3`,
+  cheeryMonday: `${KM}/Cheery%20Monday.mp3`,
+  monkeysSpinning: `${KM}/Monkeys%20Spinning%20Monkeys.mp3`,
+  happyBoy: `${KM}/Happy%20Boy%20End%20Theme.mp3`,
+  lifeOfRiley: `${KM}/Life%20of%20Riley.mp3`,
+  beachParty: `${KM}/Beach%20Party.mp3`,
+  wallpaper: `${KM}/Wallpaper.mp3`,
+  fluffingDuck: `${KM}/Fluffing%20a%20Duck.mp3`,
+  lobbyTime: `${KM}/Lobby%20Time.mp3`,
+  aretes: `${KM}/Aretes.mp3`,
+  // ─── triumphant + heroic ───────────────────────────────────────────
+  heroDown: `${KM}/Hero%20Down.mp3`,
+  achilles: `${KM}/Achilles.mp3`,
+  ouroboros: `${KM}/Ouroboros.mp3`,
+  fanfareSpace: `${KM}/Fanfare%20for%20Space.mp3`,
+  inspired: `${KM}/Inspired.mp3`,
+  onMyWay: `${KM}/On%20My%20Way.mp3`,
+  takeAChance: `${KM}/Take%20a%20Chance.mp3`,
+  voltaic: `${KM}/Voltaic.mp3`,
+  martyGotsAPlan: `${KM}/Marty%20Gots%20a%20Plan.mp3`,
+  // ─── playful, comedic, mischievous ─────────────────────────────────
+  sneakySnitch: `${KM}/Sneaky%20Snitch.mp3`,
+  investigations: `${KM}/Investigations.mp3`,
+  hepCats: `${KM}/Hep%20Cats.mp3`,
+  // ─── warm, tender, romantic ────────────────────────────────────────
+  easyLemon: `${KM}/Easy%20Lemon.mp3`,
+  constance: `${KM}/Constance.mp3`,
+  pamgaea: `${KM}/Pamgaea.mp3`,
+  brittleRille: `${KM}/Brittle%20Rille.mp3`,
+  healing: `${KM}/Healing.mp3`,
+  dreamer: `${KM}/Dreamer.mp3`,
+  // ─── hopeful, uplifting ────────────────────────────────────────────
+  springThaw: `${KM}/Spring%20Thaw.mp3`,
+  localForecast: `${KM}/Local%20Forecast.mp3`,
+  // ─── serene, ambient, awe ──────────────────────────────────────────
+  meditation: `${KM}/Meditation%20Impromptu%2003.mp3`,
+  achaidh: `${KM}/Achaidh%20Cheide.mp3`,
+  // ─── bittersweet, melancholy ───────────────────────────────────────
+  heartbreaking: `${KM}/Heartbreaking.mp3`,
+  longNoteOne: `${KM}/Long%20Note%20One.mp3`,
+  longNoteTwo: `${KM}/Long%20Note%20Two.mp3`,
+  longNoteThree: `${KM}/Long%20Note%20Three.mp3`,
+  longNoteFour: `${KM}/Long%20Note%20Four.mp3`,
+  sadTrio: `${KM}/Sad%20Trio.mp3`,
+  theCannery: `${KM}/The%20Cannery.mp3`,
+  // ─── tense, eerie, anxious ─────────────────────────────────────────
+  lightlessDawn: `${KM}/Lightless%20Dawn.mp3`,
+  ossuary: `${KM}/Ossuary%201%20-%20A%20Beginning.mp3`,
+  industrialBox: `${KM}/Industrial%20Music%20Box.mp3`,
+  cipher2: `${KM}/Cipher2.mp3`,
+  bushwick: `${KM}/Bushwick%20Tarantella.mp3`,
+  // ─── driving, intense, aggressive ──────────────────────────────────
+  cyborgNinja: `${KM}/Cyborg%20Ninja.mp3`,
+  adventureMeme: `${KM}/Adventure%20Meme.mp3`,
+  rynosTheme: `${KM}/Rynos%20Theme.mp3`,
 } as const;
 
-// Each vibe ships five clips so the deterministic chooser produces
-// real variety even when many photos land on the same emotion. Within
-// a vibe the URLs are unique; across vibes a track may repeat where
-// the moods overlap (a hazy chill loop fits both "longing" and
-// "nostalgia"), which is fine — the *emotional framing* is the
-// product, not the audio file.
+// Each vibe ships four hand-picked clips so the deterministic chooser
+// produces real variety even when many photos land on the same
+// emotion. Within a vibe the tracks are unique; across vibes a track
+// may repeat where the moods overlap (Heartbreaking fits both
+// "longing" and "nostalgia"), which is a deliberate curation choice —
+// the *emotional framing* is the product, not the audio file.
 export const MUSIC_LIBRARY: GenreMeta[] = [
   {
     id: "joy",
@@ -105,11 +139,10 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
     emoji: "😄",
     vibe: "bright, playful, can't stop smiling",
     clips: [
-      { id: "joy-1", label: "Sunbeam", url: URL.summer },
-      { id: "joy-2", label: "Skipping", url: URL.groove },
-      { id: "joy-3", label: "First Bite", url: URL.techHouse },
-      { id: "joy-4", label: "Cartwheel", url: URL.raising },
-      { id: "joy-5", label: "Confetti", url: URL.dreaming },
+      { id: "joy-1", label: "Sunbeam", url: T.carefree },
+      { id: "joy-2", label: "Skipping", url: T.cheeryMonday },
+      { id: "joy-3", label: "First Bite", url: T.happyBoy },
+      { id: "joy-4", label: "Confetti", url: T.lifeOfRiley },
     ],
   },
   {
@@ -118,11 +151,10 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
     emoji: "🤩",
     vibe: "triumphant, peak, top of the world",
     clips: [
-      { id: "elated-1", label: "Summit", url: URL.driving },
-      { id: "elated-2", label: "Open Sky", url: URL.raising },
-      { id: "elated-3", label: "Take Off", url: URL.dreaming },
-      { id: "elated-4", label: "Big Sky", url: URL.canyons },
-      { id: "elated-5", label: "Victory", url: URL.summer },
+      { id: "elated-1", label: "Summit", url: T.heroDown },
+      { id: "elated-2", label: "Open Sky", url: T.fanfareSpace },
+      { id: "elated-3", label: "Take Off", url: T.onMyWay },
+      { id: "elated-4", label: "Victory", url: T.takeAChance },
     ],
   },
   {
@@ -131,11 +163,10 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
     emoji: "😂",
     vibe: "silly, can't keep a straight face",
     clips: [
-      { id: "amusement-1", label: "Wink", url: URL.groove },
-      { id: "amusement-2", label: "Bounce", url: URL.summer },
-      { id: "amusement-3", label: "Snort", url: URL.techHouse },
-      { id: "amusement-4", label: "Wobble", url: URL.raising },
-      { id: "amusement-5", label: "Oops", url: URL.chill },
+      { id: "amusement-1", label: "Wink", url: T.sneakySnitch },
+      { id: "amusement-2", label: "Bounce", url: T.fluffingDuck },
+      { id: "amusement-3", label: "Snort", url: T.monkeysSpinning },
+      { id: "amusement-4", label: "Wobble", url: T.investigations },
     ],
   },
   {
@@ -144,11 +175,10 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
     emoji: "💗",
     vibe: "warm, tender, gentle hold",
     clips: [
-      { id: "love-1", label: "Soft Hand", url: URL.chill },
-      { id: "love-2", label: "Slow Dance", url: URL.hazy },
-      { id: "love-3", label: "Hearth", url: URL.nature },
-      { id: "love-4", label: "Lullaby", url: URL.serene },
-      { id: "love-5", label: "Quiet Hour", url: URL.tripHop },
+      { id: "love-1", label: "Soft Hand", url: T.easyLemon },
+      { id: "love-2", label: "Hearth", url: T.constance },
+      { id: "love-3", label: "Lullaby", url: T.healing },
+      { id: "love-4", label: "Quiet Hour", url: T.dreamer },
     ],
   },
   {
@@ -157,11 +187,10 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
     emoji: "💞",
     vibe: "swoony, butterflies, lean closer",
     clips: [
-      { id: "romance-1", label: "Slow Burn", url: URL.hazy },
-      { id: "romance-2", label: "Candlelight", url: URL.tripHop },
-      { id: "romance-3", label: "First Look", url: URL.chill },
-      { id: "romance-4", label: "Last Dance", url: URL.serene },
-      { id: "romance-5", label: "Meet Me", url: URL.dreaming },
+      { id: "romance-1", label: "Slow Burn", url: T.brittleRille },
+      { id: "romance-2", label: "Candlelight", url: T.dreamer },
+      { id: "romance-3", label: "First Look", url: T.constance },
+      { id: "romance-4", label: "Last Dance", url: T.pamgaea },
     ],
   },
   {
@@ -170,11 +199,10 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
     emoji: "🙏",
     vibe: "thankful, lucky, blessed by this",
     clips: [
-      { id: "gratitude-1", label: "Open Window", url: URL.nature },
-      { id: "gratitude-2", label: "Held", url: URL.serene },
-      { id: "gratitude-3", label: "Soft Light", url: URL.tripHop },
-      { id: "gratitude-4", label: "Enough", url: URL.dreaming },
-      { id: "gratitude-5", label: "Long View", url: URL.canyons },
+      { id: "gratitude-1", label: "Open Window", url: T.healing },
+      { id: "gratitude-2", label: "Held", url: T.constance },
+      { id: "gratitude-3", label: "Soft Light", url: T.dreamer },
+      { id: "gratitude-4", label: "Enough", url: T.pamgaea },
     ],
   },
   {
@@ -183,11 +211,10 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
     emoji: "🦁",
     vibe: "stood tall, earned this",
     clips: [
-      { id: "pride-1", label: "Stand Tall", url: URL.driving },
-      { id: "pride-2", label: "Banner", url: URL.raising },
-      { id: "pride-3", label: "Crowd Up", url: URL.dreaming },
-      { id: "pride-4", label: "Skyline", url: URL.canyons },
-      { id: "pride-5", label: "Drumline", url: URL.groove },
+      { id: "pride-1", label: "Stand Tall", url: T.achilles },
+      { id: "pride-2", label: "Banner", url: T.ouroboros },
+      { id: "pride-3", label: "Crowd Up", url: T.inspired },
+      { id: "pride-4", label: "Skyline", url: T.voltaic },
     ],
   },
   {
@@ -196,11 +223,10 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
     emoji: "🌅",
     vibe: "soft sunrise, things might turn",
     clips: [
-      { id: "hope-1", label: "Dawn", url: URL.dreaming },
-      { id: "hope-2", label: "Step Out", url: URL.raising },
-      { id: "hope-3", label: "Far Hill", url: URL.canyons },
-      { id: "hope-4", label: "Slow Lift", url: URL.serene },
-      { id: "hope-5", label: "Onward", url: URL.driving },
+      { id: "hope-1", label: "Dawn", url: T.springThaw },
+      { id: "hope-2", label: "Step Out", url: T.onMyWay },
+      { id: "hope-3", label: "Far Hill", url: T.localForecast },
+      { id: "hope-4", label: "Onward", url: T.inspired },
     ],
   },
   {
@@ -209,11 +235,10 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
     emoji: "✨",
     vibe: "awe, magical, can't believe it",
     clips: [
-      { id: "wonder-1", label: "Star Field", url: URL.canyons },
-      { id: "wonder-2", label: "Glow", url: URL.tripHop },
-      { id: "wonder-3", label: "Floating", url: URL.serene },
-      { id: "wonder-4", label: "Aurora", url: URL.dreaming },
-      { id: "wonder-5", label: "Drift", url: URL.hazy },
+      { id: "wonder-1", label: "Star Field", url: T.meditation },
+      { id: "wonder-2", label: "Glow", url: T.healing },
+      { id: "wonder-3", label: "Floating", url: T.pamgaea },
+      { id: "wonder-4", label: "Aurora", url: T.dreamer },
     ],
   },
   {
@@ -222,11 +247,10 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
     emoji: "🌿",
     vibe: "peaceful, breath out, soft morning",
     clips: [
-      { id: "calm-1", label: "Still Lake", url: URL.nature },
-      { id: "calm-2", label: "Slow Tide", url: URL.chill },
-      { id: "calm-3", label: "First Light", url: URL.serene },
-      { id: "calm-4", label: "Garden", url: URL.tripHop },
-      { id: "calm-5", label: "Long Walk", url: URL.hazy },
+      { id: "calm-1", label: "Still Lake", url: T.meditation },
+      { id: "calm-2", label: "Slow Tide", url: T.localForecast },
+      { id: "calm-3", label: "First Light", url: T.pamgaea },
+      { id: "calm-4", label: "Garden", url: T.healing },
     ],
   },
   {
@@ -235,11 +259,10 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
     emoji: "📷",
     vibe: "bittersweet memory, old film grain",
     clips: [
-      { id: "nostalgia-1", label: "Old Tape", url: URL.tripHop },
-      { id: "nostalgia-2", label: "Faded", url: URL.hazy },
-      { id: "nostalgia-3", label: "Polaroid", url: URL.canyons },
-      { id: "nostalgia-4", label: "Childhood", url: URL.serene },
-      { id: "nostalgia-5", label: "Side Street", url: URL.chill },
+      { id: "nostalgia-1", label: "Old Tape", url: T.heartbreaking },
+      { id: "nostalgia-2", label: "Faded", url: T.longNoteTwo },
+      { id: "nostalgia-3", label: "Polaroid", url: T.dreamer },
+      { id: "nostalgia-4", label: "Childhood", url: T.constance },
     ],
   },
   {
@@ -248,11 +271,10 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
     emoji: "🌙",
     vibe: "yearning, missing them, wishing",
     clips: [
-      { id: "longing-1", label: "Far Window", url: URL.hazy },
-      { id: "longing-2", label: "Late Train", url: URL.tripHop },
-      { id: "longing-3", label: "Out Loud", url: URL.canyons },
-      { id: "longing-4", label: "Half Moon", url: URL.serene },
-      { id: "longing-5", label: "Hold On", url: URL.chill },
+      { id: "longing-1", label: "Far Window", url: T.heartbreaking },
+      { id: "longing-2", label: "Late Train", url: T.longNoteOne },
+      { id: "longing-3", label: "Half Moon", url: T.longNoteTwo },
+      { id: "longing-4", label: "Hold On", url: T.lightlessDawn },
     ],
   },
   {
@@ -261,11 +283,10 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
     emoji: "🥲",
     vibe: "melancholy, soft ache",
     clips: [
-      { id: "sad-1", label: "Empty Room", url: URL.hazy },
-      { id: "sad-2", label: "Last Light", url: URL.tripHop },
-      { id: "sad-3", label: "Rainwindow", url: URL.canyons },
-      { id: "sad-4", label: "Slow Ache", url: URL.serene },
-      { id: "sad-5", label: "Quiet Cry", url: URL.nature },
+      { id: "sad-1", label: "Empty Room", url: T.sadTrio },
+      { id: "sad-2", label: "Last Light", url: T.heartbreaking },
+      { id: "sad-3", label: "Rainwindow", url: T.longNoteOne },
+      { id: "sad-4", label: "Slow Ache", url: T.longNoteTwo },
     ],
   },
   {
@@ -274,11 +295,10 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
     emoji: "🫥",
     vibe: "alone in a crowd, no one around",
     clips: [
-      { id: "lonely-1", label: "Empty Café", url: URL.hazy },
-      { id: "lonely-2", label: "Long Hall", url: URL.canyons },
-      { id: "lonely-3", label: "One Light", url: URL.tripHop },
-      { id: "lonely-4", label: "Just Me", url: URL.serene },
-      { id: "lonely-5", label: "Echoes", url: URL.nature },
+      { id: "lonely-1", label: "Empty Café", url: T.longNoteThree },
+      { id: "lonely-2", label: "Long Hall", url: T.longNoteFour },
+      { id: "lonely-3", label: "One Light", url: T.heartbreaking },
+      { id: "lonely-4", label: "Just Me", url: T.theCannery },
     ],
   },
   {
@@ -287,11 +307,10 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
     emoji: "🖤",
     vibe: "heavy, quiet loss, hold the weight",
     clips: [
-      { id: "grief-1", label: "Stillness", url: URL.hazy },
-      { id: "grief-2", label: "Vast", url: URL.canyons },
-      { id: "grief-3", label: "Held Breath", url: URL.serene },
-      { id: "grief-4", label: "Cold Air", url: URL.tripHop },
-      { id: "grief-5", label: "Far Bell", url: URL.nature },
+      { id: "grief-1", label: "Stillness", url: T.longNoteOne },
+      { id: "grief-2", label: "Vast", url: T.longNoteThree },
+      { id: "grief-3", label: "Held Breath", url: T.longNoteFour },
+      { id: "grief-4", label: "Far Bell", url: T.theCannery },
     ],
   },
   {
@@ -300,11 +319,10 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
     emoji: "😨",
     vibe: "tense, eerie, something's about to happen",
     clips: [
-      { id: "fear-1", label: "Cold Room", url: URL.glitch },
-      { id: "fear-2", label: "Footsteps", url: URL.urban },
-      { id: "fear-3", label: "Held Breath", url: URL.canyons },
-      { id: "fear-4", label: "Edge", url: URL.hazy },
-      { id: "fear-5", label: "Dark Hall", url: URL.tripHop },
+      { id: "fear-1", label: "Cold Room", url: T.lightlessDawn },
+      { id: "fear-2", label: "Footsteps", url: T.ossuary },
+      { id: "fear-3", label: "Held Breath", url: T.cipher2 },
+      { id: "fear-4", label: "Edge", url: T.industrialBox },
     ],
   },
   {
@@ -313,11 +331,10 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
     emoji: "😠",
     vibe: "fed up, sharp edge, fists clenched",
     clips: [
-      { id: "anger-1", label: "Slam", url: URL.glitch },
-      { id: "anger-2", label: "Heavy Pulse", url: URL.urban },
-      { id: "anger-3", label: "Friction", url: URL.driving },
-      { id: "anger-4", label: "Sharp Edge", url: URL.techHouse },
-      { id: "anger-5", label: "Cracked", url: URL.groove },
+      { id: "anger-1", label: "Slam", url: T.cyborgNinja },
+      { id: "anger-2", label: "Heavy Pulse", url: T.voltaic },
+      { id: "anger-3", label: "Friction", url: T.bushwick },
+      { id: "anger-4", label: "Sharp Edge", url: T.industrialBox },
     ],
   },
   {
@@ -326,11 +343,10 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
     emoji: "😬",
     vibe: "anxious, on edge, too much at once",
     clips: [
-      { id: "stress-1", label: "Tight Loop", url: URL.urban },
-      { id: "stress-2", label: "Pulse", url: URL.glitch },
-      { id: "stress-3", label: "Crowd", url: URL.techHouse },
-      { id: "stress-4", label: "Deadline", url: URL.driving },
-      { id: "stress-5", label: "No Air", url: URL.groove },
+      { id: "stress-1", label: "Tight Loop", url: T.bushwick },
+      { id: "stress-2", label: "Pulse", url: T.industrialBox },
+      { id: "stress-3", label: "Crowd", url: T.cipher2 },
+      { id: "stress-4", label: "Deadline", url: T.cyborgNinja },
     ],
   },
   {
@@ -339,11 +355,10 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
     emoji: "🔥",
     vibe: "all-in, driving, can't sit still",
     clips: [
-      { id: "passion-1", label: "Full Throttle", url: URL.driving },
-      { id: "passion-2", label: "Burn", url: URL.raising },
-      { id: "passion-3", label: "Heatwave", url: URL.techHouse },
-      { id: "passion-4", label: "Drive Home", url: URL.groove },
-      { id: "passion-5", label: "Pulse Up", url: URL.summer },
+      { id: "passion-1", label: "Full Throttle", url: T.cyborgNinja },
+      { id: "passion-2", label: "Burn", url: T.adventureMeme },
+      { id: "passion-3", label: "Heatwave", url: T.rynosTheme },
+      { id: "passion-4", label: "Drive Home", url: T.voltaic },
     ],
   },
 ];

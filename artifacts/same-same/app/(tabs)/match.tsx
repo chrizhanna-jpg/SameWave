@@ -43,6 +43,7 @@ import {
 } from "@/data/musicLibrary";
 import {
   isMuted as audioIsMuted,
+  markUserInteracted,
   onMuteChange,
   pause as pauseAudio,
   playClip,
@@ -589,6 +590,10 @@ export default function SwipeScreen() {
       // Don't record a swipe when there's nothing to swipe on.
       if (noMore) return;
       isAnimatingOutRef.current = true;
+
+      // A swipe is an explicit user gesture — open the audio gate so
+      // the reveal effect's playClip() actually plays.
+      markUserInteracted();
 
       Haptics.impactAsync(
         dir === "right"

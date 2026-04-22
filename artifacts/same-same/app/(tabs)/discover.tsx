@@ -8,6 +8,9 @@ import React, {
 import {
   FlatList,
   Image,
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   Platform,
   Pressable,
   RefreshControl,
@@ -15,7 +18,6 @@ import {
   Text,
   TouchableOpacity,
   View,
-  type ViewToken,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -32,7 +34,15 @@ import {
   suggestGenre,
   type MusicGenre,
 } from "@/data/musicLibrary";
-import { isMuted, onMuteChange, pause, playClip, setMuted } from "@/utils/audio";
+import {
+  isMuted,
+  markUserInteracted,
+  onMuteChange,
+  onUserInteracted,
+  pause,
+  playClip,
+  setMuted,
+} from "@/utils/audio";
 
 interface ResolvedClip {
   url: string;
@@ -67,19 +77,15 @@ function resolvePhotoClip(
 }
 
 // Resolve clips for BOTH photos on a card. Discover plays them
-// sequentially (left first, then right) so a card's full "duet" plays
-// even if the user lingers without scrolling.
+// position-driven: as a card scrolls into view its left photo plays;
+// once the card's centre crosses the viewport's centre, playback
+// switches to the right photo. See onScroll handler below.
 function resolveCardClips(item: DiscoveryItem): CardClips {
   return {
     a: resolvePhotoClip(item.a, item.theme),
     b: resolvePhotoClip(item.b, item.theme),
   };
 }
-
-// How long the left clip plays before auto-advancing to the right.
-// Short enough that users feel the duet on a casual lingering scroll,
-// long enough that the audio doesn't feel choppy.
-const LEFT_CLIP_DURATION_MS = 7000;
 
 export default function DiscoverScreen() {
   const colors = useColors();
@@ -144,13 +150,17 @@ export default function DiscoverScreen() {
     return m;
   }, [items]);
 
-  // ── Audio: play the centered card's clip ────────────────────────────
+  // ── Audio: position-driven duet ─────────────────────────────────────
+  //
+  // The active card is "the one whose top half or bottom half straddles
+  // the viewport's vertical centre". Which photo plays is then a pure
+  // function of the same scroll position: while the viewport centre is
+  // in the upper half of the card, the LEFT photo plays; once it
+  // crosses into the lower half, the RIGHT photo plays. When the card
+  // leaves the viewport entirely, the next card takes over starting
+  // from its left photo. No timers, no scroll-settle race windows —
+  // playback is a deterministic readout of where the user has scrolled.
   const [activeId, setActiveId] = useState<string | null>(null);
-  // Which photo on the active card is currently sounding. Resets to
-  // "a" whenever activeId changes (a fresh card always starts on the
-  // left photo) and advances to "b" after LEFT_CLIP_DURATION_MS — or
-  // sooner if the user keeps scrolling without leaving the card (see
-  // onScroll handler below).
   const [playingSide, setPlayingSide] = useState<"a" | "b">("a");
   const [muted, setMutedState] = useState<boolean>(() => isMuted());
   const [focused, setFocused] = useState(true);
@@ -159,87 +169,124 @@ export default function DiscoverScreen() {
   // the match tab header) keeps this UI in sync.
   useEffect(() => onMuteChange(setMutedState), []);
 
-  // FlatList tells us which cards are visible; we pick the one nearest
-  // the middle of the viewport as "active". A 60% threshold keeps the
-  // active card stable as the user scrolls past partial neighbours.
-  const viewabilityConfig = useRef({
-    itemVisiblePercentThreshold: 60,
-    minimumViewTime: 120,
-  }).current;
+  // Layout cache — populated by each card's onLayout. Keys are item
+  // ids; values are {y, height} in FlatList content coordinates. Live
+  // in a ref because layout can change without re-rendering and we
+  // don't want every layout pass to trigger a state update.
+  const cardLayoutsRef = useRef<Map<string, { y: number; height: number }>>(
+    new Map(),
+  );
+  // FlatList's own visible height — used to compute the viewport centre
+  // and the symmetric padding that lets the first / last cards centre
+  // on screen rather than parking against the header / tab bar.
+  const [listHeight, setListHeight] = useState(0);
+  // Most-recent first card height we've observed. Used as a best-guess
+  // for the symmetric padding before any card has reported its layout
+  // yet. Updated as soon as the first card lays out.
+  const [estCardHeight, setEstCardHeight] = useState(0);
 
-  // Records the wall-clock moment activeId last changed. The scroll
-  // handler consults this so a swipe that simultaneously changes the
-  // active card AND fires onScroll doesn't immediately flip the
-  // brand-new card to its right photo, skipping the left clip.
-  const lastActiveChangeAtRef = useRef<number>(0);
-
-  const onViewableItemsChanged = useRef(
-    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-      if (!viewableItems.length) {
-        setActiveId(null);
-        return;
+  // Compute which card + side should be active for a given scroll
+  // offset. Pure function of cached layouts; safe to call on every
+  // onScroll event without setState churn (we only setState when the
+  // result actually changes).
+  const computeActiveFromScroll = useCallback(
+    (scrollY: number) => {
+      if (listHeight <= 0 || items.length === 0) {
+        return { id: null as string | null, side: "a" as "a" | "b" };
       }
-      // Prefer the item with the highest "visibility" position closest
-      // to centre. ViewToken doesn't expose pixel offsets, so we just
-      // take the middle of the viewable list — good enough for the
-      // single-column feed.
-      const middle = viewableItems[Math.floor(viewableItems.length / 2)];
-      const nextId = (middle.item as DiscoveryItem).id;
-      setActiveId((prev) => {
-        // Reset to left whenever a new card takes over so each card
-        // always begins its duet on its left photo.
-        if (prev !== nextId) {
-          setPlayingSide("a");
-          lastActiveChangeAtRef.current = Date.now();
+      const centerY = scrollY + listHeight / 2;
+      let activeItemId: string | null = null;
+      let activeMid = 0;
+      let activeContains = false;
+      let nearestDist = Infinity;
+      for (const it of items) {
+        const layout = cardLayoutsRef.current.get(it.id);
+        if (!layout) continue;
+        const top = layout.y;
+        const bottom = layout.y + layout.height;
+        const mid = layout.y + layout.height / 2;
+        if (centerY >= top && centerY <= bottom) {
+          activeItemId = it.id;
+          activeMid = mid;
+          activeContains = true;
+          break;
         }
-        return nextId;
-      });
+        // Fallback for the first paint where no card straddles the
+        // centre yet (header padding + tiny scroll offsets) — pick the
+        // card whose midpoint is closest. Keeps the highlight + audio
+        // alive instead of going silent until the user scrolls.
+        const d = Math.abs(centerY - mid);
+        if (d < nearestDist) {
+          nearestDist = d;
+          activeItemId = it.id;
+          activeMid = mid;
+        }
+      }
+      const side: "a" | "b" =
+        activeItemId == null
+          ? "a"
+          : activeContains
+          ? centerY < activeMid
+            ? "a"
+            : "b"
+          : "a";
+      return { id: activeItemId, side };
     },
-  ).current;
+    [items, listHeight],
+  );
 
-  // Auto-advance left → right after LEFT_CLIP_DURATION_MS so a user
-  // who lingers on a single card still hears both halves of its duet.
-  useEffect(() => {
-    if (!focused || muted) return;
-    if (!activeId || playingSide !== "a") return;
-    const t = setTimeout(() => {
-      setPlayingSide("b");
-    }, LEFT_CLIP_DURATION_MS);
-    return () => clearTimeout(t);
-  }, [activeId, playingSide, focused, muted]);
+  // Apply the result of computeActiveFromScroll. Pulled out so onScroll
+  // and the post-layout settle effect can share it.
+  const applyScrollPosition = useCallback(
+    (scrollY: number) => {
+      const next = computeActiveFromScroll(scrollY);
+      setActiveId((prev) => (prev === next.id ? prev : next.id));
+      setPlayingSide((prev) => (prev === next.side ? prev : next.side));
+    },
+    [computeActiveFromScroll],
+  );
 
-  // Scroll-driven swap: as the user keeps scrolling within the same
-  // card (e.g. a slow drag that doesn't quite move the centred card),
-  // we treat that gesture as an explicit "show me the other one" and
-  // jump straight to the right clip. Cheap and idempotent — once
-  // we're on "b" we stop reacting until the active card changes.
-  //
-  // Settle window: a swipe that changes cards also produces dozens of
-  // onScroll events. Without this guard, the very first onScroll after
-  // the new card becomes active would force it straight to "b" and
-  // skip the left clip — exactly the bug the duet is meant to avoid.
-  // 450ms is long enough to outlast a normal momentum scroll yet short
-  // enough that a deliberate "nudge to advance" gesture on the same
-  // card still feels instant.
-  const SCROLL_SETTLE_MS = 450;
-  const onScrollAdvance = useCallback(() => {
-    if (Date.now() - lastActiveChangeAtRef.current < SCROLL_SETTLE_MS) return;
-    setPlayingSide((s) => (s === "a" ? "b" : s));
+  const lastScrollYRef = useRef(0);
+  const onScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const y = e.nativeEvent.contentOffset.y;
+      lastScrollYRef.current = y;
+      applyScrollPosition(y);
+    },
+    [applyScrollPosition],
+  );
+
+  const onScrollBeginDrag = useCallback(() => {
+    // Touching the feed counts as the user opting in to audio.
+    markUserInteracted();
   }, []);
 
-  // Initial-mount fallback. FlatList's onViewableItemsChanged is
-  // unreliable on react-native-web and on cold mounts where no scroll
-  // has happened yet — both perfectly common entry paths into the
-  // Discover tab. Without this, the user sees no highlight and hears
-  // no vibe clip until they manually nudge the feed. Default the
-  // active card to the first item so the feature is alive on landing,
-  // and let viewability take over once it does fire.
+  // First-paint settle: when the FlatList finishes its initial layout
+  // we may have a non-zero scroll offset (paddingTop pushed content
+  // down) and zero card layouts cached. As cards report layouts we
+  // re-resolve so the active highlight materialises without requiring
+  // a scroll gesture. Note we deliberately do NOT auto-play here —
+  // that's still gated on the user interacting first (see audio.ts).
+  const [layoutTick, setLayoutTick] = useState(0);
   useEffect(() => {
-    if (activeId) return;
-    if (!items.length) return;
-    setActiveId(items[0].id);
-    setPlayingSide("a");
-  }, [activeId, items]);
+    if (listHeight <= 0) return;
+    applyScrollPosition(lastScrollYRef.current);
+  }, [applyScrollPosition, listHeight, layoutTick]);
+
+  const onCardLayout = useCallback((id: string, e: LayoutChangeEvent) => {
+    const { y, height } = e.nativeEvent.layout;
+    const prev = cardLayoutsRef.current.get(id);
+    if (prev && prev.y === y && prev.height === height) return;
+    cardLayoutsRef.current.set(id, { y, height });
+    if (height > 0) {
+      setEstCardHeight((cur) => (cur === 0 ? height : cur));
+    }
+    setLayoutTick((t) => t + 1);
+  }, []);
+
+  const onListLayout = useCallback((e: LayoutChangeEvent) => {
+    setListHeight(e.nativeEvent.layout.height);
+  }, []);
 
   // Pause whenever the tab loses focus; resume the active card on
   // re-focus. Without this, music keeps playing after the user
@@ -272,9 +319,8 @@ export default function DiscoverScreen() {
   }, [activeId, clipsByItem, playingSide]);
 
   // Drive the singleton audio player from the resolved current clip +
-  // focus. Focus is reactive state (not a ref) so re-entering the tab
-  // triggers a fresh playClip() for the currently active card without
-  // requiring the user to scroll.
+  // focus. Note: playClip itself silently no-ops until the user has
+  // interacted at least once, so this effect is safe to fire on mount.
   useEffect(() => {
     if (!focused) return;
     if (!current) {
@@ -284,7 +330,27 @@ export default function DiscoverScreen() {
     void playClip(current.clip.url);
   }, [current, focused]);
 
+  // Cold-start kick: the very first interaction (a mute toggle, a card
+  // tap, even just touching the feed) opens the audio gate but won't
+  // by itself re-fire the playback effect above — that effect only
+  // re-runs when activeId/playingSide change. Without this, a user who
+  // taps the speaker icon before scrolling would see the green border
+  // appear but hear nothing until they actually moved the feed. So we
+  // subscribe once: the moment the gate opens, manually push the
+  // currently-resolved clip through playClip().
+  const currentRef = useRef(current);
+  useEffect(() => {
+    currentRef.current = current;
+  }, [current]);
+  useEffect(() => {
+    return onUserInteracted(() => {
+      const c = currentRef.current;
+      if (c) void playClip(c.clip.url);
+    });
+  }, []);
+
   const onRefresh = () => {
+    markUserInteracted();
     setRefreshing(true);
     setWindowKey(Date.now().toString());
     refreshCounts().finally(() => setRefreshing(false));
@@ -293,10 +359,19 @@ export default function DiscoverScreen() {
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
 
+  // Symmetric padding so the FIRST card naturally lands centred in the
+  // viewport on initial paint and the LAST card can scroll up to
+  // centre too (rather than parking against the bottom tab bar).
+  // Falls back to a generous default until we've measured a real card.
+  const centerPad = useMemo(() => {
+    if (listHeight <= 0) return 24;
+    const h = estCardHeight > 0 ? estCardHeight : 320;
+    return Math.max(16, Math.floor((listHeight - h) / 2));
+  }, [listHeight, estCardHeight]);
+
   const renderItem = useCallback(
     ({ item }: { item: DiscoveryItem }) => {
       const isActive = activeId === item.id;
-      const card = clipsByItem.get(item.id);
       // Highlight the side that's currently emitting sound on the
       // active card. When muted we hide the highlight entirely so the
       // UI doesn't lie about audio.
@@ -304,28 +379,17 @@ export default function DiscoverScreen() {
         isActive && !muted && current ? current.side : null;
       const vibeLabel =
         isActive && !muted && current ? current.clip.label : null;
-      // Show a faint "next up" hint on the other photo so the user
-      // sees the duet structure before it auto-advances.
-      const upcomingSide =
-        isActive && !muted && current && card
-          ? current.side === "a"
-            ? card.b
-              ? ("b" as const)
-              : null
-            : card.a
-            ? ("a" as const)
-            : null
-          : null;
       return (
-        <DiscoveryCard
-          item={item}
-          activeSide={activeSide}
-          upcomingSide={upcomingSide}
-          vibeLabel={vibeLabel}
-        />
+        <View onLayout={(e) => onCardLayout(item.id, e)}>
+          <DiscoveryCard
+            item={item}
+            activeSide={activeSide}
+            vibeLabel={vibeLabel}
+          />
+        </View>
       );
     },
-    [activeId, clipsByItem, muted, current],
+    [activeId, muted, current, onCardLayout],
   );
 
   return (
@@ -342,7 +406,10 @@ export default function DiscoverScreen() {
             </Text>
           </View>
           <Pressable
-            onPress={() => setMuted(!muted)}
+            onPress={() => {
+              markUserInteracted();
+              setMuted(!muted);
+            }}
             hitSlop={10}
             accessibilityRole="button"
             accessibilityLabel={muted ? "Unmute vibe clips" : "Mute vibe clips"}
@@ -357,7 +424,7 @@ export default function DiscoverScreen() {
             <Icon
               name={muted ? "volumeX" : "volume2"}
               size={16}
-              color={muted ? colors.mutedForeground : colors.teal}
+              color={muted ? colors.mutedForeground : colors.green}
             />
           </Pressable>
         </View>
@@ -367,15 +434,18 @@ export default function DiscoverScreen() {
         data={items}
         keyExtractor={(it) => it.id}
         renderItem={renderItem}
+        onLayout={onListLayout}
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: bottomPadding + 24 },
+          {
+            paddingTop: centerPad,
+            paddingBottom: centerPad + bottomPadding,
+          },
         ]}
         showsVerticalScrollIndicator={false}
-        viewabilityConfig={viewabilityConfig}
-        onViewableItemsChanged={onViewableItemsChanged}
-        onScroll={onScrollAdvance}
-        scrollEventThrottle={120}
+        onScroll={onScroll}
+        onScrollBeginDrag={onScrollBeginDrag}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -391,14 +461,11 @@ export default function DiscoverScreen() {
 function DiscoveryCard({
   item,
   activeSide,
-  upcomingSide,
   vibeLabel,
 }: {
   item: DiscoveryItem;
   /** Which photo (a or b) is currently emitting the vibe clip, or null. */
   activeSide: "a" | "b" | null;
-  /** Which photo will play next on this card (the duet partner). */
-  upcomingSide: "a" | "b" | null;
   /** Human label of the playing vibe, e.g. "Joy". Null when no clip. */
   vibeLabel: string | null;
 }) {
@@ -413,12 +480,13 @@ function DiscoveryCard({
   return (
     <TouchableOpacity
       activeOpacity={0.85}
-      onPress={() =>
+      onPress={() => {
+        markUserInteracted();
         router.push({
           pathname: "/echoes-theme/[theme]",
           params: { theme: item.theme, title: item.themeTitle, emoji: item.themeEmoji },
-        })
-      }
+        });
+      }}
       style={[
         styles.card,
         {
@@ -444,7 +512,6 @@ function DiscoveryCard({
         <PhotoSlot
           photo={item.a}
           isActive={activeSide === "a"}
-          isUpcoming={upcomingSide === "a"}
           vibeLabel={vibeLabel}
           colors={colors}
         />
@@ -483,7 +550,6 @@ function DiscoveryCard({
         <PhotoSlot
           photo={item.b}
           isActive={activeSide === "b"}
-          isUpcoming={upcomingSide === "b"}
           vibeLabel={vibeLabel}
           colors={colors}
         />
@@ -536,13 +602,11 @@ function DiscoveryCard({
 function PhotoSlot({
   photo,
   isActive,
-  isUpcoming,
   vibeLabel,
   colors,
 }: {
   photo: SamplePhoto;
   isActive: boolean;
-  isUpcoming: boolean;
   vibeLabel: string | null;
   colors: ReturnType<typeof useColors>;
 }) {
@@ -552,16 +616,10 @@ function PhotoSlot({
         style={[
           styles.photoWrap,
           isActive && {
-            borderColor: colors.teal,
-            shadowColor: colors.teal,
+            borderColor: colors.green,
+            shadowColor: colors.green,
           },
           isActive && styles.photoWrapActive,
-          isUpcoming && {
-            // Faint dashed teal ring on the duet partner so the user
-            // sees what's coming next before the auto-advance kicks in.
-            borderColor: colors.teal + "66",
-            borderStyle: "dashed",
-          },
         ]}
       >
         <Image source={{ uri: thumbUri(photo.uri) }} style={styles.photo} />
@@ -576,11 +634,6 @@ function PhotoSlot({
             <Text style={styles.vibeBadgeText} numberOfLines={1}>
               {vibeLabel}
             </Text>
-          </View>
-        ) : null}
-        {isUpcoming ? (
-          <View style={styles.upNextBadge}>
-            <Text style={styles.upNextBadgeText}>up next</Text>
           </View>
         ) : null}
       </View>
@@ -726,21 +779,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: "Inter_700Bold",
     letterSpacing: 0.3,
-  },
-  upNextBadge: {
-    position: "absolute",
-    right: 5,
-    bottom: 5,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-    backgroundColor: "rgba(0, 0, 0, 0.45)",
-  },
-  upNextBadgeText: {
-    color: "#ffffff",
-    fontSize: 9,
-    fontFamily: "Inter_600SemiBold",
-    letterSpacing: 0.4,
   },
   flagRow: {
     flexDirection: "row",
