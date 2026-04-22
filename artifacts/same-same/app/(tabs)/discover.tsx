@@ -1,23 +1,67 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
+  FlatList,
   Image,
   Platform,
+  Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
+  type ViewToken,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
 import { OceanShimmer } from "@/components/OceanShimmer";
 import { useColors } from "@/hooks/useColors";
 import { buildDiscoveryFeed, type DiscoveryItem } from "@/data/discoveryFeed";
-import { isSamplePhoto } from "@/data/samplePhotos";
+import { isSamplePhoto, type SamplePhoto } from "@/data/samplePhotos";
 import { fetchEchoCountsByTheme } from "@/utils/api";
 import { useApp } from "@/context/AppContext";
+import {
+  getGenre,
+  pickClipForSeed,
+  suggestGenre,
+  type MusicGenre,
+} from "@/data/musicLibrary";
+import { isMuted, onMuteChange, pause, playClip, setMuted } from "@/utils/audio";
+
+// Pick which side of the card carries the vibe clip + which clip plays.
+// Prefer photo A if it has a stored genre, then B, then fall back to a
+// suggestion derived from the theme + tags so cards always have *some*
+// vibe to play. Returns null when neither photo can be resolved.
+function resolveCardClip(
+  item: DiscoveryItem,
+): { side: "a" | "b"; url: string; label: string; genre: MusicGenre } | null {
+  const candidates: { side: "a" | "b"; photo: SamplePhoto }[] = [
+    { side: "a", photo: item.a },
+    { side: "b", photo: item.b },
+  ];
+  // 1) Stored genre wins
+  for (const { side, photo } of candidates) {
+    const stored = photo.musicGenre;
+    const meta = stored ? getGenre(stored) : undefined;
+    if (meta) {
+      const clip = pickClipForSeed(meta.id, photo.uri);
+      return { side, url: clip.url, label: meta.label, genre: meta.id };
+    }
+  }
+  // 2) Suggest from theme/tags on photo A — A is the "their photo" of
+  //    the pair the same way the match flow treats it.
+  const fallbackGenre = suggestGenre(item.theme, item.a.tags);
+  const fallbackMeta = getGenre(fallbackGenre);
+  if (!fallbackMeta) return null;
+  const clip = pickClipForSeed(fallbackMeta.id, item.a.uri);
+  return { side: "a", url: clip.url, label: fallbackMeta.label, genre: fallbackMeta.id };
+}
 
 export default function DiscoverScreen() {
   const colors = useColors();
@@ -74,6 +118,77 @@ export default function DiscoverScreen() {
     [baseItems, themeCounts],
   );
 
+  // Map each item to its resolved clip once so scroll callbacks don't
+  // recompute it on every viewability tick.
+  const clipByItem = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof resolveCardClip>>();
+    for (const it of items) m.set(it.id, resolveCardClip(it));
+    return m;
+  }, [items]);
+
+  // ── Audio: play the centered card's clip ────────────────────────────
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [muted, setMutedState] = useState<boolean>(() => isMuted());
+  const [focused, setFocused] = useState(true);
+
+  // Subscribe to the global mute state so toggling it elsewhere (e.g.
+  // the match tab header) keeps this UI in sync.
+  useEffect(() => onMuteChange(setMutedState), []);
+
+  // FlatList tells us which cards are visible; we pick the one nearest
+  // the middle of the viewport as "active". A 60% threshold keeps the
+  // active card stable as the user scrolls past partial neighbours.
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 60,
+    minimumViewTime: 120,
+  }).current;
+
+  const onViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      if (!viewableItems.length) {
+        setActiveId(null);
+        return;
+      }
+      // Prefer the item with the highest "visibility" position closest
+      // to centre. ViewToken doesn't expose pixel offsets, so we just
+      // take the middle of the viewable list — good enough for the
+      // single-column feed.
+      const middle = viewableItems[Math.floor(viewableItems.length / 2)];
+      setActiveId((middle.item as DiscoveryItem).id);
+    },
+  ).current;
+
+  // Pause whenever the tab loses focus; resume the active card on
+  // re-focus. Without this, music keeps playing after the user
+  // switches to Match or Profile.
+  useFocusEffect(
+    useCallback(() => {
+      setFocused(true);
+      return () => {
+        setFocused(false);
+        void pause();
+      };
+    }, []),
+  );
+
+  // Drive the singleton audio player from active card + focus. Focus
+  // is reactive state (not a ref) so re-entering the tab triggers a
+  // fresh playClip() for the currently active card without requiring
+  // the user to scroll.
+  useEffect(() => {
+    if (!focused) return;
+    if (!activeId) {
+      void pause();
+      return;
+    }
+    const clip = clipByItem.get(activeId);
+    if (!clip) {
+      void pause();
+      return;
+    }
+    void playClip(clip.url);
+  }, [activeId, clipByItem, focused]);
+
   const onRefresh = () => {
     setRefreshing(true);
     setWindowKey(Date.now().toString());
@@ -83,24 +198,67 @@ export default function DiscoverScreen() {
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
 
+  const renderItem = useCallback(
+    ({ item }: { item: DiscoveryItem }) => {
+      const resolved = clipByItem.get(item.id) ?? null;
+      const isActive = activeId === item.id;
+      return (
+        <DiscoveryCard
+          item={item}
+          activeSide={isActive && !muted ? resolved?.side ?? null : null}
+          vibeLabel={resolved?.label ?? null}
+        />
+      );
+    },
+    [activeId, clipByItem, muted],
+  );
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <OceanShimmer />
       <View style={[styles.header, { paddingTop: topPadding + 8 }]}>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-          Right now, around the world
-        </Text>
-        <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
-          Live same-same moments from strangers everywhere
-        </Text>
+        <View style={styles.headerRow}>
+          <View style={styles.headerText}>
+            <Text style={[styles.headerTitle, { color: colors.foreground }]}>
+              Right now, around the world
+            </Text>
+            <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
+              Live same-same moments from strangers everywhere
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => setMuted(!muted)}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={muted ? "Unmute vibe clips" : "Mute vibe clips"}
+            style={[
+              styles.muteBtn,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+              },
+            ]}
+          >
+            <Icon
+              name={muted ? "volumeX" : "volume2"}
+              size={16}
+              color={muted ? colors.mutedForeground : colors.teal}
+            />
+          </Pressable>
+        </View>
       </View>
 
-      <ScrollView
+      <FlatList
+        data={items}
+        keyExtractor={(it) => it.id}
+        renderItem={renderItem}
         contentContainerStyle={[
           styles.content,
           { paddingBottom: bottomPadding + 24 },
         ]}
         showsVerticalScrollIndicator={false}
+        viewabilityConfig={viewabilityConfig}
+        onViewableItemsChanged={onViewableItemsChanged}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -108,16 +266,22 @@ export default function DiscoverScreen() {
             tintColor={colors.primary}
           />
         }
-      >
-        {items.map((item) => (
-          <DiscoveryCard key={item.id} item={item} />
-        ))}
-      </ScrollView>
+      />
     </View>
   );
 }
 
-function DiscoveryCard({ item }: { item: DiscoveryItem }) {
+function DiscoveryCard({
+  item,
+  activeSide,
+  vibeLabel,
+}: {
+  item: DiscoveryItem;
+  /** Which photo (a or b) is currently emitting the vibe clip, or null. */
+  activeSide: "a" | "b" | null;
+  /** Human label of the playing vibe, e.g. "Joy". Null when no clip. */
+  vibeLabel: string | null;
+}) {
   const colors = useColors();
   const headlineColor =
     item.timeTier.kind === "minute"
@@ -157,25 +321,12 @@ function DiscoveryCard({ item }: { item: DiscoveryItem }) {
       </View>
 
       <View style={styles.photosRow}>
-        <View style={styles.photoCol}>
-          <View style={styles.photoWrap}>
-            <Image source={{ uri: thumbUri(item.a.uri) }} style={styles.photo} />
-            {isSamplePhoto(item.a.uri) && (
-              <View style={styles.sampleBadge} accessibilityLabel="Sample photo">
-                <Icon name="globe" size={11} color="#ffffff" />
-              </View>
-            )}
-          </View>
-          <View style={styles.flagRow}>
-            <Text style={styles.flag}>{item.a.countryFlag}</Text>
-            <Text
-              style={[styles.country, { color: colors.foreground }]}
-              numberOfLines={1}
-            >
-              {item.a.country}
-            </Text>
-          </View>
-        </View>
+        <PhotoSlot
+          photo={item.a}
+          isActive={activeSide === "a"}
+          vibeLabel={vibeLabel}
+          colors={colors}
+        />
 
         <View style={styles.connectorCol}>
           <View
@@ -208,25 +359,12 @@ function DiscoveryCard({ item }: { item: DiscoveryItem }) {
           />
         </View>
 
-        <View style={styles.photoCol}>
-          <View style={styles.photoWrap}>
-            <Image source={{ uri: thumbUri(item.b.uri) }} style={styles.photo} />
-            {isSamplePhoto(item.b.uri) && (
-              <View style={styles.sampleBadge} accessibilityLabel="Sample photo">
-                <Icon name="globe" size={11} color="#ffffff" />
-              </View>
-            )}
-          </View>
-          <View style={styles.flagRow}>
-            <Text style={styles.flag}>{item.b.countryFlag}</Text>
-            <Text
-              style={[styles.country, { color: colors.foreground }]}
-              numberOfLines={1}
-            >
-              {item.b.country}
-            </Text>
-          </View>
-        </View>
+        <PhotoSlot
+          photo={item.b}
+          isActive={activeSide === "b"}
+          vibeLabel={vibeLabel}
+          colors={colors}
+        />
       </View>
 
       {/* Two equal-width chip slots so the time + geo tiers always
@@ -273,6 +411,57 @@ function DiscoveryCard({ item }: { item: DiscoveryItem }) {
   );
 }
 
+function PhotoSlot({
+  photo,
+  isActive,
+  vibeLabel,
+  colors,
+}: {
+  photo: SamplePhoto;
+  isActive: boolean;
+  vibeLabel: string | null;
+  colors: ReturnType<typeof useColors>;
+}) {
+  return (
+    <View style={styles.photoCol}>
+      <View
+        style={[
+          styles.photoWrap,
+          isActive && {
+            borderColor: colors.teal,
+            shadowColor: colors.teal,
+          },
+          isActive && styles.photoWrapActive,
+        ]}
+      >
+        <Image source={{ uri: thumbUri(photo.uri) }} style={styles.photo} />
+        {isSamplePhoto(photo.uri) && (
+          <View style={styles.sampleBadge} accessibilityLabel="Sample photo">
+            <Icon name="globe" size={11} color="#ffffff" />
+          </View>
+        )}
+        {isActive && vibeLabel ? (
+          <View style={styles.vibeBadge}>
+            <Icon name="volume2" size={10} color="#ffffff" />
+            <Text style={styles.vibeBadgeText} numberOfLines={1}>
+              {vibeLabel}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+      <View style={styles.flagRow}>
+        <Text style={styles.flag}>{photo.countryFlag}</Text>
+        <Text
+          style={[styles.country, { color: colors.foreground }]}
+          numberOfLines={1}
+        >
+          {photo.country}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 function happenedAgoLabel(min: number) {
   if (min < 1) return "just now";
   if (min < 60) return `${min}m ago`;
@@ -295,6 +484,15 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     gap: 4,
   },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  headerText: {
+    flex: 1,
+    gap: 4,
+  },
   headerTitle: {
     fontSize: 22,
     fontFamily: "Inter_700Bold",
@@ -303,6 +501,15 @@ const styles = StyleSheet.create({
   headerSub: {
     fontSize: 13,
     fontFamily: "Inter_400Regular",
+  },
+  muteBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 2,
   },
   content: {
     paddingHorizontal: 16,
@@ -313,6 +520,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     gap: 14,
+    marginBottom: 14,
   },
   cardHeader: {
     flexDirection: "row",
@@ -341,6 +549,14 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     overflow: "hidden",
     position: "relative",
+    borderWidth: 2,
+    borderColor: "transparent",
+  },
+  photoWrapActive: {
+    shadowOpacity: 0.55,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 6,
   },
   photo: {
     width: "100%",
@@ -356,6 +572,25 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0, 0, 0, 0.55)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  vibeBadge: {
+    position: "absolute",
+    left: 5,
+    bottom: 5,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 10,
+    backgroundColor: "rgba(0, 0, 0, 0.65)",
+    maxWidth: "85%",
+  },
+  vibeBadgeText: {
+    color: "#ffffff",
+    fontSize: 10,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.3,
   },
   flagRow: {
     flexDirection: "row",

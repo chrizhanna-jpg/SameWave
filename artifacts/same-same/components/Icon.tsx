@@ -27,6 +27,8 @@ import {
   Share2,
   Star,
   User,
+  Volume2,
+  VolumeX,
   X,
   Zap,
   type LucideIcon,
@@ -60,6 +62,8 @@ const ICONS: Record<string, LucideIcon> = {
   share: Share2,
   star: Star,
   user: User,
+  volume2: Volume2,
+  volumeX: VolumeX,
   x: X,
   zap: Zap,
 };
