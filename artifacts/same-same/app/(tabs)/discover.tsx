@@ -17,12 +17,19 @@ import { useColors } from "@/hooks/useColors";
 import { buildDiscoveryFeed, type DiscoveryItem } from "@/data/discoveryFeed";
 import { isSamplePhoto } from "@/data/samplePhotos";
 import { fetchEchoCountsByTheme } from "@/utils/api";
+import { useApp } from "@/context/AppContext";
 
 export default function DiscoverScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { seenPhotoKeys } = useApp();
   const [windowKey, setWindowKey] = useState<string | undefined>(undefined);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Same dedup ledger as Match — a card the user already swiped on in
+  // Match has no business resurfacing here either, especially since the
+  // Discover feed is the user's "did I miss anyone like me?" surface.
+  const excludeKeys = useMemo(() => new Set(seenPhotoKeys), [seenPhotoKeys]);
 
   // Auto-rotate the feed every 60s so it visibly stays alive.
   useEffect(() => {
@@ -32,7 +39,10 @@ export default function DiscoverScreen() {
     return () => clearInterval(id);
   }, []);
 
-  const baseItems = useMemo(() => buildDiscoveryFeed(14, windowKey), [windowKey]);
+  const baseItems = useMemo(
+    () => buildDiscoveryFeed(14, windowKey, excludeKeys),
+    [windowKey, excludeKeys],
+  );
 
   // Real per-theme echo counts from the server. Refreshed on mount, on
   // pull-to-refresh, and whenever the auto-rotate ticks. The discover

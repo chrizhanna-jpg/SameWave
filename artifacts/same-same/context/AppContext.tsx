@@ -13,6 +13,7 @@ import {
   respondEcho as respondEchoApi,
   type ServerEcho,
 } from "@/utils/api";
+import { photoKey } from "@/utils/photoKey";
 
 export interface MatchedCountry {
   code: string;
@@ -162,6 +163,14 @@ interface AppState {
   myCountryCode?: string;
   myCountryName?: string;
   myCountryFlag?: string;
+  /**
+   * Single source of truth for "photos the user has already reacted to in
+   * Match". Stored as photoKey() output (stable across query strings, etc.)
+   * so the same image never reappears even if its URI shape changes
+   * between sessions. Persisted alongside `matches` and backfilled from
+   * existing match history on first load after the dedup revamp.
+   */
+  seenPhotoKeys: string[];
 }
 
 interface AppContextValue extends AppState {
@@ -212,6 +221,13 @@ interface AppContextValue extends AppState {
    * the server response.
    */
   respondToEcho: (id: string, verdict: "same" | "different") => Promise<"mutual" | "declined" | "error">;
+  // ── Match dedup ledger ─────────────────────────────────────────────
+  /** Mark a photo (by stable photoKey) as seen by the user. Idempotent. */
+  markPhotoSeen: (key: string) => void;
+  /** Has the user already reacted to / been shown this photo? */
+  hasSeenPhoto: (key: string) => boolean;
+  /** DEV ONLY — clears the seen ledger. Used by the on-device debug pill. */
+  resetSeenPhotos: () => void;
 }
 
 const defaultBadges: Badge[] = [
@@ -239,6 +255,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     connectRequests: [],
     pendingEchoes: [],
     mutualEchoes: [],
+    seenPhotoKeys: [],
   });
   // Mutable ref so simulated-response timeouts can read latest state
   const stateRef = React.useRef(state);
@@ -298,6 +315,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             }
             return r;
           });
+        // Backfill the seen-photo ledger so existing users don't regress
+        // after this update. We union any persisted ledger with every
+        // photo that already lives in their match history.
+        const persistedKeys: string[] = Array.isArray(parsed.seenPhotoKeys)
+          ? parsed.seenPhotoKeys.filter((k: unknown) => typeof k === "string" && k.length > 0)
+          : [];
+        const matchKeys = (parsed.matches ?? [])
+          .map((m: Match) => photoKey(m?.theirPhoto))
+          .filter((k: string) => k.length > 0);
+        const seenPhotoKeys = Array.from(new Set([...persistedKeys, ...matchKeys]));
         setState((prev) => ({
           ...prev,
           ...parsed,
@@ -312,6 +339,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             const stored = parsed.badges?.find((sb: Badge) => sb.id === b.id);
             return stored ? { ...b, ...stored } : b;
           }),
+          seenPhotoKeys,
         }));
       }
     } catch {}
@@ -373,15 +401,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addMatch = useCallback((match: Match) => {
     setState((prev) => {
-      // Both "same" and "different" verdicts get persisted to history so
-      // the user can revisit & flip a previous swipe. Only "same" verdicts
-      // count toward the journey stats / badges / streak.
       const allMatches = [match, ...prev.matches];
       const confirmed = allMatches.filter((m) => m.verdict === "same");
       const { matchedCountries, badges } = recomputeFromConfirmed(
         confirmed,
         prev.badges,
       );
+      // Add the matched photo to the seen ledger. Idempotent.
+      const k = photoKey(match.theirPhoto);
+      const seenPhotoKeys =
+        k && !prev.seenPhotoKeys.includes(k)
+          ? [...prev.seenPhotoKeys, k]
+          : prev.seenPhotoKeys;
       const newState: AppState = {
         ...prev,
         matchedCountries,
@@ -392,7 +423,46 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             ? prev.streakCount + 1
             : prev.streakCount,
         badges,
+        seenPhotoKeys,
       };
+      saveState(newState);
+      return newState;
+    });
+  }, []);
+
+  // ── Match dedup ledger helpers ──────────────────────────────────────
+  const seenSet = React.useMemo(
+    () => new Set(state.seenPhotoKeys),
+    [state.seenPhotoKeys],
+  );
+  const seenSetRef = useRef(seenSet);
+  seenSetRef.current = seenSet;
+
+  const markPhotoSeen = useCallback((key: string) => {
+    if (!key) return;
+    // Cheap synchronous guard — avoids a setState (and re-render) when the
+    // photo is already in the ledger, which is the common case (every
+    // re-render of the swipe card would otherwise re-mark its photo).
+    if (seenSetRef.current.has(key)) return;
+    setState((prev) => {
+      if (prev.seenPhotoKeys.includes(key)) return prev;
+      const newState: AppState = {
+        ...prev,
+        seenPhotoKeys: [...prev.seenPhotoKeys, key],
+      };
+      saveState(newState);
+      return newState;
+    });
+  }, []);
+
+  const hasSeenPhoto = useCallback((key: string) => {
+    return key ? seenSet.has(key) : false;
+  }, [seenSet]);
+
+  const resetSeenPhotos = useCallback(() => {
+    if (!__DEV__) return;
+    setState((prev) => {
+      const newState: AppState = { ...prev, seenPhotoKeys: [] };
       saveState(newState);
       return newState;
     });
@@ -868,6 +938,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         unreadEchoes,
         refreshEchoes,
         respondToEcho,
+        markPhotoSeen,
+        hasSeenPhoto,
+        resetSeenPhotos,
       }}
     >
       {children}

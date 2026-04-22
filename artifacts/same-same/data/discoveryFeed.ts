@@ -6,6 +6,7 @@
 import { SAMPLE_PHOTOS, type SamplePhoto, DAILY_CHALLENGES } from "./samplePhotos";
 import { getGeoTier, getTimeTier, type GeoTier, type TimeTier } from "@/utils/celebrations";
 import { sampleMatchStats, type SampleMatchStats } from "@/utils/sampleStats";
+import { photoKey } from "@/utils/photoKey";
 
 export interface DiscoveryItem {
   id: string;
@@ -76,8 +77,16 @@ function pickTimeProfile(seed: string) {
 export function buildDiscoveryFeed(
   count = 14,
   windowKey?: string,
+  excludeKeys?: Set<string>,
 ): DiscoveryItem[] {
-  const themes = byTheme();
+  const exclude = excludeKeys ?? new Set<string>();
+  const filterPool = (pool: SamplePhoto[]) =>
+    exclude.size === 0 ? pool : pool.filter((p) => !exclude.has(photoKey(p.uri)));
+  const themesAll = byTheme();
+  const themes: Record<string, SamplePhoto[]> = {};
+  for (const t of Object.keys(themesAll)) {
+    themes[t] = filterPool(themesAll[t]);
+  }
   const themeIds = Object.keys(themes).filter((t) => themes[t].length >= 2);
   if (themeIds.length === 0) return [];
 

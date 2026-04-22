@@ -40,6 +40,7 @@ import { flagFor, nameFor } from "@/data/countries";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
 import { getGeoTier } from "@/utils/celebrations";
 import type { Match } from "@/context/AppContext";
+import { photoKey } from "@/utils/photoKey";
 
 const { width } = Dimensions.get("window");
 const SWIPE_THRESHOLD = width * 0.28;
@@ -56,7 +57,7 @@ type Scored = {
 function scoreCandidates(
   preferredTheme: string,
   myTags: string[],
-  excludeUris: string[],
+  excludeKeys: Set<string>,
   extraPool: SamplePhoto[] = [],
 ): Scored[] {
   const chain = getThemeChain(preferredTheme);
@@ -72,22 +73,22 @@ function scoreCandidates(
   // real candidates the dev server happens to have. Synthetic generation is
   // hard-gated by ENABLE_SYNTHETIC_MATCHES so a release build can never
   // accidentally show invented matches.
-  const synthetic = generateSyntheticCandidates(preferredTheme, myTags, 24);
+  const synthetic = generateSyntheticCandidates(preferredTheme, myTags, 24, excludeKeys);
   const pool: SamplePhoto[] = ENABLE_SYNTHETIC_MATCHES
     ? [...SAMPLE_PHOTOS, ...synthetic, ...extraPool]
     : extraPool;
 
-  // Excluded set + per-call URI dedupe. The synthetic generator picks
-  // randomly from small buckets so it routinely emits the same URI more
-  // than once per call; we want only the first occurrence to participate
-  // in scoring so a "same" verdict on one is enough to retire it.
-  const excludeSet = new Set(excludeUris);
+  // Excluded keys + per-call key dedupe. We compare on the stable
+  // photoKey (not the raw URI) so two URIs pointing at the same image
+  // — different ?w= params, trailing slashes, etc. — never both pass.
   const seenInPool = new Set<string>();
   const candidates: Scored[] = pool
     .filter((p) => {
-      if (excludeSet.has(p.uri)) return false;
-      if (seenInPool.has(p.uri)) return false;
-      seenInPool.add(p.uri);
+      const k = photoKey(p.uri);
+      if (!k) return false;
+      if (excludeKeys.has(k)) return false;
+      if (seenInPool.has(k)) return false;
+      seenInPool.add(k);
       return true;
     })
     .map((p) => {
@@ -134,64 +135,75 @@ function scoreCandidates(
 function getTheirPhoto(
   preferredTheme: string,
   myTags: string[],
-  excludeUris: string[] = [],
-  currentUri?: string,
+  excludeKeys: Set<string>,
+  currentKey: string | undefined,
   extraPool: SamplePhoto[] = [],
 ): { photo: typeof SAMPLE_PHOTOS[number]; matchedTheme: string; sharedTags: string[] } | null {
-  const pickFrom = (excl: string[]) => {
-    const ranked = scoreCandidates(preferredTheme, myTags, excl, extraPool);
-    if (ranked.length === 0) return null;
-    // Tight top-tier window (0.6 pts) so we only randomise between
-    // genuinely-comparable matches, never reach for the next-best-thing.
-    const topScore = ranked[0].score;
-    const topTier = ranked.filter((c) => c.score >= topScore - 0.6).slice(0, 6);
-    const pick = topTier[Math.floor(Math.random() * topTier.length)];
+  const ranked = scoreCandidates(preferredTheme, myTags, excludeKeys, extraPool);
+  if (ranked.length === 0) {
+    // Pool genuinely exhausted for this session. We deliberately do NOT
+    // recycle already-seen photos — the swipe screen shows a "you've
+    // seen everything" state until new candidates appear (a fresh
+    // upload, the backend serving more real photos, etc.).
+    if (!ENABLE_SYNTHETIC_MATCHES) return null;
+    // Dev only: one last synth attempt with the current key folded into
+    // the exclusion set. generateSyntheticCandidates already filters by
+    // seenKeys, so any photo it returns is guaranteed-fresh.
+    const widened = currentKey
+      ? new Set([...excludeKeys, currentKey])
+      : excludeKeys;
+    const fresh = generateSyntheticCandidates(preferredTheme, myTags, 24, widened);
+    if (fresh.length === 0) return null;
+    const pick = fresh[Math.floor(Math.random() * fresh.length)];
     return {
-      photo: pick.photo,
-      matchedTheme: pick.photo.theme,
-      sharedTags: pick.sharedTags,
-    };
-  };
-
-  const first = pickFrom(excludeUris);
-  if (first && first.photo.uri !== currentUri) return first;
-  // Pool genuinely exhausted for this session. We deliberately do NOT
-  // recycle already-seen photos — the swipe screen shows a "you've seen
-  // everything" state until new candidates appear (a fresh upload, the
-  // backend serving more real photos, etc.).
-  if (!ENABLE_SYNTHETIC_MATCHES) return null;
-  // Dev only: try the synthetic generator one more time with a wider
-  // exclusion list. The generator picks fresh randomised entries on each
-  // call, so a few of them may genuinely be unseen even when the curated
-  // pool is exhausted.
-  const excludeSet = new Set([...excludeUris, ...(currentUri ? [currentUri] : [])]);
-  const fresh = generateSyntheticCandidates(preferredTheme, myTags, 24)
-    .find((p) => !excludeSet.has(p.uri));
-  if (fresh) {
-    return {
-      photo: fresh,
-      matchedTheme: fresh.theme,
-      sharedTags: fresh.tags.filter((t) => myTags.includes(t)),
+      photo: pick,
+      matchedTheme: pick.theme,
+      sharedTags: pick.tags.filter((t) => myTags.includes(t)),
     };
   }
-  return null;
+  // Tight top-tier window (0.6 pts) so we only randomise between
+  // genuinely-comparable matches, never reach for the next-best-thing.
+  const topScore = ranked[0].score;
+  let topTier = ranked.filter((c) => c.score >= topScore - 0.6).slice(0, 6);
+  // Avoid picking the literal current photo if other top-tier options exist.
+  if (currentKey && topTier.length > 1) {
+    const filtered = topTier.filter((c) => photoKey(c.photo.uri) !== currentKey);
+    if (filtered.length > 0) topTier = filtered;
+  }
+  const pick = topTier[Math.floor(Math.random() * topTier.length)];
+  return {
+    photo: pick.photo,
+    matchedTheme: pick.photo.theme,
+    sharedTags: pick.sharedTags,
+  };
 }
 
 export default function SwipeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { streakCount, myPhotos, matches, addMatch, refreshEchoes, myCountryCode, myCountryName, myCountryFlag } = useApp();
+  const {
+    streakCount,
+    myPhotos,
+    addMatch,
+    refreshEchoes,
+    myCountryCode,
+    myCountryName,
+    myCountryFlag,
+    seenPhotoKeys,
+    markPhotoSeen,
+    resetSeenPhotos,
+  } = useApp();
+  // DEV-only debug pill — visibility-toggled state lives at the top
+  // of the component so the floating button rendered at the very end
+  // of the JSX tree can read/write it.
+  const [debugOpen, setDebugOpen] = useState(false);
 
-  // Every photo the user has ever reacted to (same OR different) — drawn
-  // from the persistent match history so reacted photos never come back
-  // even after remounts, theme changes, or backend votes that haven't
-  // landed yet. Built once per change to `matches`.
-  const reactedUris = React.useMemo(
-    () => new Set(matches.map((m) => m.theirPhoto)),
-    [matches],
-  );
-  const reactedUrisRef = useRef(reactedUris);
-  reactedUrisRef.current = reactedUris;
+  // Single source of truth for "photos already swiped on" — comes from the
+  // persistent ledger in AppContext (backed by AsyncStorage, hydrated from
+  // both the explicit ledger and the existing match history).
+  const seenSet = React.useMemo(() => new Set(seenPhotoKeys), [seenPhotoKeys]);
+  const seenSetRef = useRef(seenSet);
+  seenSetRef.current = seenSet;
   const todaysChallenge = getTodaysChallenge();
 
   // Today's photo only — if the user's most recent upload is from a
@@ -242,53 +254,63 @@ export default function SwipeScreen() {
   // the same URI/theme but with different tags re-seeds the candidate pool.
   const myTagsKey = React.useMemo(() => [...myTags].sort().join("|"), [myTags]);
 
-  // Seed the per-session seen list with EVERY photo the user has ever
-  // reacted to so they never come back. We still grow this on each swipe
-  // for fast in-memory dedupe, but it's the persistent `matches` history
-  // that survives remounts/tab switches/theme changes.
-  const seenRef = useRef<string[]>([myPhotoUri, ...reactedUris]);
+  // Stable photoKey for the user's own photo — never offered as a match.
+  const myPhotoKey = React.useMemo(() => photoKey(myPhotoUri), [myPhotoUri]);
 
-  // Merge any newly-reacted URIs into seenRef whenever `matches` grows.
-  // This catches two cases the original mount-only seed missed:
-  //   1. AsyncStorage hydrates `matches` AFTER SwipeScreen mounts, so the
-  //      initial seed had an empty reactedUris and persisted "different"
-  //      verdicts could come back.
-  //   2. `addMatch` runs during a swipe but the candidate-pool reset
-  //      effect below only depends on theme/tags/photo URI, so newly-
-  //      added reactions weren't merged in until a re-seed event fired.
-  // We intentionally MERGE rather than overwrite so per-session URIs
-  // pushed by loadNextCandidate (photos shown but not yet "matched"
-  // on the backend) are preserved.
+  // Per-mount session override: the "Show photos I've seen" button flips
+  // this true so the next pick ignores the persistent ledger. Reset on
+  // every photo / theme / tags change so a fresh upload starts clean.
+  const bypassSeenRef = useRef(false);
+
+  // Per-mount log of keys we've actually displayed since mount. Used to
+  // tell apart "current photo was already in the ledger before mount"
+  // (which means we showed a stale candidate while waiting for hydration)
+  // from "current photo was just marked seen by us" (no action needed).
+  const sessionDisplayedRef = useRef<Set<string>>(new Set());
+
+  // Build the exclusion set passed into scoreCandidates / generator: the
+  // user's own photo + the persistent ledger. When bypassSeenRef is true
+  // (the "Show photos I've seen" override) we drop the ledger so every
+  // photo is eligible again.
+  const buildExcludeKeys = useCallback(
+    (extra?: string): Set<string> => {
+      const keys = new Set<string>();
+      if (myPhotoKey) keys.add(myPhotoKey);
+      if (!bypassSeenRef.current) {
+        for (const k of seenSetRef.current) keys.add(k);
+      }
+      if (extra) keys.add(extra);
+      return keys;
+    },
+    [myPhotoKey],
+  );
+
+  // When the persistent ledger hydrates AFTER mount, the current card
+  // might be a photo the user already swiped on in a previous session.
+  // Detect that and re-pick once. We compare against sessionDisplayedRef
+  // so we never re-pick a card we just placed (which would loop because
+  // mark-on-display adds it to the ledger immediately).
   useEffect(() => {
-    const seen = new Set(seenRef.current);
-    reactedUris.forEach((uri) => {
-      if (!seen.has(uri)) {
-        seenRef.current.push(uri);
-        seen.add(uri);
-      }
-    });
-    // CRITICAL: if the photo currently on screen is one the user has
-    // already reacted to (e.g., it was picked at mount before AsyncStorage
-    // hydrated `matches`, or another tab logged a verdict for the same
-    // URI), swap it out for a fresh one. Without this re-pick the user
-    // sees a "ghost" repeat as the very next card.
     const currentUri = theirPhotoRef.current?.uri;
-    if (currentUri && reactedUris.has(currentUri)) {
-      const next = getTheirPhoto(
-        activeThemeRef.current,
-        myTagsRef.current,
-        seenRef.current,
-        currentUri,
-        realPoolRef.current,
-      );
-      if (next) {
-        setTheirPhoto(next.photo);
-        setMatchedTheme(next.matchedTheme);
-        setSharedTags(next.sharedTags);
-        setNoMore(false);
-      }
+    if (!currentUri) return;
+    const k = photoKey(currentUri);
+    if (!k) return;
+    if (sessionDisplayedRef.current.has(k)) return;
+    if (!seenSet.has(k)) return;
+    const next = getTheirPhoto(
+      activeThemeRef.current,
+      myTagsRef.current,
+      buildExcludeKeys(k),
+      k,
+      realPoolRef.current,
+    );
+    if (next) {
+      setTheirPhoto(next.photo);
+      setMatchedTheme(next.matchedTheme);
+      setSharedTags(next.sharedTags);
+      setNoMore(false);
     }
-  }, [reactedUris]);
+  }, [seenSet, buildExcludeKeys]);
 
   // Real candidates from the backend. Empty until the first fetch resolves;
   // SwipeScreen still renders something via SAMPLE_PHOTOS in dev / a graceful
@@ -358,10 +380,10 @@ export default function SwipeScreen() {
         activeTheme,
         myTags,
         // Exclude the user's own photo AND every photo they've ever
-        // swiped on (same OR different). Without this, the first card
-        // after a remount/tab-switch could re-show a previously-saved
-        // photo, since `seenRef` is only consulted for SUBSEQUENT picks.
-        [myPhotoUri, ...reactedUris],
+        // reacted to (the persistent ledger). The post-mount effect above
+        // re-picks if hydration adds keys that weren't in the set yet
+        // when this initial pick ran.
+        buildExcludeKeys(),
         undefined,
         realPool,
       ),
@@ -399,12 +421,19 @@ export default function SwipeScreen() {
   const sameOpacity = useRef(new Animated.Value(0)).current;
 
   // When the user uploads a new photo (which may carry a new theme/tags),
-  // reset the candidate pool so we immediately match against the new context.
-  // We re-seed seenRef from the persistent reacted list so previously-judged
-  // photos still don't come back after a re-seed.
+  // reset the candidate pool so we immediately match against the new
+  // context. The persistent ledger still applies — only the per-session
+  // bypass flag is reset.
   useEffect(() => {
-    seenRef.current = [myPhotoUri, ...reactedUrisRef.current];
-    const next = getTheirPhoto(activeTheme, myTags, seenRef.current, undefined, realPool);
+    bypassSeenRef.current = false;
+    sessionDisplayedRef.current = new Set();
+    const next = getTheirPhoto(
+      activeTheme,
+      myTags,
+      buildExcludeKeys(),
+      undefined,
+      realPool,
+    );
     if (next) {
       setTheirPhoto(next.photo);
       setMatchedTheme(next.matchedTheme);
@@ -420,19 +449,30 @@ export default function SwipeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myPhotoUri, activeTheme, myTagsKey]);
 
+  // Mark the currently-displayed photo as seen the moment it lands on
+  // screen. This closes the swipe-right race window — the photo behind
+  // the celebration flash is already in the ledger, so a backgrounded
+  // app or interrupted celebration can't resurface it. Skipping the
+  // placeholder (which re-uses the user's own photo) prevents a self-
+  // entry from polluting the ledger.
+  useEffect(() => {
+    if (!theirPhoto?.uri) return;
+    const k = photoKey(theirPhoto.uri);
+    if (!k || k === myPhotoKey) return;
+    sessionDisplayedRef.current.add(k);
+    markPhotoSeen(k);
+  }, [theirPhoto.uri, myPhotoKey, markPhotoSeen]);
+
   const loadNextCandidate = useCallback(() => {
     const currentUri = theirPhotoRef.current.uri;
-    // Track every photo we've shown this session so the same image never
-    // comes back twice. The list is bounded only by how many photos exist
-    // in the pool, so it's effectively safe to let it grow unboundedly.
-    if (!seenRef.current.includes(currentUri)) {
-      seenRef.current.push(currentUri);
-    }
+    const currentKey = photoKey(currentUri);
+    // The current photo is already in the ledger (mark-on-display),
+    // so just hand the canonical exclusion set to the picker.
     const next = getTheirPhoto(
       activeThemeRef.current,
       myTagsRef.current,
-      seenRef.current,
-      currentUri,
+      buildExcludeKeys(currentKey),
+      currentKey,
       realPoolRef.current,
     );
     // After the swipe-out animation, the native-driven transform is parked
@@ -463,7 +503,7 @@ export default function SwipeScreen() {
       }
       isAnimatingOutRef.current = false;
     });
-  }, [pan, cardScale, sameOpacity]);
+  }, [pan, cardScale, sameOpacity, buildExcludeKeys]);
 
   const handleSwipe = useCallback(
     (dir: "left" | "right") => {
@@ -670,7 +710,7 @@ export default function SwipeScreen() {
           <View style={[styles.nearbyBar, { backgroundColor: colors.gold + "1a", borderColor: colors.gold + "55" }]}>
             <Text style={styles.nearbyEmoji}>{nearby.emoji}</Text>
             <Text style={[styles.nearbyText, { color: colors.foreground }]}>
-              Trying nearby:{" "}
+              Trying theme:{" "}
               <Text style={{ fontFamily: "Inter_600SemiBold" }}>{nearby.title}</Text>
             </Text>
           </View>
@@ -743,15 +783,23 @@ export default function SwipeScreen() {
                   { borderColor: colors.border, marginTop: 10 },
                 ]}
                 onPress={() => {
-                  // "Show again" — re-shuffle the deck, ignoring even the
-                  // persistent reacted history. Useful if the user wants
-                  // to revisit photos they already swiped on without
-                  // posting a new photo.
-                  seenRef.current = [myPhotoUri];
+                  // "Show again" — flip the per-mount bypass so the next
+                  // pick ignores the persistent ledger. The ledger itself
+                  // is preserved (we don't want to forget the user's
+                  // history), and mark-on-display is suppressed for the
+                  // bypassed picks via sessionDisplayedRef so we don't
+                  // immediately re-flag everything as seen.
+                  bypassSeenRef.current = true;
+                  // Pre-seed sessionDisplayedRef with the current ledger
+                  // so the post-mount re-pick effect won't clobber the
+                  // bypass on the very next render.
+                  for (const k of seenSetRef.current) {
+                    sessionDisplayedRef.current.add(k);
+                  }
                   const next = getTheirPhoto(
                     activeTheme,
                     myTags,
-                    seenRef.current,
+                    buildExcludeKeys(),
                     undefined,
                     realPoolRef.current,
                   );
@@ -979,6 +1027,73 @@ export default function SwipeScreen() {
       </Modal>
 
       <View style={{ paddingBottom: bottomPadding }} />
+
+      {/* DEV-only dedup ledger debug pill. Anonymity-safe — shows only
+          opaque photo keys, never country, name, or any identity. Hidden
+          in release builds via the __DEV__ gate. */}
+      {__DEV__ && (
+        <>
+          <TouchableOpacity
+            onPress={() => setDebugOpen(true)}
+            style={[
+              styles.debugPill,
+              { bottom: bottomPadding + 12, backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+            activeOpacity={0.85}
+            accessibilityLabel="Open dedup debug panel"
+          >
+            <Text style={[styles.debugPillText, { color: colors.mutedForeground }]}>
+              seen {seenPhotoKeys.length}
+            </Text>
+          </TouchableOpacity>
+          <Modal
+            visible={debugOpen}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setDebugOpen(false)}
+          >
+            <Pressable
+              style={styles.debugBackdrop}
+              onPress={() => setDebugOpen(false)}
+            >
+              <Pressable
+                style={[styles.debugSheet, { backgroundColor: colors.card, borderColor: colors.border }]}
+                onPress={(e) => e.stopPropagation()}
+              >
+                <Text style={[styles.debugTitle, { color: colors.foreground }]}>
+                  Seen ledger ({seenPhotoKeys.length})
+                </Text>
+                <Text style={[styles.debugSub, { color: colors.mutedForeground }]}>
+                  Most recent {Math.min(10, seenPhotoKeys.length)} keys
+                </Text>
+                <View style={{ marginTop: 12 }}>
+                  {seenPhotoKeys.slice(-10).reverse().map((k) => (
+                    <Text
+                      key={k}
+                      numberOfLines={1}
+                      style={[styles.debugKey, { color: colors.foreground }]}
+                    >
+                      • {k}
+                    </Text>
+                  ))}
+                </View>
+                <TouchableOpacity
+                  style={[styles.debugResetBtn, { backgroundColor: colors.primary }]}
+                  onPress={() => {
+                    resetSeenPhotos();
+                    setDebugOpen(false);
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.debugResetText, { color: colors.primaryForeground }]}>
+                    Reset ledger
+                  </Text>
+                </TouchableOpacity>
+              </Pressable>
+            </Pressable>
+          </Modal>
+        </>
+      )}
     </View>
   );
 }
@@ -987,6 +1102,55 @@ const CARD_WIDTH = width - 24;
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  // ── DEV-only dedup debug pill ────────────────────────────────────
+  debugPill: {
+    position: "absolute",
+    right: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    opacity: 0.85,
+  },
+  debugPillText: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+  },
+  debugBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+  debugSheet: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 18,
+  },
+  debugTitle: {
+    fontSize: 16,
+    fontFamily: "Inter_600SemiBold",
+  },
+  debugSub: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    marginTop: 2,
+  },
+  debugKey: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    marginVertical: 2,
+  },
+  debugResetBtn: {
+    marginTop: 16,
+    borderRadius: 999,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  debugResetText: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+  },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",

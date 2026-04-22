@@ -1,3 +1,5 @@
+import { photoKey } from "@/utils/photoKey";
+
 export interface SamplePhoto {
   id: string;
   uri: string;
@@ -11,14 +13,15 @@ export interface SamplePhoto {
 
 // Helper used by PhotoCard to know whether to overlay the "sample" globe
 // badge in the corner. We resolve the URI set lazily so the SAMPLE_PHOTOS
-// constant declared below can populate it on first call.
-let _sampleUriSet: Set<string> | undefined;
+// constant declared below can populate it on first call. Compared by
+// stable photoKey so URI variants (?w=…, etc.) still match.
+let _sampleKeySet: Set<string> | undefined;
 export function isSamplePhoto(uri: string | undefined | null): boolean {
   if (!uri) return false;
-  if (!_sampleUriSet) {
-    _sampleUriSet = new Set(SAMPLE_PHOTOS.map((p) => p.uri));
+  if (!_sampleKeySet) {
+    _sampleKeySet = new Set(SAMPLE_PHOTOS.map((p) => photoKey(p.uri)));
   }
-  return _sampleUriSet.has(uri);
+  return _sampleKeySet.has(photoKey(uri));
 }
 
 export const SAMPLE_PHOTOS: SamplePhoto[] = [
@@ -235,7 +238,10 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   { id: "22", uri: "https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=400", country: "Italy", countryCode: "IT", countryFlag: "🇮🇹", theme: "morning", minutesAgo: 12, tags: ["coffee","drink","warm"] },
   { id: "23", uri: "https://images.unsplash.com/photo-1521017432531-fbd92d768814?w=400", country: "Vietnam", countryCode: "VN", countryFlag: "🇻🇳", theme: "morning", minutesAgo: 88, tags: ["coffee","drink"] },
   { id: "24", uri: "https://images.unsplash.com/photo-1494314671902-399b18174975?w=400", country: "Turkey", countryCode: "TR", countryFlag: "🇹🇷", theme: "morning", minutesAgo: 320, tags: ["coffee","drink","warm"] },
-  { id: "25", uri: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=400", country: "Spain", countryCode: "ES", countryFlag: "🇪🇸", theme: "morning", minutesAgo: 7, tags: ["coffee","drink","art"] },
+  // (entry "25" removed — its Unsplash URI was identical to entry "1"
+  // (Ethiopia / morning), causing the same image to surface twice in the
+  // Match deck under two different country flags. The dev-time
+  // assertion below now guards against re-introducing a duplicate.)
   { id: "26", uri: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400", country: "Thailand", countryCode: "TH", countryFlag: "🇹🇭", theme: "food", minutesAgo: 33, tags: ["meal","warm"] },
   { id: "27", uri: "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=400", country: "France", countryCode: "FR", countryFlag: "🇫🇷", theme: "food", minutesAgo: 145, tags: ["meal","bread"] },
   { id: "28", uri: "https://images.unsplash.com/photo-1551782450-a2132b4ba21d?w=400", country: "United States", countryCode: "US", countryFlag: "🇺🇸", theme: "food", minutesAgo: 62, tags: ["meal","bread"] },
@@ -591,10 +597,18 @@ const BUCKET_TAG_POOL: Record<keyof typeof SYNTH_PHOTO_BANK, string[]> = {
 
 // Builds synthetic candidates that look like real samples but are sampled
 // dynamically. Stable-ish ids (synth-…) so React lists don't thrash.
+//
+// `seenKeys` is the photoKey ledger from AppContext — the generator filters
+// the chosen bucket against it so we never emit a photo the user has
+// already swiped on, no matter how often the generator is re-invoked.
+// When every ID in the relevant bucket has been seen we return [] so the
+// caller can surface an honest "no more matches" state instead of
+// recycling the same handful of images.
 export function generateSyntheticCandidates(
   preferredTheme: string,
   myTags: string[],
   count: number,
+  seenKeys: Set<string> = new Set(),
 ): SamplePhoto[] {
   // Hard gate: never synthesize in production builds.
   if (!ENABLE_SYNTHETIC_MATCHES) return [];
@@ -612,7 +626,14 @@ export function generateSyntheticCandidates(
     themeBucket ??
     (myTags.map((t) => TAG_TO_BUCKET[t]).find(Boolean) as keyof typeof SYNTH_PHOTO_BANK | undefined) ??
     pickFromTheme(preferredTheme);
-  const photoIds = SYNTH_PHOTO_BANK[bucketKey];
+  const photoIdsAll = SYNTH_PHOTO_BANK[bucketKey];
+  // Prefer unseen IDs first. If the bucket is fully exhausted (every ID's
+  // key already lives in the ledger), bail — the caller treats [] as
+  // "no more matches" and shows the empty state.
+  const photoIds = photoIdsAll.filter(
+    (id) => !seenKeys.has(photoKey(`https://images.unsplash.com/photo-${id}`)),
+  );
+  if (photoIds.length === 0) return [];
   const out: SamplePhoto[] = [];
   for (let i = 0; i < count; i++) {
     const photoId = photoIds[Math.floor(Math.random() * photoIds.length)];
@@ -817,6 +838,26 @@ export function getThemeChain(theme: string): string[] {
 export function getTodaysChallenge(): typeof DAILY_CHALLENGES[0] {
   const daysSinceEpochUTC = Math.floor(Date.now() / 86_400_000);
   return DAILY_CHALLENGES[daysSinceEpochUTC % DAILY_CHALLENGES.length];
+}
+
+// Dev-time guard: catches accidental re-introduction of duplicate sample
+// photos before the bug ever ships. Compares by stable photoKey so two
+// URIs differing only in query params (e.g. ?w=400 vs ?w=600) still
+// collide. Throws on module load in dev — a release build with __DEV__
+// false silently no-ops. (__DEV__ is provided by the React Native global
+// types — no local re-declaration needed.)
+if (typeof __DEV__ !== "undefined" && __DEV__) {
+  const seen = new Map<string, string>();
+  for (const p of SAMPLE_PHOTOS) {
+    const k = photoKey(p.uri);
+    const prior = seen.get(k);
+    if (prior) {
+      throw new Error(
+        `[samplePhotos] Duplicate photoKey "${k}" — entries "${prior}" and "${p.id}" point at the same image.`,
+      );
+    }
+    seen.set(k, p.id);
+  }
 }
 
 export function getRandomPair(exclude?: string[]): [SamplePhoto, SamplePhoto] {
