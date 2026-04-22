@@ -313,8 +313,6 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   // Commute / city
   { id: "70", uri: "https://images.unsplash.com/photo-1502920917128-1aa500764cbd?w=400", country: "Taiwan", countryCode: "TW", countryFlag: "🇹🇼", theme: "commute", minutesAgo: 110, tags: ["city","transit","night"] },
   // Pets reused with new countries (these images are well-loved animals)
-  { id: "71", uri: "https://images.unsplash.com/photo-1548247416-ec66f4900b2e?w=400", country: "Latvia", countryCode: "LV", countryFlag: "🇱🇻", theme: "pets", minutesAgo: 50, tags: ["cat","animal"] },
-  { id: "72", uri: "https://images.unsplash.com/photo-1592194996308-7b43878e84a6?w=400", country: "Romania", countryCode: "RO", countryFlag: "🇷🇴", theme: "pets", minutesAgo: 200, tags: ["dog","animal","outdoors","smile"] },
   // Active / outdoors movement
   { id: "73", uri: "https://images.unsplash.com/photo-1518611012118-696072aa579a?w=400", country: "Slovenia", countryCode: "SI", countryFlag: "🇸🇮", theme: "nature", minutesAgo: 80, tags: ["hiking","outdoors","mountains"] },
   { id: "74", uri: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=400", country: "Bulgaria", countryCode: "BG", countryFlag: "🇧🇬", theme: "nature", minutesAgo: 220, tags: ["running","fitness","outdoors"] },
@@ -331,7 +329,6 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   { id: "83", uri: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400", country: "Maldives", countryCode: "MV", countryFlag: "🇲🇻", theme: "nature", minutesAgo: 380, tags: ["beach","water","outdoors","sunset"] },
   { id: "84", uri: "https://images.unsplash.com/photo-1512100356356-de1b84283e18?w=400", country: "Greece", countryCode: "GR", countryFlag: "🇬🇷", theme: "nature", minutesAgo: 710, tags: ["beach","water","outdoors","warm"] },
   // Wildlife
-  { id: "85", uri: "https://images.unsplash.com/photo-1441829266145-6d4bfb7a3a48?w=400", country: "Namibia", countryCode: "NA", countryFlag: "🇳🇦", theme: "nature", minutesAgo: 520, tags: ["wildlife","animal","outdoors"] },
   // ── Themes added later: furniture / games / hobbies / birds / rocks / plants ──
   // Photo IDs here are intentionally drawn from the same Unsplash photos
   // already proven loadable elsewhere in this file — picked because they
@@ -340,7 +337,6 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   // shot, a "mountains/cliffs" shot doubles as a rocks shot). This keeps
   // the new themes visibly populated without risking broken image URLs.
   // Furniture
-  { id: "86", uri: "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=400", country: "Finland", countryCode: "FI", countryFlag: "🇫🇮", theme: "furniture", minutesAgo: 48, tags: ["home","cozy","vintage"] },
   { id: "87", uri: "https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?w=400", country: "Japan", countryCode: "JP", countryFlag: "🇯🇵", theme: "furniture", minutesAgo: 210, tags: ["home","cozy"] },
   { id: "88", uri: "https://images.unsplash.com/photo-1519710164239-da123dc03ef4?w=400", country: "Italy", countryCode: "IT", countryFlag: "🇮🇹", theme: "furniture", minutesAgo: 540, tags: ["home","vintage"] },
   // Games (board game / strategy / play). Only one verified-loadable
@@ -363,7 +359,6 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   // The theme will return only when we have verified rock photos.
   // Plants — close-ups of plants/flowers/garden, distinct from the broader
   // "nature" landscape shots.
-  { id: "101", uri: "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=400", country: "Netherlands", countryCode: "NL", countryFlag: "🇳🇱", theme: "plants", minutesAgo: 40, tags: ["plants","flowers","garden"] },
   { id: "102", uri: "https://images.unsplash.com/photo-1497206365907-f5e630693df0?w=400", country: "Thailand", countryCode: "TH", countryFlag: "🇹🇭", theme: "plants", minutesAgo: 150, tags: ["flowers","plants"] },
   { id: "103", uri: "https://images.unsplash.com/photo-1545241047-6083a3684587?w=400", country: "Vietnam", countryCode: "VN", countryFlag: "🇻🇳", theme: "plants", minutesAgo: 360, tags: ["plants","garden"] },
   // ── Padding pass: bring under-represented themes up to ~5 entries each
@@ -372,20 +367,11 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   // IDs (we got burned by guessing IDs for the rocks/birds buckets). Each
   // entry uses a NEW country so discovery pairs never repeat the same URI.
   // Plants (was 3 → 5)
-  { id: "104", uri: "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=400", country: "Sweden", countryCode: "SE", countryFlag: "🇸🇪", theme: "plants", minutesAgo: 75, tags: ["plants","home","cozy"] },
-  { id: "105", uri: "https://images.unsplash.com/photo-1462536943532-57a629f6cc60?w=400", country: "Denmark", countryCode: "DK", countryFlag: "🇩🇰", theme: "plants", minutesAgo: 480, tags: ["plants","home"] },
   // Furniture (was 3 → 5)
-  { id: "106", uri: "https://images.unsplash.com/photo-1462536943532-57a629f6cc60?w=400", country: "Norway", countryCode: "NO", countryFlag: "🇳🇴", theme: "furniture", minutesAgo: 95, tags: ["home","cozy","vintage"] },
-  { id: "107", uri: "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=400", country: "Belgium", countryCode: "BE", countryFlag: "🇧🇪", theme: "furniture", minutesAgo: 280, tags: ["home","cozy"] },
   // Hobbies (was 3 → 5) — reuse remaining creative-bucket shots
   { id: "108", uri: "https://images.unsplash.com/photo-1513475382585-d06e58bcb0e0?w=400", country: "Portugal", countryCode: "PT", countryFlag: "🇵🇹", theme: "hobbies", minutesAgo: 90, tags: ["art","crafts","hobby"] },
-  { id: "109", uri: "https://images.unsplash.com/photo-1499951360447-b19be8fe80f5?w=400", country: "Spain", countryCode: "ES", countryFlag: "🇪🇸", theme: "hobbies", minutesAgo: 410, tags: ["reading","hobby"] },
   // Made (was 1 → 5) — handmade / created things. Pulls from craft + art
   // photos that visibly read as "something a person made".
-  { id: "110", uri: "https://images.unsplash.com/photo-1455218873509-8097305ee378?w=400", country: "Morocco", countryCode: "MA", countryFlag: "🇲🇦", theme: "made", minutesAgo: 50, tags: ["crafts","art"] },
-  { id: "111", uri: "https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=400", country: "Czechia", countryCode: "CZ", countryFlag: "🇨🇿", theme: "made", minutesAgo: 165, tags: ["photography","art"] },
-  { id: "112", uri: "https://images.unsplash.com/photo-1455390582262-044cdead277a?w=400", country: "Cuba", countryCode: "CU", countryFlag: "🇨🇺", theme: "made", minutesAgo: 320, tags: ["music","art"] },
-  { id: "113", uri: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400", country: "Japan", countryCode: "JP", countryFlag: "🇯🇵", theme: "made", minutesAgo: 580, tags: ["crafts","art"] },
   // Birds + Games stay at 1 entry each — every other Unsplash ID we tried
   // for these buckets came back blank or visibly off-theme. Discovery feed
   // requires >=2 photos to pair, so these themes won't appear in Discover
