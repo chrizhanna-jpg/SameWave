@@ -1,27 +1,33 @@
 // Music library for the "vibe clip" feature. Each photo carries a
-// `musicGenre` label; when matching, the OTHER person's clip plays so
-// the user gets a glimpse of the mood the stranger paired with their
-// photo. The clips themselves are short royalty-free loops served over
-// HTTPS — expo-av's Audio.Sound caches them transparently via the OS
-// HTTP layer, so after the first play of a given URL it's effectively
-// instant on subsequent matches.
+// `musicGenre` label (kept as the column name for DB stability) — but
+// the dimension is *emotional*, not musical. The user picks how the
+// moment FELT (joy, love, fear, awe…) and a clip in that emotional
+// register plays for whoever matches it. Anonymity-safe: a vibe is
+// what you felt, never who you are.
 //
 // IMPORTANT — clip URLs:
 // The URLs below are short, free-to-use audio loops sourced from
-// publicly-hosted CC0/royalty-free music providers (Mixkit Music
-// previews, etc.). Treat them as a starter set: any URL that 404s or
-// gets pulled is harmless (the audio player silently skips it), and
-// they're trivially swapped — just paste a new URL in the same shape.
-// No API key, no attribution required.
+// publicly hosted royalty-free music providers (Mixkit Music previews
+// in the starter set). Treat them as placeholder content: any URL that
+// 404s is harmless (the audio player silently skips it), and they're
+// trivially swapped — just paste a new URL in the same shape. No API
+// key, no attribution required.
 
+// We keep the type alias name `MusicGenre` because it's already
+// threaded through camera.tsx, match.tsx, AppContext, and the API
+// types — renaming would be churn for no semantic gain. Treat it as
+// "the music vibe id".
 export type MusicGenre =
-  | "classic"
-  | "rock"
-  | "metal"
-  | "synth"
-  | "country"
-  | "funk"
-  | "alternative";
+  | "joy"
+  | "elated"
+  | "love"
+  | "wonder"
+  | "calm"
+  | "sad"
+  | "stress"
+  | "fear"
+  | "anger"
+  | "passion";
 
 export interface MusicClip {
   /** Stable id used to persist "which clip" on the photo. */
@@ -41,86 +47,119 @@ export interface GenreMeta {
   clips: MusicClip[];
 }
 
-// Each genre ships at least three clips so consecutive picks within the
-// same genre still feel varied. The chooser picks deterministically
-// from a seed (photo id, theme, etc.) so a given photo always plays the
-// same clip — no "every render gets a new song" surprise.
+// Each vibe ships at least three clips so consecutive picks within the
+// same vibe still feel varied. The chooser picks deterministically
+// from a seed (photo id, theme, etc.) so a given photo always plays
+// the same clip — no "every render gets a new song" surprise.
 export const MUSIC_LIBRARY: GenreMeta[] = [
   {
-    id: "classic",
-    label: "Classic",
-    emoji: "🎻",
-    vibe: "calm, mellow, golden hour",
+    id: "joy",
+    label: "Joy",
+    emoji: "😄",
+    vibe: "bright, playful, can't stop smiling",
     clips: [
-      { id: "classic-1", label: "Soft Strings", url: "https://assets.mixkit.co/music/preview/mixkit-serene-view-443.mp3" },
-      { id: "classic-2", label: "Piano Walk", url: "https://assets.mixkit.co/music/preview/mixkit-relaxing-in-nature-522.mp3" },
-      { id: "classic-3", label: "Morning Hymn", url: "https://assets.mixkit.co/music/preview/mixkit-just-chill-16.mp3" },
+      { id: "joy-1", label: "Sunbeam", url: "https://assets.mixkit.co/music/preview/mixkit-summer-fun-13.mp3" },
+      { id: "joy-2", label: "Skipping", url: "https://assets.mixkit.co/music/preview/mixkit-getting-down-651.mp3" },
+      { id: "joy-3", label: "First Bite", url: "https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3" },
     ],
   },
   {
-    id: "rock",
-    label: "Rock",
-    emoji: "🤘",
-    vibe: "high-energy, outdoor, big sky",
+    id: "elated",
+    label: "Elated",
+    emoji: "🤩",
+    vibe: "triumphant, peak, top of the world",
     clips: [
-      { id: "rock-1", label: "Driving Riff", url: "https://assets.mixkit.co/music/preview/mixkit-driving-ambition-32.mp3" },
-      { id: "rock-2", label: "Open Road", url: "https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3" },
-      { id: "rock-3", label: "Sky Anthem", url: "https://assets.mixkit.co/music/preview/mixkit-hip-hop-02-738.mp3" },
+      { id: "elated-1", label: "Summit", url: "https://assets.mixkit.co/music/preview/mixkit-driving-ambition-32.mp3" },
+      { id: "elated-2", label: "Open Sky", url: "https://assets.mixkit.co/music/preview/mixkit-raising-me-higher-34.mp3" },
+      { id: "elated-3", label: "Take Off", url: "https://assets.mixkit.co/music/preview/mixkit-dreaming-big-31.mp3" },
     ],
   },
   {
-    id: "metal",
-    label: "Metal",
-    emoji: "⚡",
-    vibe: "dark, intense, late-night",
+    id: "love",
+    label: "Love",
+    emoji: "💗",
+    vibe: "warm, tender, gentle hold",
     clips: [
-      { id: "metal-1", label: "Dark Edge", url: "https://assets.mixkit.co/music/preview/mixkit-deep-urban-623.mp3" },
-      { id: "metal-2", label: "Storm Front", url: "https://assets.mixkit.co/music/preview/mixkit-raising-me-higher-34.mp3" },
-      { id: "metal-3", label: "Heavy Pulse", url: "https://assets.mixkit.co/music/preview/mixkit-action-trailer-glitch-731.mp3" },
+      { id: "love-1", label: "Soft Hand", url: "https://assets.mixkit.co/music/preview/mixkit-just-chill-16.mp3" },
+      { id: "love-2", label: "Slow Dance", url: "https://assets.mixkit.co/music/preview/mixkit-hazy-after-hours-132.mp3" },
+      { id: "love-3", label: "Hearth", url: "https://assets.mixkit.co/music/preview/mixkit-relaxing-in-nature-522.mp3" },
     ],
   },
   {
-    id: "synth",
-    label: "Synth",
-    emoji: "🌌",
-    vibe: "neon, dreamy, city night",
+    id: "wonder",
+    label: "Wonder",
+    emoji: "✨",
+    vibe: "dreamy, awe, can't believe my eyes",
     clips: [
-      { id: "synth-1", label: "Neon Drift", url: "https://assets.mixkit.co/music/preview/mixkit-trip-hop-vibes-149.mp3" },
-      { id: "synth-2", label: "Star Field", url: "https://assets.mixkit.co/music/preview/mixkit-dreaming-big-31.mp3" },
-      { id: "synth-3", label: "Echo Chamber", url: "https://assets.mixkit.co/music/preview/mixkit-spirit-of-the-canyons-15.mp3" },
+      { id: "wonder-1", label: "Star Field", url: "https://assets.mixkit.co/music/preview/mixkit-spirit-of-the-canyons-15.mp3" },
+      { id: "wonder-2", label: "Glow", url: "https://assets.mixkit.co/music/preview/mixkit-trip-hop-vibes-149.mp3" },
+      { id: "wonder-3", label: "Floating", url: "https://assets.mixkit.co/music/preview/mixkit-serene-view-443.mp3" },
     ],
   },
   {
-    id: "country",
-    label: "Country Rock",
-    emoji: "🤠",
-    vibe: "warm, dusty, road trip",
+    id: "calm",
+    label: "Calm",
+    emoji: "🌿",
+    vibe: "peaceful, breath out, soft morning",
     clips: [
-      { id: "country-1", label: "Open Plains", url: "https://assets.mixkit.co/music/preview/mixkit-summer-fun-13.mp3" },
-      { id: "country-2", label: "Porch Light", url: "https://assets.mixkit.co/music/preview/mixkit-getting-down-651.mp3" },
-      { id: "country-3", label: "Dusty Boots", url: "https://assets.mixkit.co/music/preview/mixkit-hazy-after-hours-132.mp3" },
+      { id: "calm-1", label: "Still Lake", url: "https://assets.mixkit.co/music/preview/mixkit-relaxing-in-nature-522.mp3" },
+      { id: "calm-2", label: "Slow Tide", url: "https://assets.mixkit.co/music/preview/mixkit-just-chill-16.mp3" },
+      { id: "calm-3", label: "First Light", url: "https://assets.mixkit.co/music/preview/mixkit-serene-view-443.mp3" },
     ],
   },
   {
-    id: "funk",
-    label: "Funk",
-    emoji: "🕺",
-    vibe: "groovy, food, color, joy",
+    id: "sad",
+    label: "Sad",
+    emoji: "🥲",
+    vibe: "melancholy, soft ache, missing it already",
     clips: [
-      { id: "funk-1", label: "Hot Plate", url: "https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3" },
-      { id: "funk-2", label: "Street Strut", url: "https://assets.mixkit.co/music/preview/mixkit-getting-down-651.mp3" },
-      { id: "funk-3", label: "Sunday Cookout", url: "https://assets.mixkit.co/music/preview/mixkit-summer-fun-13.mp3" },
+      { id: "sad-1", label: "Empty Room", url: "https://assets.mixkit.co/music/preview/mixkit-hazy-after-hours-132.mp3" },
+      { id: "sad-2", label: "Last Light", url: "https://assets.mixkit.co/music/preview/mixkit-trip-hop-vibes-149.mp3" },
+      { id: "sad-3", label: "Rainwindow", url: "https://assets.mixkit.co/music/preview/mixkit-spirit-of-the-canyons-15.mp3" },
     ],
   },
   {
-    id: "alternative",
-    label: "Alternative",
-    emoji: "🌱",
-    vibe: "introspective, nature, in-between",
+    id: "stress",
+    label: "Stress",
+    emoji: "😬",
+    vibe: "anxious, on edge, too much at once",
     clips: [
-      { id: "alt-1", label: "Quiet Drift", url: "https://assets.mixkit.co/music/preview/mixkit-relaxing-in-nature-522.mp3" },
-      { id: "alt-2", label: "Soft Static", url: "https://assets.mixkit.co/music/preview/mixkit-just-chill-16.mp3" },
-      { id: "alt-3", label: "Lake Walk", url: "https://assets.mixkit.co/music/preview/mixkit-spirit-of-the-canyons-15.mp3" },
+      { id: "stress-1", label: "Tight Loop", url: "https://assets.mixkit.co/music/preview/mixkit-deep-urban-623.mp3" },
+      { id: "stress-2", label: "Pulse", url: "https://assets.mixkit.co/music/preview/mixkit-action-trailer-glitch-731.mp3" },
+      { id: "stress-3", label: "Crowd", url: "https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3" },
+    ],
+  },
+  {
+    id: "fear",
+    label: "Fear",
+    emoji: "😨",
+    vibe: "tense, eerie, something's about to happen",
+    clips: [
+      { id: "fear-1", label: "Cold Air", url: "https://assets.mixkit.co/music/preview/mixkit-action-trailer-glitch-731.mp3" },
+      { id: "fear-2", label: "Footsteps", url: "https://assets.mixkit.co/music/preview/mixkit-deep-urban-623.mp3" },
+      { id: "fear-3", label: "Held Breath", url: "https://assets.mixkit.co/music/preview/mixkit-spirit-of-the-canyons-15.mp3" },
+    ],
+  },
+  {
+    id: "anger",
+    label: "Anger",
+    emoji: "😠",
+    vibe: "fed up, sharp edge, fists clenched",
+    clips: [
+      { id: "anger-1", label: "Slam", url: "https://assets.mixkit.co/music/preview/mixkit-action-trailer-glitch-731.mp3" },
+      { id: "anger-2", label: "Heavy Pulse", url: "https://assets.mixkit.co/music/preview/mixkit-deep-urban-623.mp3" },
+      { id: "anger-3", label: "Friction", url: "https://assets.mixkit.co/music/preview/mixkit-raising-me-higher-34.mp3" },
+    ],
+  },
+  {
+    id: "passion",
+    label: "Passion",
+    emoji: "🔥",
+    vibe: "all-in, driving, can't sit still",
+    clips: [
+      { id: "passion-1", label: "Full Throttle", url: "https://assets.mixkit.co/music/preview/mixkit-driving-ambition-32.mp3" },
+      { id: "passion-2", label: "Burn", url: "https://assets.mixkit.co/music/preview/mixkit-raising-me-higher-34.mp3" },
+      { id: "passion-3", label: "Heatwave", url: "https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3" },
     ],
   },
 ];
@@ -139,39 +178,59 @@ export function getClip(genre: string | undefined | null, clipId: string | undef
   return g.clips.find((c) => c.id === clipId) ?? g.clips[0];
 }
 
-// ── AI-style genre suggestion ────────────────────────────────────────
+// ── AI-style vibe suggestion ─────────────────────────────────────────
 // We don't make a separate Gemini round-trip just for this — the photo
 // has already been analysed during upload (theme + tags), and a simple
-// keyword map produces the right vibe in <1 ms with zero cost. A future
-// pass can swap this for a vision-based mood call without touching any
-// of the call sites.
+// keyword map produces the right emotional read in <1 ms with zero
+// cost. A future pass can swap this for a vision-based mood call
+// without touching any of the call sites.
 
-const GENRE_KEYWORDS: Record<MusicGenre, string[]> = {
-  classic: ["coffee", "morning", "calm", "quiet", "book", "rain", "warm", "soft", "pet"],
-  rock: ["hike", "adventure", "outdoor", "summit", "extreme", "mountain", "trail", "sky", "open"],
-  metal: ["night", "concert", "dark", "city", "neon", "loud", "festival", "fire"],
-  synth: ["lights", "neon", "dream", "tech", "screen", "laptop", "desk", "study", "code"],
-  country: ["road", "trip", "drive", "dusty", "porch", "field", "barn", "horse", "boots"],
-  funk: ["food", "meal", "street", "bread", "drink", "color", "party", "dance", "celebrate"],
-  alternative: ["nature", "plants", "lake", "forest", "garden", "trees", "flowers", "bird", "wildlife"],
+const VIBE_KEYWORDS: Record<MusicGenre, string[]> = {
+  joy: ["smile", "laugh", "fun", "play", "kid", "ice cream", "party", "color", "bright", "celebrate", "dance"],
+  elated: ["summit", "win", "finish", "podium", "medal", "graduation", "first", "achievement", "top", "peak", "mountain"],
+  love: ["pet", "kiss", "hug", "wedding", "couple", "family", "baby", "anniversary", "date", "warm", "soft"],
+  wonder: ["sunset", "stars", "aurora", "view", "vista", "skyline", "canyon", "ocean", "northern", "magical", "rainbow"],
+  calm: ["coffee", "morning", "rain", "book", "tea", "garden", "quiet", "porch", "sunday", "still", "lake"],
+  sad: ["empty", "alone", "rainy", "grey", "missing", "ending", "goodbye", "memorial", "reflection", "old", "abandoned"],
+  stress: ["work", "deadline", "office", "traffic", "commute", "screen", "email", "rush", "busy", "city", "noise"],
+  fear: ["dark", "alley", "storm", "shadow", "night", "thunder", "cliff", "alone at night", "creepy", "alarm"],
+  anger: ["broken", "fight", "argument", "smash", "fire", "protest", "angry", "destroyed", "loud"],
+  passion: ["concert", "festival", "race", "extreme", "adventure", "skate", "surf", "loud", "intense", "fast", "training", "workout"],
 };
 
 const THEME_HINTS: Record<string, MusicGenre> = {
-  morning: "classic",
-  food: "funk",
-  work: "synth",
-  adventure: "rock",
-  nature: "alternative",
-  night: "synth",
-  challenge: "metal",
-  pet: "classic",
-  city: "synth",
+  morning: "calm",
+  coffee: "calm",
+  food: "joy",
+  meal: "joy",
+  pet: "love",
+  family: "love",
+  date: "love",
+  wedding: "love",
+  sunset: "wonder",
+  view: "wonder",
+  nature: "calm",
+  night: "fear",
+  storm: "fear",
+  rain: "sad",
+  goodbye: "sad",
+  alone: "sad",
+  work: "stress",
+  commute: "stress",
+  office: "stress",
+  challenge: "passion",
+  adventure: "passion",
+  hike: "elated",
+  summit: "elated",
+  city: "stress",
+  party: "joy",
+  concert: "passion",
 };
 
 /**
- * Pick the best-fitting genre for a photo from its theme + tags. Always
- * returns a genre — defaults to `classic` if no signal matches, which
- * has historically been the safest "neutral" vibe.
+ * Pick the best-fitting vibe for a photo from its theme + tags. Always
+ * returns a vibe — defaults to `calm` (the most neutral register) if
+ * nothing matches.
  */
 export function suggestGenre(theme: string | undefined, tags: string[] | undefined): MusicGenre {
   const t = (theme ?? "").toLowerCase();
@@ -182,20 +241,20 @@ export function suggestGenre(theme: string | undefined, tags: string[] | undefin
     if (t === k || t.includes(k)) return g;
   }
 
-  // 2. Keyword match across tags + theme. Score every genre and pick
-  //    the highest. Stable ordering across reloads is guaranteed by the
-  //    fixed iteration order of MUSIC_LIBRARY.
+  // 2. Keyword match across tags + theme. Score every vibe and pick
+  //    the highest. Stable ordering across reloads is guaranteed by
+  //    the fixed iteration order of MUSIC_LIBRARY.
   const haystack = new Set([t, ...tagList].flatMap((s) => s.split(/\s+/)));
-  let best: MusicGenre = "classic";
+  let best: MusicGenre = "calm";
   let bestScore = 0;
-  for (const genre of Object.keys(GENRE_KEYWORDS) as MusicGenre[]) {
+  for (const vibe of Object.keys(VIBE_KEYWORDS) as MusicGenre[]) {
     let score = 0;
-    for (const kw of GENRE_KEYWORDS[genre]) {
+    for (const kw of VIBE_KEYWORDS[vibe]) {
       if (haystack.has(kw)) score += 2;
       else if ([...haystack].some((h) => h.includes(kw))) score += 1;
     }
     if (score > bestScore) {
-      best = genre;
+      best = vibe;
       bestScore = score;
     }
   }
@@ -203,7 +262,7 @@ export function suggestGenre(theme: string | undefined, tags: string[] | undefin
 }
 
 /**
- * Deterministically pick a clip from the genre based on a stable seed
+ * Deterministically pick a clip from the vibe based on a stable seed
  * (e.g. the photo's backend id, or a local uri hash). Same seed → same
  * clip every time, so the "their photo's vibe" doesn't shuffle on
  * re-renders.

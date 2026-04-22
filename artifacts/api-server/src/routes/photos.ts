@@ -59,19 +59,23 @@ router.post("/photos", async (req, res) => {
     const stripped = b64.replace(/^data:[^;]+;base64,/, "");
     const { theme, tags } = await analyzePhoto({ base64: stripped, mimeType });
 
-    // Music-vibe genre chosen on the client. Whitelisted to the canonical
-    // set defined in artifacts/same-same/data/musicLibrary.ts — anything
-    // outside the list is rejected to null so a malformed/legacy/malicious
-    // client can't store a value the playback path can't resolve (which
-    // would crash `pickClipForSeed` on the receiving side).
+    // Music-vibe id chosen on the client. Whitelisted to the canonical
+    // emotional set defined in artifacts/same-same/data/musicLibrary.ts
+    // — anything outside the list is rejected to null so a malformed,
+    // legacy, or malicious client can't store a value the playback
+    // path can't resolve (which would crash `pickClipForSeed` on the
+    // receiving side).
     const ALLOWED_MUSIC_GENRES = new Set([
-      "classic",
-      "rock",
-      "metal",
-      "synth",
-      "country",
-      "funk",
-      "alternative",
+      "joy",
+      "elated",
+      "love",
+      "wonder",
+      "calm",
+      "sad",
+      "stress",
+      "fear",
+      "anger",
+      "passion",
     ]);
     const musicGenre =
       typeof body.musicGenre === "string" &&
