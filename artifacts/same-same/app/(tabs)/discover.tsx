@@ -18,6 +18,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
@@ -151,16 +152,28 @@ export default function DiscoverScreen() {
     return m;
   }, [items]);
 
-  // ── Audio: position-driven duet ─────────────────────────────────────
+  // ── Audio: position-driven duet (debounced + hysteresis) ────────────
   //
   // The active card is "the one whose top half or bottom half straddles
-  // the viewport's vertical centre". Which photo plays is then a pure
+  // the viewport's vertical centre". Which photo plays is then a
   // function of the same scroll position: while the viewport centre is
   // in the upper half of the card, the LEFT photo plays; once it
   // crosses into the lower half, the RIGHT photo plays. When the card
   // leaves the viewport entirely, the next card takes over starting
-  // from its left photo. No timers, no scroll-settle race windows —
-  // playback is a deterministic readout of where the user has scrolled.
+  // from its left photo.
+  //
+  // Two stabilisation tricks make this not glitch under real use:
+  //   1. **Debounced commit.** onScroll runs at ~60Hz and the naïve
+  //      version called setState on every frame, which triggered a
+  //      re-render → playClip(new url) → mp3 reload chain that audibly
+  //      stutters when scrolling fast through several cards. We now
+  //      stash the desired (id, side) in a ref each frame and commit
+  //      to React state only after ~120ms of no further scroll change
+  //      (or immediately when the scroll ends).
+  //   2. **Side hysteresis.** Right at the card midpoint, micro-jitter
+  //      in scroll position would otherwise flip A↔B many times per
+  //      second. We require the centre to cross the midpoint by ~8% of
+  //      the card height before the side actually flips.
   const [activeId, setActiveId] = useState<string | null>(null);
   const [playingSide, setPlayingSide] = useState<"a" | "b">("a");
   const [muted, setMutedState] = useState<boolean>(() => isMuted());
@@ -186,19 +199,44 @@ export default function DiscoverScreen() {
   // yet. Updated as soon as the first card lays out.
   const [estCardHeight, setEstCardHeight] = useState(0);
 
-  // Compute which card + side should be active for a given scroll
-  // offset. Pure function of cached layouts; safe to call on every
-  // onScroll event without setState churn (we only setState when the
-  // result actually changes).
-  const computeActiveFromScroll = useCallback(
-    (scrollY: number) => {
+  // Mirror state into refs so the scroll handler can read current
+  // values without rebinding on every state change. Without this the
+  // hysteresis logic and the commit shortcut would force every callback
+  // to recreate, which defeats the debounce.
+  const activeIdRef = useRef<string | null>(null);
+  const playingSideRef = useRef<"a" | "b">("a");
+  useEffect(() => {
+    activeIdRef.current = activeId;
+  }, [activeId]);
+  useEffect(() => {
+    playingSideRef.current = playingSide;
+  }, [playingSide]);
+
+  // 8% of the card height. Wide enough to ride out 60Hz scroll noise,
+  // narrow enough that a deliberate centre-crossing still feels
+  // instantaneous. Picked by feel — keep symmetric.
+  const SIDE_HYSTERESIS = 0.08;
+  const COMMIT_DEBOUNCE_MS = 120;
+
+  // Latest desired active card + side computed from scroll. Updated
+  // synchronously in onScroll; committed to React state on the debounce
+  // timer or the scroll-end events.
+  const desiredRef = useRef<{ id: string | null; side: "a" | "b" }>({
+    id: null,
+    side: "a",
+  });
+  const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const computeDesired = useCallback(
+    (scrollY: number): { id: string | null; side: "a" | "b" } => {
       if (listHeight <= 0 || items.length === 0) {
-        return { id: null as string | null, side: "a" as "a" | "b" };
+        return { id: null, side: "a" };
       }
       const centerY = scrollY + listHeight / 2;
-      let activeItemId: string | null = null;
-      let activeMid = 0;
-      let activeContains = false;
+      let foundId: string | null = null;
+      let foundMid = 0;
+      let foundHeight = 0;
+      let foundContains = false;
       let nearestDist = Infinity;
       for (const it of items) {
         const layout = cardLayoutsRef.current.get(it.id);
@@ -207,55 +245,109 @@ export default function DiscoverScreen() {
         const bottom = layout.y + layout.height;
         const mid = layout.y + layout.height / 2;
         if (centerY >= top && centerY <= bottom) {
-          activeItemId = it.id;
-          activeMid = mid;
-          activeContains = true;
+          foundId = it.id;
+          foundMid = mid;
+          foundHeight = layout.height;
+          foundContains = true;
           break;
         }
-        // Fallback for the first paint where no card straddles the
-        // centre yet (header padding + tiny scroll offsets) — pick the
-        // card whose midpoint is closest. Keeps the highlight + audio
-        // alive instead of going silent until the user scrolls.
         const d = Math.abs(centerY - mid);
         if (d < nearestDist) {
           nearestDist = d;
-          activeItemId = it.id;
-          activeMid = mid;
+          foundId = it.id;
+          foundMid = mid;
+          foundHeight = layout.height;
         }
       }
-      const side: "a" | "b" =
-        activeItemId == null
-          ? "a"
-          : activeContains
-          ? centerY < activeMid
-            ? "a"
-            : "b"
+      if (!foundId) return { id: null, side: "a" };
+      // Normalised offset from card midpoint: -0.5 = top edge, 0 =
+      // centre, +0.5 = bottom edge.
+      const offset =
+        foundHeight > 0 ? (centerY - foundMid) / foundHeight : 0;
+      const sameCard = activeIdRef.current === foundId;
+      const cur = sameCard ? playingSideRef.current : null;
+      let side: "a" | "b";
+      if (cur === "a") {
+        // Stay on A unless we've clearly committed past midpoint.
+        side = offset > SIDE_HYSTERESIS ? "b" : "a";
+      } else if (cur === "b") {
+        side = offset < -SIDE_HYSTERESIS ? "a" : "b";
+      } else {
+        // Brand-new active card: anything in upper half (or exactly
+        // centred) plays A. Only commit to B once we're meaningfully
+        // past the midpoint. Without this the very first paint, where
+        // the first card sits *exactly* at viewport centre, would
+        // resolve to B and the user would hear the wrong photo first.
+        side = foundContains
+          ? offset > SIDE_HYSTERESIS
+            ? "b"
+            : "a"
           : "a";
-      return { id: activeItemId, side };
+      }
+      return { id: foundId, side };
     },
     [items, listHeight],
   );
 
-  // Apply the result of computeActiveFromScroll. Pulled out so onScroll
-  // and the post-layout settle effect can share it.
-  const applyScrollPosition = useCallback(
-    (scrollY: number) => {
-      const next = computeActiveFromScroll(scrollY);
-      setActiveId((prev) => (prev === next.id ? prev : next.id));
-      setPlayingSide((prev) => (prev === next.side ? prev : next.side));
-    },
-    [computeActiveFromScroll],
-  );
+  const commitDesired = useCallback(() => {
+    if (commitTimerRef.current != null) {
+      clearTimeout(commitTimerRef.current);
+      commitTimerRef.current = null;
+    }
+    const d = desiredRef.current;
+    setActiveId((prev) => (prev === d.id ? prev : d.id));
+    setPlayingSide((prev) => (prev === d.side ? prev : d.side));
+  }, []);
+
+  const scheduleCommit = useCallback(() => {
+    const d = desiredRef.current;
+    // Already where we want to be — nothing to commit.
+    if (
+      d.id === activeIdRef.current &&
+      d.side === playingSideRef.current
+    ) {
+      return;
+    }
+    if (commitTimerRef.current != null) {
+      clearTimeout(commitTimerRef.current);
+    }
+    commitTimerRef.current = setTimeout(() => {
+      commitTimerRef.current = null;
+      const dd = desiredRef.current;
+      setActiveId((prev) => (prev === dd.id ? prev : dd.id));
+      setPlayingSide((prev) => (prev === dd.side ? prev : dd.side));
+    }, COMMIT_DEBOUNCE_MS);
+  }, []);
+
+  // Cleanup any pending timer on unmount so we don't setState on a
+  // dead component.
+  useEffect(() => {
+    return () => {
+      if (commitTimerRef.current != null) {
+        clearTimeout(commitTimerRef.current);
+        commitTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const lastScrollYRef = useRef(0);
   const onScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
       const y = e.nativeEvent.contentOffset.y;
       lastScrollYRef.current = y;
-      applyScrollPosition(y);
+      desiredRef.current = computeDesired(y);
+      scheduleCommit();
     },
-    [applyScrollPosition],
+    [computeDesired, scheduleCommit],
   );
+
+  // When the user releases the drag or momentum scroll ends, snap to
+  // the desired state immediately — no point waiting another 120ms when
+  // we already know they've stopped moving.
+  const onScrollSettled = useCallback(() => {
+    desiredRef.current = computeDesired(lastScrollYRef.current);
+    commitDesired();
+  }, [computeDesired, commitDesired]);
 
   const onScrollBeginDrag = useCallback(() => {
     // Touching the feed counts as the user opting in to audio.
@@ -271,8 +363,9 @@ export default function DiscoverScreen() {
   const [layoutTick, setLayoutTick] = useState(0);
   useEffect(() => {
     if (listHeight <= 0) return;
-    applyScrollPosition(lastScrollYRef.current);
-  }, [applyScrollPosition, listHeight, layoutTick]);
+    desiredRef.current = computeDesired(lastScrollYRef.current);
+    scheduleCommit();
+  }, [computeDesired, listHeight, layoutTick, scheduleCommit]);
 
   const onCardLayout = useCallback((id: string, e: LayoutChangeEvent) => {
     const { y, height } = e.nativeEvent.layout;
@@ -359,16 +452,28 @@ export default function DiscoverScreen() {
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
+  const winDims = useWindowDimensions();
 
   // Symmetric padding so the FIRST card naturally lands centred in the
   // viewport on initial paint and the LAST card can scroll up to
   // centre too (rather than parking against the bottom tab bar).
-  // Falls back to a generous default until we've measured a real card.
+  //
+  // We need a sensible value on the very first render — before the
+  // FlatList has reported its own height — otherwise paddingTop jumps
+  // from 24 to ~190 once layout completes and every card visibly
+  // shudders downward. Estimate the FlatList height from the window
+  // dimensions (window minus our header (~120) and the bottom tab bar
+  // (~80)), then refine once the real layout arrives.
+  const estListHeight = useMemo(() => {
+    const headerEst = topPadding + 80;
+    const tabBarEst = bottomPadding + 60;
+    return Math.max(300, winDims.height - headerEst - tabBarEst);
+  }, [winDims.height, topPadding, bottomPadding]);
+  const effectiveListHeight = listHeight > 0 ? listHeight : estListHeight;
   const centerPad = useMemo(() => {
-    if (listHeight <= 0) return 24;
     const h = estCardHeight > 0 ? estCardHeight : 320;
-    return Math.max(16, Math.floor((listHeight - h) / 2));
-  }, [listHeight, estCardHeight]);
+    return Math.max(16, Math.floor((effectiveListHeight - h) / 2));
+  }, [effectiveListHeight, estCardHeight]);
 
   const renderItem = useCallback(
     ({ item }: { item: DiscoveryItem }) => {
@@ -446,7 +551,9 @@ export default function DiscoverScreen() {
         showsVerticalScrollIndicator={false}
         onScroll={onScroll}
         onScrollBeginDrag={onScrollBeginDrag}
-        scrollEventThrottle={16}
+        onScrollEndDrag={onScrollSettled}
+        onMomentumScrollEnd={onScrollSettled}
+        scrollEventThrottle={32}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
