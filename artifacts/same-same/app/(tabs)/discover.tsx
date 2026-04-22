@@ -9,6 +9,7 @@ import {
   FlatList,
   Image,
   type LayoutChangeEvent,
+  Linking,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   Platform,
@@ -453,7 +454,30 @@ export default function DiscoverScreen() {
             tintColor={colors.primary}
           />
         }
+        ListFooterComponent={<MusicCredit colors={colors} />}
       />
+    </View>
+  );
+}
+
+// CC-BY 4.0 attribution for the vibe clips that play across Discover
+// and Match. The license requires a visible credit; this is the
+// quietest place we can put it without interrupting the feed.
+function MusicCredit({ colors }: { colors: ReturnType<typeof useColors> }) {
+  return (
+    <View style={styles.creditWrap}>
+      <Text style={[styles.creditText, { color: colors.mutedForeground }]}>
+        Vibe clips by{" "}
+        <Text
+          onPress={() =>
+            Linking.openURL("https://incompetech.com").catch(() => {})
+          }
+          style={[styles.creditLink, { color: colors.foreground }]}
+        >
+          Kevin MacLeod (incompetech.com)
+        </Text>
+        {" "}· licensed under CC BY 4.0
+      </Text>
     </View>
   );
 }
@@ -836,5 +860,21 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: "Inter_700Bold",
     letterSpacing: 0.2,
+  },
+  creditWrap: {
+    paddingTop: 18,
+    paddingBottom: 6,
+    paddingHorizontal: 8,
+    alignItems: "center",
+  },
+  creditText: {
+    fontSize: 11,
+    lineHeight: 16,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+  },
+  creditLink: {
+    fontFamily: "Inter_600SemiBold",
+    textDecorationLine: "underline",
   },
 });
