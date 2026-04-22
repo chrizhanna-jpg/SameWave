@@ -1,6 +1,12 @@
 import { Router, type IRouter } from "express";
-import { and, eq, sql } from "drizzle-orm";
-import { db, photosTable, votesTable, reportsTable } from "@workspace/db";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import {
+  db,
+  photosTable,
+  votesTable,
+  reportsTable,
+  seenPhotosTable,
+} from "@workspace/db";
 import { resolveUserFromRequest } from "../lib/users";
 import { analyzePhoto } from "../lib/photoAnalysis";
 import { recordEchoOffer } from "./echoes";
@@ -206,12 +212,19 @@ router.get("/photos/candidates", async (req, res) => {
           AND (p.expires_at IS NULL OR p.expires_at > now())
           AND p.id NOT IN (
             SELECT v.photo_id FROM votes v WHERE v.voter_user_id = ${user.id}
+            UNION ALL
+            SELECT s.photo_id FROM seen_photos s WHERE s.user_id = ${user.id}
           )
           AND md5(substring(p.bytes_base64 from 1 for 4096)) NOT IN (
             SELECT md5(substring(p2.bytes_base64 from 1 for 4096))
             FROM votes v
             JOIN photos p2 ON p2.id = v.photo_id
             WHERE v.voter_user_id = ${user.id}
+            UNION ALL
+            SELECT md5(substring(p3.bytes_base64 from 1 for 4096))
+            FROM seen_photos s
+            JOIN photos p3 ON p3.id = s.photo_id
+            WHERE s.user_id = ${user.id}
           )
       ),
       deduped AS (
@@ -239,6 +252,108 @@ router.get("/photos/candidates", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "candidates query failed");
     res.status(500).json({ error: "query failed" });
+  }
+});
+
+// ---- POST /api/photos/seen ------------------------------------------------
+// Body: { photoIds: string[] }
+// Header: X-Device-Id (required).
+//
+// Bulk-marks one or more photos as "seen" by the current user. Idempotent:
+// re-sending the same ID is a no-op thanks to the (user_id, photo_id)
+// unique index. Self-photos are silently filtered.
+//
+// This is the server-side mirror of the client's seenPhotoKeys ledger and
+// is what makes /api/photos/candidates dedup follow the user across
+// reinstalls and devices (instead of only the install that consumed the
+// photo).
+router.post("/photos/seen", async (req, res) => {
+  try {
+    const user = await resolveUserFromRequest(req);
+    if (!user) {
+      res.status(401).json({ error: "missing or invalid X-Device-Id" });
+      return;
+    }
+    const body = (req.body ?? {}) as { photoIds?: unknown };
+    const raw = Array.isArray(body.photoIds) ? body.photoIds : [];
+    const photoIds = Array.from(
+      new Set(
+        raw.filter(
+          (v): v is string => typeof v === "string" && v.length > 0 && v.length <= 64,
+        ),
+      ),
+    ).slice(0, 200); // safety cap on a single request
+
+    if (photoIds.length === 0) {
+      res.json({ ok: true, recorded: 0 });
+      return;
+    }
+
+    const rows = photoIds.map((photoId) => ({
+      userId: user.id,
+      photoId,
+    }));
+    // ON CONFLICT DO NOTHING + ignore FK violations on bad IDs by inserting
+    // each candidate; doing it as one statement is fine because a bad ID
+    // only fails its own row when we use individual inserts. To keep this
+    // a single round-trip and resilient to unknown IDs, we instead pre-
+    // filter against the photos table.
+    const known = await db
+      .select({ id: photosTable.id, userId: photosTable.userId })
+      .from(photosTable)
+      .where(inArray(photosTable.id, photoIds));
+    // Drop unknown IDs (FK safety) and silently drop the user's own photos
+    // (they're already excluded from /candidates and shouldn't pollute the
+    // seen ledger if a buggy client ever sent them).
+    const eligibleIds = new Set(
+      known.filter((r) => r.userId !== user.id).map((r) => r.id),
+    );
+    const safeRows = rows.filter((r) => eligibleIds.has(r.photoId));
+    if (safeRows.length === 0) {
+      res.json({ ok: true, recorded: 0 });
+      return;
+    }
+    await db
+      .insert(seenPhotosTable)
+      .values(safeRows)
+      .onConflictDoNothing({
+        target: [seenPhotosTable.userId, seenPhotosTable.photoId],
+      });
+    res.json({ ok: true, recorded: safeRows.length });
+  } catch (err) {
+    req.log.error({ err }, "seen-photos write failed");
+    res.status(500).json({ error: "seen write failed" });
+  }
+});
+
+// ---- GET /api/photos/seen -------------------------------------------------
+// Returns the IDs of every photo the current user has seen or voted on.
+// Useful for clients that want to hydrate a local cache after reinstall;
+// the candidates endpoint itself already filters server-side, so this is
+// only needed for richer client-side dedup surfaces (e.g. Discover).
+router.get("/photos/seen", async (req, res) => {
+  try {
+    const user = await resolveUserFromRequest(req);
+    if (!user) {
+      res.status(401).json({ error: "missing or invalid X-Device-Id" });
+      return;
+    }
+    const rows = await db.execute(sql`
+      SELECT photo_id AS "photoId"
+      FROM seen_photos
+      WHERE user_id = ${user.id}
+      UNION
+      SELECT photo_id AS "photoId"
+      FROM votes
+      WHERE voter_user_id = ${user.id}
+    `);
+    const photoIds = (rows.rows as Array<Record<string, unknown>>).map((r) =>
+      String(r.photoId),
+    );
+    res.json({ photoIds });
+  } catch (err) {
+    req.log.error({ err }, "seen-photos read failed");
+    res.status(500).json({ error: "seen read failed" });
   }
 });
 

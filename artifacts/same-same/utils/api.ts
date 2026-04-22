@@ -199,6 +199,44 @@ export async function votePhoto(
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Seen-photos ledger (server-side mirror of the client's seenPhotoKeys).
+// Lets dedup follow the user across reinstalls / a second device.
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Bulk-mark photos as seen by the current user. Best-effort, idempotent. */
+export async function markPhotosSeen(photoIds: string[]): Promise<boolean> {
+  if (!photoIds || photoIds.length === 0) return true;
+  try {
+    const base = getApiBase();
+    const res = await fetch(`${base}/api/photos/seen`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(await authedHeaders()) },
+      body: JSON.stringify({ photoIds }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Fetch the IDs of every photo the current user has seen or voted on. */
+export async function fetchSeenPhotoIds(): Promise<string[]> {
+  try {
+    const base = getApiBase();
+    const res = await fetch(`${base}/api/photos/seen`, {
+      headers: await authedHeaders(),
+    });
+    if (!res.ok) return [];
+    const json = (await res.json()) as { photoIds?: unknown };
+    return Array.isArray(json.photoIds)
+      ? json.photoIds.filter((v): v is string => typeof v === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 export interface MatchStats {
   sameLastHour: number;
   sameLastDay: number;

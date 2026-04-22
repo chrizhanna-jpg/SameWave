@@ -34,7 +34,7 @@ import {
   ENABLE_SYNTHETIC_MATCHES,
   type SamplePhoto,
 } from "@/data/samplePhotos";
-import { fetchCandidates, votePhoto, fetchMatchStats } from "@/utils/api";
+import { fetchCandidates, votePhoto, fetchMatchStats, markPhotosSeen } from "@/utils/api";
 import {
   getGenre,
   pickClipForSeed,
@@ -476,6 +476,12 @@ export default function SwipeScreen() {
     if (!k || k === myPhotoKey) return;
     sessionDisplayedRef.current.add(k);
     markPhotoSeen(k);
+    // Mirror the seen-state to the server so dedup follows the user
+    // across reinstalls / a second device. Best-effort, fire-and-forget.
+    const backendId = realPhotoIdsRef.current.get(theirPhoto.uri);
+    if (backendId) {
+      markPhotosSeen([backendId]).catch(() => {});
+    }
   }, [theirPhoto.uri, myPhotoKey, markPhotoSeen]);
 
   // Music-vibe playback. When a new card lands we play the clip that
