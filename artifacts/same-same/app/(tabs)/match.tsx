@@ -767,7 +767,7 @@ export default function SwipeScreen() {
             accessibilityLabel={muted ? "Unmute vibe music" : "Mute vibe music"}
           >
             <Icon
-              name={muted ? "volume-x" : "volume-2"}
+              name={muted ? "volumeX" : "volume2"}
               size={18}
               color={colors.foreground}
             />
