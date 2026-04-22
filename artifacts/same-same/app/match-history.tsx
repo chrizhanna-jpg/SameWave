@@ -20,7 +20,8 @@ import { MatchTierChips } from "@/components/MatchTierChips";
 export default function MatchHistoryScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { matches, removeMatch, changeVerdict, myCountryCode } = useApp();
+  const { matches, removeMatch, changeVerdict, myCountryCode, proUnlocked } =
+    useApp();
 
   const confirmedMatches = React.useMemo(
     () => matches.filter((m) => m.verdict === "same"),
@@ -130,65 +131,156 @@ export default function MatchHistoryScreen() {
             </Text>
           </View>
         ) : (
-          confirmedMatches.map((match) => (
-            <View
-              key={match.id}
-              style={[
-                styles.matchRow,
-                { backgroundColor: colors.card, borderColor: colors.border },
-              ]}
-            >
-              <PhotoCard uri={match.myPhoto} size="sm" />
-              <View style={styles.matchMeta}>
-                <View style={styles.matchFlags}>
-                  <Text style={styles.matchFlag}>🌍</Text>
+          confirmedMatches.map((match) => {
+            // Tapping the row anywhere outside the inline controls
+            // re-opens the full /reveal so the user can re-share or
+            // remove the watermark from a past match. Tapping with an
+            // explicit action shortcuts the extra step.
+            const openReveal = (action?: "share" | "paywall") => {
+              Haptics.selectionAsync();
+              router.push({
+                pathname: "/reveal",
+                params: {
+                  matchData: JSON.stringify(match),
+                  ...(action ? { action } : {}),
+                },
+              });
+            };
+            return (
+              <TouchableOpacity
+                key={match.id}
+                onPress={() => openReveal()}
+                activeOpacity={0.85}
+                accessibilityLabel={`Open match with ${match.theirCountry}`}
+                style={[
+                  styles.matchRow,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                ]}
+              >
+                <PhotoCard uri={match.myPhoto} size="sm" />
+                <View style={styles.matchMeta}>
+                  <View style={styles.matchFlags}>
+                    <Text style={styles.matchFlag}>🌍</Text>
+                    <Icon
+                      name="arrow-right"
+                      size={12}
+                      color={colors.mutedForeground}
+                    />
+                    <Text style={styles.matchFlag}>
+                      {match.theirCountryFlag}
+                    </Text>
+                  </View>
+                  <Text
+                    style={[styles.matchCountry, { color: colors.foreground }]}
+                  >
+                    {match.theirCountry}
+                  </Text>
+                  <MatchTierChips match={match} myCountryCode={myCountryCode} />
+
+                  {/* Quick-action row — Share + (if not pro) Remove
+                      watermark are reachable here without opening the
+                      full reveal. Each handler stops propagation so it
+                      doesn't double-fire the row's "open reveal" tap. */}
+                  <View style={styles.quickActions}>
+                    <TouchableOpacity
+                      onPress={(e) => {
+                        e.stopPropagation?.();
+                        openReveal("share");
+                      }}
+                      style={[
+                        styles.quickBtn,
+                        {
+                          backgroundColor: colors.background,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                      hitSlop={6}
+                      accessibilityLabel={`Share match with ${match.theirCountry}`}
+                    >
+                      <Icon
+                        name="share"
+                        size={12}
+                        color={colors.foreground}
+                      />
+                      <Text
+                        style={[
+                          styles.quickBtnText,
+                          { color: colors.foreground },
+                        ]}
+                      >
+                        Share
+                      </Text>
+                    </TouchableOpacity>
+
+                    {!proUnlocked && (
+                      <TouchableOpacity
+                        onPress={(e) => {
+                          e.stopPropagation?.();
+                          openReveal("paywall");
+                        }}
+                        style={[
+                          styles.quickBtn,
+                          { borderColor: colors.gold, backgroundColor: "transparent" },
+                        ]}
+                        hitSlop={6}
+                        accessibilityLabel="Remove watermark from this match"
+                      >
+                        <Text style={styles.quickBtnEmoji}>✨</Text>
+                        <Text
+                          style={[
+                            styles.quickBtnText,
+                            { color: colors.gold },
+                          ]}
+                        >
+                          Remove ✦
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e.stopPropagation?.();
+                      confirmPassInstead(match.id, match.theirCountry);
+                    }}
+                    hitSlop={8}
+                    accessibilityLabel={`Change match with ${match.theirCountry} to Different`}
+                  >
+                    <Text
+                      style={[
+                        styles.matchAction,
+                        { color: colors.mutedForeground },
+                      ]}
+                    >
+                      Change to Different
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <PhotoCard uri={match.theirPhoto} size="sm" />
+                <TouchableOpacity
+                  onPress={(e) => {
+                    e.stopPropagation?.();
+                    confirmUndo(match.id, match.theirCountry);
+                  }}
+                  style={[
+                    styles.undoBtn,
+                    {
+                      backgroundColor: colors.background,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                  accessibilityLabel={`Remove match with ${match.theirCountry} from history`}
+                  hitSlop={8}
+                >
                   <Icon
-                    name="arrow-right"
-                    size={12}
+                    name="trash-2"
+                    size={14}
                     color={colors.mutedForeground}
                   />
-                  <Text style={styles.matchFlag}>{match.theirCountryFlag}</Text>
-                </View>
-                <Text
-                  style={[styles.matchCountry, { color: colors.foreground }]}
-                >
-                  {match.theirCountry}
-                </Text>
-                <MatchTierChips match={match} myCountryCode={myCountryCode} />
-                <TouchableOpacity
-                  onPress={() =>
-                    confirmPassInstead(match.id, match.theirCountry)
-                  }
-                  hitSlop={8}
-                  accessibilityLabel={`Change match with ${match.theirCountry} to Different`}
-                >
-                  <Text
-                    style={[
-                      styles.matchAction,
-                      { color: colors.mutedForeground },
-                    ]}
-                  >
-                    Change to Different
-                  </Text>
                 </TouchableOpacity>
-              </View>
-              <PhotoCard uri={match.theirPhoto} size="sm" />
-              <TouchableOpacity
-                onPress={() => confirmUndo(match.id, match.theirCountry)}
-                style={[
-                  styles.undoBtn,
-                  {
-                    backgroundColor: colors.background,
-                    borderColor: colors.border,
-                  },
-                ]}
-                accessibilityLabel={`Remove match with ${match.theirCountry} from history`}
-                hitSlop={8}
-              >
-                <Icon name="trash-2" size={14} color={colors.mutedForeground} />
               </TouchableOpacity>
-            </View>
-          ))
+            );
+          })
         )}
       </ScrollView>
     </View>
@@ -246,6 +338,28 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     marginTop: 4,
     textDecorationLine: "underline",
+  },
+  quickActions: {
+    flexDirection: "row",
+    gap: 6,
+    marginTop: 6,
+    flexWrap: "wrap",
+  },
+  quickBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  quickBtnText: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+  },
+  quickBtnEmoji: {
+    fontSize: 11,
   },
   undoBtn: {
     width: 28,

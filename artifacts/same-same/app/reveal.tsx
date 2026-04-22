@@ -53,6 +53,11 @@ export default function RevealScreen() {
   const [connectSent, setConnectSent] = useState(false);
   const savedRef = useRef(false);
   const shotRef = useRef<ViewShot>(null);
+  // The `action` param lets callers (MatchFlash, match-history) jump
+  // straight to "Share" or open the remove-watermark paywall on mount,
+  // skipping the extra tap. Guarded by a ref so a re-render of the
+  // same screen doesn't re-fire the side-effect.
+  const actionFiredRef = useRef(false);
 
   const handleShare = async () => {
     if (sharing || !shotRef.current) return;
@@ -146,6 +151,25 @@ export default function RevealScreen() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.matchData]);
+
+  // Auto-fire the requested deep-link action once the match has loaded
+  // and the share-card has had a tick to lay out (otherwise captureRef
+  // grabs an empty frame). Fires at most once per mount.
+  useEffect(() => {
+    if (!match || actionFiredRef.current) return;
+    const action = (params.action as string | undefined) ?? "";
+    if (action !== "share" && action !== "paywall") return;
+    actionFiredRef.current = true;
+    const t = setTimeout(() => {
+      if (action === "share") {
+        handleShare();
+      } else if (action === "paywall") {
+        if (!proUnlocked) setPaywallOpen(true);
+      }
+    }, 350);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [match, params.action]);
 
   const handleNext = () => {
     router.back();

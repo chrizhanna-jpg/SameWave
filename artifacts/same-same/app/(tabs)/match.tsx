@@ -207,6 +207,7 @@ export default function SwipeScreen() {
     markPhotoSeen,
     resetSeenPhotos,
     primeSeenFromCandidates,
+    proUnlocked,
   } = useApp();
   // DEV-only debug pill — visibility-toggled state lives at the top
   // of the component so the floating button rendered at the very end
@@ -1075,18 +1076,25 @@ export default function SwipeScreen() {
             themeTitle={themeMeta?.title ?? flashMatch.theme ?? "the same thing"}
             themeEmoji={themeMeta?.emoji ?? "✨"}
             sharedTags={flashMatch.sharedTags ?? []}
+            proUnlocked={proUnlocked}
             onDone={() => {
               setFlashMatch(null);
               loadNextCandidate();
             }}
-            onOpenFull={() => {
+            onOpenFull={(action) => {
               const data = flashMatch;
               setFlashMatch(null);
               // Pre-load the next card so it's ready when they come back.
               loadNextCandidate();
               router.push({
                 pathname: "/reveal",
-                params: { matchData: JSON.stringify(data) },
+                params: {
+                  matchData: JSON.stringify(data),
+                  // Optional auto-action: "share" or "paywall". /reveal
+                  // fires it once the share-card has laid out so the
+                  // capture isn't blank.
+                  ...(action ? { action } : {}),
+                },
               });
             }}
           />

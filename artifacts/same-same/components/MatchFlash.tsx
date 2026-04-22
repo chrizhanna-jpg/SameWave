@@ -12,6 +12,10 @@ import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
 import { tagEmoji, tagLabel } from "@/utils/interests";
 
+// Action a tap on one of the secondary pills should trigger on the
+// receiving /reveal screen. `undefined` means "just open it".
+export type MatchFlashAction = "share" | "paywall" | undefined;
+
 interface Props {
   theirCountry: string;
   theirCountryFlag: string;
@@ -19,8 +23,11 @@ interface Props {
   themeTitle: string;
   themeEmoji: string;
   sharedTags: string[];
+  /** Hide the "Remove watermark" pill once the user has paid. */
+  proUnlocked?: boolean;
   onDone: () => void;
-  onOpenFull: () => void;
+  /** Called with the requested action (or undefined for plain open). */
+  onOpenFull: (action?: MatchFlashAction) => void;
   // How long the flash stays before auto-advancing.
   durationMs?: number;
 }
@@ -31,8 +38,9 @@ interface Props {
 // and triggers `onDone` so SwipeScreen can load the next candidate.
 //
 // Tap-anywhere → skip the flash and advance immediately.
-// Tap the "Open" pill → navigate to the full /reveal screen for the user
-// who wants to dwell on this match (Connect, Share, paywall, etc.).
+// Tap "Open" / "Share" / "Remove watermark" → navigate to the full
+// /reveal screen, optionally pre-firing the requested action so the
+// user doesn't have to tap twice for the same outcome.
 export function MatchFlash({
   theirCountry,
   theirCountryFlag,
@@ -40,9 +48,10 @@ export function MatchFlash({
   themeTitle,
   themeEmoji,
   sharedTags,
+  proUnlocked,
   onDone,
   onOpenFull,
-  durationMs = 1700,
+  durationMs = 2400,
 }: Props) {
   const colors = useColors();
   const fade = useRef(new Animated.Value(0)).current;
@@ -53,7 +62,7 @@ export function MatchFlash({
   // `fade._value` reliably from JS.
   const finishedRef = useRef(false);
 
-  const finish = (open = false) => {
+  const finish = (action: MatchFlashAction | "auto" = "auto") => {
     if (finishedRef.current) return;
     finishedRef.current = true;
     Animated.timing(fade, {
@@ -61,8 +70,8 @@ export function MatchFlash({
       duration: 180,
       useNativeDriver: true,
     }).start(() => {
-      if (open) onOpenFull();
-      else onDone();
+      if (action === "auto") onDone();
+      else onOpenFull(action);
     });
   };
 
@@ -89,7 +98,7 @@ export function MatchFlash({
       }),
     ]).start();
 
-    const t = setTimeout(() => finish(false), durationMs);
+    const t = setTimeout(() => finish("auto"), durationMs);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -105,7 +114,7 @@ export function MatchFlash({
   return (
     <Pressable
       style={StyleSheet.absoluteFill}
-      onPress={() => finish(false)}
+      onPress={() => finish("auto")}
       accessibilityLabel="Same same! Tap to keep swiping"
     >
       <Animated.View
@@ -167,18 +176,50 @@ export function MatchFlash({
           </View>
         )}
 
-        <Pressable
-          onPress={(e) => {
-            // Stop the outer Pressable from firing finish(false).
-            e.stopPropagation?.();
-            finish(true);
-          }}
-          style={styles.openPill}
-          accessibilityLabel="Open full match"
-        >
-          <Text style={styles.openText}>Open</Text>
-          <Icon name="arrow-right" size={14} color="#001018" />
-        </Pressable>
+        {/* Action pill row. Open is the primary CTA; Share + Remove
+            watermark are secondary so the player can dispatch a quick
+            intent without a detour through the full reveal screen.
+            Each Pressable stops propagation so the outer "tap anywhere"
+            doesn't intercept and just advance. */}
+        <View style={styles.actionRow}>
+          <Pressable
+            onPress={(e) => {
+              e.stopPropagation?.();
+              finish(undefined);
+            }}
+            style={styles.openPill}
+            accessibilityLabel="Open full match"
+          >
+            <Text style={styles.openText}>Open</Text>
+            <Icon name="arrow-right" size={14} color="#001018" />
+          </Pressable>
+
+          <Pressable
+            onPress={(e) => {
+              e.stopPropagation?.();
+              finish("share");
+            }}
+            style={styles.secondaryPill}
+            accessibilityLabel="Share this match"
+          >
+            <Icon name="share" size={14} color="#fff" />
+            <Text style={styles.secondaryText}>Share</Text>
+          </Pressable>
+
+          {!proUnlocked && (
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation?.();
+                finish("paywall");
+              }}
+              style={styles.secondaryPill}
+              accessibilityLabel="Remove watermark"
+            >
+              <Text style={styles.secondaryEmoji}>✨</Text>
+              <Text style={styles.secondaryText}>No ✦</Text>
+            </Pressable>
+          )}
+        </View>
 
         <Text style={styles.hint}>tap anywhere to keep swiping</Text>
       </Animated.View>
@@ -273,6 +314,14 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#001018",
   },
+  actionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 4,
+    flexWrap: "wrap",
+    justifyContent: "center",
+  },
   openPill: {
     flexDirection: "row",
     alignItems: "center",
@@ -281,13 +330,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 999,
-    marginTop: 4,
   },
   openText: {
     fontSize: 13,
     fontWeight: "800",
     color: "#001018",
     letterSpacing: 0.5,
+  },
+  secondaryPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(0,16,24,0.55)",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+  },
+  secondaryText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#fff",
+    letterSpacing: 0.3,
+  },
+  secondaryEmoji: {
+    fontSize: 13,
   },
   hint: {
     marginTop: 14,
