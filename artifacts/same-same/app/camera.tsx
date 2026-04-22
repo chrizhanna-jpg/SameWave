@@ -479,6 +479,61 @@ export default function CameraScreen() {
               </View>
             )}
 
+            {/* Music vibe sits right under the photo so it's the first
+                creative choice the user makes — the picker influences
+                what the matched stranger will hear in the celebration,
+                so it deserves prime real estate, not the bottom of the
+                form. */}
+            <View style={styles.themeSection}>
+              <View style={styles.tagSectionHeader}>
+                <Text style={[styles.themeSectionLabel, { color: colors.mutedForeground }]}>
+                  Music vibe
+                </Text>
+                {musicGenre && (
+                  <Text style={[styles.tagCount, { color: colors.mutedForeground }]}>
+                    {genreEdited ? "your pick" : "AI pick · tap to swap"}
+                  </Text>
+                )}
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.musicChips}
+              >
+                {MUSIC_LIBRARY.map((g) => {
+                  const active = musicGenre === g.id;
+                  return (
+                    <TouchableOpacity
+                      key={g.id}
+                      onPress={() => handleGenreTap(g.id)}
+                      activeOpacity={0.85}
+                      style={[
+                        styles.musicChip,
+                        {
+                          backgroundColor: active ? colors.primary : colors.card,
+                          borderColor: active ? colors.primary : colors.border,
+                        },
+                      ]}
+                    >
+                      <Text style={styles.musicChipEmoji}>{g.emoji}</Text>
+                      <Text
+                        style={[
+                          styles.musicChipLabel,
+                          {
+                            color: active
+                              ? colors.primaryForeground
+                              : colors.foreground,
+                          },
+                        ]}
+                      >
+                        {g.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
             <View style={styles.themeSection}>
               <View style={styles.tagSectionHeader}>
                 <Text style={[styles.themeSectionLabel, { color: colors.mutedForeground }]}>
@@ -623,56 +678,6 @@ export default function CameraScreen() {
                   </TouchableOpacity>
                 )}
               </View>
-            </View>
-
-            <View style={styles.themeSection}>
-              <View style={styles.tagSectionHeader}>
-                <Text style={[styles.themeSectionLabel, { color: colors.mutedForeground }]}>
-                  Music vibe
-                </Text>
-                {musicGenre && (
-                  <Text style={[styles.tagCount, { color: colors.mutedForeground }]}>
-                    {genreEdited ? "your pick" : "AI pick · tap to swap"}
-                  </Text>
-                )}
-              </View>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.musicChips}
-              >
-                {MUSIC_LIBRARY.map((g) => {
-                  const active = musicGenre === g.id;
-                  return (
-                    <TouchableOpacity
-                      key={g.id}
-                      onPress={() => handleGenreTap(g.id)}
-                      activeOpacity={0.85}
-                      style={[
-                        styles.musicChip,
-                        {
-                          backgroundColor: active ? colors.primary : colors.card,
-                          borderColor: active ? colors.primary : colors.border,
-                        },
-                      ]}
-                    >
-                      <Text style={styles.musicChipEmoji}>{g.emoji}</Text>
-                      <Text
-                        style={[
-                          styles.musicChipLabel,
-                          {
-                            color: active
-                              ? colors.primaryForeground
-                              : colors.foreground,
-                          },
-                        ]}
-                      >
-                        {g.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
             </View>
 
             <View style={styles.actionButtons}>

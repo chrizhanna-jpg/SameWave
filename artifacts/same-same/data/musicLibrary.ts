@@ -64,25 +64,32 @@ export interface GenreMeta {
   clips: MusicClip[];
 }
 
-// Shared URL pool — see file header for the placeholder caveat. These
-// 14 are the ones I'm reasonably confident resolve; the wider
-// catalogue has many more and the user is expected to curate this
-// list before launch.
+// Shared URL pool. The mixkit hosts we used previously started
+// returning 403 to non-browser referrers, so we've moved to
+// SoundHelix's long-running demo MP3s — they're the same set used by
+// every audio-playback tutorial on the web and have been live since
+// ~2011, so they're as stable a free placeholder as exists. Sixteen
+// songs are available (1..16); we map the original semantic names to
+// distinct SoundHelix tracks so adjacent vibes still get recognisably
+// different audio. Curate before launch.
+function helix(n: number) {
+  return `https://www.soundhelix.com/examples/mp3/SoundHelix-Song-${n}.mp3`;
+}
 const URL = {
-  summer: "https://assets.mixkit.co/music/preview/mixkit-summer-fun-13.mp3",
-  groove: "https://assets.mixkit.co/music/preview/mixkit-getting-down-651.mp3",
-  techHouse: "https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3",
-  driving: "https://assets.mixkit.co/music/preview/mixkit-driving-ambition-32.mp3",
-  raising: "https://assets.mixkit.co/music/preview/mixkit-raising-me-higher-34.mp3",
-  dreaming: "https://assets.mixkit.co/music/preview/mixkit-dreaming-big-31.mp3",
-  chill: "https://assets.mixkit.co/music/preview/mixkit-just-chill-16.mp3",
-  hazy: "https://assets.mixkit.co/music/preview/mixkit-hazy-after-hours-132.mp3",
-  nature: "https://assets.mixkit.co/music/preview/mixkit-relaxing-in-nature-522.mp3",
-  canyons: "https://assets.mixkit.co/music/preview/mixkit-spirit-of-the-canyons-15.mp3",
-  tripHop: "https://assets.mixkit.co/music/preview/mixkit-trip-hop-vibes-149.mp3",
-  serene: "https://assets.mixkit.co/music/preview/mixkit-serene-view-443.mp3",
-  urban: "https://assets.mixkit.co/music/preview/mixkit-deep-urban-623.mp3",
-  glitch: "https://assets.mixkit.co/music/preview/mixkit-action-trailer-glitch-731.mp3",
+  summer: helix(1),
+  groove: helix(2),
+  techHouse: helix(3),
+  driving: helix(4),
+  raising: helix(5),
+  dreaming: helix(6),
+  chill: helix(7),
+  hazy: helix(8),
+  nature: helix(9),
+  canyons: helix(10),
+  tripHop: helix(11),
+  serene: helix(12),
+  urban: helix(13),
+  glitch: helix(14),
 } as const;
 
 // Each vibe ships five clips so the deterministic chooser produces
