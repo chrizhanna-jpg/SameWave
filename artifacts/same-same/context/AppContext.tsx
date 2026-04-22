@@ -10,6 +10,7 @@ import React, {
 import {
   fetchEchoesInbox,
   fetchEchoesMine,
+  fetchSeenPhotoIds,
   respondEcho as respondEchoApi,
   type ServerEcho,
 } from "@/utils/api";
@@ -242,6 +243,14 @@ interface AppContextValue extends AppState {
   hasSeenPhoto: (key: string) => boolean;
   /** DEV ONLY — clears the seen ledger. Used by the on-device debug pill. */
   resetSeenPhotos: () => void;
+  /**
+   * Given a batch of (id, uri) candidate pairs, mark any whose backend ID
+   * is in the server-side seen set as locally seen too. This is how the
+   * on-device ledger gets primed from the server after a fresh install:
+   * the seen IDs themselves arrive on launch, but we only learn the URIs
+   * (needed by photoKey-based dedup) when candidate fetches come back.
+   */
+  primeSeenFromCandidates: (items: { id: string; uri: string }[]) => void;
 }
 
 const defaultBadges: Badge[] = [
@@ -279,6 +288,39 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     loadState();
+  }, []);
+
+  // Server-side mirror of the seen ledger. We learn IDs on launch (the
+  // server tracks per-user seen photos), but local dedup is keyed by
+  // photoKey(uri) — so we hold onto the IDs and translate to URIs as
+  // candidate fetches come back. See `primeSeenFromCandidates` below.
+  const serverSeenIdsRef = useRef<Set<string>>(new Set());
+  // Most recent (id, uri) batch seen by `primeSeenFromCandidates`. Cached
+  // so that if the candidates fetch wins the race against
+  // `fetchSeenPhotoIds`, we can re-prime once the IDs arrive instead of
+  // waiting for the next candidate refetch.
+  const lastCandidateBatchRef = useRef<{ id: string; uri: string }[]>([]);
+  // Lazily-set once the prime function exists (defined below). A ref
+  // sidesteps the ordering problem between this effect and the callback.
+  const primeRef = useRef<((items: { id: string; uri: string }[]) => void) | null>(
+    null,
+  );
+  useEffect(() => {
+    let cancelled = false;
+    fetchSeenPhotoIds()
+      .then((ids) => {
+        if (cancelled) return;
+        serverSeenIdsRef.current = new Set(ids);
+        // If candidates already arrived before we knew the seen IDs,
+        // prime against the cached batch now.
+        if (lastCandidateBatchRef.current.length > 0 && primeRef.current) {
+          primeRef.current(lastCandidateBatchRef.current);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Keep the AI URI registry in sync with myPhotos so PhotoCard can flag
@@ -472,6 +514,42 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const hasSeenPhoto = useCallback((key: string) => {
     return key ? seenSet.has(key) : false;
   }, [seenSet]);
+
+  const primeSeenFromCandidates = useCallback(
+    (items: { id: string; uri: string }[]) => {
+      if (!items || items.length === 0) return;
+      // Cache so we can re-prime once `fetchSeenPhotoIds` resolves if the
+      // candidate fetch happened to win the race.
+      lastCandidateBatchRef.current = items;
+      const serverIds = serverSeenIdsRef.current;
+      if (serverIds.size === 0) return;
+      const known = seenSetRef.current;
+      const newKeys: string[] = [];
+      for (const it of items) {
+        if (!it?.id || !serverIds.has(it.id)) continue;
+        const k = photoKey(it.uri);
+        if (!k || known.has(k)) continue;
+        if (newKeys.includes(k)) continue;
+        newKeys.push(k);
+      }
+      if (newKeys.length === 0) return;
+      setState((prev) => {
+        const fresh = newKeys.filter((k) => !prev.seenPhotoKeys.includes(k));
+        if (fresh.length === 0) return prev;
+        const newState: AppState = {
+          ...prev,
+          seenPhotoKeys: [...prev.seenPhotoKeys, ...fresh],
+        };
+        saveState(newState);
+        return newState;
+      });
+    },
+    [],
+  );
+  // Keep the ref pointing at the latest callback so the on-launch
+  // `fetchSeenPhotoIds` effect can invoke it without taking the function
+  // as a dependency (which would re-fire the fetch).
+  primeRef.current = primeSeenFromCandidates;
 
   const resetSeenPhotos = useCallback(() => {
     if (!__DEV__) return;
@@ -962,6 +1040,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         markPhotoSeen,
         hasSeenPhoto,
         resetSeenPhotos,
+        primeSeenFromCandidates,
       }}
     >
       {children}

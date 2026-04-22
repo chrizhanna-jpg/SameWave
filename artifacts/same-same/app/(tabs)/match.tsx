@@ -206,6 +206,7 @@ export default function SwipeScreen() {
     seenPhotoKeys,
     markPhotoSeen,
     resetSeenPhotos,
+    primeSeenFromCandidates,
   } = useApp();
   // DEV-only debug pill — visibility-toggled state lives at the top
   // of the component so the floating button rendered at the very end
@@ -361,6 +362,13 @@ export default function SwipeScreen() {
           };
         });
         realPhotoIdsRef.current = ids;
+        // Prime the local seen ledger with any candidates whose backend
+        // ID is in the server-side seen set. Lets cross-device dedup
+        // reflect immediately after install instead of waiting for the
+        // user to swipe past those cards locally.
+        primeSeenFromCandidates(
+          cands.map((c) => ({ id: c.id, uri: c.uri })),
+        );
         setRealPool(mapped);
       })
       .catch(() => {
