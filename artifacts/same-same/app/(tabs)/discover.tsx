@@ -288,14 +288,19 @@ export default function DiscoverScreen() {
   // unchanged values so unchanged frames cost nothing — meaning we can
   // safely run this on every onScroll event without over-rendering.
   //
+  // Important: this handler only updates the within-card LEFT/RIGHT
+  // side. The active card itself is driven by FlatList's own
+  // viewability tracker (see viewabilityConfigCallbackPairs below) —
+  // which uses what's actually on screen rather than a "nearest
+  // centre" guess. On tall preview windows multiple cards fit on
+  // screen at once and "nearest centre" was jumping straight to card
+  // 3 the instant the user scrolled. The viewability picker advances
+  // card-by-card, which matches the user's mental model.
+  //
   // Special case: "top of the feed" (scrollY <= 0) is a well-defined
-  // starting state — first card, left photo. The symmetric padding is
-  // meant to centre card 1 in the viewport at scrollY=0, but on tall
-  // web preview windows multiple cards fit on screen at once and the
-  // "nearest centre" resolver can land on a card further down. We
-  // stipulate the top-of-feed answer rather than letting the resolver
-  // guess, so card 1 is highlighted reliably the moment the tab opens
-  // and again every time the user scrolls back to the very top.
+  // starting state — first card, left photo. We stipulate it directly
+  // so the first card is highlighted the moment the tab opens and
+  // again every time the user scrolls back to the very top.
   const applyScrollPosition = useCallback(
     (scrollY: number) => {
       if (scrollY <= 0 && items.length > 0) {
@@ -304,12 +309,61 @@ export default function DiscoverScreen() {
         setPlayingSide((prev) => (prev === "a" ? prev : "a"));
         return;
       }
-      const next = resolveActive(scrollY);
-      setActiveId((prev) => (prev === next.id ? prev : next.id));
-      setPlayingSide((prev) => (prev === next.side ? prev : next.side));
+      const id = activeIdRef.current;
+      if (!id || listHeight <= 0) return;
+      const layout = cardLayoutsRef.current.get(id);
+      if (!layout || layout.height <= 0) return;
+      const centerY = scrollY + listHeight / 2;
+      const mid = layout.y + layout.height / 2;
+      const offset = (centerY - mid) / layout.height;
+      const cur = playingSideRef.current;
+      let next: "a" | "b";
+      if (cur === "a") {
+        next = offset > SIDE_HYSTERESIS ? "b" : "a";
+      } else {
+        next = offset < -SIDE_HYSTERESIS ? "a" : "b";
+      }
+      setPlayingSide((prev) => (prev === next ? prev : next));
     },
-    [resolveActive, items],
+    [items, listHeight],
   );
+
+  // Viewability-driven active card picker. FlatList tells us which
+  // items are actually visible on screen; we pick the topmost one
+  // (smallest index) as the active card. This advances card-by-card
+  // as the user scrolls — even on wheel-scroll jumps or tall preview
+  // viewports where several cards fit at once — instead of leaping
+  // ahead based on viewport-centre math.
+  const viewabilityConfigCallbackPairs = useRef([
+    {
+      viewabilityConfig: {
+        itemVisiblePercentThreshold: 50,
+        minimumViewTime: 0,
+      },
+      onViewableItemsChanged: ({
+        viewableItems,
+      }: {
+        viewableItems: Array<{
+          item: DiscoveryItem;
+          index: number | null;
+          isViewable: boolean;
+        }>;
+      }) => {
+        if (lastScrollYRef.current <= 0) return; // top-of-feed lock owns this
+        const visible = viewableItems
+          .filter((v) => v.isViewable && v.index !== null)
+          .sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+        const topmost = visible[0];
+        if (!topmost) return;
+        const id = topmost.item.id;
+        if (activeIdRef.current === id) return;
+        setActiveId(id);
+        // New card → reset to its left photo so the user always
+        // hears LEFT first when a card becomes active.
+        setPlayingSide("a");
+      },
+    },
+  ]).current;
 
   const lastScrollYRef = useRef(0);
   const onScroll = useCallback(
@@ -552,6 +606,7 @@ export default function DiscoverScreen() {
         onScroll={onScroll}
         onScrollBeginDrag={onScrollBeginDrag}
         scrollEventThrottle={16}
+        viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
