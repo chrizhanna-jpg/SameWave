@@ -45,19 +45,24 @@ export default function PhotoViewer() {
   // audio.ts handles the swap: same URL = resume, different URL = stop
   // the prior clip and load this one.
   //
-  // If the tapped photo is the one already playing (the green-outlined
-  // active card on Discover), we leave the singleton player alone
-  // entirely — no playClip call (which would no-op anyway) and no
-  // pause() on unmount. That keeps the music seamlessly playing as the
-  // user opens and closes the fullscreen view. Only when the tapped
-  // photo is a DIFFERENT clip do we start it on mount and pause on
-  // dismiss; Discover's resume-on-focus effect bridges the silent gap.
+  // Always (re)start the clip on mount — even when getActiveUrl()
+  // matches, because Discover's blur cleanup will have called pause()
+  // by the time we get here. playClip() with the same URL is cheap: it
+  // skips the reload and just flips shouldPlay back to true, so the
+  // music resumes from where it left off without a restart-from-zero.
+  //
+  // The unmount behaviour, on the other hand, IS conditional: if the
+  // tapped photo was the already-active clip on Discover, we let it
+  // keep playing when the viewer closes (Discover's focus effect will
+  // own the lifecycle again). Only when the tapped photo is a DIFFERENT
+  // clip do we pause on dismiss so the wrong song doesn't bleed back
+  // into the feed.
   useEffect(() => {
     markUserInteracted();
     if (!clipUrl) return;
     const wasAlreadyPlaying = getActiveUrl() === clipUrl;
-    if (wasAlreadyPlaying) return;
     void playClip(clipUrl);
+    if (wasAlreadyPlaying) return;
     return () => {
       void pause();
     };
