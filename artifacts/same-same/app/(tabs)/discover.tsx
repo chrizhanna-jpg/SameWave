@@ -634,7 +634,15 @@ export default function DiscoverScreen() {
           styles.content,
           {
             paddingTop: centerPad,
-            paddingBottom: centerPad + bottomPadding,
+            // Extra (estCardHeight || 320) of padding ensures the LAST
+            // card has the same scroll room every other card has — i.e.
+            // the user can scroll a full half-card past the moment it
+            // becomes the active card and trigger the LEFT→RIGHT side
+            // flip. Without it, the very last right-hand photo is
+            // unreachable because the FlatList runs out of content
+            // before the user can scroll past entry+midpoint.
+            paddingBottom:
+              centerPad + bottomPadding + (estCardHeight > 0 ? estCardHeight : 320),
           },
         ]}
         showsVerticalScrollIndicator={false}
