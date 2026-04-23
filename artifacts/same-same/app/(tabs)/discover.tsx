@@ -357,6 +357,15 @@ export default function DiscoverScreen() {
         if (!topmost) return;
         const id = topmost.item.id;
         if (activeIdRef.current === id) return;
+        // Sync the refs IMMEDIATELY (not via the effect that mirrors
+        // state → ref on the next render). onScroll fires right after
+        // viewability with a scrollY whose viewport-centre is already
+        // well past the OLD card's midpoint — if activeIdRef still
+        // points at the old card, applyScrollPosition computes a huge
+        // positive offset and flips side to "b" before the new card's
+        // state update lands, so the user hears the right photo first.
+        activeIdRef.current = id;
+        playingSideRef.current = "a";
         setActiveId(id);
         // New card → reset to its left photo so the user always
         // hears LEFT first when a card becomes active.
