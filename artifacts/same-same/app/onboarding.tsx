@@ -1,6 +1,5 @@
-import React, { useEffect, useRef } from "react";
+import React, { useRef } from "react";
 import {
-  Alert,
   Animated,
   Dimensions,
   Platform,
@@ -15,13 +14,12 @@ import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { EchoGlobeLogo } from "@/components/EchoGlobeLogo";
 import { CountryPickerModal } from "@/components/CountryPickerModal";
-import { flagFor, nameFor } from "@/data/countries";
-import { detectCountryFromGPS } from "@/utils/gpsCountry";
 
-// Only enforce country selection (and run the GPS sanity check) in
-// production / published builds. In dev / Expo Go we keep the legacy
-// "Skip — I'll set it later" behaviour so we never have to fight a
-// country picker while testing other features.
+// Only enforce country selection in production / published builds. In
+// dev / Expo Go we keep the legacy "Skip — I'll set it later" behaviour
+// so we never have to fight a country picker while testing other
+// features. The soft GPS sanity check happens later, in the tabs
+// layout, after the user has explored the app — see utils/tabVisits.
 const REQUIRE_COUNTRY = !__DEV__;
 
 const { width } = Dimensions.get("window");
@@ -69,47 +67,6 @@ export default function OnboardingScreen() {
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
   const globeScale = useRef(new Animated.Value(1)).current;
-
-  // Soft GPS validation. After the user has picked a country, silently
-  // ask the device where it thinks they are. If it disagrees, show a
-  // friendly Alert with "Keep my pick" vs "Use detected" — never block
-  // the flow. Travellers, expats, refugees, dual citizens etc. all get
-  // a one-tap override. A denied permission or flaky fix returns null
-  // and we say nothing.
-  const gpsCheckedRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!REQUIRE_COUNTRY) return;
-    if (!myCountryCode) return;
-    if (gpsCheckedRef.current === myCountryCode) return;
-    gpsCheckedRef.current = myCountryCode;
-    let cancelled = false;
-    (async () => {
-      const detected = await detectCountryFromGPS();
-      if (cancelled) return;
-      if (!detected) return;
-      if (detected.code === myCountryCode) return;
-      const detectedName = detected.name ?? nameFor(detected.code) ?? detected.code;
-      const detectedFlag = flagFor(detected.code);
-      Alert.alert(
-        "Quick double-check",
-        `It looks like you're in ${detectedFlag} ${detectedName} right now. Keep your pick of ${myCountryFlag ?? ""} ${myCountryName ?? ""} anyway?`,
-        [
-          {
-            text: `Use ${detectedName}`,
-            onPress: () =>
-              setMyCountry(detected.code, detectedName, detectedFlag),
-          },
-          {
-            text: `Keep ${myCountryName ?? "my pick"}`,
-            style: "cancel",
-          },
-        ],
-      );
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [myCountryCode, myCountryName, myCountryFlag, setMyCountry]);
 
   const goNext = () => {
     // In production, the country step is a hard gate — the Continue

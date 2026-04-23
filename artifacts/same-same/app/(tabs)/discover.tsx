@@ -22,6 +22,7 @@ import {
   View,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
+import { markTabVisited } from "@/utils/tabVisits";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
 import { OceanShimmer } from "@/components/OceanShimmer";
@@ -496,6 +497,7 @@ export default function DiscoverScreen() {
       // starts playing the moment the user lands on the feed, without
       // requiring them to scroll first.
       markUserInteracted();
+      markTabVisited("discover");
       return () => {
         setFocused(false);
         void pause();

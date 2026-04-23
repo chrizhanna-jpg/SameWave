@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { useCallback, useRef } from "react";
 import {
   Animated,
   Dimensions,
@@ -9,7 +9,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
+import { markTabVisited } from "@/utils/tabVisits";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
@@ -25,6 +26,12 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { matches, matchedCountries, myPhotos, resetOnboarding } = useApp();
   const challenge = getTodaysChallenge();
+
+  useFocusEffect(
+    useCallback(() => {
+      markTabVisited("home");
+    }, []),
+  );
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;

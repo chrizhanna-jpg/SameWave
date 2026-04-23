@@ -14,7 +14,8 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
+import { markTabVisited } from "@/utils/tabVisits";
 import { Icon } from "@/components/Icon";
 import { MatchHearts } from "@/components/MatchHearts";
 import { MatchFlash } from "@/components/MatchFlash";
@@ -196,6 +197,12 @@ function getTheirPhoto(
 export default function SwipeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+
+  useFocusEffect(
+    useCallback(() => {
+      markTabVisited("match");
+    }, []),
+  );
   const {
     streakCount,
     myPhotos,
