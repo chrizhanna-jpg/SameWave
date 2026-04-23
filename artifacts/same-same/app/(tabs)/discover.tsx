@@ -287,13 +287,28 @@ export default function DiscoverScreen() {
   // Apply the resolver result. Functional setState short-circuits
   // unchanged values so unchanged frames cost nothing — meaning we can
   // safely run this on every onScroll event without over-rendering.
+  //
+  // Special case: "top of the feed" (scrollY <= 0) is a well-defined
+  // starting state — first card, left photo. The symmetric padding is
+  // meant to centre card 1 in the viewport at scrollY=0, but on tall
+  // web preview windows multiple cards fit on screen at once and the
+  // "nearest centre" resolver can land on a card further down. We
+  // stipulate the top-of-feed answer rather than letting the resolver
+  // guess, so card 1 is highlighted reliably the moment the tab opens
+  // and again every time the user scrolls back to the very top.
   const applyScrollPosition = useCallback(
     (scrollY: number) => {
+      if (scrollY <= 0 && items.length > 0) {
+        const firstId = items[0].id;
+        setActiveId((prev) => (prev === firstId ? prev : firstId));
+        setPlayingSide((prev) => (prev === "a" ? prev : "a"));
+        return;
+      }
       const next = resolveActive(scrollY);
       setActiveId((prev) => (prev === next.id ? prev : next.id));
       setPlayingSide((prev) => (prev === next.side ? prev : next.side));
     },
-    [resolveActive],
+    [resolveActive, items],
   );
 
   const lastScrollYRef = useRef(0);
