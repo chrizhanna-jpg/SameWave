@@ -311,6 +311,20 @@ export default function DiscoverScreen() {
     markUserInteracted();
   }, []);
 
+  // First-card seed: as soon as we have items, point activeId at the
+  // first one so the green highlight (and the audio, once the gate
+  // opens) lands on card 1 immediately. This is independent of the
+  // FlatList layout pass — without it, there's a perceptible window
+  // between mount and the first card lighting up that depended on
+  // layout callbacks firing in the right order. The resolver still
+  // takes over the moment the user actually scrolls.
+  useEffect(() => {
+    if (activeId !== null) return;
+    if (items.length === 0) return;
+    if (lastScrollYRef.current !== 0) return;
+    setActiveId(items[0].id);
+  }, [items, activeId]);
+
   // First-paint settle: when the FlatList finishes its initial layout
   // we may have a non-zero scroll offset (paddingTop pushed content
   // down) and zero card layouts cached. As cards report layouts we
@@ -377,25 +391,21 @@ export default function DiscoverScreen() {
   // focus. Note: playClip itself silently no-ops until the user has
   // interacted at least once, so this effect is safe to fire on mount.
   //
-  // The actual playClip() is debounced ~80ms. Visual state updates
-  // every scroll frame, but we don't want to thrash the audio system
-  // by reloading a new MP3 every time the highlight crosses a card —
-  // a fast scroll through five cards would otherwise queue five
-  // network fetches and audibly stutter. The cleanup cancels the
-  // pending timer, so when the user lands on a stable card only that
-  // card's clip actually loads. Pause is immediate (no debounce
-  // needed when there's nothing to play).
+  // No JS-side debounce: we let playClip() fire immediately on every
+  // change to `current` so a midpoint side flip swaps audio the
+  // instant the user crosses it. audio.ts already protects itself
+  // from rapid scrolls via its `playToken` mechanism — fast-changing
+  // calls just abort each other's in-flight loads, so only the final
+  // settled card actually finishes loading. Adding a setTimeout on
+  // top would only delay the first audible response after a flip
+  // (which is exactly what the user complained about).
   useEffect(() => {
     if (!focused) return;
     if (!current) {
       void pause();
       return;
     }
-    const url = current.clip.url;
-    const timer = setTimeout(() => {
-      void playClip(url);
-    }, 80);
-    return () => clearTimeout(timer);
+    void playClip(current.clip.url);
   }, [current, focused]);
 
   // Cold-start kick: the very first interaction (a mute toggle, a card
