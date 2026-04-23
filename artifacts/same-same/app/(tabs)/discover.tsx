@@ -207,6 +207,10 @@ export default function DiscoverScreen() {
   // defeats the debounce.
   const activeIdRef = useRef<string | null>(null);
   const playingSideRef = useRef<"a" | "b">("a");
+  // Scroll position at the moment the active card last changed.
+  // Used by applyScrollPosition to compute "how far through this card
+  // has the user scrolled" — see comment there.
+  const entryScrollYRef = useRef(0);
   useEffect(() => {
     activeIdRef.current = activeId;
   }, [activeId]);
@@ -310,22 +314,38 @@ export default function DiscoverScreen() {
         return;
       }
       const id = activeIdRef.current;
-      if (!id || listHeight <= 0) return;
+      if (!id) return;
       const layout = cardLayoutsRef.current.get(id);
-      if (!layout || layout.height <= 0) return;
-      const centerY = scrollY + listHeight / 2;
-      const mid = layout.y + layout.height / 2;
-      const offset = (centerY - mid) / layout.height;
+      const cardHeight =
+        layout && layout.height > 0
+          ? layout.height
+          : estCardHeight > 0
+            ? estCardHeight
+            : 320;
+      // Side flip is anchored to how far the user has scrolled SINCE
+      // the active card became active — not absolute viewport-centre
+      // vs card-centre. The viewability tracker only flags a new card
+      // once it's 50% on screen, by which point absolute viewport
+      // centre is already nearly at that card's midpoint, so the
+      // very next scroll frame would flip side to "b" and the user
+      // would barely see the left photo. Anchoring to entryScrollY
+      // gives each card a symmetric A/B split: half a card height of
+      // scrolling past entry = midpoint = side flip.
+      const traveled = scrollY - entryScrollYRef.current;
+      const progress = traveled / cardHeight;
       const cur = playingSideRef.current;
       let next: "a" | "b";
       if (cur === "a") {
-        next = offset > SIDE_HYSTERESIS ? "b" : "a";
+        next = progress > 0.5 + SIDE_HYSTERESIS ? "b" : "a";
       } else {
-        next = offset < -SIDE_HYSTERESIS ? "a" : "b";
+        next = progress < 0.5 - SIDE_HYSTERESIS ? "a" : "b";
       }
-      setPlayingSide((prev) => (prev === next ? prev : next));
+      if (next !== cur) {
+        playingSideRef.current = next;
+        setPlayingSide(next);
+      }
     },
-    [items, listHeight],
+    [items, estCardHeight],
   );
 
   // Viewability-driven active card picker. FlatList tells us which
@@ -366,6 +386,7 @@ export default function DiscoverScreen() {
         // state update lands, so the user hears the right photo first.
         activeIdRef.current = id;
         playingSideRef.current = "a";
+        entryScrollYRef.current = lastScrollYRef.current;
         setActiveId(id);
         // New card → reset to its left photo so the user always
         // hears LEFT first when a card becomes active.
