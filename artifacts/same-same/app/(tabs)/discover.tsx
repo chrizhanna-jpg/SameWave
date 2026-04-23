@@ -382,20 +382,43 @@ export default function DiscoverScreen() {
         if (!topmost) return;
         const id = topmost.item.id;
         if (activeIdRef.current === id) return;
+        // Detect scroll direction by comparing the new active card's
+        // index to the previous one's. Scrolling DOWN enters a card
+        // from its top → start on LEFT (side "a"). Scrolling UP enters
+        // a card from its bottom → start on RIGHT (side "b"), so the
+        // right photo plays as the user scrolls back up through the
+        // card before flipping to the left photo at midpoint.
+        const newIndex = topmost.index ?? 0;
+        const prevId = activeIdRef.current;
+        const prevIndex =
+          prevId !== null ? items.findIndex((it) => it.id === prevId) : -1;
+        const scrollingUp = prevIndex >= 0 && newIndex < prevIndex;
+        const layout = cardLayoutsRef.current.get(id);
+        const cardHeight =
+          layout && layout.height > 0
+            ? layout.height
+            : estCardHeight > 0
+              ? estCardHeight
+              : 320;
+        const startSide: "a" | "b" = scrollingUp ? "b" : "a";
+        // Seed entryScrollY so applyScrollPosition's progress math
+        // starts at the right end of the card. For "a" we start at
+        // progress 0 (card top), so entry = current scroll. For "b"
+        // we start at progress 1 (card bottom), so entry = current
+        // scroll - cardHeight.
+        const entryY = scrollingUp
+          ? lastScrollYRef.current - cardHeight
+          : lastScrollYRef.current;
         // Sync the refs IMMEDIATELY (not via the effect that mirrors
         // state → ref on the next render). onScroll fires right after
-        // viewability with a scrollY whose viewport-centre is already
-        // well past the OLD card's midpoint — if activeIdRef still
-        // points at the old card, applyScrollPosition computes a huge
-        // positive offset and flips side to "b" before the new card's
-        // state update lands, so the user hears the right photo first.
+        // viewability — if activeIdRef still points at the old card,
+        // applyScrollPosition computes the wrong offset and flips
+        // side incorrectly before the new card's state update lands.
         activeIdRef.current = id;
-        playingSideRef.current = "a";
-        entryScrollYRef.current = lastScrollYRef.current;
+        playingSideRef.current = startSide;
+        entryScrollYRef.current = entryY;
         setActiveId(id);
-        // New card → reset to its left photo so the user always
-        // hears LEFT first when a card becomes active.
-        setPlayingSide("a");
+        setPlayingSide(startSide);
       },
     },
   ]).current;
