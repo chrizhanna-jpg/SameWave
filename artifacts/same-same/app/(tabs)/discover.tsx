@@ -338,12 +338,19 @@ export default function DiscoverScreen() {
       // scrolling past entry = midpoint = side flip.
       const traveled = scrollY - entryScrollYRef.current;
       const progress = traveled / cardHeight;
+      // Bias the LEFT→RIGHT flip ~1.5cm (≈57dp) further into the card
+      // than the geometric midpoint so the user spends a touch more
+      // time on the left photo before the music swaps to the right.
+      // Symmetric SIDE_HYSTERESIS still rides on top to prevent
+      // micro-jitter at the threshold.
+      const SIDE_FLIP_OFFSET_DP = 57;
+      const flipPoint = 0.5 + SIDE_FLIP_OFFSET_DP / cardHeight;
       const cur = playingSideRef.current;
       let next: "a" | "b";
       if (cur === "a") {
-        next = progress > 0.5 + SIDE_HYSTERESIS ? "b" : "a";
+        next = progress > flipPoint + SIDE_HYSTERESIS ? "b" : "a";
       } else {
-        next = progress < 0.5 - SIDE_HYSTERESIS ? "a" : "b";
+        next = progress < flipPoint - SIDE_HYSTERESIS ? "a" : "b";
       }
       if (next !== cur) {
         playingSideRef.current = next;
