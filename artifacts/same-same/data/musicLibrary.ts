@@ -26,6 +26,7 @@
 // "the music vibe id".
 export type MusicGenre =
   | "joy"
+  | "overjoyed"
   | "elated"
   | "amusement"
   | "love"
@@ -38,6 +39,7 @@ export type MusicGenre =
   | "nostalgia"
   | "longing"
   | "sad"
+  | "heartbroken"
   | "lonely"
   | "grief"
   | "fear"
@@ -143,6 +145,18 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
       { id: "joy-2", label: "Skipping", url: T.cheeryMonday },
       { id: "joy-3", label: "First Bite", url: T.happyBoy },
       { id: "joy-4", label: "Confetti", url: T.lifeOfRiley },
+    ],
+  },
+  {
+    id: "overjoyed",
+    label: "Overjoyed",
+    emoji: "🥳",
+    vibe: "bursting, can't contain it, happy tears",
+    clips: [
+      { id: "overjoyed-1", label: "Confetti Burst", url: T.aretes },
+      { id: "overjoyed-2", label: "Bounce Off Walls", url: T.beachParty },
+      { id: "overjoyed-3", label: "Cartwheel", url: T.monkeysSpinning },
+      { id: "overjoyed-4", label: "Whole Sky", url: T.lobbyTime },
     ],
   },
   {
@@ -290,6 +304,18 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
     ],
   },
   {
+    id: "heartbroken",
+    label: "Heartbroken",
+    emoji: "💔",
+    vibe: "really sad, shattered, can't stop crying",
+    clips: [
+      { id: "heartbroken-1", label: "Shattered", url: T.longNoteFour },
+      { id: "heartbroken-2", label: "After You Left", url: T.theCannery },
+      { id: "heartbroken-3", label: "Last Letter", url: T.heartbreaking },
+      { id: "heartbroken-4", label: "Empty Bed", url: T.sadTrio },
+    ],
+  },
+  {
     id: "lonely",
     label: "Lonely",
     emoji: "🫥",
@@ -386,6 +412,7 @@ export function getClip(genre: string | undefined | null, clipId: string | undef
 
 const VIBE_KEYWORDS: Record<MusicGenre, string[]> = {
   joy: ["smile", "laugh", "fun", "play", "kid", "ice cream", "color", "bright", "celebrate", "dance", "balloon"],
+  overjoyed: ["overjoyed", "ecstatic", "thrilled", "screaming", "jumping", "best day", "happy tears", "engaged", "newborn", "yes", "passed", "got in"],
   elated: ["summit", "win", "finish", "podium", "medal", "graduation", "first", "achievement", "top", "peak"],
   amusement: ["silly", "funny", "joke", "prank", "goofy", "meme", "weird", "quirky", "lol", "absurd"],
   love: ["pet", "hug", "family", "baby", "anniversary", "warm", "soft", "snuggle", "puppy", "kitten"],
@@ -397,7 +424,8 @@ const VIBE_KEYWORDS: Record<MusicGenre, string[]> = {
   calm: ["coffee", "morning", "rain", "book", "tea", "garden", "quiet", "porch", "sunday", "still", "lake"],
   nostalgia: ["old", "vintage", "retro", "polaroid", "childhood", "school", "throwback", "hometown", "grandparent", "attic"],
   longing: ["window", "distant", "far", "missing", "wishing", "absent", "without", "across", "moon", "horizon"],
-  sad: ["empty", "rainy", "grey", "ending", "goodbye", "memorial", "tear", "broken heart", "departed"],
+  sad: ["empty", "rainy", "grey", "ending", "goodbye", "memorial", "tear", "departed"],
+  heartbroken: ["really sad", "devastated", "heartbroken", "broken heart", "shattered", "crushed", "broke me", "ruined", "ended us", "breakup", "left me"],
   lonely: ["alone", "solitary", "single", "deserted", "no one", "by myself", "isolated", "abandoned"],
   grief: ["loss", "funeral", "passed", "mourning", "remembrance", "passed away", "rest in peace", "graveyard"],
   fear: ["dark", "alley", "storm", "shadow", "night", "thunder", "cliff", "creepy", "alarm", "ghost"],
@@ -426,6 +454,10 @@ const THEME_HINTS: Record<string, MusicGenre> = {
   storm: "fear",
   rain: "sad",
   goodbye: "sad",
+  breakup: "heartbroken",
+  divorce: "heartbroken",
+  newborn: "overjoyed",
+  engagement: "overjoyed",
   alone: "lonely",
   funeral: "grief",
   memorial: "grief",

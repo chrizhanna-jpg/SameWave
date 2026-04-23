@@ -157,28 +157,28 @@ export default function DiscoverScreen() {
   // The active card is "the one whose top half or bottom half straddles
   // the viewport's vertical centre". Which photo plays is then a
   // function of the same scroll position: while the viewport centre is
-  // in the upper half of the card, the LEFT photo plays; once it
-  // crosses into the lower half, the RIGHT photo plays. When the card
-  // leaves the viewport entirely, the next card takes over starting
-  // from its left photo.
+  // ALWAYS the RIGHT (B) photo of whichever card is currently centred
+  // in the viewport. The first card lights up its right photo on tab
+  // focus; scrolling moves the green highlight (and the audio) to the
+  // next card's right photo, then the next, and so on. We deliberately
+  // simplified away the earlier left-then-right "duet" because users
+  // found the mid-card A↔B flip unpredictable. Side B was chosen as
+  // the fixed pick because the right slot is the dominant photo in our
+  // layout and is what your eye lands on first.
   //
-  // Architecture, hard-won from two prior failed attempts:
-  //   - Visual state (activeId, playingSide) updates SYNCHRONOUSLY on
-  //     every scroll event. Re-rendering two cards (the new + previous
-  //     active) is cheap, and the user expects the green highlight to
-  //     track their finger in real time. Using functional setState with
-  //     equality short-circuits means unchanged frames don't actually
-  //     re-render.
-  //   - Audio reload is the EXPENSIVE side-effect (network fetch +
-  //     decode), and that's what we debounce — see the playback effect
-  //     below. Fast scrolls through five cards in under a second still
-  //     only end up loading the final card's MP3.
-  //   - **Side hysteresis.** Right at the card midpoint, micro-jitter
-  //     in scroll position would otherwise flip A↔B many times per
-  //     second. We require the centre to cross the midpoint by ~8% of
-  //     the card height before the side actually flips.
+  // Architecture:
+  //   - Visual state (activeId) updates SYNCHRONOUSLY on every scroll
+  //     event so the green highlight tracks your finger.
+  //   - Audio reload is debounced ~80ms in the playback effect so a
+  //     fast flick through five cards doesn't queue five MP3 fetches.
+  //   - On cards where the B side has no resolvable clip we transparently
+  //     fall back to A (see `current` below), so the user always hears
+  //     *something* if the card has any music at all.
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [playingSide, setPlayingSide] = useState<"a" | "b">("a");
+  // Kept as a constant `"b"` so all the downstream highlight + clip
+  // resolution code can stay structurally the same. If we ever bring
+  // back side switching, this is where it'd come back.
+  const playingSide: "a" | "b" = "b";
   const [muted, setMutedState] = useState<boolean>(() => isMuted());
   const [focused, setFocused] = useState(true);
 
@@ -202,37 +202,15 @@ export default function DiscoverScreen() {
   // yet. Updated as soon as the first card lays out.
   const [estCardHeight, setEstCardHeight] = useState(0);
 
-  // Mirror state into refs so the scroll handler can read current
-  // values without rebinding on every state change. Without this the
-  // hysteresis logic and the commit shortcut would force every callback
-  // to recreate, which defeats the debounce.
-  const activeIdRef = useRef<string | null>(null);
-  const playingSideRef = useRef<"a" | "b">("a");
-  useEffect(() => {
-    activeIdRef.current = activeId;
-  }, [activeId]);
-  useEffect(() => {
-    playingSideRef.current = playingSide;
-  }, [playingSide]);
-
-  // 8% of the card height. Wide enough to ride out 60Hz scroll noise,
-  // narrow enough that a deliberate centre-crossing still feels
-  // instantaneous. Picked by feel — keep symmetric.
-  const SIDE_HYSTERESIS = 0.08;
-
-  // Pure resolver: given a scroll offset, return which card+side
-  // should be active. Reads layout cache and the current side via
-  // refs so the callback identity stays stable across state changes.
-  const resolveActive = useCallback(
-    (scrollY: number): { id: string | null; side: "a" | "b" } => {
-      if (listHeight <= 0 || items.length === 0) {
-        return { id: null, side: "a" };
-      }
+  // Pure resolver: given a scroll offset, return which card is the
+  // active one. The card whose vertical centre is closest to the
+  // viewport centre wins; if the viewport centre is actually inside a
+  // card we use that one directly.
+  const resolveActiveId = useCallback(
+    (scrollY: number): string | null => {
+      if (listHeight <= 0 || items.length === 0) return null;
       const centerY = scrollY + listHeight / 2;
       let foundId: string | null = null;
-      let foundMid = 0;
-      let foundHeight = 0;
-      let foundContains = false;
       let nearestDist = Infinity;
       for (const it of items) {
         const layout = cardLayoutsRef.current.get(it.id);
@@ -241,46 +219,16 @@ export default function DiscoverScreen() {
         const bottom = layout.y + layout.height;
         const mid = layout.y + layout.height / 2;
         if (centerY >= top && centerY <= bottom) {
-          foundId = it.id;
-          foundMid = mid;
-          foundHeight = layout.height;
-          foundContains = true;
-          break;
+          // Direct hit — the viewport centre is inside this card.
+          return it.id;
         }
         const d = Math.abs(centerY - mid);
         if (d < nearestDist) {
           nearestDist = d;
           foundId = it.id;
-          foundMid = mid;
-          foundHeight = layout.height;
         }
       }
-      if (!foundId) return { id: null, side: "a" };
-      // Normalised offset from card midpoint: -0.5 = top edge, 0 =
-      // centre, +0.5 = bottom edge.
-      const offset =
-        foundHeight > 0 ? (centerY - foundMid) / foundHeight : 0;
-      const sameCard = activeIdRef.current === foundId;
-      const cur = sameCard ? playingSideRef.current : null;
-      let side: "a" | "b";
-      if (cur === "a") {
-        // Stay on A unless we've clearly committed past midpoint.
-        side = offset > SIDE_HYSTERESIS ? "b" : "a";
-      } else if (cur === "b") {
-        side = offset < -SIDE_HYSTERESIS ? "a" : "b";
-      } else {
-        // Brand-new active card: anything in upper half (or exactly
-        // centred) plays A. Only commit to B once we're meaningfully
-        // past the midpoint. Without this the very first paint, where
-        // the first card sits *exactly* at viewport centre, would
-        // resolve to B and the user would hear the wrong photo first.
-        side = foundContains
-          ? offset > SIDE_HYSTERESIS
-            ? "b"
-            : "a"
-          : "a";
-      }
-      return { id: foundId, side };
+      return foundId;
     },
     [items, listHeight],
   );
@@ -290,11 +238,10 @@ export default function DiscoverScreen() {
   // safely run this on every onScroll event without over-rendering.
   const applyScrollPosition = useCallback(
     (scrollY: number) => {
-      const next = resolveActive(scrollY);
-      setActiveId((prev) => (prev === next.id ? prev : next.id));
-      setPlayingSide((prev) => (prev === next.side ? prev : next.side));
+      const nextId = resolveActiveId(scrollY);
+      setActiveId((prev) => (prev === nextId ? prev : nextId));
     },
-    [resolveActive],
+    [resolveActiveId],
   );
 
   const lastScrollYRef = useRef(0);
@@ -345,6 +292,11 @@ export default function DiscoverScreen() {
   useFocusEffect(
     useCallback(() => {
       setFocused(true);
+      // Tapping the Discover tab counts as an interaction — open the
+      // audio gate immediately so the first card's right-side clip
+      // starts playing the moment the user lands on the feed, without
+      // requiring them to scroll first.
+      markUserInteracted();
       return () => {
         setFocused(false);
         void pause();
@@ -364,8 +316,12 @@ export default function DiscoverScreen() {
     if (!card) return null;
     const preferred = card[playingSide];
     if (preferred) return { side: playingSide, clip: preferred };
-    const other = playingSide === "a" ? card.b : card.a;
-    if (other) return { side: playingSide === "a" ? "b" : "a", clip: other };
+    // Fallback: if the right side has no clip (e.g. that photo's
+    // suggested vibe didn't resolve), play the left side rather than
+    // staying silent on the active card.
+    const otherSide: "a" | "b" = playingSide === "b" ? "a" : "b";
+    const other = card[otherSide];
+    if (other) return { side: otherSide, clip: other };
     return null;
   }, [activeId, clipsByItem, playingSide]);
 
