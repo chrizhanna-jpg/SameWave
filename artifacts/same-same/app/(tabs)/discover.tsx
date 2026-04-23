@@ -459,13 +459,14 @@ export default function DiscoverScreen() {
         <View onLayout={(e) => onCardLayout(item.id, e)}>
           <DiscoveryCard
             item={item}
+            cardClips={clipsByItem.get(item.id) ?? null}
             activeSide={activeSide}
             vibeLabel={vibeLabel}
           />
         </View>
       );
     },
-    [activeId, muted, current, onCardLayout],
+    [activeId, muted, current, onCardLayout, clipsByItem],
   );
 
   return (
@@ -559,10 +560,13 @@ function MusicCredit({ colors }: { colors: ReturnType<typeof useColors> }) {
 
 function DiscoveryCard({
   item,
+  cardClips,
   activeSide,
   vibeLabel,
 }: {
   item: DiscoveryItem;
+  /** Resolved clips for both photos, used by per-photo tap navigation. */
+  cardClips: CardClips | null;
   /** Which photo (a or b) is currently emitting the vibe clip, or null. */
   activeSide: "a" | "b" | null;
   /** Human label of the playing vibe, e.g. "Joy". Null when no clip. */
@@ -610,6 +614,7 @@ function DiscoveryCard({
       <View style={styles.photosRow}>
         <PhotoSlot
           photo={item.a}
+          clip={cardClips?.a ?? null}
           isActive={activeSide === "a"}
           vibeLabel={vibeLabel}
           colors={colors}
@@ -648,6 +653,7 @@ function DiscoveryCard({
 
         <PhotoSlot
           photo={item.b}
+          clip={cardClips?.b ?? null}
           isActive={activeSide === "b"}
           vibeLabel={vibeLabel}
           colors={colors}
@@ -700,25 +706,55 @@ function DiscoveryCard({
 
 function PhotoSlot({
   photo,
+  clip,
   isActive,
   vibeLabel,
   colors,
 }: {
   photo: SamplePhoto;
+  /** Resolved clip for THIS photo, used to swap audio in the viewer. */
+  clip: ResolvedClip | null;
   isActive: boolean;
   vibeLabel: string | null;
   colors: ReturnType<typeof useColors>;
 }) {
+  // The full-resolution URL we hand to the fullscreen viewer. The
+  // thumbUri() variant is fine for the feed but pixelates when blown
+  // up, so request a wider Unsplash render here.
+  const fullUri = fullSizeUri(photo.uri);
+
+  // Tapping the photo opens it fullscreen and immediately starts its
+  // clip via the viewer's own playClip call. We pass the photo's own
+  // resolved clip (which is what plays when this side is highlighted on
+  // the feed) so the viewer is consistent with the feed audio.
+  const onTap = () => {
+    markUserInteracted();
+    router.push({
+      pathname: "/photo-viewer",
+      params: {
+        uri: fullUri,
+        clipUrl: clip?.url ?? "",
+        vibeLabel: clip?.label ?? "",
+        country: photo.country,
+        countryFlag: photo.countryFlag,
+      },
+    });
+  };
+
   return (
     <View style={styles.photoCol}>
-      <View
-        style={[
+      <Pressable
+        onPress={onTap}
+        accessibilityRole="button"
+        accessibilityLabel={`Open ${photo.country} photo fullscreen`}
+        style={({ pressed }) => [
           styles.photoWrap,
           isActive && {
             borderColor: colors.green,
             shadowColor: colors.green,
           },
           isActive && styles.photoWrapActive,
+          pressed && { opacity: 0.85 },
         ]}
       >
         <Image source={{ uri: thumbUri(photo.uri) }} style={styles.photo} />
@@ -735,7 +771,7 @@ function PhotoSlot({
             </Text>
           </View>
         ) : null}
-      </View>
+      </Pressable>
       <View style={styles.flagRow}>
         <Text style={styles.flag}>{photo.countryFlag}</Text>
         <Text
@@ -762,6 +798,13 @@ function thumbUri(uri: string) {
   // them small for the feed.
   if (uri.includes("?")) return uri.replace(/w=\d+/, "w=300");
   return uri + "?w=300";
+}
+
+function fullSizeUri(uri: string) {
+  // For the fullscreen viewer we want a much larger render so the
+  // photo doesn't pixelate when blown up to device width.
+  if (uri.includes("?")) return uri.replace(/w=\d+/, "w=1200");
+  return uri + "?w=1200";
 }
 
 const styles = StyleSheet.create({
