@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import {
+  Alert,
   Animated,
   Dimensions,
   Platform,
@@ -14,6 +15,14 @@ import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { EchoGlobeLogo } from "@/components/EchoGlobeLogo";
 import { CountryPickerModal } from "@/components/CountryPickerModal";
+import { flagFor, nameFor } from "@/data/countries";
+import { detectCountryFromGPS } from "@/utils/gpsCountry";
+
+// Only enforce country selection (and run the GPS sanity check) in
+// production / published builds. In dev / Expo Go we keep the legacy
+// "Skip — I'll set it later" behaviour so we never have to fight a
+// country picker while testing other features.
+const REQUIRE_COUNTRY = !__DEV__;
 
 const { width } = Dimensions.get("window");
 
@@ -61,7 +70,51 @@ export default function OnboardingScreen() {
   const slideAnim = useRef(new Animated.Value(0)).current;
   const globeScale = useRef(new Animated.Value(1)).current;
 
+  // Soft GPS validation. After the user has picked a country, silently
+  // ask the device where it thinks they are. If it disagrees, show a
+  // friendly Alert with "Keep my pick" vs "Use detected" — never block
+  // the flow. Travellers, expats, refugees, dual citizens etc. all get
+  // a one-tap override. A denied permission or flaky fix returns null
+  // and we say nothing.
+  const gpsCheckedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!REQUIRE_COUNTRY) return;
+    if (!myCountryCode) return;
+    if (gpsCheckedRef.current === myCountryCode) return;
+    gpsCheckedRef.current = myCountryCode;
+    let cancelled = false;
+    (async () => {
+      const detected = await detectCountryFromGPS();
+      if (cancelled) return;
+      if (!detected) return;
+      if (detected.code === myCountryCode) return;
+      const detectedName = detected.name ?? nameFor(detected.code) ?? detected.code;
+      const detectedFlag = flagFor(detected.code);
+      Alert.alert(
+        "Quick double-check",
+        `It looks like you're in ${detectedFlag} ${detectedName} right now. Keep your pick of ${myCountryFlag ?? ""} ${myCountryName ?? ""} anyway?`,
+        [
+          {
+            text: `Use ${detectedName}`,
+            onPress: () =>
+              setMyCountry(detected.code, detectedName, detectedFlag),
+          },
+          {
+            text: `Keep ${myCountryName ?? "my pick"}`,
+            style: "cancel",
+          },
+        ],
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [myCountryCode, myCountryName, myCountryFlag, setMyCountry]);
+
   const goNext = () => {
+    // In production, the country step is a hard gate — the Continue
+    // button no-ops until they've picked one.
+    if (isCountryStep && REQUIRE_COUNTRY && !myCountryCode) return;
     if (step < STEPS.length - 1) {
       if (step === 0) {
         Animated.timing(globeScale, {
@@ -214,17 +267,46 @@ export default function OnboardingScreen() {
           ))}
         </View>
 
-        <TouchableOpacity
-          style={[styles.button, { backgroundColor: colors.primary }]}
-          onPress={goNext}
-          activeOpacity={0.85}
-        >
-          <Text style={[styles.buttonText, { color: colors.primaryForeground }]}>
-            {step < STEPS.length - 1 ? "Continue" : "Let's start"}
-          </Text>
-        </TouchableOpacity>
+        {(() => {
+          const continueLocked =
+            isCountryStep && REQUIRE_COUNTRY && !myCountryCode;
+          return (
+            <TouchableOpacity
+              style={[
+                styles.button,
+                {
+                  backgroundColor: continueLocked
+                    ? colors.secondary
+                    : colors.primary,
+                  opacity: continueLocked ? 0.6 : 1,
+                },
+              ]}
+              onPress={goNext}
+              disabled={continueLocked}
+              activeOpacity={0.85}
+            >
+              <Text
+                style={[
+                  styles.buttonText,
+                  { color: colors.primaryForeground },
+                ]}
+              >
+                {continueLocked
+                  ? "Pick your country to continue"
+                  : step < STEPS.length - 1
+                    ? "Continue"
+                    : "Let's start"}
+              </Text>
+            </TouchableOpacity>
+          );
+        })()}
 
-        {(step < STEPS.length - 1 || (isCountryStep && !myCountryCode)) && (
+        {/* Skip is allowed on every intro step. On the country step it's
+            only offered in dev/Expo Go (REQUIRE_COUNTRY === false) so we
+            never have to fight the picker while testing — production
+            builds make country selection mandatory. */}
+        {(step < STEPS.length - 1 ||
+          (isCountryStep && !REQUIRE_COUNTRY && !myCountryCode)) && (
           <TouchableOpacity
             onPress={() => {
               completeOnboarding();
