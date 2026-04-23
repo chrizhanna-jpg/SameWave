@@ -152,7 +152,7 @@ export default function DiscoverScreen() {
     return m;
   }, [items]);
 
-  // ── Audio: position-driven duet (debounced + hysteresis) ────────────
+  // ── Audio: position-driven duet (live highlight, debounced audio) ───
   //
   // The active card is "the one whose top half or bottom half straddles
   // the viewport's vertical centre". Which photo plays is then a
@@ -162,18 +162,21 @@ export default function DiscoverScreen() {
   // leaves the viewport entirely, the next card takes over starting
   // from its left photo.
   //
-  // Two stabilisation tricks make this not glitch under real use:
-  //   1. **Debounced commit.** onScroll runs at ~60Hz and the naïve
-  //      version called setState on every frame, which triggered a
-  //      re-render → playClip(new url) → mp3 reload chain that audibly
-  //      stutters when scrolling fast through several cards. We now
-  //      stash the desired (id, side) in a ref each frame and commit
-  //      to React state only after ~120ms of no further scroll change
-  //      (or immediately when the scroll ends).
-  //   2. **Side hysteresis.** Right at the card midpoint, micro-jitter
-  //      in scroll position would otherwise flip A↔B many times per
-  //      second. We require the centre to cross the midpoint by ~8% of
-  //      the card height before the side actually flips.
+  // Architecture, hard-won from two prior failed attempts:
+  //   - Visual state (activeId, playingSide) updates SYNCHRONOUSLY on
+  //     every scroll event. Re-rendering two cards (the new + previous
+  //     active) is cheap, and the user expects the green highlight to
+  //     track their finger in real time. Using functional setState with
+  //     equality short-circuits means unchanged frames don't actually
+  //     re-render.
+  //   - Audio reload is the EXPENSIVE side-effect (network fetch +
+  //     decode), and that's what we debounce — see the playback effect
+  //     below. Fast scrolls through five cards in under a second still
+  //     only end up loading the final card's MP3.
+  //   - **Side hysteresis.** Right at the card midpoint, micro-jitter
+  //     in scroll position would otherwise flip A↔B many times per
+  //     second. We require the centre to cross the midpoint by ~8% of
+  //     the card height before the side actually flips.
   const [activeId, setActiveId] = useState<string | null>(null);
   const [playingSide, setPlayingSide] = useState<"a" | "b">("a");
   const [muted, setMutedState] = useState<boolean>(() => isMuted());
@@ -216,18 +219,11 @@ export default function DiscoverScreen() {
   // narrow enough that a deliberate centre-crossing still feels
   // instantaneous. Picked by feel — keep symmetric.
   const SIDE_HYSTERESIS = 0.08;
-  const COMMIT_DEBOUNCE_MS = 120;
 
-  // Latest desired active card + side computed from scroll. Updated
-  // synchronously in onScroll; committed to React state on the debounce
-  // timer or the scroll-end events.
-  const desiredRef = useRef<{ id: string | null; side: "a" | "b" }>({
-    id: null,
-    side: "a",
-  });
-  const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const computeDesired = useCallback(
+  // Pure resolver: given a scroll offset, return which card+side
+  // should be active. Reads layout cache and the current side via
+  // refs so the callback identity stays stable across state changes.
+  const resolveActive = useCallback(
     (scrollY: number): { id: string | null; side: "a" | "b" } => {
       if (listHeight <= 0 || items.length === 0) {
         return { id: null, side: "a" };
@@ -289,65 +285,27 @@ export default function DiscoverScreen() {
     [items, listHeight],
   );
 
-  const commitDesired = useCallback(() => {
-    if (commitTimerRef.current != null) {
-      clearTimeout(commitTimerRef.current);
-      commitTimerRef.current = null;
-    }
-    const d = desiredRef.current;
-    setActiveId((prev) => (prev === d.id ? prev : d.id));
-    setPlayingSide((prev) => (prev === d.side ? prev : d.side));
-  }, []);
-
-  const scheduleCommit = useCallback(() => {
-    const d = desiredRef.current;
-    // Already where we want to be — nothing to commit.
-    if (
-      d.id === activeIdRef.current &&
-      d.side === playingSideRef.current
-    ) {
-      return;
-    }
-    if (commitTimerRef.current != null) {
-      clearTimeout(commitTimerRef.current);
-    }
-    commitTimerRef.current = setTimeout(() => {
-      commitTimerRef.current = null;
-      const dd = desiredRef.current;
-      setActiveId((prev) => (prev === dd.id ? prev : dd.id));
-      setPlayingSide((prev) => (prev === dd.side ? prev : dd.side));
-    }, COMMIT_DEBOUNCE_MS);
-  }, []);
-
-  // Cleanup any pending timer on unmount so we don't setState on a
-  // dead component.
-  useEffect(() => {
-    return () => {
-      if (commitTimerRef.current != null) {
-        clearTimeout(commitTimerRef.current);
-        commitTimerRef.current = null;
-      }
-    };
-  }, []);
+  // Apply the resolver result. Functional setState short-circuits
+  // unchanged values so unchanged frames cost nothing — meaning we can
+  // safely run this on every onScroll event without over-rendering.
+  const applyScrollPosition = useCallback(
+    (scrollY: number) => {
+      const next = resolveActive(scrollY);
+      setActiveId((prev) => (prev === next.id ? prev : next.id));
+      setPlayingSide((prev) => (prev === next.side ? prev : next.side));
+    },
+    [resolveActive],
+  );
 
   const lastScrollYRef = useRef(0);
   const onScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
       const y = e.nativeEvent.contentOffset.y;
       lastScrollYRef.current = y;
-      desiredRef.current = computeDesired(y);
-      scheduleCommit();
+      applyScrollPosition(y);
     },
-    [computeDesired, scheduleCommit],
+    [applyScrollPosition],
   );
-
-  // When the user releases the drag or momentum scroll ends, snap to
-  // the desired state immediately — no point waiting another 120ms when
-  // we already know they've stopped moving.
-  const onScrollSettled = useCallback(() => {
-    desiredRef.current = computeDesired(lastScrollYRef.current);
-    commitDesired();
-  }, [computeDesired, commitDesired]);
 
   const onScrollBeginDrag = useCallback(() => {
     // Touching the feed counts as the user opting in to audio.
@@ -363,9 +321,8 @@ export default function DiscoverScreen() {
   const [layoutTick, setLayoutTick] = useState(0);
   useEffect(() => {
     if (listHeight <= 0) return;
-    desiredRef.current = computeDesired(lastScrollYRef.current);
-    scheduleCommit();
-  }, [computeDesired, listHeight, layoutTick, scheduleCommit]);
+    applyScrollPosition(lastScrollYRef.current);
+  }, [applyScrollPosition, listHeight, layoutTick]);
 
   const onCardLayout = useCallback((id: string, e: LayoutChangeEvent) => {
     const { y, height } = e.nativeEvent.layout;
@@ -415,13 +372,26 @@ export default function DiscoverScreen() {
   // Drive the singleton audio player from the resolved current clip +
   // focus. Note: playClip itself silently no-ops until the user has
   // interacted at least once, so this effect is safe to fire on mount.
+  //
+  // The actual playClip() is debounced ~80ms. Visual state updates
+  // every scroll frame, but we don't want to thrash the audio system
+  // by reloading a new MP3 every time the highlight crosses a card —
+  // a fast scroll through five cards would otherwise queue five
+  // network fetches and audibly stutter. The cleanup cancels the
+  // pending timer, so when the user lands on a stable card only that
+  // card's clip actually loads. Pause is immediate (no debounce
+  // needed when there's nothing to play).
   useEffect(() => {
     if (!focused) return;
     if (!current) {
       void pause();
       return;
     }
-    void playClip(current.clip.url);
+    const url = current.clip.url;
+    const timer = setTimeout(() => {
+      void playClip(url);
+    }, 80);
+    return () => clearTimeout(timer);
   }, [current, focused]);
 
   // Cold-start kick: the very first interaction (a mute toggle, a card
@@ -551,9 +521,7 @@ export default function DiscoverScreen() {
         showsVerticalScrollIndicator={false}
         onScroll={onScroll}
         onScrollBeginDrag={onScrollBeginDrag}
-        onScrollEndDrag={onScrollSettled}
-        onMomentumScrollEnd={onScrollSettled}
-        scrollEventThrottle={32}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
