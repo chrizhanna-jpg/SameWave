@@ -101,9 +101,14 @@ export default function DiscoverScreen() {
   // Discover feed is the user's "did I miss anyone like me?" surface.
   const excludeKeys = useMemo(() => new Set(seenPhotoKeys), [seenPhotoKeys]);
 
-  // Auto-rotate the feed every 60s so it visibly stays alive.
+  // Auto-rotate the feed every 60s so it visibly stays alive — but
+  // ONLY when the user is parked at the top of the feed. Re-shuffling
+  // the items array mid-scroll re-renders the FlatList with different
+  // cards at the same scroll offset, which feels like the page jumped
+  // and the photo the user was looking at vanished.
   useEffect(() => {
     const id = setInterval(() => {
+      if (lastScrollYRef.current > 0) return;
       setWindowKey(Date.now().toString());
     }, 60_000);
     return () => clearInterval(id);
