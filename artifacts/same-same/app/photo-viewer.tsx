@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
-import { markUserInteracted, pause, playClip } from "@/utils/audio";
+import { getActiveUrl, markUserInteracted, pause, playClip } from "@/utils/audio";
 
 export default function PhotoViewer() {
   const colors = useColors();
@@ -43,11 +43,21 @@ export default function PhotoViewer() {
   // Tapping a photo IS the user gesture — open the audio gate (no-op if
   // already open) and push the new clip through the singleton player.
   // audio.ts handles the swap: same URL = resume, different URL = stop
-  // the prior clip and load this one. On unmount we pause so the brief
-  // silent gap is bridged by Discover's own resume-on-focus effect.
+  // the prior clip and load this one.
+  //
+  // If the tapped photo is the one already playing (the green-outlined
+  // active card on Discover), we leave the singleton player alone
+  // entirely — no playClip call (which would no-op anyway) and no
+  // pause() on unmount. That keeps the music seamlessly playing as the
+  // user opens and closes the fullscreen view. Only when the tapped
+  // photo is a DIFFERENT clip do we start it on mount and pause on
+  // dismiss; Discover's resume-on-focus effect bridges the silent gap.
   useEffect(() => {
     markUserInteracted();
-    if (clipUrl) void playClip(clipUrl);
+    if (!clipUrl) return;
+    const wasAlreadyPlaying = getActiveUrl() === clipUrl;
+    if (wasAlreadyPlaying) return;
+    void playClip(clipUrl);
     return () => {
       void pause();
     };

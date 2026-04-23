@@ -37,6 +37,10 @@ export function markUserInteracted(): void {
 export function hasUserInteracted(): boolean {
   return userInteracted;
 }
+/** URL of the clip currently loaded in the singleton player, if any. */
+export function getActiveUrl(): string | null {
+  return activeUrl;
+}
 /** Subscribe once: callback fires the first time the user interacts. */
 export function onUserInteracted(cb: () => void): () => void {
   if (userInteracted) {
