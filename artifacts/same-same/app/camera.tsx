@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   Image,
@@ -10,8 +10,9 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
+import { consumePendingCapture } from "@/utils/captureBus";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
 import { LoadingGlobe } from "@/components/LoadingGlobe";
@@ -224,25 +225,44 @@ export default function CameraScreen() {
 
   const takePhoto = async () => {
     if (Platform.OS === "web") {
+      // Web doesn't get the in-app camera (no expo-camera support);
+      // fall back to the system file picker, which on browsers offers
+      // both library and webcam capture.
       pickFromLibrary();
       return;
     }
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert("Permission needed", "Please allow access to your camera.");
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({
-      quality: 0.8,
-      allowsEditing: true,
-      aspect: [1, 1],
-      base64: true,
-      exif: true,
-    });
-    if (!result.canceled && result.assets[0]) {
-      acceptPhoto(result.assets[0], "camera");
-    }
+    // Open the in-app square-viewfinder camera. It pushes the captured
+    // photo onto the captureBus and pops back; useFocusEffect below
+    // picks it up the next time this screen regains focus.
+    router.push("/in-camera");
   };
+
+  // Drain anything the in-app camera left for us when we regain focus
+  // (i.e. after /in-camera pops back). We synthesise a minimal
+  // ImagePicker-shaped asset so the existing acceptPhoto pipeline
+  // (origin detection, AI heuristics, analysis) still applies — the
+  // photo went through our own camera so it can never be AI-generated,
+  // but the rest of the flow is identical to the library path.
+  useFocusEffect(
+    useCallback(() => {
+      const cap = consumePendingCapture();
+      if (!cap) return;
+      const asset: ImagePicker.ImagePickerAsset = {
+        uri: cap.uri,
+        base64: cap.base64,
+        mimeType: cap.mimeType,
+        width: 0,
+        height: 0,
+        type: "image",
+        fileName: null,
+        fileSize: undefined,
+        exif: null,
+        assetId: null,
+        duration: null,
+      } as unknown as ImagePicker.ImagePickerAsset;
+      acceptPhoto(asset, "camera");
+    }, []),
+  );
 
   const analyzeSelected = (asset: ImagePicker.ImagePickerAsset) => {
     const reqId = ++analyzeReqIdRef.current;

@@ -55,6 +55,12 @@
         }
       ],
       [
+        "expo-camera",
+        {
+          "cameraPermission": "Echo needs your camera so you can take a photo of today."
+        }
+      ],
+      [
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "Echo uses your country (not precise location) to celebrate matches with people nearby."
