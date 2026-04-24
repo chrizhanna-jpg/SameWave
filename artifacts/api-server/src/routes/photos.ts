@@ -73,8 +73,10 @@ router.post("/photos", async (req, res) => {
     // receiving side).
     const ALLOWED_MUSIC_GENRES = new Set([
       "joy",
+      "overjoyed",
       "elated",
       "amusement",
+      "cheers",
       "love",
       "romance",
       "gratitude",
@@ -82,9 +84,11 @@ router.post("/photos", async (req, res) => {
       "hope",
       "wonder",
       "calm",
+      "content",
       "nostalgia",
       "longing",
       "sad",
+      "heartbroken",
       "lonely",
       "grief",
       "fear",

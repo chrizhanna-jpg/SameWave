@@ -29,6 +29,7 @@ export type MusicGenre =
   | "overjoyed"
   | "elated"
   | "amusement"
+  | "cheers"
   | "love"
   | "romance"
   | "gratitude"
@@ -182,6 +183,26 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
       { id: "amusement-2", label: "Bounce", url: T.fluffingDuck },
       { id: "amusement-3", label: "Snort", url: T.monkeysSpinning },
       { id: "amusement-4", label: "Wobble", url: T.investigations },
+    ],
+  },
+  {
+    // "Cheers" — the toast vibe. Drinks raised, tablefuls of friends,
+    // brunch mimosas, after-work pints, the warm clink moment. The
+    // music register is jazzy / convivial / cocktail-bar — close
+    // cousins to amusement and love but with a social-occasion
+    // bounce that neither of them quite has on their own. Tracks are
+    // hand-picked reuses from the existing pool: Hep Cats for the
+    // cocktail-bar swing, Beach Party / Life of Riley for the easy-
+    // good-time bounce, Easy Lemon for the warm shared-table feel.
+    id: "cheers",
+    label: "Cheers",
+    emoji: "🥂",
+    vibe: "to good times — clink, smile, share the table",
+    clips: [
+      { id: "cheers-1", label: "Clink", url: T.hepCats },
+      { id: "cheers-2", label: "First Round", url: T.beachParty },
+      { id: "cheers-3", label: "Good Life", url: T.lifeOfRiley },
+      { id: "cheers-4", label: "Long Table", url: T.easyLemon },
     ],
   },
   {
@@ -428,6 +449,7 @@ const VIBE_KEYWORDS: Record<MusicGenre, string[]> = {
   overjoyed: ["overjoyed", "ecstatic", "thrilled", "screaming", "jumping", "best day", "happy tears", "engaged", "newborn", "yes", "passed", "got in"],
   elated: ["summit", "win", "finish", "podium", "medal", "graduation", "first", "achievement", "top", "peak"],
   amusement: ["silly", "funny", "joke", "prank", "goofy", "meme", "weird", "quirky", "lol", "absurd"],
+  cheers: ["cheers", "toast", "drink", "drinks", "cocktail", "cocktails", "beer", "beers", "wine", "champagne", "prosecco", "mimosa", "margarita", "martini", "whiskey", "whisky", "bourbon", "gin", "vodka", "rum", "tequila", "sangria", "spritz", "aperol", "negroni", "highball", "lowball", "pint", "pints", "glass", "glasses", "clink", "happy hour", "brunch", "bar", "pub", "tavern", "bistro", "patio", "rooftop", "nightcap", "round", "bartender", "sommelier", "cork", "uncorked", "pour", "bottle", "tumbler", "stein", "tap", "draft", "cellar"],
   love: ["pet", "hug", "family", "baby", "anniversary", "warm", "soft", "snuggle", "puppy", "kitten"],
   romance: ["kiss", "couple", "wedding", "date", "candle", "flower", "rose", "honeymoon", "proposal"],
   gratitude: ["thank", "blessed", "lucky", "given", "gift", "kindness", "support", "homemade", "grandma"],
@@ -492,6 +514,17 @@ const THEME_HINTS: Record<string, MusicGenre> = {
   concert: "passion",
   silly: "amusement",
   funny: "amusement",
+  drink: "cheers",
+  drinks: "cheers",
+  cocktail: "cheers",
+  beer: "cheers",
+  wine: "cheers",
+  champagne: "cheers",
+  toast: "cheers",
+  cheers: "cheers",
+  brunch: "cheers",
+  bar: "cheers",
+  pub: "cheers",
   thanks: "gratitude",
   homemade: "gratitude",
   window: "longing",
