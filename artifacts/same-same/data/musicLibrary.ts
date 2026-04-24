@@ -36,6 +36,7 @@ export type MusicGenre =
   | "hope"
   | "wonder"
   | "calm"
+  | "content"
   | "nostalgia"
   | "longing"
   | "sad"
@@ -268,6 +269,18 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
     ],
   },
   {
+    id: "content",
+    label: "Content",
+    emoji: "😌",
+    vibe: "settled, full cup, this is enough",
+    clips: [
+      { id: "content-1", label: "Slow Smile", url: T.easyLemon },
+      { id: "content-2", label: "Soft Couch", url: T.wallpaper },
+      { id: "content-3", label: "Window Seat", url: T.brittleRille },
+      { id: "content-4", label: "Warm Mug", url: T.springThaw },
+    ],
+  },
+  {
     id: "nostalgia",
     label: "Nostalgic",
     emoji: "📷",
@@ -422,6 +435,7 @@ const VIBE_KEYWORDS: Record<MusicGenre, string[]> = {
   hope: ["dawn", "sunrise", "new", "fresh", "begin", "start", "spring", "tomorrow", "future", "seedling"],
   wonder: ["sunset", "stars", "aurora", "view", "vista", "skyline", "canyon", "ocean", "northern", "magical", "rainbow"],
   calm: ["coffee", "morning", "rain", "book", "tea", "garden", "quiet", "porch", "sunday", "still", "lake"],
+  content: ["content", "satisfied", "settled", "cozy", "comfy", "couch", "blanket", "fireplace", "full", "happy enough", "peaceful smile", "at ease", "relaxed", "good day", "simple", "homey"],
   nostalgia: ["old", "vintage", "retro", "polaroid", "childhood", "school", "throwback", "hometown", "grandparent", "attic"],
   longing: ["window", "distant", "far", "missing", "wishing", "absent", "without", "across", "moon", "horizon"],
   sad: ["empty", "rainy", "grey", "ending", "goodbye", "memorial", "tear", "departed"],
