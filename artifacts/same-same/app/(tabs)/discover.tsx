@@ -43,6 +43,7 @@ import {
   onMuteChange,
   onUserInteracted,
   pause,
+  pauseIfLease,
   playClip,
   setMuted,
 } from "@/utils/audio";
@@ -489,6 +490,13 @@ export default function DiscoverScreen() {
   // Pause whenever the tab loses focus; resume the active card on
   // re-focus. Without this, music keeps playing after the user
   // switches to Match or Profile.
+  // Lease handed back by the audio singleton for the most recent
+  // clip THIS screen started. The unfocus cleanup uses it with
+  // pauseIfLease() so we only pause audio we actually own — if the
+  // user tabbed away to a screen that has already started its own
+  // playback, our blur cleanup must NOT race-pause that fresh clip.
+  const playLeaseRef = useRef<number>(0);
+
   useFocusEffect(
     useCallback(() => {
       setFocused(true);
@@ -500,7 +508,7 @@ export default function DiscoverScreen() {
       markTabVisited("discover");
       return () => {
         setFocused(false);
-        void pause();
+        void pauseIfLease(playLeaseRef.current);
       };
     }, []),
   );
@@ -540,7 +548,7 @@ export default function DiscoverScreen() {
       void pause();
       return;
     }
-    void playClip(current.clip.url);
+    playLeaseRef.current = playClip(current.clip.url);
   }, [current, focused]);
 
   // Cold-start kick: the very first interaction (a mute toggle, a card
@@ -558,7 +566,10 @@ export default function DiscoverScreen() {
   useEffect(() => {
     return onUserInteracted(() => {
       const c = currentRef.current;
-      if (c) void playClip(c.clip.url);
+      // Capture the lease here too — without this, the focus blur
+      // cleanup's pauseIfLease() would no-op against a stale lease
+      // and Discover's audio would keep playing after a tab switch.
+      if (c) playLeaseRef.current = playClip(c.clip.url);
     });
   }, []);
 

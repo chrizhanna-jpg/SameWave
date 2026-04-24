@@ -15,6 +15,13 @@ let activeSound: Audio.Sound | null = null;
 let activeUrl: string | null = null;
 // Tracks the most recent play() request so a slow load for an old clip
 // can't clobber a newer one that the user has already moved on to.
+// `playToken` doubles as the "lease" handed back to callers of
+// playClip(): each call gets a unique number, and screens use that
+// number with stopIfLease()/pauseIfLease() so an unmount cleanup
+// only kills audio that THIS call started — never another screen's
+// freshly-started playback. (URL-based ownership isn't enough: the
+// clip pool is small, two screens can pick the same URL, and an old
+// screen's cleanup would wrongly stop the new screen's audio.)
 let playToken = 0;
 let muted = false;
 const muteListeners = new Set<(m: boolean) => void>();
@@ -76,9 +83,15 @@ function audioModeReady() {
 function ensureAppStateHook() {
   if (appStateSub) return;
   appStateSub = AppState.addEventListener("change", (s: AppStateStatus) => {
-    if (s !== "active") {
-      // Backgrounded / inactive — pause whatever's playing. We don't
-      // resume on return; the next photo will trigger play on its own.
+    // Only pause when the app is fully backgrounded. iOS fires
+    // "inactive" extremely often for transient events — Control Centre
+    // pulls, banner notifications, the brief moment a screen-push
+    // animates, even some keyboard transitions — and treating those as
+    // "stop the music" symptoms exactly like the bug we keep getting
+    // reported: a clip plays for a second and then dies, with no way
+    // to come back since nothing re-triggers playback. "background" is
+    // the only state that genuinely means "the user has left the app".
+    if (s === "background") {
       void pause();
     }
   });
@@ -95,22 +108,43 @@ async function unloadActive() {
 }
 
 /**
- * Play (or restart) the given clip URL on loop. If the same URL is
- * already loaded we just resume — no reload jank between two cards
- * sharing the same clip. Honors the global mute flag.
+ * Play (or restart) the given clip URL on loop, returning a `lease`
+ * number the caller should stash and pass to `stopIfLease()` /
+ * `pauseIfLease()` on unmount. The lease is unique per call: if any
+ * later `playClip()` runs (anywhere in the app), the prior lease is
+ * silently invalidated and cleanup using it becomes a no-op. This is
+ * how we prevent a stale screen's unmount cleanup from killing the
+ * next screen's freshly-started audio.
+ *
+ * Returns 0 when the call no-ops (no URL, cold-start gate still
+ * closed). Callers can store 0 safely — the *IfLease helpers ignore
+ * 0 leases.
+ *
+ * If the same URL is already loaded we just resume — no reload jank
+ * between two cards sharing the same clip. Honors the global mute flag.
  */
-export async function playClip(url: string | undefined | null): Promise<void> {
+export function playClip(url: string | undefined | null): number {
   if (!url) {
-    await pause();
-    return;
+    void pause();
+    return 0;
   }
   // Cold-start gate: silently no-op until the user has actually
   // interacted. This prevents a freshly-launched app from blasting
   // music before the user even sees the first frame.
-  if (!userInteracted) return;
+  if (!userInteracted) return 0;
   ensureAppStateHook();
+  // Bump the token SYNCHRONOUSLY so the returned lease matches the
+  // one this call's async work will check against — and so any older
+  // in-flight load is invalidated immediately, even if `audioModeReady`
+  // hasn't resolved yet.
+  const lease = ++playToken;
+  void _doPlay(url, lease);
+  return lease;
+}
+
+async function _doPlay(url: string, lease: number): Promise<void> {
   await audioModeReady();
-  const token = ++playToken;
+  if (lease !== playToken) return;
 
   // Same URL already loaded — just make sure it's playing (or muted).
   if (activeSound && activeUrl === url) {
@@ -126,14 +160,14 @@ export async function playClip(url: string | undefined | null): Promise<void> {
 
   // Tear down whatever's currently playing before loading the new clip.
   await unloadActive();
-  if (token !== playToken) return; // user moved on while we were tearing down
+  if (lease !== playToken) return; // user moved on while we were tearing down
 
   try {
     const { sound } = await Audio.Sound.createAsync(
       { uri: url },
       { shouldPlay: !muted, isLooping: true, volume: 0.55 },
     );
-    if (token !== playToken) {
+    if (lease !== playToken) {
       // A newer play() landed while we were loading — discard.
       try { await sound.unloadAsync(); } catch {}
       return;
@@ -167,6 +201,33 @@ export async function pause(): Promise<void> {
 export async function stop(): Promise<void> {
   playToken++; // invalidate any in-flight loads
   await unloadActive();
+}
+
+/**
+ * Stop the active clip ONLY if `lease` is still the current lease.
+ *
+ * Pass the lease returned by your screen's most recent `playClip()`
+ * call. If any other code (another screen, a vibe-swap on the same
+ * screen) has called playClip since, your lease is stale and this
+ * is a no-op — so you can't accidentally kill audio another owner
+ * just started. This is what lets us safely clean up on unmount in
+ * a router that mounts/unmounts screens in racing orders.
+ */
+export async function stopIfLease(lease: number): Promise<void> {
+  if (!lease) return;
+  if (lease !== playToken) return;
+  await stop();
+}
+
+/**
+ * Pause the active clip ONLY if `lease` is still the current lease.
+ * Same ownership contract as `stopIfLease`: a stale lease no-ops
+ * instead of pausing audio that some other screen now owns.
+ */
+export async function pauseIfLease(lease: number): Promise<void> {
+  if (!lease) return;
+  if (lease !== playToken) return;
+  await pause();
 }
 
 /** Toggle the global mute flag. Affects the active clip immediately. */

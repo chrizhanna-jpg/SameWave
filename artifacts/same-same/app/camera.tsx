@@ -31,7 +31,12 @@ import {
   suggestGenre,
   type MusicGenre,
 } from "@/data/musicLibrary";
-import { markUserInteracted, playClip, stop as stopAudio } from "@/utils/audio";
+import {
+  markUserInteracted,
+  playClip,
+  stop as stopAudio,
+  stopIfLease,
+} from "@/utils/audio";
 
 const MAX_TAGS = 4;
 const QUICK_THEMES = [
@@ -102,6 +107,13 @@ export default function CameraScreen() {
   const genreEditedRef = useRef(false);
   const musicGenreRef = useRef<MusicGenre | null>(null);
   musicGenreRef.current = musicGenre;
+  // Lease handed back by the audio singleton for the most recent
+  // preview clip THIS screen started. The unmount cleanup uses it
+  // with stopIfLease() so we only stop audio we actually own — if a
+  // newer playClip from a different screen has run since (e.g. the
+  // user navigated away and the next screen began its own clip),
+  // our lease is stale and the cleanup is a safe no-op.
+  const playLeaseRef = useRef<number>(0);
 
   const toggleTag = (id: string) => {
     setSelectedTags((prev) => {
@@ -202,9 +214,14 @@ export default function CameraScreen() {
   }, [aiTheme, aiTags, themeText, selectedPhoto]);
 
   // Tear down audio when leaving the screen entirely (back nav, etc).
+  // stopIfLease is critical here — if the user has already started
+  // navigating to a tab whose audio effect has fired and called
+  // playClip, a blanket stopAudio() would race-kill that brand-new
+  // playback. We only stop the singleton if our last lease is still
+  // the active one (i.e. nobody else has called playClip since).
   useEffect(() => {
     return () => {
-      void stopAudio();
+      void stopIfLease(playLeaseRef.current);
     };
   }, []);
 
@@ -220,7 +237,7 @@ export default function CameraScreen() {
     // photo→genre combo always picks the same clip.
     const seed = selectedPhoto ?? "preview";
     const clip = pickClipForSeed(g, seed);
-    void playClip(clip.url);
+    playLeaseRef.current = playClip(clip.url);
   };
 
   const takePhoto = async () => {

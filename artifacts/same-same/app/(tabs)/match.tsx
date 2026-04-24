@@ -49,7 +49,7 @@ import {
   pause as pauseAudio,
   playClip,
   setMuted as setAudioMuted,
-  stop as stopAudio,
+  stopIfLease,
 } from "@/utils/audio";
 import { sampleMatchStats } from "@/utils/sampleStats";
 import { flagFor, nameFor } from "@/data/countries";
@@ -510,6 +510,11 @@ export default function SwipeScreen() {
   useEffect(() => {
     return onMuteChange(setMutedState);
   }, []);
+  // Lease handed back by the audio singleton for the most recent
+  // clip THIS screen started. The unmount cleanup uses it with
+  // stopIfLease() so we only stop audio we actually own — never
+  // another screen's freshly-started playback.
+  const playLeaseRef = useRef<number>(0);
   useEffect(() => {
     if (!theirPhoto?.uri) return;
     // Don't play over the placeholder card (which is just the user's
@@ -532,14 +537,17 @@ export default function SwipeScreen() {
     const genre: MusicGenre = (stored && getGenre(stored)?.id) ||
       suggestGenre(theirPhoto.theme, theirPhoto.tags);
     const clip = pickClipForSeed(genre, theirPhoto.uri);
-    void playClip(clip.url);
+    playLeaseRef.current = playClip(clip.url);
   }, [theirPhoto.uri, theirPhoto.id, theirPhoto.musicGenre, theirPhoto.theme, noMore, fullscreenUri]);
 
-  // Stop audio entirely when the screen unmounts (tab switch, navigation
-  // away). pauseAudio handles app backgrounding internally via AppState.
+  // Stop audio when the screen unmounts (tab switch, navigation
+  // away) — but ONLY if our last lease is still the active one. A
+  // blanket stop() would race the next screen's playback (it might
+  // even pick the same clip URL from the small pool) and produce
+  // the "blip then silence" bug.
   useEffect(() => {
     return () => {
-      void stopAudio();
+      void stopIfLease(playLeaseRef.current);
     };
   }, []);
 

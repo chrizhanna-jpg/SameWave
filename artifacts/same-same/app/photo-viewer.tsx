@@ -18,7 +18,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
-import { getActiveUrl, markUserInteracted, pause, playClip } from "@/utils/audio";
+import {
+  getActiveUrl,
+  markUserInteracted,
+  pauseIfLease,
+  playClip,
+} from "@/utils/audio";
 
 export default function PhotoViewer() {
   const colors = useColors();
@@ -61,10 +66,14 @@ export default function PhotoViewer() {
     markUserInteracted();
     if (!clipUrl) return;
     const wasAlreadyPlaying = getActiveUrl() === clipUrl;
-    void playClip(clipUrl);
+    const lease = playClip(clipUrl);
     if (wasAlreadyPlaying) return;
     return () => {
-      void pause();
+      // Pause only if our lease is still the current owner. If a
+      // different screen has since started its own clip (the user
+      // navigated, then quickly closed the viewer), our cleanup
+      // would otherwise race-pause that fresh playback.
+      void pauseIfLease(lease);
     };
   }, [clipUrl]);
 
