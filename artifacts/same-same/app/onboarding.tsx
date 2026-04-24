@@ -37,7 +37,7 @@ const STEPS = [
     kind: "intro" as const,
     title: "Echo back.",
     subtitle: "Make it mutual.",
-    body: "Swipe 'Same Same' on photos that match your vibe. When a stranger Same-Sames you back — that's an Echo. Anonymous. Just countries.",
+    body: "Swipe 'Same Same' on photos that match your vibe. When a stranger Same-Sames you back — that's an Echo. Anonymous.",
   },
   {
     kind: "country" as const,
