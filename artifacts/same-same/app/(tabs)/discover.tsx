@@ -650,6 +650,8 @@ export default function DiscoverScreen() {
             }}
             haptic="selection"
             scaleTo={0.92}
+            hitSlop={10}
+            accessibilityRole="button"
             accessibilityLabel={muted ? "Unmute vibe clips" : "Mute vibe clips"}
             style={[
               styles.muteBtn,
