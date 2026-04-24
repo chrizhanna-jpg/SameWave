@@ -29,25 +29,13 @@ const STEPS = [
     kind: "intro" as const,
     title: null,
     subtitle: null,
-    body: "Every human is unique. But right now — somewhere across the world — someone is doing the same thing as you, photographing the same kind of moment, feeling the same way. Echo finds them.",
-  },
-  {
-    kind: "intro" as const,
-    title: "Swipe to echo.",
-    subtitle: "Then discover.",
-    body: "Same situation? Same activity? Same feeling? You call it. Tap 'Same Same' or 'Different', then we reveal where in the world that moment was captured.",
-  },
-  {
-    kind: "intro" as const,
-    title: "Same same,",
-    subtitle: "a connected vibe.",
-    body: "We're not identical — we're similar. Fill your world map with strangers who share your moments and tune into the same vibe, anywhere on earth.",
+    body: "Share a photo with a vibe. Somewhere in the world, someone is feeling the exact same way.",
   },
   {
     kind: "intro" as const,
     title: "Echo back.",
     subtitle: "Make it mutual.",
-    body: "When a stranger says 'Same Same' to one of your photos, it lands in your Echoes inbox. Tap back to confirm the vibe — when you both echo, the moment goes mutual and joins your shared map. Stay anonymous: only countries, never names.",
+    body: "Swipe 'Same Same' on photos that match your vibe. When a stranger Same-Sames you back — that's an Echo. Anonymous. Just countries.",
   },
   {
     kind: "country" as const,
