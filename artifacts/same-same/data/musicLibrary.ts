@@ -36,6 +36,7 @@ export type MusicGenre =
   | "pride"
   | "hope"
   | "wonder"
+  | "fascinated"
   | "calm"
   | "content"
   | "nostalgia"
@@ -278,6 +279,27 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
     ],
   },
   {
+    // "Fascinated" — the hobby/curiosity register. Distinct from
+    // wonder (which is awe at vastness — sunsets, aurora) and from
+    // amusement (which is comedic). This is the "deep into it" feel:
+    // cataloguing a vinyl collection, tinkering with a watch
+    // movement, identifying mushrooms, getting lost in a museum
+    // exhibit. Music is the curious / playful-investigative register
+    // — Investigations and Sneaky Snitch read as "looking into it",
+    // Marty Gots A Plan reads as "concocting / tinkering", Hep Cats
+    // gives the absorbed-rabbit-hole bounce.
+    id: "fascinated",
+    label: "Fascinated",
+    emoji: "🤓",
+    vibe: "deep into it — curious, tinkering, can't put this down",
+    clips: [
+      { id: "fascinated-1", label: "Looking In", url: T.investigations },
+      { id: "fascinated-2", label: "Rabbit Hole", url: T.sneakySnitch },
+      { id: "fascinated-3", label: "Tinker", url: T.martyGotsAPlan },
+      { id: "fascinated-4", label: "Deep Dive", url: T.hepCats },
+    ],
+  },
+  {
     id: "calm",
     label: "Calm",
     emoji: "🌿",
@@ -456,6 +478,7 @@ const VIBE_KEYWORDS: Record<MusicGenre, string[]> = {
   pride: ["accomplish", "earned", "built", "made", "promotion", "award", "trophy", "diploma", "first place"],
   hope: ["dawn", "sunrise", "new", "fresh", "begin", "start", "spring", "tomorrow", "future", "seedling"],
   wonder: ["sunset", "stars", "aurora", "view", "vista", "skyline", "canyon", "ocean", "northern", "magical", "rainbow"],
+  fascinated: ["fascinated", "fascinating", "interesting", "curious", "intrigued", "intriguing", "absorbed", "obsessed", "hobby", "hobbies", "collection", "collector", "collecting", "tinker", "tinkering", "craft", "crafting", "project", "workshop", "workbench", "gadget", "gear", "setup", "rig", "mechanism", "movement", "vinyl", "records", "rare", "specimen", "specimens", "study", "studying", "research", "museum", "exhibit", "exhibition", "gallery", "archive", "library", "model", "kit", "lego", "puzzle", "chess", "knit", "knitting", "crochet", "pottery", "ceramics", "woodwork", "woodworking", "soldering", "electronics", "circuit", "telescope", "microscope", "fossil", "mineral", "crystal", "terrarium", "aquarium", "mushroom", "foraging", "birding", "birder", "watch", "watches", "horology", "mechanical", "keyboard", "synthesizer", "synth", "camera gear", "lens", "stamp", "coin", "miniature", "miniatures", "diorama", "tabletop", "rpg", "trading card", "deck"],
   calm: ["coffee", "morning", "rain", "book", "tea", "garden", "quiet", "porch", "sunday", "still", "lake"],
   content: ["content", "satisfied", "settled", "cozy", "comfy", "couch", "blanket", "fireplace", "full", "happy enough", "peaceful smile", "at ease", "relaxed", "good day", "simple", "homey"],
   nostalgia: ["old", "vintage", "retro", "polaroid", "childhood", "school", "throwback", "hometown", "grandparent", "attic"],
@@ -525,6 +548,20 @@ const THEME_HINTS: Record<string, MusicGenre> = {
   brunch: "cheers",
   bar: "cheers",
   pub: "cheers",
+  hobby: "fascinated",
+  collection: "fascinated",
+  museum: "fascinated",
+  workshop: "fascinated",
+  puzzle: "fascinated",
+  chess: "fascinated",
+  vinyl: "fascinated",
+  telescope: "fascinated",
+  microscope: "fascinated",
+  terrarium: "fascinated",
+  aquarium: "fascinated",
+  lego: "fascinated",
+  pottery: "fascinated",
+  knitting: "fascinated",
   thanks: "gratitude",
   homemade: "gratitude",
   window: "longing",

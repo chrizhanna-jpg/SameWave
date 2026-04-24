@@ -83,6 +83,7 @@ router.post("/photos", async (req, res) => {
       "pride",
       "hope",
       "wonder",
+      "fascinated",
       "calm",
       "content",
       "nostalgia",
