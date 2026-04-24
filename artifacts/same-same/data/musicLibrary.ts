@@ -31,6 +31,7 @@ export type MusicGenre =
   | "amusement"
   | "cheers"
   | "love"
+  | "caring"
   | "romance"
   | "gratitude"
   | "pride"
@@ -216,6 +217,25 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
       { id: "love-2", label: "Hearth", url: T.constance },
       { id: "love-3", label: "Lullaby", url: T.healing },
       { id: "love-4", label: "Quiet Hour", url: T.dreamer },
+    ],
+  },
+  {
+    // "Caring" — the *act* of looking after someone, distinct from
+    // love (the inward feeling). Bringing soup to a sick friend,
+    // brushing a kid's hair, sitting at a parent's bedside, watering
+    // someone else's plants while they're away. Music is devotional /
+    // tending — Healing for mending, Constance ("steadfast") for
+    // faithful presence, Brittle Rille for slow gentle attention,
+    // Local Forecast for the quiet "I'm here" comfort.
+    id: "caring",
+    label: "Caring",
+    emoji: "🫶",
+    vibe: "looking after — soft hands, gentle attention, tending close",
+    clips: [
+      { id: "caring-1", label: "Mending", url: T.healing },
+      { id: "caring-2", label: "Steadfast", url: T.constance },
+      { id: "caring-3", label: "Soft Tend", url: T.brittleRille },
+      { id: "caring-4", label: "I'm Here", url: T.localForecast },
     ],
   },
   {
@@ -473,6 +493,7 @@ const VIBE_KEYWORDS: Record<MusicGenre, string[]> = {
   amusement: ["silly", "funny", "joke", "prank", "goofy", "meme", "weird", "quirky", "lol", "absurd"],
   cheers: ["cheers", "toast", "drink", "drinks", "cocktail", "cocktails", "beer", "beers", "wine", "champagne", "prosecco", "mimosa", "margarita", "martini", "whiskey", "whisky", "bourbon", "gin", "vodka", "rum", "tequila", "sangria", "spritz", "aperol", "negroni", "highball", "lowball", "pint", "pints", "glass", "glasses", "clink", "happy hour", "brunch", "bar", "pub", "tavern", "bistro", "patio", "rooftop", "nightcap", "round", "bartender", "sommelier", "cork", "uncorked", "pour", "bottle", "tumbler", "stein", "tap", "draft", "cellar"],
   love: ["pet", "hug", "family", "baby", "anniversary", "warm", "soft", "snuggle", "puppy", "kitten"],
+  caring: ["care", "caring", "tend", "tending", "nurse", "nursing", "comfort", "comforting", "soothe", "soothing", "lullaby", "bedside", "nurture", "nurturing", "look after", "looking after", "sick", "illness", "ill", "unwell", "recovering", "recovery", "hospital", "clinic", "bandage", "bandaid", "medicine", "soup", "broth", "elderly", "ageing", "aging", "caregiver", "caregiving", "carer", "tucked in", "swaddle", "swaddling", "watering plants", "feeding", "rocking", "soothing voice", "stroking", "patting", "wiping", "cleaning up", "checking on", "wellness check", "supporting", "looking out for"],
   romance: ["kiss", "couple", "wedding", "date", "candle", "flower", "rose", "honeymoon", "proposal"],
   gratitude: ["thank", "blessed", "lucky", "given", "gift", "kindness", "support", "homemade", "grandma"],
   pride: ["accomplish", "earned", "built", "made", "promotion", "award", "trophy", "diploma", "first place"],
@@ -562,6 +583,15 @@ const THEME_HINTS: Record<string, MusicGenre> = {
   lego: "fascinated",
   pottery: "fascinated",
   knitting: "fascinated",
+  care: "caring",
+  caring: "caring",
+  nurse: "caring",
+  hospital: "caring",
+  sick: "caring",
+  soup: "caring",
+  lullaby: "caring",
+  bedside: "caring",
+  caregiver: "caring",
   thanks: "gratitude",
   homemade: "gratitude",
   window: "longing",

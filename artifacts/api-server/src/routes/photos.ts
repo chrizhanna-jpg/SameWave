@@ -78,6 +78,7 @@ router.post("/photos", async (req, res) => {
       "amusement",
       "cheers",
       "love",
+      "caring",
       "romance",
       "gratitude",
       "pride",
