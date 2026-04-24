@@ -15,10 +15,48 @@ import { onAllTabsVisited } from "@/utils/tabVisits";
 import { detectCountryFromGPS } from "@/utils/gpsCountry";
 import { flagFor, nameFor } from "@/data/countries";
 
-// Only run the soft GPS sanity check in production / published builds.
-// In dev / Expo Go we don't want a permission prompt or alert popping
-// up while iterating on other features.
 const RUN_GPS_CHECK = !__DEV__;
+
+function TabIcon({
+  name,
+  color,
+  focused,
+  activeColor,
+}: {
+  name: string;
+  color: string;
+  focused: boolean;
+  activeColor: string;
+}) {
+  return (
+    <View style={tabIconStyles.wrap}>
+      <View
+        style={[
+          tabIconStyles.dot,
+          {
+            backgroundColor: focused ? activeColor : "transparent",
+          },
+        ]}
+      />
+      <Icon name={name as never} size={focused ? 24 : 22} color={color} />
+    </View>
+  );
+}
+
+const tabIconStyles = StyleSheet.create({
+  wrap: {
+    alignItems: "center",
+    justifyContent: "flex-start",
+    width: 44,
+    paddingTop: 2,
+  },
+  dot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    marginBottom: 4,
+  },
+});
 
 export default function TabLayout() {
   const colors = useColors();
@@ -27,9 +65,6 @@ export default function TabLayout() {
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
   const isAndroid = Platform.OS === "android";
-  // Unread echo count drives a small badge on the My World tab so the
-  // "someone connected with your photo" signal is visible from any tab,
-  // not just when the user is already on the My Journey screen.
   const {
     unreadEchoes,
     myCountryCode,
@@ -38,14 +73,6 @@ export default function TabLayout() {
     setMyCountry,
   } = useApp();
 
-  // Soft GPS sanity check: once the user has explored every tab at
-  // least once, silently take a coarse GPS fix and reverse-geocode it
-  // to a country. If the device thinks they're somewhere different from
-  // the country they picked at onboarding, show a one-tap "Use detected
-  // / Keep my pick" alert. Travellers, expats, dual citizens etc. can
-  // override with a single tap. Deferring this until after they've
-  // poked around all the tabs means the ~10s GPS fix never blocks the
-  // first-impression part of the app.
   const gpsRanRef = useRef(false);
   useEffect(() => {
     if (!RUN_GPS_CHECK) return;
@@ -94,27 +121,47 @@ export default function TabLayout() {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.mutedForeground,
         headerShown: false,
+        tabBarShowLabel: true,
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontFamily: "Inter_600SemiBold",
+          marginTop: 2,
+          letterSpacing: 0.2,
+        },
         tabBarStyle: {
-          // Only float over content on iOS (blur) and web; Android uses normal flow
           ...(isIOS || isWeb ? { position: "absolute" } : {}),
-          backgroundColor: isIOS ? "transparent" : colors.background,
-          borderTopWidth: 1,
-          borderTopColor: colors.border,
-          elevation: isAndroid ? 8 : 0,
-          ...(isWeb ? { height: 84 } : {}),
+          backgroundColor: isIOS ? "transparent" : colors.bgElevated,
+          borderTopWidth: 0,
+          elevation: isAndroid ? 16 : 0,
+          shadowColor: "#000",
+          shadowOpacity: 0.4,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: -4 },
+          ...(isWeb ? { height: 84 } : { height: 70 }),
+          paddingTop: 6,
         },
         tabBarBackground: () =>
           isIOS ? (
             <BlurView
               intensity={90}
               tint="dark"
-              style={StyleSheet.absoluteFill}
+              style={[
+                StyleSheet.absoluteFill,
+                {
+                  borderTopWidth: StyleSheet.hairlineWidth,
+                  borderTopColor: colors.borderSubtle,
+                },
+              ]}
             />
           ) : (
             <View
               style={[
                 StyleSheet.absoluteFill,
-                { backgroundColor: colors.background },
+                {
+                  backgroundColor: colors.bgElevated,
+                  borderTopWidth: StyleSheet.hairlineWidth,
+                  borderTopColor: colors.borderSubtle,
+                },
               ]}
             />
           ),
@@ -124,8 +171,13 @@ export default function TabLayout() {
         name="index"
         options={{
           title: "Home",
-          tabBarIcon: ({ color }) => (
-            <Icon name="globe" size={22} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon
+              name="globe"
+              color={color}
+              focused={focused}
+              activeColor={colors.primary}
+            />
           ),
         }}
       />
@@ -133,8 +185,13 @@ export default function TabLayout() {
         name="match"
         options={{
           title: "Match",
-          tabBarIcon: ({ color }) => (
-            <Icon name="layers" size={22} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon
+              name="layers"
+              color={color}
+              focused={focused}
+              activeColor={colors.primary}
+            />
           ),
         }}
       />
@@ -142,8 +199,13 @@ export default function TabLayout() {
         name="discover"
         options={{
           title: "Discover",
-          tabBarIcon: ({ color }) => (
-            <Icon name="zap" size={22} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon
+              name="zap"
+              color={color}
+              focused={focused}
+              activeColor={colors.primary}
+            />
           ),
         }}
       />
@@ -151,8 +213,13 @@ export default function TabLayout() {
         name="profile"
         options={{
           title: "My World",
-          tabBarIcon: ({ color }) => (
-            <Icon name="globe" size={22} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon
+              name="globe"
+              color={color}
+              focused={focused}
+              activeColor={colors.primary}
+            />
           ),
           tabBarBadge: echoBadge,
           tabBarBadgeStyle: {

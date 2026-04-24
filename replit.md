@@ -46,7 +46,11 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - `context/AppContext.tsx` — global UI state with AsyncStorage
 - `utils/api.ts` — backend client (deviceId auth, uploadPhoto, fetchCandidates, votePhoto, reportPhoto)
 - `data/samplePhotos.ts` — dev-only sample/synthetic photo generator (gated by `ENABLE_SYNTHETIC_MATCHES` = `__DEV__`)
-- `constants/colors.ts` — dark theme (navy + coral + teal)
+- `constants/colors.ts` — dark theme (navy + coral + teal) plus design tokens: `radii` scale (sm/md/lg/xl/pill), `shadows` recipes (sm/md/lg/glowPrimary/glowAccent — work cross-platform via `shadow*` + `elevation`), `gradients` pairs (primary/warm/surface/surfaceElevated/hero/challenge), and layered surface colors (`bgElevated`, `bgElevated2`, `cardElevated`, `borderSubtle`)
+- `components/Surface.tsx` — drop-in card with elevation + radius + bg, no behavior
+- `components/PressableScale.tsx` — drop-in for `TouchableOpacity`, springs inward on press via reanimated, optional haptic tap
+- `components/GradientCard.tsx` — drop-in card with two-tone gradient + shadow + radius
+- `hooks/useCountUp.ts` — animated integer counter (ease-out cubic) for hero stats
 
 ### API Server
 - **Type**: Express (TypeScript) on `artifacts/api-server/`

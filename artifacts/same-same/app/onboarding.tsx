@@ -5,7 +5,6 @@ import {
   Platform,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from "react-native";
 import { router } from "expo-router";
@@ -14,6 +13,9 @@ import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { EchoGlobeLogo } from "@/components/EchoGlobeLogo";
 import { CountryPickerModal } from "@/components/CountryPickerModal";
+import { Surface } from "@/components/Surface";
+import { GradientCard } from "@/components/GradientCard";
+import { PressableScale } from "@/components/PressableScale";
 
 // Only enforce country selection in production / published builds. In
 // dev / Expo Go we keep the legacy "Skip — I'll set it later" behaviour
@@ -107,6 +109,8 @@ export default function OnboardingScreen() {
   const isHeroStep = step === 0;
   const currentStep = STEPS[step];
   const isCountryStep = currentStep.kind === "country";
+  const continueLocked =
+    isCountryStep && REQUIRE_COUNTRY && !myCountryCode;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -156,37 +160,43 @@ export default function OnboardingScreen() {
         </Text>
 
         {isCountryStep && (
-          <TouchableOpacity
+          <PressableScale
             onPress={() => setPickerOpen(true)}
-            activeOpacity={0.85}
-            style={[
-              styles.countryRow,
-              {
-                backgroundColor: colors.card,
-                borderColor: myCountryCode ? colors.teal + "55" : colors.border,
-              },
-            ]}
+            haptic="light"
+            style={styles.countryWrap}
             accessibilityLabel="Pick your country"
           >
-            <Text style={styles.countryRowFlag}>
-              {myCountryFlag ?? "🌍"}
-            </Text>
-            <Text
+            <Surface
+              elevation="md"
+              radius="xl"
+              background={colors.card}
               style={[
-                styles.countryRowText,
-                {
-                  color: myCountryCode
-                    ? colors.foreground
-                    : colors.mutedForeground,
+                styles.countryRow,
+                myCountryCode && {
+                  ...colors.shadows.glowAccent,
                 },
               ]}
             >
-              {myCountryName ?? "Tap to pick your country"}
-            </Text>
-            <Text style={[styles.countryRowChange, { color: colors.teal }]}>
-              {myCountryCode ? "Change" : "Choose"}
-            </Text>
-          </TouchableOpacity>
+              <Text style={styles.countryRowFlag}>
+                {myCountryFlag ?? "🌍"}
+              </Text>
+              <Text
+                style={[
+                  styles.countryRowText,
+                  {
+                    color: myCountryCode
+                      ? colors.foreground
+                      : colors.mutedForeground,
+                  },
+                ]}
+              >
+                {myCountryName ?? "Tap to pick your country"}
+              </Text>
+              <Text style={[styles.countryRowChange, { color: colors.teal }]}>
+                {myCountryCode ? "Change" : "Choose"}
+              </Text>
+            </Surface>
+          </PressableScale>
         )}
       </Animated.View>
 
@@ -197,54 +207,61 @@ export default function OnboardingScreen() {
         ]}
       >
         <View style={styles.dots}>
-          {STEPS.map((_, i) => (
-            <View
-              key={i}
-              style={[
-                styles.dot,
-                {
-                  backgroundColor:
-                    i === step ? colors.primary : colors.secondary,
-                  width: i === step ? 22 : 8,
-                },
-              ]}
-            />
-          ))}
+          {STEPS.map((_, i) => {
+            const active = i === step;
+            return (
+              <View
+                key={i}
+                style={[
+                  styles.dot,
+                  {
+                    backgroundColor: active ? colors.primary : colors.secondary,
+                    width: active ? 24 : 8,
+                  },
+                  active && colors.shadows.glowPrimary,
+                ]}
+              />
+            );
+          })}
         </View>
 
-        {(() => {
-          const continueLocked =
-            isCountryStep && REQUIRE_COUNTRY && !myCountryCode;
-          return (
-            <TouchableOpacity
-              style={[
-                styles.button,
-                {
-                  backgroundColor: continueLocked
-                    ? colors.secondary
-                    : colors.primary,
-                  opacity: continueLocked ? 0.6 : 1,
-                },
-              ]}
-              onPress={goNext}
-              disabled={continueLocked}
-              activeOpacity={0.85}
+        {continueLocked ? (
+          <View
+            style={[
+              styles.button,
+              {
+                backgroundColor: colors.secondary,
+                opacity: 0.6,
+              },
+            ]}
+          >
+            <Text style={[styles.buttonText, { color: colors.primaryForeground }]}>
+              Pick your country to continue
+            </Text>
+          </View>
+        ) : (
+          <PressableScale
+            onPress={goNext}
+            haptic="medium"
+            style={styles.fullWidth}
+          >
+            <GradientCard
+              gradient="primary"
+              radius="pill"
+              elevation="glowPrimary"
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
             >
-              <Text
-                style={[
-                  styles.buttonText,
-                  { color: colors.primaryForeground },
-                ]}
-              >
-                {continueLocked
-                  ? "Pick your country to continue"
-                  : step < STEPS.length - 1
-                    ? "Continue"
-                    : "Let's start"}
-              </Text>
-            </TouchableOpacity>
-          );
-        })()}
+              <View style={styles.buttonInner}>
+                <Text
+                  style={[styles.buttonText, { color: colors.primaryForeground }]}
+                >
+                  {step < STEPS.length - 1 ? "Continue" : "Let's start"}
+                </Text>
+              </View>
+            </GradientCard>
+          </PressableScale>
+        )}
 
         {/* Skip is allowed on every intro step. On the country step it's
             only offered in dev/Expo Go (REQUIRE_COUNTRY === false) so we
@@ -252,7 +269,7 @@ export default function OnboardingScreen() {
             builds make country selection mandatory. */}
         {(step < STEPS.length - 1 ||
           (isCountryStep && !REQUIRE_COUNTRY && !myCountryCode)) && (
-          <TouchableOpacity
+          <PressableScale
             onPress={() => {
               completeOnboarding();
               router.replace("/(tabs)");
@@ -261,7 +278,7 @@ export default function OnboardingScreen() {
             <Text style={[styles.skip, { color: colors.mutedForeground }]}>
               {isCountryStep ? "Skip — I'll set it later" : "Skip"}
             </Text>
-          </TouchableOpacity>
+          </PressableScale>
         )}
       </View>
 
@@ -279,6 +296,9 @@ export default function OnboardingScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  fullWidth: {
+    width: "100%",
   },
   globeWrapper: {
     alignItems: "center",
@@ -347,23 +367,30 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  buttonInner: {
+    height: 56,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   buttonText: {
     fontSize: 16,
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -0.2,
   },
   skip: {
     fontSize: 14,
     fontFamily: "Inter_500Medium",
+  },
+  countryWrap: {
+    width: "100%",
+    marginTop: 24,
   },
   countryRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
     paddingHorizontal: 18,
-    paddingVertical: 14,
-    borderRadius: 18,
-    borderWidth: 1,
-    marginTop: 24,
+    paddingVertical: 16,
     width: "100%",
   },
   countryRowFlag: {

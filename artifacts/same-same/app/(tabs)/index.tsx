@@ -1,12 +1,9 @@
-import React, { useCallback, useRef } from "react";
+import React, { useCallback } from "react";
 import {
-  Animated,
-  Dimensions,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
@@ -17,9 +14,11 @@ import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { EchoGlobeLogo } from "@/components/EchoGlobeLogo";
 import { OceanShimmer } from "@/components/OceanShimmer";
+import { Surface } from "@/components/Surface";
+import { GradientCard } from "@/components/GradientCard";
+import { PressableScale } from "@/components/PressableScale";
+import { useCountUp } from "@/hooks/useCountUp";
 import { getTodaysChallenge } from "@/data/samplePhotos";
-
-const { width } = Dimensions.get("window");
 
 export default function HomeScreen() {
   const colors = useColors();
@@ -45,6 +44,9 @@ export default function HomeScreen() {
   );
   const hasUploadedPhoto = myPhotos.length > 0;
 
+  const matchesAnim = useCountUp(totalMatches);
+  const countriesAnim = useCountUp(matchedCountries.length);
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <OceanShimmer />
@@ -52,7 +54,7 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
           styles.scroll,
-          { paddingTop: topPadding + 16, paddingBottom: bottomPadding + 100 },
+          { paddingTop: topPadding + 16, paddingBottom: bottomPadding + 110 },
         ]}
       >
         {/* Hero — globe IS the logo */}
@@ -67,11 +69,11 @@ export default function HomeScreen() {
           </Text>
         </View>
 
-        {/* Stats row */}
-        <View style={styles.statsRow}>
+        {/* Stats — layered surface, count-up numbers, tabular figures */}
+        <Surface elevation="md" radius="xl" style={styles.statsCard}>
           <View style={styles.statItem}>
             <Text style={[styles.statNum, { color: colors.foreground }]}>
-              {totalMatches}
+              {matchesAnim}
             </Text>
             <View style={styles.statLabelRow}>
               <Icon name="layers" size={12} color={colors.teal} />
@@ -80,10 +82,10 @@ export default function HomeScreen() {
               </Text>
             </View>
           </View>
-          <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
+          <View style={[styles.statDivider, { backgroundColor: colors.borderSubtle }]} />
           <View style={styles.statItem}>
             <Text style={[styles.statNum, { color: colors.foreground }]}>
-              {matchedCountries.length}
+              {countriesAnim}
             </Text>
             <View style={styles.statLabelRow}>
               <Icon name="globe" size={12} color={colors.accent} />
@@ -92,75 +94,91 @@ export default function HomeScreen() {
               </Text>
             </View>
           </View>
-        </View>
+        </Surface>
 
-        {/* Daily challenge */}
-        <TouchableOpacity
-          style={[styles.challengeCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+        {/* Daily challenge — gradient depth, springs on press */}
+        <PressableScale
           onPress={() => router.push("/(tabs)/match")}
-          activeOpacity={0.85}
+          haptic="light"
+          style={styles.fullWidth}
         >
-          <View style={styles.challengeLeft}>
-            <Text style={styles.challengeEmoji}>{challenge.emoji}</Text>
-            <View>
-              <Text style={[styles.challengeLabel, { color: colors.mutedForeground }]}>
-                Today's theme
-              </Text>
-              <Text style={[styles.challengeTitle, { color: colors.foreground }]}>
-                {challenge.title}
-              </Text>
+          <GradientCard gradient="challenge" radius="xl" elevation="md">
+            <View style={styles.challengeInner}>
+              <View style={styles.challengeLeft}>
+                <Text style={styles.challengeEmoji}>{challenge.emoji}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.challengeLabel, { color: colors.mutedForeground }]}>
+                    Today's theme
+                  </Text>
+                  <Text style={[styles.challengeTitle, { color: colors.foreground }]}>
+                    {challenge.title}
+                  </Text>
+                </View>
+              </View>
+              <View style={[styles.playChip, { backgroundColor: colors.primary }]}>
+                <Icon name="play" size={12} color="#fff" />
+                <Text style={styles.playChipText}>Play</Text>
+              </View>
             </View>
-          </View>
-          <View style={[styles.playChip, { backgroundColor: colors.primary }]}>
-            <Icon name="play" size={12} color="#fff" />
-            <Text style={styles.playChipText}>Play</Text>
-          </View>
-        </TouchableOpacity>
+          </GradientCard>
+        </PressableScale>
 
-        {/* Main CTA */}
-        <TouchableOpacity
-          style={[styles.matchBtn, { backgroundColor: colors.primary }]}
+        {/* Main CTA — primary gradient + glow shadow */}
+        <PressableScale
           onPress={() => router.push("/(tabs)/match")}
-          activeOpacity={0.88}
+          haptic="medium"
+          style={styles.fullWidth}
         >
-          <Icon name="layers" size={20} color="#fff" />
-          <Text style={styles.matchBtnText}>Start Matching</Text>
-        </TouchableOpacity>
+          <GradientCard
+            gradient="primary"
+            radius="pill"
+            elevation="glowPrimary"
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+          >
+            <View style={styles.matchBtnInner}>
+              <Icon name="layers" size={20} color="#fff" />
+              <Text style={styles.matchBtnText}>Start Matching</Text>
+            </View>
+          </GradientCard>
+        </PressableScale>
 
         {/* Upload photo prompt */}
         {!hasUploadedPhoto && (
-          <TouchableOpacity
-            style={[styles.uploadPrompt, { borderColor: colors.border, backgroundColor: colors.card }]}
+          <PressableScale
             onPress={() => router.push("/camera")}
-            activeOpacity={0.85}
+            haptic="light"
+            style={styles.fullWidth}
           >
-            <Icon name="camera" size={18} color={colors.accent} />
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.uploadTitle, { color: colors.foreground }]}>
-                Add your photo
-              </Text>
-              <Text style={[styles.uploadSub, { color: colors.mutedForeground }]}>
-                Get matched with your own daily moments
-              </Text>
-            </View>
-            <Icon name="chevron-right" size={16} color={colors.mutedForeground} />
-          </TouchableOpacity>
+            <Surface elevation="sm" radius="xl" style={styles.uploadInner}>
+              <Icon name="camera" size={18} color={colors.accent} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.uploadTitle, { color: colors.foreground }]}>
+                  Add your photo
+                </Text>
+                <Text style={[styles.uploadSub, { color: colors.mutedForeground }]}>
+                  Get matched with your own daily moments
+                </Text>
+              </View>
+              <Icon name="chevron-right" size={16} color={colors.mutedForeground} />
+            </Surface>
+          </PressableScale>
         )}
 
         {/* Restart tutorial */}
-        <TouchableOpacity
-          style={[styles.tutorialBtn, { borderColor: colors.border }]}
+        <PressableScale
           onPress={() => {
             resetOnboarding();
             router.replace("/onboarding");
           }}
-          activeOpacity={0.75}
         >
-          <Icon name="rotate-ccw" size={14} color={colors.mutedForeground} />
-          <Text style={[styles.tutorialText, { color: colors.mutedForeground }]}>
-            Replay tutorial
-          </Text>
-        </TouchableOpacity>
+          <View style={[styles.tutorialBtn, { borderColor: colors.borderSubtle }]}>
+            <Icon name="rotate-ccw" size={14} color={colors.mutedForeground} />
+            <Text style={[styles.tutorialText, { color: colors.mutedForeground }]}>
+              Replay tutorial
+            </Text>
+          </View>
+        </PressableScale>
 
         {/* Recent matches */}
         {matches.length > 0 && (
@@ -169,11 +187,11 @@ export default function HomeScreen() {
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
                 Recent
               </Text>
-              <TouchableOpacity onPress={() => router.push("/(tabs)/profile")}>
+              <PressableScale onPress={() => router.push("/(tabs)/profile")}>
                 <Text style={[styles.seeAll, { color: colors.primary }]}>
                   See all
                 </Text>
-              </TouchableOpacity>
+              </PressableScale>
             </View>
             {matches.slice(0, 3).map((m) => {
               const myAgeMin = m.myPhotoUploadedAt
@@ -182,9 +200,11 @@ export default function HomeScreen() {
               const sameDay =
                 myAgeMin < 1440 && (m.theirPhotoMinutesAgo ?? 9999) < 1440;
               return (
-                <View
+                <Surface
                   key={m.id}
-                  style={[styles.recentRow, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  elevation="sm"
+                  radius="lg"
+                  style={styles.recentRow}
                 >
                   <Text style={styles.recentFlag}>{m.theirCountryFlag}</Text>
                   <View style={{ flex: 1 }}>
@@ -196,7 +216,7 @@ export default function HomeScreen() {
                     </Text>
                   </View>
                   <Icon name="heart" size={14} color={colors.teal} />
-                </View>
+                </Surface>
               );
             })}
           </View>
@@ -213,28 +233,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     gap: 16,
   },
+  fullWidth: { width: "100%" },
   hero: {
     alignItems: "center",
     gap: 10,
     paddingBottom: 4,
-  },
-  appName: {
-    fontSize: 28,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: -0.8,
-    marginTop: 4,
   },
   tagline: {
     fontSize: 14,
     fontFamily: "Inter_400Regular",
     letterSpacing: 0.2,
   },
-  statsRow: {
-    flexDirection: "row",
+  statsCard: {
     width: "100%",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-around",
-    paddingVertical: 8,
+    paddingVertical: 18,
   },
   statItem: {
     flex: 1,
@@ -243,13 +258,14 @@ const styles = StyleSheet.create({
   },
   statDivider: {
     width: StyleSheet.hairlineWidth,
-    height: 36,
-    opacity: 0.5,
+    height: 40,
+    opacity: 0.7,
   },
   statNum: {
-    fontSize: 26,
+    fontSize: 32,
     fontFamily: "Inter_700Bold",
-    letterSpacing: -0.5,
+    letterSpacing: -0.8,
+    fontVariant: ["tabular-nums"],
   },
   statLabelRow: {
     flexDirection: "row",
@@ -259,17 +275,15 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: 11,
     fontFamily: "Inter_500Medium",
-    letterSpacing: 0.2,
+    letterSpacing: 0.3,
+    textTransform: "uppercase",
   },
-  challengeCard: {
-    width: "100%",
+  challengeInner: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 18,
     paddingVertical: 16,
-    borderRadius: 28,
-    borderWidth: 0,
   },
   challengeLeft: {
     flexDirection: "row",
@@ -280,12 +294,15 @@ const styles = StyleSheet.create({
   challengeEmoji: { fontSize: 28 },
   challengeLabel: {
     fontSize: 11,
-    fontFamily: "Inter_400Regular",
+    fontFamily: "Inter_500Medium",
+    letterSpacing: 0.3,
+    textTransform: "uppercase",
   },
   challengeTitle: {
-    fontSize: 15,
-    fontFamily: "Inter_600SemiBold",
-    marginTop: 1,
+    fontSize: 16,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -0.3,
+    marginTop: 2,
   },
   playChip: {
     flexDirection: "row",
@@ -298,12 +315,10 @@ const styles = StyleSheet.create({
   playChipText: {
     color: "#fff",
     fontSize: 13,
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: "Inter_700Bold",
   },
-  matchBtn: {
-    width: "100%",
+  matchBtnInner: {
     height: 58,
-    borderRadius: 29,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -315,15 +330,12 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     letterSpacing: -0.2,
   },
-  uploadPrompt: {
-    width: "100%",
+  uploadInner: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
     paddingHorizontal: 18,
     paddingVertical: 16,
-    borderRadius: 28,
-    borderWidth: 0,
   },
   uploadTitle: {
     fontSize: 14,
@@ -351,7 +363,7 @@ const styles = StyleSheet.create({
   },
   seeAll: {
     fontSize: 13,
-    fontFamily: "Inter_500Medium",
+    fontFamily: "Inter_600SemiBold",
   },
   tutorialBtn: {
     flexDirection: "row",
@@ -373,8 +385,7 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    borderRadius: 24,
-    borderWidth: 0,
+    width: "100%",
   },
   recentFlag: { fontSize: 24 },
   recentCountry: {

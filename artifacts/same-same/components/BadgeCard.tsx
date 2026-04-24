@@ -2,6 +2,7 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
+import { Surface } from "@/components/Surface";
 import type { Badge } from "@/context/AppContext";
 
 interface Props {
@@ -20,36 +21,37 @@ const BADGE_ICONS: Record<string, string> = {
 
 export function BadgeCard({ badge }: Props) {
   const colors = useColors();
+  const earned = badge.earned;
 
   return (
-    <View
+    <Surface
+      elevation={earned ? "md" : "sm"}
+      radius="lg"
+      background={earned ? colors.card : colors.bgElevated}
       style={[
         styles.container,
-        {
-          backgroundColor: badge.earned ? colors.card : colors.secondary,
-          borderColor: badge.earned ? colors.primary : colors.border,
-          opacity: badge.earned ? 1 : 0.5,
-        },
+        !earned && { opacity: 0.55 },
       ]}
     >
       <View
         style={[
           styles.iconContainer,
           {
-            backgroundColor: badge.earned ? colors.primary + "22" : colors.muted,
+            backgroundColor: earned ? colors.primary + "22" : colors.muted,
           },
+          earned && colors.shadows.glowPrimary,
         ]}
       >
         <Icon
-          name={BADGE_ICONS[badge.id] || "award"}
+          name={(BADGE_ICONS[badge.id] || "award") as never}
           size={22}
-          color={badge.earned ? colors.primary : colors.mutedForeground}
+          color={earned ? colors.primary : colors.mutedForeground}
         />
       </View>
       <Text
         style={[
           styles.name,
-          { color: badge.earned ? colors.foreground : colors.mutedForeground },
+          { color: earned ? colors.foreground : colors.mutedForeground },
         ]}
       >
         {badge.name}
@@ -57,30 +59,29 @@ export function BadgeCard({ badge }: Props) {
       <Text style={[styles.desc, { color: colors.mutedForeground }]}>
         {badge.description}
       </Text>
-    </View>
+    </Surface>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     padding: 16,
-    borderRadius: 16,
-    borderWidth: 1,
     alignItems: "center",
     width: 140,
     gap: 8,
   },
   iconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: "center",
     justifyContent: "center",
   },
   name: {
     fontSize: 12,
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: "Inter_700Bold",
     textAlign: "center",
+    letterSpacing: -0.1,
   },
   desc: {
     fontSize: 10,

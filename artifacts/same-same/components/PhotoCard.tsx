@@ -34,9 +34,9 @@ export function PhotoCard({
   const colors = useColors();
 
   const dimensions = {
-    sm: { width: 100, height: 100, borderRadius: 12 },
-    md: { width: 160, height: 160, borderRadius: 16 },
-    lg: { width: "100%", height: 240, borderRadius: 20 },
+    sm: { width: 100, height: 100, borderRadius: 14 },
+    md: { width: 160, height: 160, borderRadius: 20 },
+    lg: { width: "100%", height: 240, borderRadius: 24 },
   }[size];
 
   // Auto-detect sample + AI photos so the badges appear anywhere we render
@@ -58,8 +58,8 @@ export function PhotoCard({
           height: dimensions.height,
           borderRadius: dimensions.borderRadius,
           backgroundColor: colors.card,
-          borderColor: colors.border,
         },
+        colors.shadows.sm,
         style,
       ]}
     >
@@ -123,7 +123,6 @@ export function PhotoCard({
 const styles = StyleSheet.create({
   container: {
     overflow: "hidden",
-    borderWidth: 1,
     position: "relative",
   },
   image: {

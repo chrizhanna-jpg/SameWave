@@ -71,9 +71,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   chip: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 999,
     borderWidth: 1,
     alignSelf: "flex-start",
     maxWidth: "100%",
