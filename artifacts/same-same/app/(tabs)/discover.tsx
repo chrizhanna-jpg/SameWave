@@ -26,6 +26,7 @@ import { markTabVisited } from "@/utils/tabVisits";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
 import { OceanShimmer } from "@/components/OceanShimmer";
+import { PressableScale } from "@/components/PressableScale";
 import { useColors } from "@/hooks/useColors";
 import { buildDiscoveryFeed, type DiscoveryItem } from "@/data/discoveryFeed";
 import { isSamplePhoto, type SamplePhoto } from "@/data/samplePhotos";
@@ -642,20 +643,20 @@ export default function DiscoverScreen() {
               Live same-same moments from strangers everywhere
             </Text>
           </View>
-          <Pressable
+          <PressableScale
             onPress={() => {
               markUserInteracted();
               setMuted(!muted);
             }}
-            hitSlop={10}
-            accessibilityRole="button"
+            haptic="selection"
+            scaleTo={0.92}
             accessibilityLabel={muted ? "Unmute vibe clips" : "Mute vibe clips"}
             style={[
               styles.muteBtn,
               {
-                backgroundColor: colors.card,
-                borderColor: colors.border,
+                backgroundColor: colors.cardElevated,
               },
+              colors.shadows.sm,
             ]}
           >
             <Icon
@@ -663,7 +664,7 @@ export default function DiscoverScreen() {
               size={16}
               color={muted ? colors.mutedForeground : colors.green}
             />
-          </Pressable>
+          </PressableScale>
         </View>
       </View>
 
@@ -1005,7 +1006,6 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
     marginTop: 2,
@@ -1016,7 +1016,7 @@ const styles = StyleSheet.create({
   },
   card: {
     padding: 14,
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: 1,
     gap: 14,
     marginBottom: 14,

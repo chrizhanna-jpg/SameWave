@@ -19,31 +19,39 @@ interface PressableScaleProps extends Omit<PressableProps, "style"> {
   children?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   pressedScale?: number;
-  haptic?: boolean | "light" | "medium";
+  /** Alias for `pressedScale` — kept for the design-system shorthand. */
+  scaleTo?: number;
+  haptic?: boolean | "light" | "medium" | "selection";
 }
 
 export function PressableScale({
   children,
   style,
-  pressedScale = 0.96,
+  pressedScale,
+  scaleTo,
   haptic = false,
   onPressIn,
   onPressOut,
   ...rest
 }: PressableScaleProps) {
+  const target = scaleTo ?? pressedScale ?? 0.96;
   const scale = useSharedValue(1);
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
   }));
 
   const handlePressIn = (e: GestureResponderEvent) => {
-    scale.value = withSpring(pressedScale, { damping: 18, stiffness: 350 });
+    scale.value = withSpring(target, { damping: 18, stiffness: 350 });
     if (haptic) {
-      const intensity =
-        haptic === "medium"
-          ? Haptics.ImpactFeedbackStyle.Medium
-          : Haptics.ImpactFeedbackStyle.Light;
-      Haptics.impactAsync(intensity).catch(() => {});
+      if (haptic === "selection") {
+        Haptics.selectionAsync().catch(() => {});
+      } else {
+        const intensity =
+          haptic === "medium"
+            ? Haptics.ImpactFeedbackStyle.Medium
+            : Haptics.ImpactFeedbackStyle.Light;
+        Haptics.impactAsync(intensity).catch(() => {});
+      }
     }
     onPressIn?.(e);
   };

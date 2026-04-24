@@ -19,6 +19,9 @@ import { BadgeCard } from "@/components/BadgeCard";
 import { CountryPickerModal } from "@/components/CountryPickerModal";
 import { tagEmoji, tagLabel } from "@/utils/interests";
 import { GlobeAnimation } from "@/components/GlobeAnimation";
+import { Surface } from "@/components/Surface";
+import { GradientCard } from "@/components/GradientCard";
+import { PressableScale } from "@/components/PressableScale";
 
 // Region buckets used by the World Map breakdown. Order roughly matches
 // what feels exciting to the user — Europe & Asia first since the
@@ -73,29 +76,32 @@ function NavRow({
 }) {
   const colors = useColors();
   return (
-    <TouchableOpacity
+    <PressableScale
       onPress={onPress}
-      activeOpacity={0.85}
-      accessibilityRole="button"
+      haptic="light"
       accessibilityLabel={accessibilityLabel}
-      style={[
-        styles.connectionsRow,
-        { backgroundColor: colors.card, borderColor: colors.border },
-      ]}
+      style={styles.navRowWrap}
     >
-      <View style={[styles.connectionsIcon, { backgroundColor: tint + "22" }]}>
-        <Icon name={icon as never} size={18} color={tint} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.connectionsTitle, { color: colors.foreground }]}>
-          {title}
-        </Text>
-        <Text style={[styles.connectionsSub, { color: colors.mutedForeground }]}>
-          {subtitle}
-        </Text>
-      </View>
-      <Icon name="chevron-right" size={18} color={colors.mutedForeground} />
-    </TouchableOpacity>
+      <Surface
+        elevation="sm"
+        radius="lg"
+        background={colors.card}
+        style={styles.connectionsRow}
+      >
+        <View style={[styles.connectionsIcon, { backgroundColor: tint + "22" }]}>
+          <Icon name={icon as never} size={18} color={tint} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.connectionsTitle, { color: colors.foreground }]}>
+            {title}
+          </Text>
+          <Text style={[styles.connectionsSub, { color: colors.mutedForeground }]}>
+            {subtitle}
+          </Text>
+        </View>
+        <Icon name="chevron-right" size={18} color={colors.mutedForeground} />
+      </Surface>
+    </PressableScale>
   );
 }
 
@@ -242,29 +248,37 @@ export default function ProfileScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.heroCard, { backgroundColor: colors.primary }]}>
-          <Text style={styles.heroSubtitle}>
-            You've connected with {matchedCountries.length} {matchedCountries.length === 1 ? "country" : "countries"} across the globe
-          </Text>
-          <View style={styles.heroStats}>
-            <View style={styles.heroStat}>
-              <Text style={styles.heroStatNum}>{totalMatches}</Text>
-              <Text style={styles.heroStatLabel}>matches</Text>
-            </View>
-            <View style={[styles.heroDivider]} />
-            <View style={styles.heroStat}>
-              <Text style={styles.heroStatNum}>
-                {mutualEchoes.length + pendingEchoes.length}
-              </Text>
-              <Text style={styles.heroStatLabel}>echoes</Text>
-            </View>
-            <View style={[styles.heroDivider]} />
-            <View style={styles.heroStat}>
-              <Text style={styles.heroStatNum}>{getWorldMapCoverage()}%</Text>
-              <Text style={styles.heroStatLabel}>world</Text>
+        <GradientCard
+          gradient="primary"
+          radius="xl"
+          elevation="glowPrimary"
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          <View style={styles.heroCardInner}>
+            <Text style={styles.heroSubtitle}>
+              You've connected with {matchedCountries.length} {matchedCountries.length === 1 ? "country" : "countries"} across the globe
+            </Text>
+            <View style={styles.heroStats}>
+              <View style={styles.heroStat}>
+                <Text style={styles.heroStatNum}>{totalMatches}</Text>
+                <Text style={styles.heroStatLabel}>matches</Text>
+              </View>
+              <View style={[styles.heroDivider]} />
+              <View style={styles.heroStat}>
+                <Text style={styles.heroStatNum}>
+                  {mutualEchoes.length + pendingEchoes.length}
+                </Text>
+                <Text style={styles.heroStatLabel}>echoes</Text>
+              </View>
+              <View style={[styles.heroDivider]} />
+              <View style={styles.heroStat}>
+                <Text style={styles.heroStatNum}>{getWorldMapCoverage()}%</Text>
+                <Text style={styles.heroStatLabel}>world</Text>
+              </View>
             </View>
           </View>
-        </View>
+        </GradientCard>
 
         {/* ─────────────── Recent matches preview ───────────────
             Shows a peek of the user's most recent "same" verdicts so the
@@ -299,19 +313,16 @@ export default function ProfileScreen() {
                 .filter((m) => m.verdict === "same")
                 .slice(0, 8)
                 .map((m) => (
-                  <TouchableOpacity
+                  <PressableScale
                     key={m.id}
-                    activeOpacity={0.85}
+                    haptic="light"
                     onPress={() =>
                       router.push({
                         pathname: "/reveal",
                         params: { matchData: JSON.stringify(m) },
                       })
                     }
-                    style={[
-                      styles.recentMatchCard,
-                      { backgroundColor: colors.card, borderColor: colors.border },
-                    ]}
+                    style={[styles.recentMatchCard, colors.shadows.sm]}
                   >
                     <Image
                       source={{ uri: m.theirPhoto }}
@@ -322,7 +333,7 @@ export default function ProfileScreen() {
                         {m.theirCountryFlag}
                       </Text>
                     </View>
-                  </TouchableOpacity>
+                  </PressableScale>
                 ))}
             </ScrollView>
           </View>
@@ -363,11 +374,11 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        <View
-          style={[
-            styles.globeCard,
-            { backgroundColor: colors.card, borderColor: colors.border },
-          ]}
+        <Surface
+          elevation="md"
+          radius="xl"
+          background={colors.cardElevated}
+          style={styles.globeCard}
         >
           <GlobeAnimation size={70} />
           <View style={styles.globeStats}>
@@ -385,7 +396,7 @@ export default function ProfileScreen() {
               out of 195 countries
             </Text>
           </View>
-        </View>
+        </Surface>
 
         <View style={styles.progressSection}>
           <View
@@ -455,7 +466,8 @@ export default function ProfileScreen() {
               accessibilityLabel={`${region.name}, ${matched} of ${region.countries.length} matched, ${expanded ? "tap to collapse" : "tap to expand flags"}`}
               style={[
                 styles.regionCard,
-                { backgroundColor: colors.card, borderColor: colors.border },
+                { backgroundColor: colors.card },
+                colors.shadows.sm,
               ]}
             >
               <View style={styles.regionHeader}>
@@ -508,11 +520,11 @@ export default function ProfileScreen() {
         })}
 
         {(myVibe.length > 0 || recurringMatchTags.length > 0) && (
-          <View
-            style={[
-              styles.vibeCard,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
+          <Surface
+            elevation="sm"
+            radius="lg"
+            background={colors.card}
+            style={styles.vibeCard}
           >
             {myVibe.length > 0 && (
               <View style={{ gap: 10 }}>
@@ -570,17 +582,20 @@ export default function ProfileScreen() {
                 </View>
               </View>
             )}
-          </View>
+          </Surface>
         )}
 
-        <TouchableOpacity
+        <PressableScale
           onPress={() => setCountryPickerOpen(true)}
-          activeOpacity={0.85}
-          style={[
-            styles.connectionsRow,
-            { backgroundColor: colors.card, borderColor: colors.border },
-          ]}
+          haptic="light"
           accessibilityLabel="Set your home country"
+          style={styles.navRowWrap}
+        >
+        <Surface
+          elevation="sm"
+          radius="lg"
+          background={colors.card}
+          style={styles.connectionsRow}
         >
           <View
             style={[
@@ -601,16 +616,20 @@ export default function ProfileScreen() {
             </Text>
           </View>
           <Icon name="chevron-right" size={18} color={colors.mutedForeground} />
-        </TouchableOpacity>
+        </Surface>
+        </PressableScale>
 
-        <TouchableOpacity
+        <PressableScale
           onPress={() => router.push("/connections")}
-          activeOpacity={0.85}
-          style={[
-            styles.connectionsRow,
-            { backgroundColor: colors.card, borderColor: colors.border },
-          ]}
+          haptic="light"
           accessibilityLabel="Open connections"
+          style={styles.navRowWrap}
+        >
+        <Surface
+          elevation="sm"
+          radius="lg"
+          background={colors.card}
+          style={styles.connectionsRow}
         >
           <View
             style={[
@@ -647,7 +666,8 @@ export default function ProfileScreen() {
             </Text>
           </View>
           <Icon name="chevron-right" size={18} color={colors.mutedForeground} />
-        </TouchableOpacity>
+        </Surface>
+        </PressableScale>
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -700,7 +720,7 @@ export default function ProfileScreen() {
         />
 
         {matches.length === 0 && (
-          <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={[styles.emptyCard, { backgroundColor: colors.cardElevated }, colors.shadows.sm]}>
             <Icon name="globe" size={32} color={colors.mutedForeground} />
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
               Your journey starts here
@@ -782,6 +802,13 @@ const styles = StyleSheet.create({
     padding: 24,
     gap: 8,
   },
+  heroCardInner: {
+    padding: 24,
+    gap: 8,
+  },
+  navRowWrap: {
+    marginBottom: 16,
+  },
   heroTitle: {
     fontSize: 26,
     fontFamily: "Inter_700Bold",
@@ -845,8 +872,7 @@ const styles = StyleSheet.create({
   recentMatchCard: {
     width: 96,
     height: 96,
-    borderRadius: 14,
-    borderWidth: 1,
+    borderRadius: 16,
     overflow: "hidden",
     position: "relative",
   },
@@ -873,8 +899,6 @@ const styles = StyleSheet.create({
   },
   vibeCard: {
     padding: 16,
-    borderRadius: 16,
-    borderWidth: 1,
     marginBottom: 16,
   },
   vibeCardLabel: {
@@ -915,9 +939,6 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 14,
     paddingHorizontal: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-    marginBottom: 16,
   },
   connectionsIcon: {
     width: 38,
@@ -1001,8 +1022,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 20,
     padding: 20,
-    borderRadius: 20,
-    borderWidth: 1,
   },
   globeStats: {
     flex: 1,
@@ -1064,7 +1083,6 @@ const styles = StyleSheet.create({
   },
   regionCard: {
     borderRadius: 16,
-    borderWidth: 1,
     padding: 16,
     gap: 12,
   },
@@ -1100,8 +1118,7 @@ const styles = StyleSheet.create({
   },
   emptyCard: {
     padding: 32,
-    borderRadius: 20,
-    borderWidth: 1,
+    borderRadius: 24,
     alignItems: "center",
     gap: 12,
   },

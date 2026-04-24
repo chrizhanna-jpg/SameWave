@@ -21,6 +21,8 @@ import { MatchHearts } from "@/components/MatchHearts";
 import { MatchFlash } from "@/components/MatchFlash";
 import { EchoLogo } from "@/components/EchoLogo";
 import { OceanShimmer } from "@/components/OceanShimmer";
+import { PressableScale } from "@/components/PressableScale";
+import { GradientCard } from "@/components/GradientCard";
 import { expandToVibe } from "@/utils/interests";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
@@ -772,18 +774,18 @@ export default function SwipeScreen() {
             {streakCount > 0 ? `${streakCount} matches` : "Find your similar"}
           </Text>
         </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <TouchableOpacity
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <PressableScale
             onPress={toggleMute}
+            haptic="selection"
+            scaleTo={0.92}
             style={[
               styles.cameraBtn,
               {
-                backgroundColor: colors.card,
-                borderWidth: 1,
-                borderColor: colors.border,
+                backgroundColor: colors.cardElevated,
               },
+              colors.shadows.sm,
             ]}
-            activeOpacity={0.85}
             accessibilityLabel={muted ? "Unmute vibe music" : "Mute vibe music"}
           >
             <Icon
@@ -791,14 +793,20 @@ export default function SwipeScreen() {
               size={18}
               color={colors.foreground}
             />
-          </TouchableOpacity>
-          <TouchableOpacity
+          </PressableScale>
+          <PressableScale
             onPress={() => router.push("/camera")}
-            style={[styles.cameraBtn, { backgroundColor: colors.primary }]}
-            activeOpacity={0.85}
+            haptic="medium"
+            scaleTo={0.92}
+            style={[
+              styles.cameraBtn,
+              { backgroundColor: colors.primary },
+              colors.shadows.glowPrimary,
+            ]}
+            accessibilityLabel="Take a new photo"
           >
             <Icon name="camera" size={20} color="#fff" />
-          </TouchableOpacity>
+          </PressableScale>
         </View>
       </View>
 
@@ -854,14 +862,22 @@ export default function SwipeScreen() {
               Share a moment from today and we'll find someone, somewhere in the world,
               who shared something similar.
             </Text>
-            <TouchableOpacity
+            <PressableScale
               onPress={() => router.push("/camera")}
-              style={[styles.emptyCta, { backgroundColor: colors.primary }]}
-              activeOpacity={0.85}
+              haptic="medium"
+              style={[styles.emptyCta, colors.shadows.glowPrimary]}
             >
-              <Icon name="camera" size={18} color="#fff" />
-              <Text style={styles.emptyCtaText}>Add your photo</Text>
-            </TouchableOpacity>
+              <GradientCard
+                gradient="primary"
+                radius="pill"
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.emptyCtaInner}
+              >
+                <Icon name="camera" size={18} color="#fff" />
+                <Text style={styles.emptyCtaText}>Add your photo</Text>
+              </GradientCard>
+            </PressableScale>
           </View>
         )}
         {hasUploadedPhoto && noMore && (
@@ -880,21 +896,29 @@ export default function SwipeScreen() {
               <Text style={[styles.emptyStateBody, { color: colors.mutedForeground }]}>
                 You've seen every "{themeTitle.toLowerCase()}" moment we have right now. Post a new photo to start a fresh session, or check back soon for new arrivals from across the world.
               </Text>
-              <TouchableOpacity
-                style={[styles.emptyStateBtn, { backgroundColor: colors.primary }]}
+              <PressableScale
                 onPress={() => router.push("/camera")}
-                activeOpacity={0.85}
+                haptic="medium"
+                style={[styles.emptyStateBtn, colors.shadows.glowPrimary]}
               >
-                <Icon name="camera" size={16} color={colors.primaryForeground} />
-                <Text
-                  style={[
-                    styles.emptyStateBtnText,
-                    { color: colors.primaryForeground, marginLeft: 8 },
-                  ]}
+                <GradientCard
+                  gradient="primary"
+                  radius="pill"
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.emptyStateBtnInner}
                 >
-                  Post a new photo
-                </Text>
-              </TouchableOpacity>
+                  <Icon name="camera" size={16} color={colors.primaryForeground} />
+                  <Text
+                    style={[
+                      styles.emptyStateBtnText,
+                      { color: colors.primaryForeground, marginLeft: 8 },
+                    ]}
+                  >
+                    Post a new photo
+                  </Text>
+                </GradientCard>
+              </PressableScale>
               <TouchableOpacity
                 style={[
                   styles.emptyStateBtn,
@@ -1385,13 +1409,15 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   emptyCta: {
+    borderRadius: 999,
+    marginTop: 8,
+  },
+  emptyCtaInner: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     paddingVertical: 12,
     paddingHorizontal: 22,
-    borderRadius: 999,
-    marginTop: 8,
   },
   emptyCtaText: {
     color: "#fff",
@@ -1428,15 +1454,22 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   emptyStateBtn: {
+    borderRadius: 999,
+    marginTop: 4,
+  },
+  emptyStateBtnInner: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 12,
     paddingHorizontal: 28,
-    borderRadius: 999,
-    marginTop: 4,
   },
   emptyStateBtnGhost: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 28,
     backgroundColor: "transparent",
     borderWidth: 1,
   },

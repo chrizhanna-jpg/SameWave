@@ -98,7 +98,8 @@ export default function EchoesScreen() {
           <View
             style={[
               styles.emptyCard,
-              { backgroundColor: colors.card, borderColor: colors.border },
+              { backgroundColor: colors.cardElevated },
+              colors.shadows.sm,
             ]}
           >
             <Text style={styles.emptyEmoji}>🔁</Text>
@@ -183,9 +184,10 @@ function PendingEchoCard({
       style={[
         styles.card,
         {
-          backgroundColor: colors.card,
+          backgroundColor: colors.cardElevated,
           borderColor: celebrating ? colors.gold : colors.teal + "55",
         },
+        celebrating ? colors.shadows.glowAccent : colors.shadows.sm,
       ]}
     >
       <View style={styles.cardHeader}>
@@ -268,7 +270,8 @@ function MutualEchoCard({ echo }: { echo: EchoCardType }) {
       }
       style={[
         styles.card,
-        { backgroundColor: colors.card, borderColor: colors.border },
+        { backgroundColor: colors.cardElevated, borderColor: colors.border },
+        colors.shadows.sm,
       ]}
     >
       <View style={styles.cardHeader}>
