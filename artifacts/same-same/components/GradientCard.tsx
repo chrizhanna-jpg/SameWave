@@ -32,17 +32,19 @@ export function GradientCard({
       style={[
         { borderRadius: tokens.radii[radius] },
         shadow,
-        style,
       ]}
     >
       <LinearGradient
         colors={palette as unknown as readonly [string, string, ...string[]]}
         start={start}
         end={end}
-        style={{
-          borderRadius: tokens.radii[radius],
-          overflow: "hidden",
-        }}
+        style={[
+          {
+            borderRadius: tokens.radii[radius],
+            overflow: "hidden",
+          },
+          style,
+        ]}
       >
         {children}
       </LinearGradient>
