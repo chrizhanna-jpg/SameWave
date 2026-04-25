@@ -23,7 +23,7 @@ import { getTodaysChallenge } from "@/data/samplePhotos";
 export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { matches, matchedCountries, myPhotos, resetOnboarding } = useApp();
+  const { matches, matchedCountries, resetOnboarding } = useApp();
   const challenge = getTodaysChallenge();
 
   useFocusEffect(
@@ -42,7 +42,6 @@ export default function HomeScreen() {
     () => matches.filter((m) => m.verdict === "same").length,
     [matches],
   );
-  const hasUploadedPhoto = myPhotos.length > 0;
 
   const matchesAnim = useCountUp(totalMatches);
   const countriesAnim = useCountUp(matchedCountries.length);
@@ -142,28 +141,6 @@ export default function HomeScreen() {
             </View>
           </GradientCard>
         </PressableScale>
-
-        {/* Upload photo prompt */}
-        {!hasUploadedPhoto && (
-          <PressableScale
-            onPress={() => router.push("/camera")}
-            haptic="light"
-            style={styles.fullWidth}
-          >
-            <Surface elevation="sm" radius="xl" style={styles.uploadInner}>
-              <Icon name="camera" size={18} color={colors.accent} />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.uploadTitle, { color: colors.foreground }]}>
-                  Add your photo
-                </Text>
-                <Text style={[styles.uploadSub, { color: colors.mutedForeground }]}>
-                  Get matched with your own daily moments
-                </Text>
-              </View>
-              <Icon name="chevron-right" size={16} color={colors.mutedForeground} />
-            </Surface>
-          </PressableScale>
-        )}
 
         {/* Restart tutorial */}
         <PressableScale
@@ -329,22 +306,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontFamily: "Inter_700Bold",
     letterSpacing: -0.2,
-  },
-  uploadInner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-  },
-  uploadTitle: {
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
-  },
-  uploadSub: {
-    fontSize: 12,
-    fontFamily: "Inter_400Regular",
-    marginTop: 2,
   },
   recentSection: {
     width: "100%",
