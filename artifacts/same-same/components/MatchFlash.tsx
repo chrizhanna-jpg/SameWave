@@ -51,7 +51,7 @@ export function MatchFlash({
   proUnlocked,
   onDone,
   onOpenFull,
-  durationMs = 2400,
+  durationMs = 5000,
 }: Props) {
   const colors = useColors();
   const fade = useRef(new Animated.Value(0)).current;
