@@ -299,7 +299,11 @@ export function MatchFlash({
           <Pressable
             onPress={(e) => {
               e.stopPropagation?.();
-              finish("share");
+              // Open the full /reveal "It's a Match" page first instead of
+              // jumping straight into the OS share sheet — users want a
+              // chance to see the rendered card before deciding to share.
+              // /reveal has its own Share button that fires the share flow.
+              finish(undefined);
             }}
             style={styles.secondaryPill}
             accessibilityLabel="Share this match"
