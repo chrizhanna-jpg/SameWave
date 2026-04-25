@@ -6,10 +6,16 @@ type Props = {
   size?: number;
 };
 
-const OCEAN = "#1565a0";
-const GRID = "rgba(255,255,255,0.18)";
+// High-contrast palette so the spinner is obviously "working" against
+// the dark navy card it sits on. Previously the globe body (#1565a0)
+// blended into colors.card (#0d2340), so only the thin yellow arcs
+// signalled motion. The brighter OCEAN, more visible GRID, and the new
+// outer RING give the wheel a clear boundary and visible rotation.
+const OCEAN = "#0AA0E8";
+const RING = "#00BFA5";
+const GRID = "rgba(255,255,255,0.45)";
 const ARC = "#FFD166";
-const SHINE = "rgba(255,255,255,0.12)";
+const SHINE = "rgba(255,255,255,0.28)";
 
 // Compact loading indicator: a tiny rotating globe ringed by yellow connection
 // arcs and dots. Reusable for any waiting state (photo analysis, network calls,
@@ -93,7 +99,27 @@ export function LoadingGlobe({ size = 28 }: Props) {
         </View>
       </Animated.View>
 
-      {/* Yellow connection arcs + dots — spin around the globe */}
+      {/* Static teal ring around the globe — gives the wheel a clear
+          boundary against the dark card so it reads as a distinct,
+          working element even at small sizes. Sits BELOW the spinning
+          arcs so the orbiting yellow trail still pops above it. */}
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        <Svg width={size} height={size} viewBox="0 0 100 100">
+          <Circle
+            cx={50}
+            cy={50}
+            r={47}
+            fill="none"
+            stroke={RING}
+            strokeWidth={2.5}
+            opacity={0.9}
+          />
+        </Svg>
+      </View>
+
+      {/* Yellow connection arcs + dots — spin around the globe.
+          Thicker stroke (3 vs 2) and brighter dots make the rotation
+          obviously visible as motion rather than a static decoration. */}
       <Animated.View
         style={[
           StyleSheet.absoluteFill,
@@ -108,31 +134,31 @@ export function LoadingGlobe({ size = 28 }: Props) {
               d="M 50,8 A 42 42 0 0 1 86,71"
               fill="none"
               stroke={ARC}
-              strokeWidth={2}
+              strokeWidth={3}
               strokeLinecap="round"
-              opacity={0.95}
+              opacity={1}
             />
             <Path
               d="M 86,71 A 42 42 0 0 1 14,71"
               fill="none"
               stroke={ARC}
-              strokeWidth={2}
+              strokeWidth={3}
               strokeLinecap="round"
-              opacity={0.55}
+              opacity={0.65}
             />
             <Path
               d="M 14,71 A 42 42 0 0 1 50,8"
               fill="none"
               stroke={ARC}
-              strokeWidth={2}
+              strokeWidth={3}
               strokeLinecap="round"
-              opacity={0.25}
+              opacity={0.32}
             />
             {/* Dots at the three vertices */}
-            <Circle cx={50} cy={8} r={3.2} fill={ARC} />
-            <Circle cx={50} cy={8} r={1.4} fill="#fff" />
-            <Circle cx={86} cy={71} r={2.6} fill={ARC} opacity={0.85} />
-            <Circle cx={14} cy={71} r={2.2} fill={ARC} opacity={0.6} />
+            <Circle cx={50} cy={8} r={4} fill={ARC} />
+            <Circle cx={50} cy={8} r={1.8} fill="#fff" />
+            <Circle cx={86} cy={71} r={3.2} fill={ARC} opacity={0.9} />
+            <Circle cx={14} cy={71} r={2.6} fill={ARC} opacity={0.65} />
           </G>
         </Svg>
       </Animated.View>

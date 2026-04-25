@@ -788,17 +788,23 @@ export default function CameraScreen() {
                   styles.aiBanner,
                   {
                     backgroundColor: colors.card,
-                    borderColor: analyzing ? colors.border : colors.teal,
+                    // While analyzing we now use the same teal accent
+                    // as the "spotted" state but a touch more vivid so
+                    // the whole banner reads as actively working,
+                    // not idle. Previously it used colors.border which
+                    // matched the card and made the banner invisible.
+                    borderColor: colors.teal,
+                    borderWidth: analyzing ? 1.5 : 1,
                   },
                 ]}
               >
                 {analyzing ? (
                   <View style={styles.aiBannerRow}>
-                    <LoadingGlobe size={28} />
+                    <LoadingGlobe size={36} />
                     <Text
                       style={[
                         styles.aiBannerLabel,
-                        { color: colors.mutedForeground, marginLeft: 10 },
+                        { color: colors.foreground, marginLeft: 12 },
                       ]}
                     >
                       Analyzing your photo…
