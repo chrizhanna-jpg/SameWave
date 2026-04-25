@@ -207,11 +207,14 @@ export default function RevealScreen() {
 
   // The "same X" chips that summarise WHY this match happened. These ride
   // inside the shareable card so the social-media image makes immediate
-  // sense to anyone who sees it without context. We always show "same vibe"
-  // (the matched theme), then add a time chip if the posts were close
-  // enough in time, and a geo chip describing how close geographically.
+  // sense to anyone who sees it without context. The first chip is the
+  // matched vibe itself — we show the actual theme name (e.g. "sunset",
+  // "morning coffee") rather than a generic "same vibe" label so the
+  // share image tells the viewer exactly what the two strangers shared.
+  // Then we add a time chip if the posts were close enough in time, and
+  // a geo chip describing how close geographically.
   const sameChips: Array<{ label: string; emoji: string }> = [
-    { label: "same vibe", emoji: themeEmoji },
+    { label: themeTitle, emoji: themeEmoji },
   ];
   const timeChipMap: Record<string, { label: string; emoji: string } | null> = {
     minute: { label: "same minute", emoji: "⚡" },
