@@ -897,17 +897,19 @@ function PhotoSlot({
   const fullUri = fullSizeUri(photo.uri);
 
   // Tapping the photo opens it fullscreen and immediately starts its
-  // clip via the viewer's own playClip call. We pass the photo's own
-  // resolved clip (which is what plays when this side is highlighted on
-  // the feed) so the viewer is consistent with the feed audio.
+  // clip via the viewer's own playClip call. If this photo carries a
+  // custom voice clip, prefer THAT over the genre-resolved music clip
+  // — both the mic badge tap (here on the feed) and the photo tap
+  // (which opens the viewer) should preview the same audio.
   const onTap = () => {
     markUserInteracted();
+    const useCustom = !!photo.customAudioUrl;
     router.push({
       pathname: "/photo-viewer",
       params: {
         uri: fullUri,
-        clipUrl: clip?.url ?? "",
-        vibeLabel: clip?.label ?? "",
+        clipUrl: useCustom ? photo.customAudioUrl ?? "" : clip?.url ?? "",
+        vibeLabel: useCustom ? "voice clip" : clip?.label ?? "",
         country: photo.country,
         countryFlag: photo.countryFlag,
       },
@@ -947,7 +949,11 @@ function PhotoSlot({
             <MicBadge audioUrl={photo.customAudioUrl} size="sm" />
           </View>
         ) : null}
-        {isActive && vibeLabel ? (
+        {/* Hide the genre vibe badge when a custom voice clip exists —
+            the mic badge in the same bottom-left corner is what's
+            actually playing for this card, so showing both would be
+            visually noisy and contradictory. */}
+        {isActive && vibeLabel && !photo.customAudioUrl ? (
           <View style={styles.vibeBadge}>
             <Icon name="volume2" size={10} color="#ffffff" />
             <Text style={styles.vibeBadgeText} numberOfLines={1}>
@@ -1087,10 +1093,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   photoMicBadge: {
-    // top-left avoids the bottom-left vibeBadge (active state) and
-    // the top-right sampleBadge — no overlap on any combination.
+    // Bottom-left matches the MicBadge visual convention used on every
+    // other surface (echo-pair, match, echoes-theme). The sibling
+    // vibeBadge is suppressed when customAudioUrl is set, so there is
+    // no overlap in this corner.
     position: "absolute",
-    top: 5,
+    bottom: 5,
     left: 5,
   },
   vibeBadge: {
