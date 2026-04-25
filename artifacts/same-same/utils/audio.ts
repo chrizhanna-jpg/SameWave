@@ -61,11 +61,11 @@ export function onUserInteracted(cb: () => void): () => void {
 async function ensureAudioMode() {
   // Allows playback while the device is on silent (otherwise iOS
   // swallows everything) and ducks other audio so a brief vibe clip
-  // doesn't fight the user's Spotify. Critically, this also resets
-  // `allowsRecordingIOS` to false so the camera screen's recorder
-  // can't leave the global audio session in record mode (which on
-  // iOS routes playback through the earpiece and on Android can
-  // outright suppress music here).
+  // doesn't fight the user's Spotify. `allowsRecordingIOS: false`
+  // is set explicitly so the camera screen's recorder can't leave
+  // the global audio session in record mode (which on iOS routes
+  // playback through the earpiece and on Android can outright
+  // suppress music here).
   try {
     await Audio.setAudioModeAsync({
       allowsRecordingIOS: false,
@@ -79,15 +79,30 @@ async function ensureAudioMode() {
   }
 }
 
-// Re-apply the playback audio mode on every load instead of memoizing
-// once at startup. The recorder in the camera screen mutates the same
-// global audio session (allowsRecordingIOS=true, etc) — without this
-// re-assert, any clip the user tries to play after recording would
-// inherit the recording config and either go silent or route through
-// the earpiece. The call itself is cheap (~milliseconds) compared to
-// the network fetch + decode that follows it.
+// Memoize the initial setup so we don't pay the native bridge cost
+// (and risk interrupting an active sound) on every clip load. The
+// camera screen calls `resetPlaybackMode()` after recording to
+// re-arm the playback config — that's the only legit reason to
+// re-run setAudioModeAsync mid-session.
+let audioModePromise: Promise<void> | null = null;
 function audioModeReady() {
-  return ensureAudioMode();
+  if (!audioModePromise) audioModePromise = ensureAudioMode();
+  return audioModePromise;
+}
+
+/**
+ * Force the global audio session back into the playback config used
+ * by this singleton. Call this from any screen that mutates
+ * `Audio.setAudioModeAsync` (the recorder is the only such screen
+ * today) so the next `playClip()` actually produces sound.
+ *
+ * We re-issue the underlying `setAudioModeAsync` AND swap the
+ * memoized promise so any in-flight `audioModeReady()` awaiters get
+ * the freshly applied config too.
+ */
+export async function resetPlaybackMode(): Promise<void> {
+  audioModePromise = ensureAudioMode();
+  await audioModePromise;
 }
 
 function ensureAppStateHook() {

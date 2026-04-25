@@ -34,6 +34,7 @@ import {
 import {
   markUserInteracted,
   playClip,
+  resetPlaybackMode,
   stop as stopAudio,
   stopIfLease,
 } from "@/utils/audio";
@@ -215,9 +216,12 @@ export default function CameraScreen() {
       /* ignore */
     }
     // Restore the audio session so other playback (preview clips) sounds
-    // through the speaker normally instead of the earpiece.
+    // through the speaker normally instead of the earpiece. Routed
+    // through the singleton helper so the music player's full playback
+    // config (silent-mode, ducking, earpiece routing) is re-asserted —
+    // not just the iOS recording flag.
     try {
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+      await resetPlaybackMode();
     } catch {
       /* best effort */
     }
@@ -329,10 +333,7 @@ export default function CameraScreen() {
     // Stop any music-vibe preview so we don't have two sounds at once.
     void stopAudio();
     try {
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-      });
+      await resetPlaybackMode();
       const { sound } = await Audio.Sound.createAsync(
         { uri: customAudioUrl },
         { shouldPlay: true },
@@ -493,10 +494,9 @@ export default function CameraScreen() {
       // Reset the iOS audio session back to playback-only — without
       // this, allowsRecordingIOS=true persists across screens and the
       // match feed routes through the earpiece instead of the speaker.
-      void Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-      }).catch(() => {});
+      // Routed through the singleton so the music player's full
+      // playback config (silent-mode, ducking, earpiece) is restored.
+      void resetPlaybackMode().catch(() => {});
     };
   }, []);
 
