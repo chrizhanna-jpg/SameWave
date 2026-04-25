@@ -217,6 +217,35 @@ function PhotoSlot({
             “{label}”
           </span>
         </div>
+        <div
+          style={{
+            position: "absolute",
+            bottom: 8,
+            right: 8,
+            display: "flex",
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 4,
+            paddingLeft: 10,
+            paddingRight: 10,
+            paddingTop: 5,
+            paddingBottom: 5,
+            borderRadius: 999,
+            backgroundColor: "rgba(0, 0, 0, 0.6)",
+          }}
+        >
+          <span style={{ fontSize: 11, color: "#FFFFFF" }}>✨</span>
+          <span
+            style={{
+              fontSize: 11,
+              color: "#FFFFFF",
+              fontWeight: 700,
+              letterSpacing: 0.4,
+            }}
+          >
+            Echo
+          </span>
+        </div>
       </div>
     </div>
   );

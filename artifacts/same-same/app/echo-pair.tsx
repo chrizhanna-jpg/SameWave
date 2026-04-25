@@ -312,6 +312,14 @@ export default function EchoPairScreen() {
                       <MicBadge audioUrl={pair.a.customAudioUrl} size="sm" />
                     </View>
                   ) : null}
+                  {!proUnlocked && (
+                    <View style={styles.photoOverlayWatermarkContainer}>
+                      <View style={styles.photoOverlayWatermark}>
+                        <Text style={styles.photoOverlayWatermarkSparkle}>✨</Text>
+                        <Text style={styles.photoOverlayWatermarkText}>Echo</Text>
+                      </View>
+                    </View>
+                  )}
                 </View>
                 <View style={styles.sharePhotoFrame}>
                   <Image
@@ -324,6 +332,14 @@ export default function EchoPairScreen() {
                       <MicBadge audioUrl={pair.b.customAudioUrl} size="sm" />
                     </View>
                   ) : null}
+                  {!proUnlocked && (
+                    <View style={styles.photoOverlayWatermarkContainer}>
+                      <View style={styles.photoOverlayWatermark}>
+                        <Text style={styles.photoOverlayWatermarkSparkle}>✨</Text>
+                        <Text style={styles.photoOverlayWatermarkText}>Echo</Text>
+                      </View>
+                    </View>
+                  )}
                 </View>
               </View>
               <View style={styles.shareFlagRow}>

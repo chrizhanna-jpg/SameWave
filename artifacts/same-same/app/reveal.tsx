@@ -335,6 +335,14 @@ export default function RevealScreen() {
                   style={styles.sharePhoto}
                   resizeMode="cover"
                 />
+                {!proUnlocked && (
+                  <View style={styles.photoOverlayWatermarkContainer}>
+                    <View style={styles.photoOverlayWatermark}>
+                      <Text style={styles.photoOverlayWatermarkSparkle}>✨</Text>
+                      <Text style={styles.photoOverlayWatermarkText}>Echo</Text>
+                    </View>
+                  </View>
+                )}
               </View>
               <View style={styles.sharePhotoFrame}>
                 <Image
@@ -342,6 +350,14 @@ export default function RevealScreen() {
                   style={styles.sharePhoto}
                   resizeMode="cover"
                 />
+                {!proUnlocked && (
+                  <View style={styles.photoOverlayWatermarkContainer}>
+                    <View style={styles.photoOverlayWatermark}>
+                      <Text style={styles.photoOverlayWatermarkSparkle}>✨</Text>
+                      <Text style={styles.photoOverlayWatermarkText}>Echo</Text>
+                    </View>
+                  </View>
+                )}
               </View>
             </View>
             <View style={styles.shareFlagRow}>
