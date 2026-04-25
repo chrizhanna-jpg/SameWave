@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
+  Animated,
   Image,
   Platform,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -12,37 +13,31 @@ import {
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Haptics from "expo-haptics";
+import * as Sharing from "expo-sharing";
+import ViewShot, { captureRef } from "react-native-view-shot";
 import { Icon } from "@/components/Icon";
 import { MicBadge } from "@/components/MicBadge";
 import { useColors } from "@/hooks/useColors";
-import { fetchPair, type PhotoPairResult, type PhotoPairSide } from "@/utils/api";
-
-// Friendly relative timestamp ("just now", "3h ago", "yesterday",
-// "Apr 12") — matches the wording used throughout the rest of the app.
-function ago(iso: string | null): string {
-  if (!iso) return "";
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return "";
-  const mins = Math.floor((Date.now() - then) / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days === 1) return "yesterday";
-  if (days < 7) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
-}
+import { useApp } from "@/context/AppContext";
+import { getTimeTier, getGeoTier } from "@/utils/celebrations";
+import { DAILY_CHALLENGES } from "@/data/samplePhotos";
+import { fetchPair, type PhotoPairResult } from "@/utils/api";
 
 export default function EchoPairScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ a?: string; b?: string }>();
+  const { proUnlocked } = useApp();
   const [pair, setPair] = useState<PhotoPairResult | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sharing, setSharing] = useState(false);
+  const shotRef = useRef<ViewShot>(null);
+
+  // Subtle entrance animation so the share card "lands" rather than
+  // popping in cold. Mirrors the reveal screen's feel.
+  const fadeIn = useRef(new Animated.Value(0)).current;
+  const scaleIn = useRef(new Animated.Value(0.94)).current;
 
   useEffect(() => {
     let alive = true;
@@ -55,199 +50,348 @@ export default function EchoPairScreen() {
       if (alive) {
         setPair(result);
         setLoading(false);
+        if (result) {
+          Animated.parallel([
+            Animated.timing(fadeIn, {
+              toValue: 1,
+              duration: 320,
+              useNativeDriver: true,
+            }),
+            Animated.spring(scaleIn, {
+              toValue: 1,
+              friction: 7,
+              tension: 50,
+              useNativeDriver: true,
+            }),
+          ]).start();
+        }
       }
     })();
     return () => {
       alive = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.a, params.b]);
 
-  const sharedTags = useMemo(() => {
-    if (!pair) return [];
-    const set = new Set(pair.b.tags);
-    return pair.a.tags.filter((t) => set.has(t));
-  }, [pair]);
-
-  const onShare = async () => {
-    if (!pair) return;
-    const themeLine = pair.a.theme || pair.b.theme || "shared moment";
-    const message = `Two strangers, same vibe — ${themeLine}. ${pair.a.country} ${pair.a.countryFlag} ↔ ${pair.b.country} ${pair.b.countryFlag}. Found on Echo.`;
+  const handleShare = async () => {
+    if (sharing || !pair || !shotRef.current) return;
+    setSharing(true);
     try {
-      await Share.share({ message });
+      const uri = await captureRef(shotRef.current, {
+        format: "jpg",
+        quality: 0.95,
+        result: "tmpfile",
+      });
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      if (Platform.OS === "web") {
+        Alert.alert(
+          "Share ready",
+          "On the published mobile app, this opens your phone's share sheet (Instagram, WhatsApp, Messages, etc.).",
+        );
+      } else {
+        const available = await Sharing.isAvailableAsync();
+        if (!available) {
+          Alert.alert(
+            "Sharing unavailable",
+            "Sharing isn't supported on this device.",
+          );
+        } else {
+          await Sharing.shareAsync(uri, {
+            mimeType: "image/jpeg",
+            dialogTitle: "Share this echo",
+          });
+        }
+      }
     } catch {
-      // user cancelled — no-op
+      Alert.alert(
+        "Couldn't share",
+        "Something went wrong creating the share image.",
+      );
+    } finally {
+      setSharing(false);
     }
   };
 
   const topPadding = Platform.OS === "web" ? 16 : insets.top + 8;
   const bottomPadding = Platform.OS === "web" ? 24 : insets.bottom + 24;
 
-  return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: topPadding }]}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={[styles.iconBtn, { borderColor: colors.border }]}
-          hitSlop={8}
-          accessibilityLabel="Close"
-        >
-          <Icon name="x" size={20} color={colors.foreground} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-          Echo
-        </Text>
-        <TouchableOpacity
-          onPress={onShare}
-          disabled={!pair}
-          style={[
-            styles.iconBtn,
-            { borderColor: colors.border, opacity: pair ? 1 : 0.4 },
-          ]}
-          hitSlop={8}
-          accessibilityLabel="Share"
-        >
-          <Icon name="share" size={18} color={colors.foreground} />
-        </TouchableOpacity>
-      </View>
+  // The header still gets rendered while loading / on the empty state, so
+  // we hoist it. The chip + share-card construction below only runs once
+  // we have a valid pair, so the helpers can safely assume `pair` exists.
+  const renderHeader = () => (
+    <View style={[styles.header, { paddingTop: topPadding }]}>
+      <TouchableOpacity
+        onPress={() => router.back()}
+        style={[styles.iconBtn, { borderColor: colors.border }]}
+        hitSlop={8}
+        accessibilityLabel="Close"
+      >
+        <Icon name="x" size={20} color={colors.foreground} />
+      </TouchableOpacity>
+      <Text style={[styles.headerTitle, { color: colors.foreground }]}>
+        same same
+      </Text>
+      <TouchableOpacity
+        onPress={handleShare}
+        disabled={!pair || sharing}
+        style={[
+          styles.iconBtn,
+          { borderColor: colors.border, opacity: pair ? 1 : 0.4 },
+        ]}
+        hitSlop={8}
+        accessibilityLabel="Share"
+      >
+        <Icon name="share" size={18} color={colors.foreground} />
+      </TouchableOpacity>
+    </View>
+  );
 
-      {loading ? (
+  if (loading) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        {renderHeader()}
         <View style={styles.center}>
           <ActivityIndicator color={colors.primary} />
         </View>
-      ) : !pair ? (
+      </View>
+    );
+  }
+
+  if (!pair) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        {renderHeader()}
         <View style={styles.center}>
           <Text style={[styles.empty, { color: colors.mutedForeground }]}>
             This echo isn't available right now.
           </Text>
         </View>
-      ) : (
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={[
-            styles.body,
-            { paddingBottom: bottomPadding },
-          ]}
-          showsVerticalScrollIndicator={false}
+      </View>
+    );
+  }
+
+  // ── Chip helpers (mirrors /reveal) ────────────────────────────────────
+  // Resolve the matched theme to its display title + emoji. Either side's
+  // `theme` field is the same value; we prefer `a.theme` and fall back to
+  // `b.theme` so a missing field on one side doesn't blank out the chip.
+  const rawTheme = pair.a.theme || pair.b.theme || "the same thing";
+  const themeMeta = DAILY_CHALLENGES.find(
+    (c) => c.id === rawTheme || c.title.toLowerCase() === rawTheme,
+  );
+  const themeTitle = themeMeta?.title ?? rawTheme;
+  const themeEmoji = themeMeta?.emoji ?? "✨";
+
+  // Time tier reuses the shared celebrations helper. We feed it `a` as
+  // "mine" and convert `b.createdAt` into minutes-ago so the diff math is
+  // the same as the match flow. If either timestamp is missing we get a
+  // "distant" tier back, which we then drop from the chip row.
+  const bMinutesAgo =
+    pair.b.createdAt != null
+      ? (Date.now() - new Date(pair.b.createdAt).getTime()) / 60000
+      : undefined;
+  const timeTier = getTimeTier(pair.a.createdAt ?? undefined, bMinutesAgo);
+  const geoTier = getGeoTier(
+    pair.a.countryCode ?? undefined,
+    pair.b.countryCode ?? undefined,
+  );
+
+  const sameChips: Array<{ label: string; emoji: string }> = [
+    { label: themeTitle, emoji: themeEmoji },
+  ];
+  const timeChipMap: Record<string, { label: string; emoji: string } | null> = {
+    minute: { label: "same minute", emoji: "⚡" },
+    hour: { label: "same hour", emoji: "✨" },
+    day: { label: "same day", emoji: "☀️" },
+    week: { label: "same week", emoji: "🗓️" },
+    distant: null,
+  };
+  const timeChip = timeChipMap[timeTier.kind];
+  if (timeChip) sameChips.push(timeChip);
+  const geoChipMap: Record<string, { label: string; emoji: string }> = {
+    country: { label: "same country", emoji: "📍" },
+    continent: { label: "same continent", emoji: "🌎" },
+    planet: { label: "same world", emoji: "🌍" },
+  };
+  sameChips.push(geoChipMap[geoTier.kind]);
+
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {renderHeader()}
+
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.body, { paddingBottom: bottomPadding }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* The shareable card. ONLY the contents of <ViewShot> are
+            captured by handleShare and exported as the social-media
+            image, so any extra context / buttons sit OUTSIDE this block.
+            Same structure as /reveal: "same same" wordmark, "same X"
+            chip row with the actual vibe name first, two photos with a
+            flag beside each, then the watermark when not Pro. */}
+        <Animated.View
+          style={{
+            opacity: fadeIn,
+            transform: [{ scale: scaleIn }],
+          }}
         >
-          {/* The big "It's an Echo!" reveal headline. This screen is
-              the celebration moment — both when arriving from the
-              EchoFlash banner AND when tapping a pair from inbox /
-              Discover — so it gets the same treatment as a dating-app
-              "It's a Match!" reveal. */}
-          <View style={styles.revealBlock}>
-            <Text style={[styles.revealEyebrow, { color: colors.gold }]}>
-              ✨ ECHO ✨
+          <ViewShot
+            ref={shotRef}
+            options={{ format: "jpg", quality: 0.95 }}
+            style={[
+              styles.shareCard,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+              },
+            ]}
+          >
+            <Text style={[styles.shareTitle, { color: colors.foreground }]}>
+              same same
             </Text>
-            <Text style={[styles.revealTitle, { color: colors.foreground }]}>
-              It's an Echo!
-            </Text>
-            <Text style={[styles.theme, { color: colors.mutedForeground }]}>
-              {pair.a.theme || pair.b.theme || "shared moment"}
-            </Text>
-            {pair.mutualAt && (
-              <Text style={[styles.mutualAt, { color: colors.mutedForeground }]}>
-                matched {ago(pair.mutualAt)}
-              </Text>
-            )}
-          </View>
 
-          <View style={styles.pairColumn}>
-            {/* Neutral country-only labelling: this view is opened both
-                from the user's own inbox AND from public Discover theme
-                tiles, so we never assert "yours" vs "theirs". The flag +
-                country line is enough context. */}
-            <PairSide side={pair.a} />
-            <View
-              style={[
-                styles.divider,
-                { backgroundColor: colors.border },
-              ]}
-            />
-            <PairSide side={pair.b} />
-          </View>
+            <View style={styles.shareChipsRow}>
+              {sameChips.map((chip) => (
+                <View
+                  key={chip.label}
+                  style={[
+                    styles.shareChip,
+                    {
+                      backgroundColor: colors.teal + "1a",
+                      borderColor: colors.teal + "55",
+                    },
+                  ]}
+                >
+                  <Text style={styles.shareChipEmoji}>{chip.emoji}</Text>
+                  <Text style={[styles.shareChipText, { color: colors.teal }]}>
+                    {chip.label}
+                  </Text>
+                </View>
+              ))}
+            </View>
 
-          {sharedTags.length > 0 && (
-            <View style={styles.detailBlock}>
-              <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>
-                Shared vibes
-              </Text>
-              <View style={styles.tagRow}>
-                {sharedTags.map((t) => (
-                  <View
-                    key={t}
-                    style={[
-                      styles.tagChip,
-                      {
-                        backgroundColor: colors.card,
-                        borderColor: colors.border,
-                      },
-                    ]}
-                  >
-                    <Text style={[styles.tagText, { color: colors.foreground }]}>
-                      {t}
-                    </Text>
+            <View style={styles.sharePhotoPair}>
+              <View style={styles.sharePhotoSlot}>
+                <Image
+                  source={{ uri: pair.a.uri }}
+                  style={styles.sharePhoto}
+                  resizeMode="cover"
+                />
+                {pair.a.customAudioUrl ? (
+                  <View style={styles.micBadgeOverlay}>
+                    <MicBadge audioUrl={pair.a.customAudioUrl} size="sm" />
                   </View>
-                ))}
+                ) : null}
+                <View
+                  style={[
+                    styles.shareFlagBadge,
+                    {
+                      backgroundColor: colors.card,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <Text style={styles.shareFlagText}>
+                    {pair.a.countryFlag ?? "🌍"}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.sharePhotoSlot}>
+                <Image
+                  source={{ uri: pair.b.uri }}
+                  style={styles.sharePhoto}
+                  resizeMode="cover"
+                />
+                {pair.b.customAudioUrl ? (
+                  <View style={styles.micBadgeOverlay}>
+                    <MicBadge audioUrl={pair.b.customAudioUrl} size="sm" />
+                  </View>
+                ) : null}
+                <View
+                  style={[
+                    styles.shareFlagBadge,
+                    {
+                      backgroundColor: colors.card,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <Text style={styles.shareFlagText}>
+                    {pair.b.countryFlag ?? "🌍"}
+                  </Text>
+                </View>
               </View>
             </View>
-          )}
 
-          <TouchableOpacity
-            onPress={onShare}
+            {!proUnlocked && (
+              <View
+                style={[
+                  styles.watermark,
+                  {
+                    backgroundColor: colors.primary + "26",
+                    borderColor: colors.primary + "55",
+                  },
+                ]}
+              >
+                <Text style={styles.watermarkSparkle}>✨</Text>
+                <Text style={[styles.watermarkText, { color: colors.primary }]}>
+                  echo · same same
+                </Text>
+              </View>
+            )}
+          </ViewShot>
+        </Animated.View>
+
+        {/* Visual separator between the shareable image above and the
+            interactive controls below. Makes it obvious which part of
+            the screen ends up in the exported share image. */}
+        <View style={styles.sectionDivider}>
+          <View
             style={[
-              styles.shareBtn,
-              { backgroundColor: colors.primary },
+              styles.sectionDividerLine,
+              { backgroundColor: colors.border },
             ]}
-            activeOpacity={0.85}
-          >
-            <Icon name="share" size={18} color={colors.primaryForeground} />
-            <Text
-              style={[styles.shareBtnText, { color: colors.primaryForeground }]}
-            >
-              Share this echo
-            </Text>
-          </TouchableOpacity>
-
-          <Text style={[styles.footer, { color: colors.mutedForeground }]}>
-            Two strangers, same vibe.
-          </Text>
-        </ScrollView>
-      )}
-    </View>
-  );
-}
-
-function PairSide({ side }: { side: PhotoPairSide }) {
-  const colors = useColors();
-  return (
-    <View style={styles.side}>
-      <View style={styles.bigPhotoWrap}>
-        <Image source={{ uri: side.uri }} style={styles.bigPhoto} />
-        {side.customAudioUrl ? (
-          <View style={styles.micBadgeOverlay}>
-            <MicBadge audioUrl={side.customAudioUrl} size="sm" />
-          </View>
-        ) : null}
-      </View>
-      <View style={styles.sideMeta}>
-        <Text style={styles.flag}>{side.countryFlag}</Text>
-        <View style={{ flex: 1 }}>
+          />
           <Text
-            style={[styles.country, { color: colors.foreground }]}
-            numberOfLines={1}
+            style={[
+              styles.sectionDividerLabel,
+              { color: colors.mutedForeground },
+            ]}
           >
-            {side.country}
+            actions
           </Text>
-          {side.createdAt && (
-            <Text
-              style={[styles.posted, { color: colors.mutedForeground }]}
-              numberOfLines={1}
-            >
-              posted {ago(side.createdAt)}
-            </Text>
-          )}
+          <View
+            style={[
+              styles.sectionDividerLine,
+              { backgroundColor: colors.border },
+            ]}
+          />
         </View>
-      </View>
+
+        <TouchableOpacity
+          onPress={handleShare}
+          disabled={sharing}
+          style={[
+            styles.shareBtn,
+            {
+              backgroundColor: colors.primary,
+              opacity: sharing ? 0.7 : 1,
+            },
+          ]}
+          activeOpacity={0.85}
+        >
+          <Icon name="share" size={18} color={colors.primaryForeground} />
+          <Text
+            style={[styles.shareBtnText, { color: colors.primaryForeground }]}
+          >
+            {sharing ? "Preparing…" : "Share this echo"}
+          </Text>
+        </TouchableOpacity>
+
+        <Text style={[styles.footer, { color: colors.mutedForeground }]}>
+          Two strangers, same vibe.
+        </Text>
+      </ScrollView>
     </View>
   );
 }
@@ -282,59 +426,109 @@ const styles = StyleSheet.create({
     gap: 18,
     flexGrow: 1,
   },
-  revealBlock: {
+  shareCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    paddingVertical: 22,
+    paddingHorizontal: 18,
+    gap: 16,
+    overflow: "hidden",
+    alignItems: "center",
+  },
+  shareTitle: {
+    fontSize: 34,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -1,
+    textTransform: "lowercase",
+  },
+  shareChipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    justifyContent: "center",
+  },
+  shareChip: {
+    flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingTop: 4,
-  },
-  revealEyebrow: {
-    fontSize: 11,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: 3,
-  },
-  revealTitle: {
-    fontSize: 28,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: -0.5,
-  },
-  theme: {
-    fontSize: 12,
-    fontFamily: "Inter_500Medium",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    textAlign: "center",
-    marginTop: 4,
-  },
-  mutualAt: {
-    fontSize: 12,
-    fontFamily: "Inter_400Regular",
-    textAlign: "center",
-  },
-  pairColumn: { gap: 14 },
-  side: { gap: 10 },
-  bigPhotoWrap: { position: "relative" },
-  bigPhoto: { width: "100%", aspectRatio: 1, borderRadius: 18 },
-  micBadgeOverlay: { position: "absolute", bottom: 10, left: 10 },
-  sideMeta: { flexDirection: "row", alignItems: "center", gap: 12 },
-  flag: { fontSize: 26 },
-  country: { fontSize: 15, fontFamily: "Inter_700Bold" },
-  posted: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 1 },
-  divider: { height: 1, marginHorizontal: 40 },
-  detailBlock: { gap: 8 },
-  detailLabel: {
-    fontSize: 11,
-    fontFamily: "Inter_500Medium",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  tagChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
   },
-  tagText: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  shareChipEmoji: { fontSize: 14 },
+  shareChipText: {
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.3,
+    textTransform: "lowercase",
+  },
+  sharePhotoPair: {
+    flexDirection: "row",
+    gap: 10,
+    alignSelf: "stretch",
+  },
+  sharePhotoSlot: {
+    flex: 1,
+    aspectRatio: 1,
+    borderRadius: 16,
+    overflow: "hidden",
+    position: "relative",
+  },
+  sharePhoto: {
+    width: "100%",
+    height: "100%",
+  },
+  micBadgeOverlay: { position: "absolute", bottom: 8, left: 8 },
+  shareFlagBadge: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  shareFlagText: {
+    fontSize: 20,
+    lineHeight: 22,
+  },
+  watermark: {
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  watermarkSparkle: { fontSize: 12 },
+  watermarkText: {
+    fontSize: 12,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.5,
+  },
+  sectionDivider: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  sectionDividerLine: {
+    flex: 1,
+    height: 1,
+  },
+  sectionDividerLabel: {
+    fontSize: 10,
+    fontFamily: "Inter_600SemiBold",
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+  },
   shareBtn: {
     flexDirection: "row",
     alignItems: "center",
