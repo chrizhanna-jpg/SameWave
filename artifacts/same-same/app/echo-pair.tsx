@@ -256,12 +256,36 @@ export default function EchoPairScreen() {
               styles.shareCard,
               {
                 backgroundColor: colors.card,
-                borderColor: colors.border,
+                // Celebration accent: a soft gold edge frames the
+                // whole shareable so it reads as a milestone moment,
+                // not just a regular pair view.
+                borderColor: colors.gold + "66",
+                borderWidth: 1.5,
               },
             ]}
           >
-            <Text style={[styles.shareTitle, { color: colors.foreground }]}>
-              same same
+            {/* Decorative sparkle confetti in the corners of the
+                share image — small enough to feel like flourish, not
+                clutter, and burned into the captured image so the
+                shared moment feels celebratory at a glance. */}
+            <Text style={styles.cornerSparkleTL}>✨</Text>
+            <Text style={styles.cornerSparkleTR}>✨</Text>
+            <Text style={styles.cornerSparkleBL}>✨</Text>
+            <Text style={styles.cornerSparkleBR}>✨</Text>
+
+            <View style={styles.shareTitleRow}>
+              <Text style={[styles.shareTitleSparkle, { color: colors.gold }]}>
+                ✨
+              </Text>
+              <Text style={[styles.shareTitle, { color: colors.gold }]}>
+                echo
+              </Text>
+              <Text style={[styles.shareTitleSparkle, { color: colors.gold }]}>
+                ✨
+              </Text>
+            </View>
+            <Text style={[styles.shareSubtitle, { color: colors.teal }]}>
+              same same · mutual
             </Text>
 
             <View style={styles.shareChipsRow}>
@@ -504,11 +528,57 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     alignItems: "center",
   },
+  shareTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  shareTitleSparkle: {
+    fontSize: 18,
+  },
   shareTitle: {
-    fontSize: 22,
+    fontSize: 28,
     fontFamily: "Inter_700Bold",
-    letterSpacing: -0.5,
+    letterSpacing: 1.5,
     textTransform: "lowercase",
+  },
+  shareSubtitle: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    marginTop: -2,
+  },
+  // Tiny gold sparkles tucked into the four corners of the share
+  // card. Absolute-positioned so they don't disturb the centered
+  // photo-first layout, and burned into the captured image.
+  cornerSparkleTL: {
+    position: "absolute",
+    top: 6,
+    left: 8,
+    fontSize: 12,
+    opacity: 0.7,
+  },
+  cornerSparkleTR: {
+    position: "absolute",
+    top: 6,
+    right: 8,
+    fontSize: 12,
+    opacity: 0.7,
+  },
+  cornerSparkleBL: {
+    position: "absolute",
+    bottom: 6,
+    left: 8,
+    fontSize: 12,
+    opacity: 0.7,
+  },
+  cornerSparkleBR: {
+    position: "absolute",
+    bottom: 6,
+    right: 8,
+    fontSize: 12,
+    opacity: 0.7,
   },
   shareChipsRow: {
     flexDirection: "row",
