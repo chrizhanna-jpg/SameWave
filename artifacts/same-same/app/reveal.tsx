@@ -314,42 +314,66 @@ export default function RevealScreen() {
             ))}
           </View>
 
+          {/* The photo pair now breaks out of the share-card's horizontal
+              padding (via negative margin) so the two images run almost
+              edge-to-edge of the captured share image. The country flags
+              were previously absolutely-positioned overlays on the top-
+              right of each photo — they now live in a small row directly
+              beneath their photo, centered, same 36px size. */}
           <View style={styles.sharePhotoPair}>
-            {/* Burned-in watermark overlaid on the photo pair so it
-                cannot be cropped off — sits in the gap between the
-                two photos near the bottom. Hidden once the user has
-                unlocked Pro via the in-app upsell. */}
-            {!proUnlocked ? (
-              <View
-                pointerEvents="none"
-                style={styles.photoOverlayWatermarkContainer}
-              >
-                <View style={styles.photoOverlayWatermark}>
-                  <Text style={styles.photoOverlayWatermarkSparkle}>✨</Text>
-                  <Text style={styles.photoOverlayWatermarkText}>
-                    same same
-                  </Text>
+            <View style={styles.sharePhotoFramesRow}>
+              {/* Burned-in watermark overlaid on the photo row so it
+                  cannot be cropped off — sits across the bottom of the
+                  two photos. Hidden once the user has unlocked Pro via
+                  the in-app upsell. */}
+              {!proUnlocked ? (
+                <View
+                  pointerEvents="none"
+                  style={styles.photoOverlayWatermarkContainer}
+                >
+                  <View style={styles.photoOverlayWatermark}>
+                    <Text style={styles.photoOverlayWatermarkSparkle}>✨</Text>
+                    <Text style={styles.photoOverlayWatermarkText}>
+                      same same
+                    </Text>
+                  </View>
                 </View>
+              ) : null}
+              <View style={styles.sharePhotoFrame}>
+                <Image
+                  source={{ uri: match.myPhoto }}
+                  style={styles.sharePhoto}
+                  resizeMode="cover"
+                />
               </View>
-            ) : null}
-            <View style={styles.sharePhotoSlot}>
-              <Image
-                source={{ uri: match.myPhoto }}
-                style={styles.sharePhoto}
-                resizeMode="cover"
-              />
-              <View style={[styles.shareFlagBadge, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <Text style={styles.shareFlagText}>{myCountryFlag ?? "🌍"}</Text>
+              <View style={styles.sharePhotoFrame}>
+                <Image
+                  source={{ uri: match.theirPhoto }}
+                  style={styles.sharePhoto}
+                  resizeMode="cover"
+                />
               </View>
             </View>
-            <View style={styles.sharePhotoSlot}>
-              <Image
-                source={{ uri: match.theirPhoto }}
-                style={styles.sharePhoto}
-                resizeMode="cover"
-              />
-              <View style={[styles.shareFlagBadge, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <Text style={styles.shareFlagText}>{match.theirCountryFlag ?? "🌍"}</Text>
+            <View style={styles.shareFlagRow}>
+              <View style={styles.shareFlagSlot}>
+                <View
+                  style={[
+                    styles.shareFlagBadge,
+                    { backgroundColor: colors.card, borderColor: colors.border },
+                  ]}
+                >
+                  <Text style={styles.shareFlagText}>{myCountryFlag ?? "🌍"}</Text>
+                </View>
+              </View>
+              <View style={styles.shareFlagSlot}>
+                <View
+                  style={[
+                    styles.shareFlagBadge,
+                    { backgroundColor: colors.card, borderColor: colors.border },
+                  ]}
+                >
+                  <Text style={styles.shareFlagText}>{match.theirCountryFlag ?? "🌍"}</Text>
+                </View>
               </View>
             </View>
           </View>
@@ -636,12 +660,23 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
     textTransform: "lowercase",
   },
+  // The pair container holds the photo row and the flag row stacked
+  // vertically. We pull it edge-to-edge of the share card via a negative
+  // horizontal margin equal to the share card's horizontal padding (18),
+  // so the captured share image's photos run almost to the corners.
   sharePhotoPair: {
-    flexDirection: "row",
-    gap: 10,
+    flexDirection: "column",
+    gap: 8,
     alignSelf: "stretch",
+    marginHorizontal: -18,
   },
-  sharePhotoSlot: {
+  sharePhotoFramesRow: {
+    flexDirection: "row",
+    gap: 6,
+    alignSelf: "stretch",
+    position: "relative",
+  },
+  sharePhotoFrame: {
     flex: 1,
     aspectRatio: 1,
     borderRadius: 16,
@@ -652,10 +687,18 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
+  // Flags now sit in a row below the photos, one per photo, centered in
+  // their column. Same 36px diameter as the old absolute overlay.
+  shareFlagRow: {
+    flexDirection: "row",
+    gap: 6,
+    alignSelf: "stretch",
+  },
+  shareFlagSlot: {
+    flex: 1,
+    alignItems: "center",
+  },
   shareFlagBadge: {
-    position: "absolute",
-    top: 8,
-    right: 8,
     width: 36,
     height: 36,
     borderRadius: 18,
