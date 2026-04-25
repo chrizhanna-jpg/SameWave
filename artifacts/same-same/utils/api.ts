@@ -173,6 +173,33 @@ export async function fetchCandidates(input: {
   }
 }
 
+/**
+ * Ask the server to re-tag the user's own photo using object-focused
+ * AI vision. Returns up to 6 detected object tags from the fixed
+ * vocabulary; an empty list means the model couldn't identify anything
+ * (e.g. abstract photo, text-only image). The mobile swipe screen feeds
+ * these tags back into fetchCandidates as the "match by object"
+ * matching strategy.
+ */
+export async function matchByObject(photoId: string): Promise<string[]> {
+  try {
+    const base = getApiBase();
+    const res = await fetch(`${base}/api/photos/match-by-object`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(await authedHeaders()),
+      },
+      body: JSON.stringify({ photoId }),
+    });
+    if (!res.ok) return [];
+    const json = (await res.json()) as { objects?: string[] };
+    return Array.isArray(json.objects) ? json.objects : [];
+  } catch {
+    return [];
+  }
+}
+
 export interface VoteResult {
   ok: boolean;
   /**

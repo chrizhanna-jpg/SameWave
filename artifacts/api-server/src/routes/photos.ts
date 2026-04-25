@@ -8,7 +8,7 @@ import {
   seenPhotosTable,
 } from "@workspace/db";
 import { resolveUserFromRequest } from "../lib/users";
-import { analyzePhoto } from "../lib/photoAnalysis";
+import { analyzePhoto, extractObjectTags } from "../lib/photoAnalysis";
 import { recordEchoOffer } from "./echoes";
 
 const router: IRouter = Router();
@@ -315,6 +315,58 @@ router.get("/photos/candidates", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "candidates query failed");
     res.status(500).json({ error: "query failed" });
+  }
+});
+
+// ---- POST /api/photos/match-by-object -------------------------------------
+// Body: { photoId: string }
+// Header: X-Device-Id (required).
+//
+// Alternative matching strategy. Runs Gemini vision over the user's own
+// photo with an object-focused prompt and returns up to 6 detected
+// physical-object tags. The mobile client uses these tags as the
+// /candidates query so the deck is re-ranked by visible-object overlap
+// instead of the usual theme + lifestyle-tag overlap.
+//
+// Auth: the supplied photoId MUST belong to the requesting user. We
+// look up the photo by id + user_id together so a malicious caller
+// can't trigger AI work on someone else's image.
+router.post("/photos/match-by-object", async (req, res) => {
+  try {
+    const user = await resolveUserFromRequest(req);
+    if (!user) {
+      res.status(401).json({ error: "missing or invalid X-Device-Id" });
+      return;
+    }
+    const photoId =
+      typeof req.body?.photoId === "string" ? req.body.photoId.trim() : "";
+    if (!photoId) {
+      res.status(400).json({ error: "photoId required" });
+      return;
+    }
+    const rows = await db
+      .select({
+        bytesBase64: photosTable.bytesBase64,
+        mimeType: photosTable.mimeType,
+      })
+      .from(photosTable)
+      .where(
+        and(eq(photosTable.id, photoId), eq(photosTable.userId, user.id)),
+      )
+      .limit(1);
+    const row = rows[0];
+    if (!row) {
+      res.status(404).json({ error: "photo not found" });
+      return;
+    }
+    const { objects } = await extractObjectTags({
+      base64: row.bytesBase64,
+      mimeType: row.mimeType ?? "image/jpeg",
+    });
+    res.json({ objects });
+  } catch (err) {
+    req.log.error({ err }, "match-by-object failed");
+    res.status(500).json({ error: "match-by-object failed" });
   }
 });
 

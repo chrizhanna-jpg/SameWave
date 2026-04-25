@@ -78,4 +78,66 @@ export async function analyzePhoto(args: {
   return { theme, tags };
 }
 
-export { ALLOWED_TAGS };
+// Subset of ALLOWED_TAGS that name PHYSICAL OBJECTS or LIVING THINGS,
+// as opposed to lifestyle / activity / mood / location words. Used by
+// the "match by object" matching mode so the AI re-tags the user's
+// photo focused only on what's literally visible in the frame.
+const OBJECT_TAGS = [
+  "coffee", "drink", "meal", "bread", "dessert",
+  "trees", "clouds", "stars", "mountains",
+  "water", "beach", "snow", "plants", "flowers", "garden",
+  "dog", "cat", "animal", "wildlife", "bird",
+  "art", "music", "laptop", "desk",
+];
+
+const OBJECT_PROMPT = `You are looking at a photo for a global "match by object" feature.
+
+Return ONLY the PHYSICAL OBJECTS or LIVING THINGS that are clearly visible in
+the photo, choosing up to 6 tags from this fixed vocabulary. Skip lifestyle,
+activity, mood, location, or sentiment words — only name what's literally in
+the frame.
+
+Vocabulary: ${OBJECT_TAGS.join(", ")}
+
+Return ONLY this JSON, no prose, no markdown:
+{"objects": ["..."]}`;
+
+// Object-focused vision pass used by the "match by object" button on
+// the swipe screen. Lighter than analyzePhoto: only returns the tag
+// list, no theme. Mobile uses these tags as a /candidates query so the
+// user gets a fresh deck ranked by visible-object overlap instead of
+// the usual theme + lifestyle-tag overlap.
+export async function extractObjectTags(args: {
+  base64: string;
+  mimeType: string;
+}): Promise<{ objects: string[] }> {
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: [
+      {
+        role: "user",
+        parts: [
+          { text: OBJECT_PROMPT },
+          { inlineData: { data: args.base64, mimeType: args.mimeType } },
+        ],
+      },
+    ],
+    config: { responseMimeType: "application/json", maxOutputTokens: 4096 },
+  });
+  let parsed: { objects?: unknown } = {};
+  try {
+    parsed = JSON.parse(response.text ?? "{}");
+  } catch {
+    parsed = {};
+  }
+  const objects = Array.isArray(parsed.objects)
+    ? parsed.objects
+        .filter((t): t is string => typeof t === "string")
+        .map((t) => t.toLowerCase().trim())
+        .filter((t) => OBJECT_TAGS.includes(t))
+        .slice(0, 6)
+    : [];
+  return { objects };
+}
+
+export { ALLOWED_TAGS, OBJECT_TAGS };
