@@ -285,6 +285,23 @@ export default function EchoPairScreen() {
             </View>
 
             <View style={styles.sharePhotoPair}>
+              {/* Burned-in watermark overlaid on the photo pair so it
+                  cannot be cropped off — sits in the gap between the
+                  two photos near the bottom. Hidden once the user has
+                  unlocked Pro via the in-app upsell. */}
+              {!proUnlocked ? (
+                <View
+                  pointerEvents="none"
+                  style={styles.photoOverlayWatermarkContainer}
+                >
+                  <View style={styles.photoOverlayWatermark}>
+                    <Text style={styles.photoOverlayWatermarkSparkle}>✨</Text>
+                    <Text style={styles.photoOverlayWatermarkText}>
+                      same same
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
               <View style={styles.sharePhotoSlot}>
                 <Image
                   source={{ uri: pair.a.uri }}
@@ -342,13 +359,13 @@ export default function EchoPairScreen() {
                 style={[
                   styles.watermark,
                   {
-                    backgroundColor: colors.primary + "26",
-                    borderColor: colors.primary + "55",
+                    backgroundColor: "rgba(0, 0, 0, 0.55)",
+                    borderColor: "rgba(255, 255, 255, 0.18)",
                   },
                 ]}
               >
                 <Text style={styles.watermarkSparkle}>✨</Text>
-                <Text style={[styles.watermarkText, { color: colors.primary }]}>
+                <Text style={[styles.watermarkText, { color: "#FFFFFF" }]}>
                   echo · same same
                 </Text>
               </View>
@@ -515,16 +532,47 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     marginTop: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
     borderRadius: 999,
     borderWidth: 1,
   },
-  watermarkSparkle: { fontSize: 12 },
+  watermarkSparkle: { fontSize: 14 },
   watermarkText: {
-    fontSize: 12,
+    fontSize: 14,
     fontFamily: "Inter_700Bold",
     letterSpacing: 0.5,
+  },
+  // Burned-in watermark overlaid on the photo pair. Centered along the
+  // bottom of the pair using a stretched container; the inner pill auto-
+  // sizes to its content so the wordmark is readable but unobtrusive.
+  photoOverlayWatermarkContainer: {
+    position: "absolute",
+    bottom: 8,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 5,
+  },
+  photoOverlayWatermark: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+  },
+  photoOverlayWatermarkSparkle: {
+    fontSize: 11,
+    color: "#FFFFFF",
+  },
+  photoOverlayWatermarkText: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    color: "#FFFFFF",
+    letterSpacing: 0.4,
+    textTransform: "lowercase",
   },
   sectionDivider: {
     flexDirection: "row",
