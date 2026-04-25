@@ -79,7 +79,11 @@ export function MatchFlash({
   // results in exactly one transition.
   const finishedRef = useRef(false);
 
-  const finish = (action: MatchFlashAction | "auto" = "auto") => {
+  // `mode` is intentionally non-optional. Using a default parameter
+  // here previously caused `finish(undefined)` (from the Open/Share
+  // button handlers) to be coerced back to the default "dismiss"
+  // branch, so both buttons appeared to do nothing.
+  const finish = (mode: "dismiss" | "open" | "share") => {
     if (finishedRef.current) return;
     finishedRef.current = true;
     Animated.timing(fade, {
@@ -87,8 +91,12 @@ export function MatchFlash({
       duration: 180,
       useNativeDriver: true,
     }).start(() => {
-      if (action === "auto") onDone();
-      else onOpenFull(action);
+      if (mode === "dismiss") onDone();
+      // For both Open and Share we navigate to /reveal without an
+      // auto-action — /reveal renders its own Share button so the
+      // user gets to see the rendered card before firing the share
+      // sheet.
+      else onOpenFull(undefined);
     });
   };
 
@@ -113,7 +121,7 @@ export function MatchFlash({
             toValue: g.dy > 0 ? 360 : -360,
             duration: 180,
             useNativeDriver: true,
-          }).start(() => finish("auto"));
+          }).start(() => finish("dismiss"));
         } else {
           Animated.spring(dragY, {
             toValue: 0,
@@ -195,7 +203,7 @@ export function MatchFlash({
             swipe gesture. Sits in the top-right of the celebration card
             so it's visible without dominating the layout. */}
         <Pressable
-          onPress={() => finish("auto")}
+          onPress={() => finish("dismiss")}
           style={styles.dismissBtn}
           hitSlop={12}
           accessibilityLabel="Dismiss match"
@@ -287,7 +295,7 @@ export function MatchFlash({
           <Pressable
             onPress={(e) => {
               e.stopPropagation?.();
-              finish(undefined);
+              finish("open");
             }}
             style={styles.openPill}
             accessibilityLabel="Open full match"
@@ -303,7 +311,7 @@ export function MatchFlash({
               // jumping straight into the OS share sheet — users want a
               // chance to see the rendered card before deciding to share.
               // /reveal has its own Share button that fires the share flow.
-              finish(undefined);
+              finish("share");
             }}
             style={styles.secondaryPill}
             accessibilityLabel="Share this match"
