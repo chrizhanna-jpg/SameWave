@@ -59,11 +59,16 @@ export function onUserInteracted(cb: () => void): () => void {
 }
 
 async function ensureAudioMode() {
-  // Run once. Allows playback while the device is on silent (otherwise
-  // iOS swallows everything) and ducks other audio so a brief vibe clip
-  // doesn't fight the user's Spotify.
+  // Allows playback while the device is on silent (otherwise iOS
+  // swallows everything) and ducks other audio so a brief vibe clip
+  // doesn't fight the user's Spotify. Critically, this also resets
+  // `allowsRecordingIOS` to false so the camera screen's recorder
+  // can't leave the global audio session in record mode (which on
+  // iOS routes playback through the earpiece and on Android can
+  // outright suppress music here).
   try {
     await Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
       playsInSilentModeIOS: true,
       staysActiveInBackground: false,
       shouldDuckAndroid: true,
@@ -74,10 +79,15 @@ async function ensureAudioMode() {
   }
 }
 
-let audioModePromise: Promise<void> | null = null;
+// Re-apply the playback audio mode on every load instead of memoizing
+// once at startup. The recorder in the camera screen mutates the same
+// global audio session (allowsRecordingIOS=true, etc) — without this
+// re-assert, any clip the user tries to play after recording would
+// inherit the recording config and either go silent or route through
+// the earpiece. The call itself is cheap (~milliseconds) compared to
+// the network fetch + decode that follows it.
 function audioModeReady() {
-  if (!audioModePromise) audioModePromise = ensureAudioMode();
-  return audioModePromise;
+  return ensureAudioMode();
 }
 
 function ensureAppStateHook() {
