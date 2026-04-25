@@ -154,6 +154,13 @@ export interface CandidatePhoto {
 export async function fetchCandidates(input: {
   theme?: string;
   tags?: string[];
+  /**
+   * Music vibe id chosen by the user on their own photo. Sent to the
+   * server so the candidate scoring can boost rows with the same
+   * music vibe — strengthens the "match by vibe + theme" intent of
+   * the primary deck.
+   */
+  musicGenre?: string;
   limit?: number;
 }): Promise<CandidatePhoto[]> {
   try {
@@ -161,6 +168,7 @@ export async function fetchCandidates(input: {
     const params = new URLSearchParams();
     if (input.theme) params.set("theme", input.theme);
     if (input.tags && input.tags.length > 0) params.set("tags", input.tags.join(","));
+    if (input.musicGenre) params.set("musicGenre", input.musicGenre);
     if (input.limit) params.set("limit", String(input.limit));
     const res = await fetch(`${base}/api/photos/candidates?${params.toString()}`, {
       headers: await authedHeaders(),

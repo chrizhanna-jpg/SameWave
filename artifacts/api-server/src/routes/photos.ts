@@ -173,19 +173,26 @@ router.post("/photos", async (req, res) => {
 });
 
 // ---- GET /api/photos/candidates -------------------------------------------
-// Query: ?theme=&tags=tag1,tag2&limit=24
+// Query: ?theme=&tags=tag1,tag2&musicGenre=lofi&limit=24
 // Header: X-Device-Id (required).
 //
-// Scoring (computed in SQL):
-//   tag_overlap = count of tags shared with the requesting user's photo
-//   theme_score = 5 if exact match, 2 if either string contains the other,
-//                 0 otherwise
-//   recency     = small boost for newer photos so the deck refreshes
-//   jitter      = tiny random factor so two consecutive calls don't return
-//                 the same ordering
+// Scoring (computed in SQL) — rebalanced to favour vibe + theme similarity:
+//   tag_overlap*2 = count of tags shared with the requesting user's photo,
+//                   doubled (lifestyle / vibe tags carry the user's mood)
+//   theme_score   = 10 if exact match, 4 if either string contains the
+//                   other, 0 otherwise — the daily challenge / theme is
+//                   the strongest single similarity signal we have
+//   music_score   = 5 if same musicGenre as the requester's photo,
+//                   0 otherwise (vibe match)
+//   jitter        = tiny random factor (0..0.3) so two consecutive calls
+//                   don't return the exact same ordering
+//
+// The "subject matter match" feature calls this same endpoint with only
+// `tags=` populated (no theme, no musicGenre) so the deck is re-ranked
+// purely by visible-object overlap.
 //
 // We exclude the user's own photos, expired/removed/over-reported, and
-// anything they've already voted on.
+// anything they've already voted on or seen.
 router.get("/photos/candidates", async (req, res) => {
   try {
     const user = await resolveUserFromRequest(req);
@@ -201,6 +208,13 @@ router.get("/photos/candidates", async (req, res) => {
       .split(",")
       .map((t) => t.trim().toLowerCase())
       .filter(Boolean);
+    // Music vibe is whitelisted in /photos POST, so it's safe to trust
+    // the value the client echoes back here. Empty string disables the
+    // bonus for callers (e.g. subject-matter match) that don't send it.
+    const musicGenre =
+      typeof req.query.musicGenre === "string"
+        ? req.query.musicGenre.trim()
+        : "";
     const limit = Math.min(
       Math.max(parseInt(String(req.query.limit ?? "24"), 10) || 24, 1),
       50,
@@ -242,19 +256,33 @@ router.get("/photos/candidates", async (req, res) => {
           cardinality(ARRAY(SELECT unnest(p.tags) INTERSECT SELECT unnest(${tagsExpr}))) AS tag_overlap,
           CASE
             WHEN ${theme} = '' THEN 0
-            WHEN p.theme = ${theme} THEN 5
-            WHEN p.theme ILIKE '%' || ${theme} || '%' OR ${theme} ILIKE '%' || p.theme || '%' THEN 2
+            WHEN p.theme = ${theme} THEN 10
+            WHEN p.theme ILIKE '%' || ${theme} || '%' OR ${theme} ILIKE '%' || p.theme || '%' THEN 4
             ELSE 0
           END AS theme_score,
+          CASE
+            WHEN ${musicGenre} = '' THEN 0
+            WHEN p.music_genre = ${musicGenre} THEN 5
+            ELSE 0
+          END AS music_score,
           (
-            cardinality(ARRAY(SELECT unnest(p.tags) INTERSECT SELECT unnest(${tagsExpr})))
+            -- Lifestyle / vibe tag overlap is doubled so 3 shared vibe
+            -- tags ≈ a substring theme match. The user's lifestyle tags
+            -- carry the mood of the photo, so they're worth more than
+            -- the previous 1-per-tag baseline.
+            cardinality(ARRAY(SELECT unnest(p.tags) INTERSECT SELECT unnest(${tagsExpr}))) * 2
             + CASE
                 WHEN ${theme} = '' THEN 0
-                WHEN p.theme = ${theme} THEN 5
-                WHEN p.theme ILIKE '%' || ${theme} || '%' OR ${theme} ILIKE '%' || p.theme || '%' THEN 2
+                WHEN p.theme = ${theme} THEN 10
+                WHEN p.theme ILIKE '%' || ${theme} || '%' OR ${theme} ILIKE '%' || p.theme || '%' THEN 4
                 ELSE 0
               END
-            + random() * 0.5
+            + CASE
+                WHEN ${musicGenre} = '' THEN 0
+                WHEN p.music_genre = ${musicGenre} THEN 5
+                ELSE 0
+              END
+            + random() * 0.3
           ) AS rank_score
         FROM photos p
         WHERE p.status = 'active'

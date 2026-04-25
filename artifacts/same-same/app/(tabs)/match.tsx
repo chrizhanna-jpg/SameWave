@@ -398,7 +398,15 @@ export default function SwipeScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    fetchCandidates({ theme: activeTheme, tags: myTags, limit: 24 })
+    fetchCandidates({
+      theme: activeTheme,
+      tags: myTags,
+      // Pass the user's chosen music vibe so the server can boost
+      // candidates with the same vibe (theme + lifestyle tags +
+      // music vibe = the primary "vibe match" signal).
+      musicGenre: todaysPhoto?.musicGenre,
+      limit: 24,
+    })
       .then((cands) => {
         if (cancelled) return;
         const ids = new Map<string, string>();
@@ -965,7 +973,7 @@ export default function SwipeScreen() {
                 You're all caught up
               </Text>
               <Text style={[styles.emptyStateBody, { color: colors.mutedForeground }]}>
-                You've seen every "{themeTitle.toLowerCase()}" moment we have right now. Post a new photo to start a fresh session, or check back soon for new arrivals from across the world.
+                You've seen all the similar vibes we have right now. Post a new photo to start a fresh session, or try matching by subject matter.
               </Text>
               <PressableScale
                 onPress={() => router.push("/camera")}
@@ -1099,7 +1107,7 @@ export default function SwipeScreen() {
                       setNoMore(false);
                     }
                   } catch {
-                    setObjectMatchError("Match by object failed. Try again.");
+                    setObjectMatchError("Subject matter match failed. Try again.");
                   } finally {
                     setObjectMatchLoading(false);
                   }
@@ -1136,7 +1144,7 @@ export default function SwipeScreen() {
                           { color: colors.mutedForeground, marginLeft: 8 },
                         ]}
                       >
-                        Match by object
+                        Subject matter match
                       </Text>
                     </>
                   )}
@@ -1171,7 +1179,7 @@ export default function SwipeScreen() {
             }}
           >
             <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
-              matching by object: {objectMatchTags.join(", ")}
+              matching by subject matter: {objectMatchTags.join(", ")}
             </Text>
           </View>
         )}
