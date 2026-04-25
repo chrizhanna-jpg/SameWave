@@ -64,7 +64,6 @@ import {
 import { sampleMatchStats } from "@/utils/sampleStats";
 import { flagFor, nameFor } from "@/data/countries";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
-import { getGeoTier } from "@/utils/celebrations";
 import type { Match } from "@/context/AppContext";
 import { photoKey } from "@/utils/photoKey";
 
@@ -1199,14 +1198,6 @@ export default function SwipeScreen() {
                 style={styles.fillPhoto}
                 resizeMode="cover"
               />
-              <View style={[styles.photoTag, { backgroundColor: "rgba(0,0,0,0.55)" }]}>
-                <Text style={[styles.photoTagText, { color: "#fff" }]}>
-                  {hasUploadedPhoto ? "Your photo" : "Your moment"}
-                </Text>
-                <Text style={[styles.photoTagTime, { color: "rgba(255,255,255,0.75)" }]}>
-                  {timeAgo(new Date(myPhotoData.uploadedAt))}
-                </Text>
-              </View>
               <View style={[styles.expandHint, { backgroundColor: "rgba(0,0,0,0.45)" }]}>
                 <Icon name="maximize" size={12} color="#fff" />
               </View>
@@ -1240,25 +1231,6 @@ export default function SwipeScreen() {
                   <MicBadge audioUrl={theirPhoto.customAudioUrl} size="sm" />
                 </View>
               ) : null}
-              <View
-                style={[
-                  styles.photoTag,
-                  styles.photoTagLifted,
-                  { backgroundColor: "rgba(0,0,0,0.55)" },
-                ]}
-              >
-                <Text style={[styles.photoTagText, { color: "#fff" }]}>
-                  {/* Hint at distance without spoiling the country reveal.
-                      Uses the user's chosen home country (from onboarding /
-                      profile) to surface Same Country / Same Continent /
-                      Same Planet labels. */}
-                  {getGeoTier(myCountryCode, theirPhoto.countryCode).emoji}{" "}
-                  {getGeoTier(myCountryCode, theirPhoto.countryCode).label.toLowerCase()}
-                </Text>
-                <Text style={[styles.photoTagTime, { color: "rgba(255,255,255,0.75)" }]}>
-                  {timeAgo(simulatedPostedAt(theirPhoto.minutesAgo))}
-                </Text>
-              </View>
               <View style={[styles.expandHint, { backgroundColor: "rgba(0,0,0,0.45)" }]}>
                 <Icon name="maximize" size={12} color="#fff" />
               </View>
@@ -1708,17 +1680,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 10,
     left: 10,
-  },
-  photoTag: {
-    position: "absolute",
-    bottom: 10,
-    left: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 10,
-  },
-  photoTagLifted: {
-    bottom: 84, // clear of the bottom action buttons
   },
   expandHint: {
     position: "absolute",
