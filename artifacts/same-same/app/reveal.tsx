@@ -45,6 +45,7 @@ export default function RevealScreen() {
     myDefaultHandle,
     myVibe,
     myCountryCode,
+    myCountryFlag,
   } = useApp();
   const [match, setMatch] = useState<Match | null>(null);
   const [sharing, setSharing] = useState(false);
@@ -204,6 +205,30 @@ export default function RevealScreen() {
   const themeTitle = themeMeta?.title ?? match.theme ?? "the same thing";
   const themeEmoji = themeMeta?.emoji ?? "✨";
 
+  // The "same X" chips that summarise WHY this match happened. These ride
+  // inside the shareable card so the social-media image makes immediate
+  // sense to anyone who sees it without context. We always show "same vibe"
+  // (the matched theme), then add a time chip if the posts were close
+  // enough in time, and a geo chip describing how close geographically.
+  const sameChips: Array<{ label: string; emoji: string }> = [
+    { label: "same vibe", emoji: themeEmoji },
+  ];
+  const timeChipMap: Record<string, { label: string; emoji: string } | null> = {
+    minute: { label: "same minute", emoji: "⚡" },
+    hour: { label: "same hour", emoji: "✨" },
+    day: { label: "same day", emoji: "☀️" },
+    week: { label: "same week", emoji: "🗓️" },
+    distant: null,
+  };
+  const timeChip = timeChipMap[timeTier.kind];
+  if (timeChip) sameChips.push(timeChip);
+  const geoChipMap: Record<string, { label: string; emoji: string }> = {
+    country: { label: "same country", emoji: "📍" },
+    continent: { label: "same continent", emoji: "🌎" },
+    planet: { label: "same world", emoji: "🌍" },
+  };
+  sameChips.push(geoChipMap[geoTier.kind]);
+
   const sparkleScale = sparklePulse.interpolate({
     inputRange: [0, 1],
     outputRange: [1, 1.15],
@@ -226,7 +251,7 @@ export default function RevealScreen() {
           <Icon name="x" size={20} color={colors.foreground} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-          It's a match
+          same same
         </Text>
         <View style={{ width: 40 }} />
       </View>
@@ -238,57 +263,13 @@ export default function RevealScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {(() => {
-          // Single celebration banner that always renders. It folds together
-          // what used to be three separate elements (the celebration banner,
-          // the in-card tier chip row, and the standalone insight box) so the
-          // user gets one bold line instead of three saying similar things.
-          // For the rare "across the world" case it renders as a soft neutral
-          // pill instead of the loud gold treatment.
-          const isLoud = timeTier.rank >= 1;
-          const accent = isLoud ? colors.gold : colors.teal;
-          const narrative =
-            timeTier.kind === "minute"
-              ? `Right this minute, someone in ${match.theirCountry} is sharing the same thing.`
-              : timeTier.kind === "hour"
-              ? `Within the hour, someone in ${match.theirCountry} shared the same thing.`
-              : timeTier.kind === "day"
-              ? `Today, someone in ${match.theirCountry} shared the same thing.`
-              : timeTier.kind === "week"
-              ? `This week, someone in ${match.theirCountry} shared the same thing.`
-              : `Across the world, someone in ${match.theirCountry} shared the same thing.`;
-          return (
-            <Animated.View
-              style={[
-                styles.sameDayBanner,
-                {
-                  backgroundColor: accent + (isLoud ? "1f" : "14"),
-                  borderColor: accent + (isLoud ? "ff" : "55"),
-                  borderWidth: timeTier.rank >= 3 ? 2 : 1,
-                  opacity: timeTier.rank >= 2 ? sparkleOpacity : 1,
-                },
-              ]}
-            >
-              <Text style={styles.sameDayEmoji}>{timeTier.emoji}</Text>
-              <View style={{ flex: 1 }}>
-                <View style={styles.tierTitleRow}>
-                  <Text style={[styles.sameDayTitle, { color: accent }]}>
-                    {timeTier.label}
-                  </Text>
-                  {timeTier.sparkles > 0 && (
-                    <Text style={[styles.tierSparkles, { color: accent }]}>
-                      {"✨".repeat(timeTier.sparkles)}
-                    </Text>
-                  )}
-                </View>
-                <Text style={[styles.sameDaySub, { color: colors.foreground }]}>
-                  {narrative}
-                </Text>
-              </View>
-            </Animated.View>
-          );
-        })()}
-
+        {/* The shareable card. ONLY the contents of <ViewShot> are captured
+            in handleShare() and exported as the social-media image, so the
+            buttons and any extra context live OUTSIDE this block. The card
+            holds just four things: the "same same" wordmark, the row of
+            "same X" chips that explain WHY the match happened, the two
+            photos with a flag beside each, and the watermark when the user
+            hasn't unlocked Pro. */}
         <Animated.View
           style={{
             opacity: fadeIn,
@@ -299,205 +280,58 @@ export default function RevealScreen() {
           ref={shotRef}
           options={{ format: "jpg", quality: 0.95 }}
           style={[
-            styles.revealCard,
+            styles.shareCard,
             {
               backgroundColor: colors.card,
               borderColor: colors.border,
             },
           ]}
         >
-          {isNewCountry && (
-            <View style={[styles.newBadge, { backgroundColor: colors.primary }]}>
-              <Icon name="star" size={12} color="#fff" />
-              <Text style={styles.newBadgeText}>New country!</Text>
-            </View>
-          )}
+          <Text style={[styles.shareTitle, { color: colors.foreground }]}>
+            same same
+          </Text>
 
-          <View style={styles.themeRow}>
-            <Text style={styles.themeEmoji}>{themeEmoji}</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.themeLabel, { color: colors.mutedForeground }]}>
-                You both shared
-              </Text>
-              <Text style={[styles.themeTitle, { color: colors.foreground }]}>
-                {themeTitle}
-              </Text>
-            </View>
+          <View style={styles.shareChipsRow}>
+            {sameChips.map((chip) => (
+              <View
+                key={chip.label}
+                style={[
+                  styles.shareChip,
+                  {
+                    backgroundColor: colors.teal + "1a",
+                    borderColor: colors.teal + "55",
+                  },
+                ]}
+              >
+                <Text style={styles.shareChipEmoji}>{chip.emoji}</Text>
+                <Text style={[styles.shareChipText, { color: colors.teal }]}>
+                  {chip.label}
+                </Text>
+              </View>
+            ))}
           </View>
 
-          {/* Photos sit side-by-side. We dropped the "Your photo / Their
-              photo" labels — the CountryReveal below already anchors which
-              side is which, and the timestamps below each photo carry the
-              "when did they post" signal that actually matters. */}
-          <View style={styles.photoPair}>
-            <View style={styles.photoWrapper}>
+          <View style={styles.sharePhotoPair}>
+            <View style={styles.sharePhotoSlot}>
               <Image
                 source={{ uri: match.myPhoto }}
-                style={styles.photo}
+                style={styles.sharePhoto}
                 resizeMode="cover"
               />
-              {match.myPhotoUploadedAt && (
-                <Text style={[styles.photoLabelTime, { color: colors.mutedForeground }]}>
-                  you · {timeAgo(new Date(match.myPhotoUploadedAt))}
-                </Text>
-              )}
+              <View style={[styles.shareFlagBadge, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Text style={styles.shareFlagText}>{myCountryFlag ?? "🌍"}</Text>
+              </View>
             </View>
-            <View style={[styles.vsBar, { backgroundColor: colors.border }]} />
-            <View style={styles.photoWrapper}>
+            <View style={styles.sharePhotoSlot}>
               <Image
                 source={{ uri: match.theirPhoto }}
-                style={styles.photo}
+                style={styles.sharePhoto}
                 resizeMode="cover"
               />
-              {match.theirPhotoMinutesAgo != null && (
-                <Text style={[styles.photoLabelTime, { color: colors.mutedForeground }]}>
-                  them · {timeAgo(simulatedPostedAt(match.theirPhotoMinutesAgo))}
-                </Text>
-              )}
-            </View>
-          </View>
-
-          {match.matchStats && match.matchStats.sameAllTime > 0 && (() => {
-            // Defensive coerce: if anything came back as null/NaN/undefined
-            // from the wire we treat it as 0 so .toLocaleString() never
-            // throws and the headline math stays sane.
-            const raw = match.matchStats!;
-            const n = (v: unknown) =>
-              typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0;
-            const s = {
-              sameLastHour: n(raw.sameLastHour),
-              sameLastDay: n(raw.sameLastDay),
-              sameAllTime: n(raw.sameAllTime),
-            };
-            // Build the punchiest line we can: prefer "in the last hour"
-            // when there's recent activity, otherwise fall back to day,
-            // otherwise total. This always shows ONE clean stat — extra
-            // detail goes in the smaller chip row below.
-            const headline =
-              s.sameLastHour > 0
-                ? { count: s.sameLastHour, when: "in the last hour" }
-                : s.sameLastDay > 0
-                ? { count: s.sameLastDay, when: "in the last day" }
-                : { count: s.sameAllTime, when: "all time" };
-            // Compact one-line "echo" stat. We dropped the three-chip
-            // breakdown (last hour / last day / all time) since the
-            // headline already adapts to the most relevant window and
-            // the all-time number rides along in the sub. Less is more.
-            return (
-              <View
-                style={[
-                  styles.echoBox,
-                  {
-                    backgroundColor: colors.teal + "14",
-                    borderColor: colors.teal + "44",
-                  },
-                ]}
-              >
-                <Text style={[styles.echoHeadline, { color: colors.teal }]}>
-                  {headline.count.toLocaleString()}{" "}
-                  <Text style={[styles.echoHeadlineSoft, { color: colors.teal }]}>
-                    {headline.count === 1 ? "other also" : "others also"} said same same
-                  </Text>
-                </Text>
-                <Text style={[styles.echoSub, { color: colors.mutedForeground }]}>
-                  {headline.when}
-                  {s.sameAllTime !== headline.count
-                    ? ` · ${s.sameAllTime.toLocaleString()} all-time`
-                    : ""}
-                </Text>
+              <View style={[styles.shareFlagBadge, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Text style={styles.shareFlagText}>{match.theirCountryFlag ?? "🌍"}</Text>
               </View>
-            );
-          })()}
-
-          {(() => {
-            const theirVibe = match.theirVibe ?? [];
-            const shared = commonInterests(myVibe, theirVibe);
-            const showShared = shared.length > 0;
-            const showVibe = !showShared && theirVibe.length > 0;
-            if (!showShared && !showVibe) return null;
-            const tags = showShared ? shared : theirVibe.slice(0, 4);
-            return (
-              <View
-                style={[
-                  styles.vibeBox,
-                  {
-                    backgroundColor: showShared
-                      ? colors.gold + "1a"
-                      : colors.card,
-                    borderColor: showShared
-                      ? colors.gold + "55"
-                      : colors.border,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.vibeLabel,
-                    { color: showShared ? colors.gold : colors.mutedForeground },
-                  ]}
-                >
-                  {showShared
-                    ? `You both seem to love`
-                    : `Their vibe`}
-                </Text>
-                <View style={styles.vibeChipsRow}>
-                  {tags.map((t) => (
-                    <View
-                      key={t}
-                      style={[
-                        styles.vibeChip,
-                        {
-                          backgroundColor: showShared
-                            ? colors.gold + "33"
-                            : colors.teal + "1a",
-                          borderColor: showShared
-                            ? colors.gold + "66"
-                            : colors.teal + "44",
-                        },
-                      ]}
-                    >
-                      <Text style={styles.vibeChipEmoji}>{tagEmoji(t)}</Text>
-                      <Text
-                        style={[
-                          styles.vibeChipText,
-                          {
-                            color: showShared ? colors.gold : colors.teal,
-                          },
-                        ]}
-                      >
-                        {tagLabel(t)}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            );
-          })()}
-
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-
-          {/* CountryReveal carries the geographic story; we tag it with a
-              single small chip ("Same continent", "Across oceans", etc.)
-              so the geo tier stays visible without adding a whole row of
-              redundant chips below. */}
-          <View style={styles.countryRevealWrap}>
-            <View
-              style={[
-                styles.geoChip,
-                { backgroundColor: colors.teal + "14", borderColor: colors.teal + "44" },
-              ]}
-            >
-              <Text style={styles.geoChipEmoji}>{geoTier.emoji}</Text>
-              <Text style={[styles.geoChipText, { color: colors.teal }]}>
-                {geoTier.label}
-              </Text>
             </View>
-            <CountryReveal
-              leftCountry="Your Country"
-              leftFlag="🌍"
-              rightCountry={match.theirCountry}
-              rightFlag={match.theirCountryFlag}
-            />
           </View>
 
           {!proUnlocked && (
@@ -511,20 +345,16 @@ export default function RevealScreen() {
         </ViewShot>
         </Animated.View>
 
-        {/* Lifetime country count — the only stat outside the card that
-            isn't already shown inside it. The old row had three chips
-            (countries, theme, time tier) but theme and time tier already
-            live in the card above, so we keep just the unique number as
-            a slim inline pill. */}
-        <Animated.View style={[styles.lifetimePill, { opacity: fadeIn, backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={styles.lifetimePillEmoji}>🌍</Text>
-          <Text style={[styles.lifetimePillNum, { color: colors.primary }]}>
-            {matchedCountries.length}
+        {/* Visual separator between the shareable image above and the
+            interactive actions below. Makes it obvious which part of the
+            screen ends up in the exported share image. */}
+        <View style={styles.sectionDivider}>
+          <View style={[styles.sectionDividerLine, { backgroundColor: colors.border }]} />
+          <Text style={[styles.sectionDividerLabel, { color: colors.mutedForeground }]}>
+            actions
           </Text>
-          <Text style={[styles.lifetimePillLabel, { color: colors.mutedForeground }]}>
-            {matchedCountries.length === 1 ? "country matched · all-time" : "countries matched · all-time"}
-          </Text>
-        </Animated.View>
+          <View style={[styles.sectionDividerLine, { backgroundColor: colors.border }]} />
+        </View>
 
         {/* Anonymous Connect Request CTA — viral hook: mystery reveal,
             48h timer, mutual disclosure brings both users back. */}
@@ -748,6 +578,91 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 17,
     fontFamily: "Inter_600SemiBold",
+  },
+  shareCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    paddingVertical: 22,
+    paddingHorizontal: 18,
+    gap: 16,
+    overflow: "hidden",
+    alignItems: "center",
+  },
+  shareTitle: {
+    fontSize: 34,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -1,
+    textTransform: "lowercase",
+  },
+  shareChipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    justifyContent: "center",
+  },
+  shareChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  shareChipEmoji: { fontSize: 14 },
+  shareChipText: {
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.3,
+    textTransform: "lowercase",
+  },
+  sharePhotoPair: {
+    flexDirection: "row",
+    gap: 10,
+    alignSelf: "stretch",
+  },
+  sharePhotoSlot: {
+    flex: 1,
+    aspectRatio: 1,
+    borderRadius: 16,
+    overflow: "hidden",
+    position: "relative",
+  },
+  sharePhoto: {
+    width: "100%",
+    height: "100%",
+  },
+  shareFlagBadge: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  shareFlagText: {
+    fontSize: 20,
+    lineHeight: 22,
+  },
+  sectionDivider: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 6,
+    marginBottom: 2,
+  },
+  sectionDividerLine: {
+    flex: 1,
+    height: 1,
+  },
+  sectionDividerLabel: {
+    fontSize: 10,
+    fontFamily: "Inter_600SemiBold",
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
   },
   content: {
     paddingHorizontal: 20,
