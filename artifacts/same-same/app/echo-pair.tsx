@@ -13,6 +13,7 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
+import { MicBadge } from "@/components/MicBadge";
 import { useColors } from "@/hooks/useColors";
 import { fetchPair, type PhotoPairResult, type PhotoPairSide } from "@/utils/api";
 
@@ -220,7 +221,14 @@ function PairSide({ side }: { side: PhotoPairSide }) {
   const colors = useColors();
   return (
     <View style={styles.side}>
-      <Image source={{ uri: side.uri }} style={styles.bigPhoto} />
+      <View style={styles.bigPhotoWrap}>
+        <Image source={{ uri: side.uri }} style={styles.bigPhoto} />
+        {side.customAudioUrl ? (
+          <View style={styles.micBadgeOverlay}>
+            <MicBadge audioUrl={side.customAudioUrl} size="sm" />
+          </View>
+        ) : null}
+      </View>
       <View style={styles.sideMeta}>
         <Text style={styles.flag}>{side.countryFlag}</Text>
         <View style={{ flex: 1 }}>
@@ -304,7 +312,9 @@ const styles = StyleSheet.create({
   },
   pairColumn: { gap: 14 },
   side: { gap: 10 },
+  bigPhotoWrap: { position: "relative" },
   bigPhoto: { width: "100%", aspectRatio: 1, borderRadius: 18 },
+  micBadgeOverlay: { position: "absolute", bottom: 10, left: 10 },
   sideMeta: { flexDirection: "row", alignItems: "center", gap: 12 },
   flag: { fontSize: 26 },
   country: { fontSize: 15, fontFamily: "Inter_700Bold" },

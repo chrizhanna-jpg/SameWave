@@ -25,6 +25,7 @@ import { router, useFocusEffect } from "expo-router";
 import { markTabVisited } from "@/utils/tabVisits";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
+import { MicBadge } from "@/components/MicBadge";
 import { OceanShimmer } from "@/components/OceanShimmer";
 import { PressableScale } from "@/components/PressableScale";
 import { useColors } from "@/hooks/useColors";
@@ -935,6 +936,17 @@ function PhotoSlot({
             <Icon name="globe" size={11} color="#ffffff" />
           </View>
         )}
+        {/* Mic badge for any real (non-sample) photo that carries a
+            custom voice clip. Today the discovery feed is dominated by
+            synthetic SamplePhotos which never set customAudioUrl, so
+            this gate is mostly defensive — it ensures the badge will
+            light up automatically once real user photos start flowing
+            into the feed. */}
+        {photo.customAudioUrl ? (
+          <View style={styles.photoMicBadge}>
+            <MicBadge audioUrl={photo.customAudioUrl} size="sm" />
+          </View>
+        ) : null}
         {isActive && vibeLabel ? (
           <View style={styles.vibeBadge}>
             <Icon name="volume2" size={10} color="#ffffff" />
@@ -1073,6 +1085,13 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0, 0, 0, 0.55)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  photoMicBadge: {
+    // top-left avoids the bottom-left vibeBadge (active state) and
+    // the top-right sampleBadge — no overlap on any combination.
+    position: "absolute",
+    top: 5,
+    left: 5,
   },
   vibeBadge: {
     position: "absolute",

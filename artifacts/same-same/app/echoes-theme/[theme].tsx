@@ -13,6 +13,7 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
+import { MicBadge } from "@/components/MicBadge";
 import { useColors } from "@/hooks/useColors";
 import { fetchEchoesByTheme, type ThemeEchoPhoto } from "@/utils/api";
 
@@ -128,10 +129,20 @@ export default function EchoesThemeScreen() {
                 { backgroundColor: colors.card, borderColor: colors.border },
               ]}
             >
-              <Image
-                source={{ uri: thumbUri(entry.photo.uri) }}
-                style={styles.tileImage}
-              />
+              <View style={styles.tileImageWrap}>
+                <Image
+                  source={{ uri: thumbUri(entry.photo.uri) }}
+                  style={styles.tileImage}
+                />
+                {entry.photo.customAudioUrl ? (
+                  <View style={styles.tileMicBadge}>
+                    <MicBadge
+                      audioUrl={entry.photo.customAudioUrl}
+                      size="sm"
+                    />
+                  </View>
+                ) : null}
+              </View>
               <View style={styles.tileFlagRow}>
                 <Text style={styles.tileFlag}>{entry.photo.countryFlag}</Text>
                 <Text
@@ -203,7 +214,9 @@ const styles = StyleSheet.create({
     padding: 6,
     gap: 6,
   },
+  tileImageWrap: { position: "relative" },
   tileImage: { width: "100%", aspectRatio: 1, borderRadius: 8 },
+  tileMicBadge: { position: "absolute", bottom: 6, left: 6 },
   tileFlagRow: {
     flexDirection: "row",
     alignItems: "center",

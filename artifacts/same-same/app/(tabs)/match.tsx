@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
 import { markTabVisited } from "@/utils/tabVisits";
 import { Icon } from "@/components/Icon";
+import { MicBadge } from "@/components/MicBadge";
 import { MatchHearts } from "@/components/MatchHearts";
 import { MatchFlash } from "@/components/MatchFlash";
 import { EchoLogo } from "@/components/EchoLogo";
@@ -1215,6 +1216,17 @@ export default function SwipeScreen() {
                 style={styles.fillPhoto}
                 resizeMode="cover"
               />
+              {/* Mic badge — when the other user attached a custom voice
+                  clip to their photo, surface it here so the listener
+                  can preview it independently of the auto-play music
+                  loop. The clip auto-plays via the existing
+                  customAudioUrl handler in playClip(); the badge gives
+                  the user visible play/pause control. */}
+              {theirPhoto.customAudioUrl ? (
+                <View style={styles.micBadgeOverlay}>
+                  <MicBadge audioUrl={theirPhoto.customAudioUrl} size="sm" />
+                </View>
+              ) : null}
               <View
                 style={[
                   styles.photoTag,
@@ -1678,6 +1690,11 @@ const styles = StyleSheet.create({
   fillPhoto: {
     width: "100%",
     height: "100%",
+  },
+  micBadgeOverlay: {
+    position: "absolute",
+    bottom: 10,
+    left: 10,
   },
   photoTag: {
     position: "absolute",

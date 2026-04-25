@@ -465,9 +465,13 @@ router.get("/echoes/theme/:theme", async (req, res) => {
         pl.bytes_base64 AS "lowBytes",
         pl.mime_type AS "lowMime",
         pl.country_code AS "lowCountry",
+        pl.custom_audio_base64 AS "lowAudioB64",
+        pl.custom_audio_mime AS "lowAudioMime",
         ph.bytes_base64 AS "highBytes",
         ph.mime_type AS "highMime",
-        ph.country_code AS "highCountry"
+        ph.country_code AS "highCountry",
+        ph.custom_audio_base64 AS "highAudioB64",
+        ph.custom_audio_mime AS "highAudioMime"
       FROM pair_rows pr
       JOIN photos pl ON pl.id = pr.photo_low_id
       JOIN photos ph ON ph.id = pr.photo_high_id
@@ -477,7 +481,13 @@ router.get("/echoes/theme/:theme", async (req, res) => {
       echoId: string;
       theme: string;
       mutualAt: string | Date | null;
-      photo: { id: string; uri: string; countryCode: string | null };
+      photo: {
+        id: string;
+        uri: string;
+        countryCode: string | null;
+        customAudioBase64: string | null;
+        customAudioMime: string | null;
+      };
       partnerPhotoId: string;
     }> = [];
     for (const raw of rows.rows as Array<Record<string, unknown>>) {
@@ -494,6 +504,8 @@ router.get("/echoes/theme/:theme", async (req, res) => {
           id: lowId,
           uri: `data:${String(raw.lowMime)};base64,${String(raw.lowBytes)}`,
           countryCode: (raw.lowCountry as string | null) ?? null,
+          customAudioBase64: (raw.lowAudioB64 as string | null) ?? null,
+          customAudioMime: (raw.lowAudioMime as string | null) ?? null,
         },
         partnerPhotoId: highId,
       });
@@ -505,6 +517,8 @@ router.get("/echoes/theme/:theme", async (req, res) => {
           id: highId,
           uri: `data:${String(raw.highMime)};base64,${String(raw.highBytes)}`,
           countryCode: (raw.highCountry as string | null) ?? null,
+          customAudioBase64: (raw.highAudioB64 as string | null) ?? null,
+          customAudioMime: (raw.highAudioMime as string | null) ?? null,
         },
         partnerPhotoId: lowId,
       });
@@ -573,6 +587,8 @@ router.get("/echoes/pair", async (req, res) => {
         tags: photosTable.tags,
         musicGenre: photosTable.musicGenre,
         createdAt: photosTable.createdAt,
+        customAudioBase64: photosTable.customAudioBase64,
+        customAudioMime: photosTable.customAudioMime,
       })
       .from(photosTable)
       .where(or(eq(photosTable.id, aId), eq(photosTable.id, bId)));
@@ -616,6 +632,8 @@ router.get("/echoes/pair", async (req, res) => {
         tags: a.tags ?? [],
         musicGenre: a.musicGenre,
         createdAt: a.createdAt,
+        customAudioBase64: a.customAudioBase64,
+        customAudioMime: a.customAudioMime,
       },
       b: {
         id: b.id,
@@ -625,6 +643,8 @@ router.get("/echoes/pair", async (req, res) => {
         tags: b.tags ?? [],
         musicGenre: b.musicGenre,
         createdAt: b.createdAt,
+        customAudioBase64: b.customAudioBase64,
+        customAudioMime: b.customAudioMime,
       },
     });
   } catch (err) {

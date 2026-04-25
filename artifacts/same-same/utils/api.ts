@@ -314,6 +314,10 @@ export interface ServerEchoSide {
   countryCode: string | null;
   country: string;
   countryFlag: string;
+  // Data URL (`data:audio/...;base64,...`) for the custom voice clip
+  // attached to this photo, if any. The mic badge on the relevant
+  // surfaces uses this URL to drive the play/pause preview.
+  customAudioUrl: string | null;
 }
 
 export interface ServerEcho {
@@ -334,14 +338,21 @@ function decorateSide(side: {
   id: string;
   uri: string;
   countryCode: string | null;
+  customAudioBase64?: string | null;
+  customAudioMime?: string | null;
 }): ServerEchoSide {
   const code = (side.countryCode ?? "").toUpperCase();
+  const audio =
+    side.customAudioBase64 && side.customAudioMime
+      ? `data:${side.customAudioMime};base64,${side.customAudioBase64}`
+      : null;
   return {
     id: side.id,
     uri: side.uri,
     countryCode: code || null,
     country: code ? nameFor(code) ?? "Somewhere" : "Somewhere",
     countryFlag: code ? flagFor(code) : "🌍",
+    customAudioUrl: audio,
   };
 }
 
@@ -351,8 +362,20 @@ function decorateEcho(raw: {
   theme: string;
   createdAt: string;
   mutualAt: string | null;
-  mine: { id: string; uri: string; countryCode: string | null };
-  theirs: { id: string; uri: string; countryCode: string | null };
+  mine: {
+    id: string;
+    uri: string;
+    countryCode: string | null;
+    customAudioBase64?: string | null;
+    customAudioMime?: string | null;
+  };
+  theirs: {
+    id: string;
+    uri: string;
+    countryCode: string | null;
+    customAudioBase64?: string | null;
+    customAudioMime?: string | null;
+  };
 }): ServerEcho {
   return {
     id: raw.id,
@@ -467,7 +490,13 @@ export async function fetchEchoesByTheme(theme: string): Promise<{
         echoId: string;
         theme: string;
         mutualAt: string | null;
-        photo: { id: string; uri: string; countryCode: string | null };
+        photo: {
+          id: string;
+          uri: string;
+          countryCode: string | null;
+          customAudioBase64?: string | null;
+          customAudioMime?: string | null;
+        };
         partnerPhotoId: string;
       }>;
     };
@@ -495,6 +524,7 @@ export interface PhotoPairSide extends ServerEchoSide {
   tags: string[];
   musicGenre: string | null;
   createdAt: string | null;
+  // customAudioUrl is inherited from ServerEchoSide.
 }
 
 export interface PhotoPairResult {
@@ -521,6 +551,8 @@ export async function fetchPair(aId: string, bId: string): Promise<PhotoPairResu
         tags?: string[];
         musicGenre?: string | null;
         createdAt?: string | null;
+        customAudioBase64?: string | null;
+        customAudioMime?: string | null;
       };
       b?: {
         id: string;
@@ -530,6 +562,8 @@ export async function fetchPair(aId: string, bId: string): Promise<PhotoPairResu
         tags?: string[];
         musicGenre?: string | null;
         createdAt?: string | null;
+        customAudioBase64?: string | null;
+        customAudioMime?: string | null;
       };
     };
     if (!json.a || !json.b) return null;
@@ -542,6 +576,7 @@ export async function fetchPair(aId: string, bId: string): Promise<PhotoPairResu
       musicGenre: raw.musicGenre ?? null,
       createdAt: raw.createdAt ?? null,
     });
+    // ^ decorateSide handles customAudioUrl from the base64+mime fields.
     return {
       mutualAt: json.mutualAt ?? null,
       a: decorate(json.a),
