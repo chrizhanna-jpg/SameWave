@@ -951,6 +951,28 @@ export default function SwipeScreen() {
                     setMatchedTheme(next.matchedTheme);
                     setSharedTags(next.sharedTags);
                     setNoMore(false);
+                    return;
+                  }
+                  // Fallback — getTheirPhoto can return null even with the
+                  // bypass on (e.g. the candidate pool was refetched after
+                  // the user uploaded a new photo and nothing in it clears
+                  // the same-theme / shared-tag floor). The user explicitly
+                  // asked to see something they've already seen, so be
+                  // lenient: pick any photo in the real pool that isn't
+                  // their own. Guarantees the button always does *something*
+                  // when there is anything at all to show.
+                  const fallbackPool = realPoolRef.current.filter((p) => {
+                    const k = photoKey(p.uri);
+                    return !!k && k !== myPhotoKey;
+                  });
+                  if (fallbackPool.length > 0) {
+                    const pick =
+                      fallbackPool[Math.floor(Math.random() * fallbackPool.length)];
+                    const shared = pick.tags.filter((t) => myTags.includes(t));
+                    setTheirPhoto(pick);
+                    setMatchedTheme(pick.theme);
+                    setSharedTags(shared);
+                    setNoMore(false);
                   }
                 }}
                 activeOpacity={0.85}
