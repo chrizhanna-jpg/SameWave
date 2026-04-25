@@ -83,9 +83,19 @@ export function buildDiscoveryFeed(
   const filterPool = (pool: SamplePhoto[]) =>
     exclude.size === 0 ? pool : pool.filter((p) => !exclude.has(photoKey(p.uri)));
   const themesAll = byTheme();
+  // Per-theme fallback: prefer the filtered (unseen) pool for variety,
+  // but fall back to the full pool whenever exclusions would knock the
+  // theme below the 2-photo minimum needed to build a pair. Without
+  // this fallback a power user who's swiped through enough live +
+  // sample photos to populate `seenPhotoKeys` heavily ends up staring
+  // at a blank Discover screen — the synthetic feed has nothing left
+  // to draw from. Discover is meant to feel like an evergreen highlight
+  // reel, not a finite deck, so cycling repeats is the right tradeoff
+  // when the unseen pool runs dry.
   const themes: Record<string, SamplePhoto[]> = {};
   for (const t of Object.keys(themesAll)) {
-    themes[t] = filterPool(themesAll[t]);
+    const filtered = filterPool(themesAll[t]);
+    themes[t] = filtered.length >= 2 ? filtered : themesAll[t];
   }
   const themeIds = Object.keys(themes).filter((t) => themes[t].length >= 2);
   if (themeIds.length === 0) return [];
