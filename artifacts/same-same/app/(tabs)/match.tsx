@@ -237,6 +237,7 @@ export default function SwipeScreen() {
     myCountryName,
     myCountryFlag,
     seenPhotoKeys,
+    seenPhotoIds,
     markPhotoSeen,
     resetSeenPhotos,
     primeSeenFromCandidates,
@@ -406,6 +407,12 @@ export default function SwipeScreen() {
       // music vibe = the primary "vibe match" signal).
       musicGenre: todaysPhoto?.musicGenre,
       limit: 24,
+      // Hard-exclude every backend photo ID this device knows the
+      // user has already been shown. Belt-and-braces over the
+      // server-side `seen_photos` table — if a `markPhotosSeen` POST
+      // ever dropped (flaky network, app backgrounded mid-flight),
+      // this guarantees the photo still won't come back.
+      excludeIds: seenPhotoIds,
     })
       .then((cands) => {
         if (cancelled) return;
@@ -557,10 +564,16 @@ export default function SwipeScreen() {
     const k = photoKey(theirPhoto.uri);
     if (!k || k === myPhotoKey) return;
     sessionDisplayedRef.current.add(k);
-    markPhotoSeen(k);
-    // Mirror the seen-state to the server so dedup follows the user
-    // across reinstalls / a second device. Best-effort, fire-and-forget.
+    // Single mark call writes both ledgers (photoKey + backendId, when
+    // we know it) — the backendId ledger is what subsequent
+    // /candidates fetches use as a hard exclusion list, so even a
+    // dropped server POST below cannot resurface the photo.
     const backendId = realPhotoIdsRef.current.get(theirPhoto.uri);
+    markPhotoSeen(k, backendId);
+    // Also mirror the seen-state to the server so dedup follows the
+    // user across reinstalls / a second device. Best-effort,
+    // fire-and-forget — the local excludeIds list above is the safety
+    // net when this drops.
     if (backendId) {
       markPhotosSeen([backendId]).catch(() => {});
     }
@@ -1041,6 +1054,10 @@ export default function SwipeScreen() {
                     const cands = await fetchCandidates({
                       tags: objects,
                       limit: 24,
+                      // Same hard exclusion as the primary deck — we never
+                      // want a previously-shown photo to resurface just
+                      // because the user re-queried by subject matter.
+                      excludeIds: seenPhotoIds,
                     });
                     const ids = new Map<string, string>();
                     const exclude = buildExcludeKeys();

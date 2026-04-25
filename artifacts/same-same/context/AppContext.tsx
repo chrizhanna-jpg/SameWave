@@ -187,6 +187,15 @@ interface AppState {
    * existing match history on first load after the dedup revamp.
    */
   seenPhotoKeys: string[];
+  /**
+   * Parallel ledger of backend photo IDs the user has been shown. Sent as
+   * an `excludeIds` filter on every /candidates fetch so the same photo
+   * cannot resurface even when a fire-and-forget `markPhotosSeen` POST
+   * drops on a flaky network (the previous failure mode). Append-only,
+   * deduped on insert; the swipe screen only forwards the most recent
+   * slice so the URL stays under typical proxy limits.
+   */
+  seenPhotoIds: string[];
 }
 
 interface AppContextValue extends AppState {
@@ -245,8 +254,12 @@ interface AppContextValue extends AppState {
    */
   respondToEcho: (id: string, verdict: "same" | "different") => Promise<"mutual" | "declined" | "error">;
   // ── Match dedup ledger ─────────────────────────────────────────────
-  /** Mark a photo (by stable photoKey) as seen by the user. Idempotent. */
-  markPhotoSeen: (key: string) => void;
+  /**
+   * Mark a photo (by stable photoKey) as seen by the user. Idempotent.
+   * When `backendId` is provided we also append it to `seenPhotoIds`
+   * so the next /candidates fetch can hard-exclude it server-side.
+   */
+  markPhotoSeen: (key: string, backendId?: string) => void;
   /** Has the user already reacted to / been shown this photo? */
   hasSeenPhoto: (key: string) => boolean;
   /** DEV ONLY — clears the seen ledger. Used by the on-device debug pill. */
@@ -305,6 +318,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     pendingEchoes: [],
     mutualEchoes: [],
     seenPhotoKeys: [],
+    seenPhotoIds: [],
   });
   // Mutable ref so simulated-response timeouts can read latest state
   const stateRef = React.useRef(state);
@@ -380,6 +394,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       .then((ids) => {
         if (cancelled) return;
         serverSeenIdsRef.current = new Set(ids);
+        // Merge the server-side seen IDs into the local persisted ledger
+        // so the very next /candidates fetch can hard-exclude them too.
+        // Critical for fresh installs / second devices where the local
+        // ledger is empty but the server already knows what this user
+        // has been shown.
+        if (ids.length > 0) {
+          setState((prev) => {
+            const have = new Set(prev.seenPhotoIds);
+            const fresh = ids.filter((id) => !have.has(id));
+            if (fresh.length === 0) return prev;
+            const newState: AppState = {
+              ...prev,
+              seenPhotoIds: [...prev.seenPhotoIds, ...fresh],
+            };
+            saveState(newState);
+            return newState;
+          });
+        }
         // If candidates already arrived before we knew the seen IDs,
         // prime against the cached batch now.
         if (lastCandidateBatchRef.current.length > 0 && primeRef.current) {
@@ -450,6 +482,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           .map((m: Match) => photoKey(m?.theirPhoto))
           .filter((k: string) => k.length > 0);
         const seenPhotoKeys = Array.from(new Set([...persistedKeys, ...matchKeys]));
+        const persistedIds: string[] = Array.isArray(parsed.seenPhotoIds)
+          ? parsed.seenPhotoIds.filter(
+              (id: unknown) => typeof id === "string" && id.length > 0,
+            )
+          : [];
+        const seenPhotoIds = Array.from(new Set(persistedIds));
         setState((prev) => ({
           ...prev,
           ...parsed,
@@ -464,7 +502,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             const stored = parsed.badges?.find((sb: Badge) => sb.id === b.id);
             return stored ? { ...b, ...stored } : b;
           }),
-          seenPhotoKeys,
+          // Merge (don't overwrite) the seen ledgers with whatever's
+          // already in `prev` — the server-seen-IDs effect and any
+          // early `markPhotoSeen` calls may have written entries here
+          // before this AsyncStorage read resolved. Overwriting them
+          // would silently drop the very IDs we need to keep dedup
+          // honest.
+          seenPhotoKeys: Array.from(
+            new Set([...seenPhotoKeys, ...prev.seenPhotoKeys]),
+          ),
+          seenPhotoIds: Array.from(
+            new Set([...seenPhotoIds, ...prev.seenPhotoIds]),
+          ),
         }));
       }
     } catch {}
@@ -563,17 +612,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const seenSetRef = useRef(seenSet);
   seenSetRef.current = seenSet;
 
-  const markPhotoSeen = useCallback((key: string) => {
+  // Mirror of seenPhotoIds for the synchronous guard inside markPhotoSeen.
+  // Read-only; updates land via setState below.
+  const seenIdSetRef = useRef<Set<string>>(new Set(state.seenPhotoIds));
+  useEffect(() => {
+    seenIdSetRef.current = new Set(state.seenPhotoIds);
+  }, [state.seenPhotoIds]);
+
+  const markPhotoSeen = useCallback((key: string, backendId?: string) => {
     if (!key) return;
-    // Cheap synchronous guard — avoids a setState (and re-render) when the
-    // photo is already in the ledger, which is the common case (every
+    // Cheap synchronous guards — avoid a setState (and re-render) when both
+    // ledgers already contain this photo, which is the common case (every
     // re-render of the swipe card would otherwise re-mark its photo).
-    if (seenSetRef.current.has(key)) return;
+    const keyAlreadySeen = seenSetRef.current.has(key);
+    const idAlreadySeen =
+      !backendId || seenIdSetRef.current.has(backendId);
+    if (keyAlreadySeen && idAlreadySeen) return;
     setState((prev) => {
-      if (prev.seenPhotoKeys.includes(key)) return prev;
+      const keyChanged = !prev.seenPhotoKeys.includes(key);
+      const idChanged =
+        !!backendId && !prev.seenPhotoIds.includes(backendId);
+      if (!keyChanged && !idChanged) return prev;
       const newState: AppState = {
         ...prev,
-        seenPhotoKeys: [...prev.seenPhotoKeys, key],
+        seenPhotoKeys: keyChanged
+          ? [...prev.seenPhotoKeys, key]
+          : prev.seenPhotoKeys,
+        seenPhotoIds: idChanged
+          ? [...prev.seenPhotoIds, backendId!]
+          : prev.seenPhotoIds,
       };
       saveState(newState);
       return newState;
@@ -623,7 +690,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const resetSeenPhotos = useCallback(() => {
     if (!__DEV__) return;
     setState((prev) => {
-      const newState: AppState = { ...prev, seenPhotoKeys: [] };
+      const newState: AppState = {
+        ...prev,
+        seenPhotoKeys: [],
+        seenPhotoIds: [],
+      };
       saveState(newState);
       return newState;
     });

@@ -162,6 +162,15 @@ export async function fetchCandidates(input: {
    */
   musicGenre?: string;
   limit?: number;
+  /**
+   * Backend photo IDs the client knows the user has already been shown.
+   * Hard-excluded server-side regardless of the server's own seen_photos
+   * table — this is the safety net for the previous failure mode where
+   * a fire-and-forget `markPhotosSeen` POST dropped on a flaky network
+   * and the same photo would resurface on the next fetch. The client
+   * caps the slice it sends so the URL stays well under proxy limits.
+   */
+  excludeIds?: string[];
 }): Promise<CandidatePhoto[]> {
   try {
     const base = getApiBase();
@@ -170,6 +179,13 @@ export async function fetchCandidates(input: {
     if (input.tags && input.tags.length > 0) params.set("tags", input.tags.join(","));
     if (input.musicGenre) params.set("musicGenre", input.musicGenre);
     if (input.limit) params.set("limit", String(input.limit));
+    if (input.excludeIds && input.excludeIds.length > 0) {
+      // Cap defensively — the server caps too, but trimming here also
+      // keeps the URL short. 150 IDs × ~36 chars ≈ 5.5 KB, comfortably
+      // under typical 8 KB proxy URL limits.
+      const capped = input.excludeIds.slice(-150);
+      params.set("excludeIds", capped.join(","));
+    }
     const res = await fetch(`${base}/api/photos/candidates?${params.toString()}`, {
       headers: await authedHeaders(),
     });

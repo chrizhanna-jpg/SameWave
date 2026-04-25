@@ -220,6 +220,21 @@ router.get("/photos/candidates", async (req, res) => {
       50,
     );
 
+    // Client-supplied hard exclusion list of backend photo IDs. The
+    // mobile app keeps a persistent local ledger of photos it has
+    // already shown the user and forwards the most recent slice on
+    // every request — this guarantees no repeat even when the
+    // server-side `seen_photos` table has gaps (e.g. a fire-and-forget
+    // `markPhotosSeen` POST dropped on a flaky network in the previous
+    // session). Capped server-side as a defensive belt-and-braces.
+    const excludeIdsRaw =
+      typeof req.query.excludeIds === "string" ? req.query.excludeIds : "";
+    const excludeIds = excludeIdsRaw
+      .split(",")
+      .map((id) => id.trim())
+      .filter((id) => id.length > 0 && id.length <= 64)
+      .slice(0, 200);
+
     // Build a Postgres text[] literal. Each tag becomes its own bound
     // parameter ($N), so individual tag strings cannot be used for SQL
     // injection — the worst case is a literal value that fails to match.
@@ -227,6 +242,15 @@ router.get("/photos/candidates", async (req, res) => {
       tags.length > 0
         ? sql`ARRAY[${sql.join(
             tags.map((t) => sql`${t}`),
+            sql`, `,
+          )}]::text[]`
+        : sql`ARRAY[]::text[]`;
+    // Same shape for the client-supplied exclude list. Empty array is
+    // a no-op against `<> ALL` so we don't need a CASE.
+    const excludeIdsExpr =
+      excludeIds.length > 0
+        ? sql`ARRAY[${sql.join(
+            excludeIds.map((id) => sql`${id}`),
             sql`, `,
           )}]::text[]`
         : sql`ARRAY[]::text[]`;
@@ -294,6 +318,7 @@ router.get("/photos/candidates", async (req, res) => {
             UNION ALL
             SELECT s.photo_id FROM seen_photos s WHERE s.user_id = ${user.id}
           )
+          AND p.id <> ALL(${excludeIdsExpr})
           AND md5(substring(p.bytes_base64 from 1 for 4096)) NOT IN (
             SELECT md5(substring(p2.bytes_base64 from 1 for 4096))
             FROM votes v
