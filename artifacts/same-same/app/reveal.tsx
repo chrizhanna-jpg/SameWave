@@ -322,23 +322,13 @@ export default function RevealScreen() {
               beneath their photo, centered, same 36px size. */}
           <View style={styles.sharePhotoPair}>
             <View style={styles.sharePhotoFramesRow}>
-              {/* Burned-in watermark overlaid on the photo row so it
-                  cannot be cropped off — sits across the bottom of the
-                  two photos. Hidden once the user has unlocked Pro via
-                  the in-app upsell. */}
-              {!proUnlocked ? (
-                <View
-                  pointerEvents="none"
-                  style={styles.photoOverlayWatermarkContainer}
-                >
-                  <View style={styles.photoOverlayWatermark}>
-                    <Text style={styles.photoOverlayWatermarkSparkle}>✨</Text>
-                    <Text style={styles.photoOverlayWatermarkText}>
-                      same same
-                    </Text>
-                  </View>
-                </View>
-              ) : null}
+              {/* Watermark used to be burned onto the photos here as a
+                  small "✨ same same" pill at the bottom of the photo
+                  row. User feedback: it cluttered the photos and felt
+                  too small to read as an actual watermark. The
+                  watermark now lives only as the larger pill below the
+                  flag row (see styles.watermark) — clearer, brand-y,
+                  and out of the photo composition. */}
               <View style={styles.sharePhotoFrame}>
                 <Image
                   source={{ uri: match.myPhoto }}
@@ -379,7 +369,19 @@ export default function RevealScreen() {
           </View>
 
           {!proUnlocked && (
-            <View style={[styles.watermark, { backgroundColor: "rgba(0, 0, 0, 0.55)", borderColor: "rgba(255, 255, 255, 0.18)" }]}>
+            <View
+              style={[
+                styles.watermark,
+                {
+                  // Solid black pill with a teal brand outline so the
+                  // watermark reads unambiguously as a watermark and is
+                  // visible on any background. Previous translucent
+                  // black on dark navy was easy to miss.
+                  backgroundColor: "#000000",
+                  borderColor: colors.teal,
+                },
+              ]}
+            >
               <Text style={styles.watermarkSparkle}>✨</Text>
               <Text style={[styles.watermarkText, { color: "#FFFFFF" }]}>
                 echo · same same
