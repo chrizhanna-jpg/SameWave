@@ -70,6 +70,10 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **Moderation**: report-based hiding (`REPORT_HIDE_THRESHOLD = 3`). The `reports` table has a unique `(reporter_user_id, photo_id)` index and the report endpoint uses `onConflictDoNothing` + skips the count bump on conflict, so the threshold can only be reached by 3 distinct reporters. Pre-upload Gemini safety check is Phase 2.
 - **Retention**: 30 days for free users (Pro paywall + extended retention is Phase 3). A background expiry job is also Phase 3 — for now `expires_at` filtering at query time is sufficient.
 
+## Future Ideas (post-launch backlog)
+
+- **User-recorded vibe audio**: when uploading a photo, let users optionally record their own audio clip (matching the same length as the existing music clips) instead of picking from the music library. Could be them talking, singing, ambient sound, or live music. Plays back on the card the same way the music clips do. Adds a "moment" feel that pre-recorded music can't match. (Captured during Play Store submission; ship after first internal-test cycle.)
+
 ## Key Commands
 
 - `pnpm run typecheck` — full typecheck across all packages
