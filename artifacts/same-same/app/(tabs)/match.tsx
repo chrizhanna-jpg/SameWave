@@ -1171,11 +1171,15 @@ export default function SwipeScreen() {
           <MatchFlash
             theirCountry={flashMatch.theirCountry}
             theirCountryFlag={flashMatch.theirCountryFlag}
+            theirCountryCode={flashMatch.theirCountryCode}
             myCountryFlag={myCountryFlag}
+            myCountryCode={myCountryCode}
             themeTitle={themeMeta?.title ?? flashMatch.theme ?? "the same thing"}
             themeEmoji={themeMeta?.emoji ?? "✨"}
-            sharedTags={flashMatch.sharedTags ?? []}
-            proUnlocked={proUnlocked}
+            myPhotoUri={flashMatch.myPhoto}
+            theirPhotoUri={flashMatch.theirPhoto}
+            myPhotoUploadedAt={flashMatch.myPhotoUploadedAt}
+            theirPhotoMinutesAgo={flashMatch.theirPhotoMinutesAgo}
             onDone={() => {
               setFlashMatch(null);
               loadNextCandidate();
