@@ -808,7 +808,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       customAudioUrl,
     };
     setState((prev) => {
-      const newState = { ...prev, myPhotos: [photo, ...prev.myPhotos] };
+      // Adding a new photo is a "fresh chance" moment: this new
+      // photo may match candidates the user already saw (and
+      // dismissed without voting) for previous photos. Clear the
+      // local seen ledger so the next /candidates fetch doesn't
+      // re-send those IDs as excludeIds. The server independently
+      // wipes its seen_photos table on POST /photos for the same
+      // reason. The votes table is untouched on both sides — past
+      // explicit same/no decisions still stand.
+      const newState = {
+        ...prev,
+        myPhotos: [photo, ...prev.myPhotos],
+        seenPhotoKeys: [],
+        seenPhotoIds: [],
+      };
       saveState(newState);
       return newState;
     });

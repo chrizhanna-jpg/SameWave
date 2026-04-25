@@ -159,6 +159,20 @@ router.post("/photos", async (req, res) => {
         expiresAt: photosTable.expiresAt,
       });
 
+    // A fresh upload is a "new chance" moment: this new photo may
+    // match against candidates the user has already been shown for
+    // their previous photos. Wipe the user's seen-photos ledger so
+    // those candidates re-enter the deck. We deliberately do NOT
+    // touch the votes table — explicit same/no decisions still
+    // stand. Best-effort: failure here must not fail the upload.
+    try {
+      await db
+        .delete(seenPhotosTable)
+        .where(eq(seenPhotosTable.userId, user.id));
+    } catch (clearErr) {
+      req.log.warn({ err: clearErr }, "seen-photos clear after upload failed");
+    }
+
     res.status(201).json({
       id: row.id,
       theme: row.theme,
