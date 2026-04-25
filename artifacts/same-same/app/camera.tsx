@@ -38,6 +38,7 @@ import {
   stop as stopAudio,
   stopIfLease,
 } from "@/utils/audio";
+import { MicBadge } from "@/components/MicBadge";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
 
@@ -1238,13 +1239,37 @@ export default function CameraScreen() {
             </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.prevScroll}>
               {myPhotos.slice(0, 8).map((photo, i) => (
-                <TouchableOpacity key={i} onPress={() => setSelectedPhoto(photo.uri)}>
-                  <Image
-                    source={{ uri: photo.uri }}
-                    style={[styles.prevPhoto, { borderColor: colors.border }]}
-                    resizeMode="cover"
-                  />
-                </TouchableOpacity>
+                <View key={i} style={styles.prevItem}>
+                  {/* Tap on the photo body re-selects it for a fresh post
+                      AND starts previewing its voice clip if one exists —
+                      this way users can both hear their past recording and
+                      re-share that photo with a single tap. The mic badge
+                      below uses its own Pressable to toggle play/pause
+                      without affecting the selection. */}
+                  <TouchableOpacity
+                    onPress={() => {
+                      setSelectedPhoto(photo.uri);
+                      if (photo.customAudioUrl) {
+                        markUserInteracted();
+                        playClip(photo.customAudioUrl);
+                      }
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <Image
+                      source={{ uri: photo.uri }}
+                      style={[styles.prevPhoto, { borderColor: colors.border }]}
+                      resizeMode="cover"
+                    />
+                  </TouchableOpacity>
+                  {photo.customAudioUrl ? (
+                    <MicBadge
+                      audioUrl={photo.customAudioUrl}
+                      size="xs"
+                      style={styles.prevMicBadge}
+                    />
+                  ) : null}
+                </View>
               ))}
             </ScrollView>
           </View>
@@ -1418,12 +1443,20 @@ const styles = StyleSheet.create({
     marginHorizontal: -20,
     paddingHorizontal: 20,
   },
+  prevItem: {
+    position: "relative",
+    marginRight: 8,
+  },
   prevPhoto: {
     width: 80,
     height: 80,
     borderRadius: 12,
-    marginRight: 8,
     borderWidth: 1,
+  },
+  prevMicBadge: {
+    position: "absolute",
+    left: 4,
+    bottom: 4,
   },
   themeSection: {
     gap: 10,

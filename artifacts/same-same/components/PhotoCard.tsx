@@ -1,6 +1,7 @@
 import React from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { Icon } from "@/components/Icon";
+import { MicBadge } from "@/components/MicBadge";
 import { useColors } from "@/hooks/useColors";
 import { isSamplePhoto } from "@/data/samplePhotos";
 import { isAiPhoto } from "@/context/AppContext";
@@ -22,6 +23,19 @@ interface Props {
    * AI-generated. Pass `false` to suppress.
    */
   showAiBadge?: boolean;
+  /**
+   * URL of the user's own voice clip attached to this photo. When set we
+   * render a tappable mic badge in the bottom-left corner that previews
+   * the clip — this is how users see/hear that a past photo carries
+   * their recording.
+   */
+  audioUrl?: string;
+  /**
+   * When false, the mic badge is non-interactive — useful when an outer
+   * row already owns the tap and calls `togglePreview()` itself.
+   * Defaults to true.
+   */
+  audioInteractive?: boolean;
 }
 
 export function PhotoCard({
@@ -30,6 +44,8 @@ export function PhotoCard({
   style,
   showSampleBadge,
   showAiBadge,
+  audioUrl,
+  audioInteractive = true,
 }: Props) {
   const colors = useColors();
 
@@ -116,6 +132,17 @@ export function PhotoCard({
           <Icon name="globe" size={iconSize} color="#ffffff" />
         </View>
       )}
+      {audioUrl ? (
+        <MicBadge
+          audioUrl={audioUrl}
+          size={size === "sm" ? "xs" : size === "md" ? "sm" : "md"}
+          interactive={audioInteractive}
+          style={[
+            styles.micBadge,
+            { left: badgeOffset, bottom: badgeOffset },
+          ]}
+        />
+      ) : null}
     </View>
   );
 }
@@ -138,5 +165,8 @@ const styles = StyleSheet.create({
     position: "absolute",
     alignItems: "center",
     justifyContent: "center",
+  },
+  micBadge: {
+    position: "absolute",
   },
 });

@@ -13,6 +13,15 @@ import { AppState, type AppStateStatus } from "react-native";
 
 let activeSound: Audio.Sound | null = null;
 let activeUrl: string | null = null;
+// Tracks whether the active clip is currently playing (vs. paused but
+// still loaded). Surfaced via `isPlayingUrl()` so UI surfaces (e.g. the
+// mic badge on a user's own photos) can render a "now playing" affordance
+// and let the user toggle preview on/off without juggling lease state.
+let activePlaying = false;
+const playbackListeners = new Set<() => void>();
+function notifyPlayback() {
+  playbackListeners.forEach((cb) => cb());
+}
 // Tracks the most recent play() request so a slow load for an old clip
 // can't clobber a newer one that the user has already moved on to.
 // `playToken` doubles as the "lease" handed back to callers of
@@ -126,6 +135,9 @@ async function unloadActive() {
   const s = activeSound;
   activeSound = null;
   activeUrl = null;
+  const wasPlaying = activePlaying;
+  activePlaying = false;
+  if (wasPlaying) notifyPlayback();
   if (!s) return;
   try {
     await s.unloadAsync();
@@ -176,8 +188,16 @@ async function _doPlay(url: string, lease: number): Promise<void> {
     try {
       if (muted) {
         await activeSound.setStatusAsync({ shouldPlay: false });
+        if (activePlaying) {
+          activePlaying = false;
+          notifyPlayback();
+        }
       } else {
         await activeSound.setStatusAsync({ shouldPlay: true, isLooping: true });
+        if (!activePlaying) {
+          activePlaying = true;
+          notifyPlayback();
+        }
       }
     } catch {}
     return;
@@ -199,6 +219,15 @@ async function _doPlay(url: string, lease: number): Promise<void> {
     }
     activeSound = sound;
     activeUrl = url;
+    const nowPlaying = !muted;
+    if (activePlaying !== nowPlaying) {
+      activePlaying = nowPlaying;
+      notifyPlayback();
+    } else {
+      // URL changed even if play state didn't — listeners that key off
+      // a specific URL still need to re-evaluate.
+      notifyPlayback();
+    }
   } catch {
     // 404, network blip, or codec mismatch. Swallow — feature is optional.
   }
@@ -217,6 +246,10 @@ async function _doPlay(url: string, lease: number): Promise<void> {
 export async function pause(): Promise<void> {
   playToken++;
   if (!activeSound) return;
+  if (activePlaying) {
+    activePlaying = false;
+    notifyPlayback();
+  }
   try {
     await activeSound.setStatusAsync({ shouldPlay: false });
   } catch {}
@@ -262,11 +295,54 @@ export function setMuted(next: boolean) {
   muteListeners.forEach((cb) => cb(muted));
   if (activeSound) {
     activeSound.setStatusAsync({ shouldPlay: !muted }).catch(() => {});
+    const nowPlaying = !muted;
+    if (activePlaying !== nowPlaying) {
+      activePlaying = nowPlaying;
+      notifyPlayback();
+    }
   }
 }
 
 export function isMuted(): boolean {
   return muted;
+}
+
+/**
+ * Returns true when the singleton player is actively playing the given URL.
+ * Use this to drive "now playing" affordances on per-photo mic badges so the
+ * UI can flip to a "tap to pause" state without any extra bookkeeping.
+ */
+export function isPlayingUrl(url: string | null | undefined): boolean {
+  return !!url && activeUrl === url && activePlaying;
+}
+
+/**
+ * Subscribe to playback-state changes (URL or play/pause swap). Pair with
+ * `isPlayingUrl()` to keep a per-clip badge in sync as other surfaces start
+ * or stop their own clips. Returns an unsubscribe so React effects can
+ * clean up correctly.
+ */
+export function onPlaybackChange(cb: () => void): () => void {
+  playbackListeners.add(cb);
+  return () => {
+    playbackListeners.delete(cb);
+  };
+}
+
+/**
+ * Toggle preview playback for a user-owned clip URL. If this URL is already
+ * the active clip and playing, pause it; otherwise start it. Counts as a
+ * user gesture so the cold-start gate opens automatically — callers don't
+ * need to wire up `markUserInteracted()` separately.
+ */
+export function togglePreview(url: string | null | undefined): void {
+  if (!url) return;
+  markUserInteracted();
+  if (isPlayingUrl(url)) {
+    void pause();
+  } else {
+    playClip(url);
+  }
 }
 
 /**

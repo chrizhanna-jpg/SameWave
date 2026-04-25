@@ -15,6 +15,7 @@ import { useApp } from "@/context/AppContext";
 import { PhotoCard } from "@/components/PhotoCard";
 import { tagEmoji, tagLabel } from "@/utils/interests";
 import { timeAgo } from "@/utils/timeAgo";
+import { togglePreview } from "@/utils/audio";
 
 export default function MyPhotosScreen() {
   const colors = useColors();
@@ -70,54 +71,93 @@ export default function MyPhotosScreen() {
             </Text>
           </View>
         ) : (
-          myPhotos.map((photo, i) => (
-            <View
-              key={`${photo.uri}-${i}`}
-              style={[
-                styles.photoRow,
-                { backgroundColor: colors.card, borderColor: colors.border },
-              ]}
-            >
-              <PhotoCard uri={photo.uri} size="md" />
-              <View style={styles.photoMeta}>
-                <Text
-                  style={[styles.photoTheme, { color: colors.foreground }]}
-                  numberOfLines={1}
-                >
-                  {photo.theme}
-                </Text>
-                <Text
-                  style={[styles.photoTime, { color: colors.mutedForeground }]}
-                >
-                  {timeAgo(new Date(photo.uploadedAt))}
-                </Text>
-                {photo.tags && photo.tags.length > 0 && (
-                  <View style={styles.tagRow}>
-                    {photo.tags.slice(0, 4).map((t) => (
-                      <View
-                        key={t}
-                        style={[
-                          styles.tagChip,
-                          {
-                            backgroundColor: colors.teal + "1a",
-                            borderColor: colors.teal + "44",
-                          },
-                        ]}
+          myPhotos.map((photo, i) => {
+            const hasAudio = !!photo.customAudioUrl;
+            const rowKey = `${photo.uri}-${i}`;
+            const rowStyle = [
+              styles.photoRow,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ];
+            // Tap on the row toggles preview; the mic badge inside PhotoCard
+            // is non-interactive so it doesn't swallow the gesture and just
+            // mirrors the playing state.
+            const inner = (
+              <>
+                <PhotoCard
+                  uri={photo.uri}
+                  size="md"
+                  audioUrl={photo.customAudioUrl}
+                  audioInteractive={false}
+                />
+                <View style={styles.photoMeta}>
+                  <Text
+                    style={[styles.photoTheme, { color: colors.foreground }]}
+                    numberOfLines={1}
+                  >
+                    {photo.theme}
+                  </Text>
+                  <Text
+                    style={[styles.photoTime, { color: colors.mutedForeground }]}
+                  >
+                    {timeAgo(new Date(photo.uploadedAt))}
+                  </Text>
+                  {hasAudio && (
+                    <View style={styles.audioHint}>
+                      <Icon name="mic" size={12} color={colors.green} />
+                      <Text
+                        style={[styles.audioHintText, { color: colors.green }]}
                       >
-                        <Text style={styles.tagEmoji}>{tagEmoji(t)}</Text>
-                        <Text
-                          style={[styles.tagText, { color: colors.teal }]}
-                          numberOfLines={1}
+                        Tap to preview your voice
+                      </Text>
+                    </View>
+                  )}
+                  {photo.tags && photo.tags.length > 0 && (
+                    <View style={styles.tagRow}>
+                      {photo.tags.slice(0, 4).map((t) => (
+                        <View
+                          key={t}
+                          style={[
+                            styles.tagChip,
+                            {
+                              backgroundColor: colors.teal + "1a",
+                              borderColor: colors.teal + "44",
+                            },
+                          ]}
                         >
-                          {tagLabel(t)}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
+                          <Text style={styles.tagEmoji}>{tagEmoji(t)}</Text>
+                          <Text
+                            style={[styles.tagText, { color: colors.teal }]}
+                            numberOfLines={1}
+                          >
+                            {tagLabel(t)}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              </>
+            );
+            if (hasAudio) {
+              return (
+                <TouchableOpacity
+                  key={rowKey}
+                  style={rowStyle}
+                  activeOpacity={0.85}
+                  onPress={() => togglePreview(photo.customAudioUrl)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Preview your voice clip"
+                >
+                  {inner}
+                </TouchableOpacity>
+              );
+            }
+            return (
+              <View key={rowKey} style={rowStyle}>
+                {inner}
               </View>
-            </View>
-          ))
+            );
+          })
         )}
       </ScrollView>
     </View>
@@ -192,6 +232,16 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: "Inter_700Bold",
     letterSpacing: 0.2,
+  },
+  audioHint: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 4,
+  },
+  audioHintText: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
   },
   emptyCard: {
     padding: 28,
