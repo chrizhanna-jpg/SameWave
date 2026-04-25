@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Image,
   Platform,
+  ScrollView,
+  Share,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -12,7 +14,27 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
-import { fetchPair, type PhotoPairResult } from "@/utils/api";
+import { fetchPair, type PhotoPairResult, type PhotoPairSide } from "@/utils/api";
+
+// Friendly relative timestamp ("just now", "3h ago", "yesterday",
+// "Apr 12") — matches the wording used throughout the rest of the app.
+function ago(iso: string | null): string {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const mins = Math.floor((Date.now() - then) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
 
 export default function EchoPairScreen() {
   const colors = useColors();
@@ -39,6 +61,23 @@ export default function EchoPairScreen() {
     };
   }, [params.a, params.b]);
 
+  const sharedTags = useMemo(() => {
+    if (!pair) return [];
+    const set = new Set(pair.b.tags);
+    return pair.a.tags.filter((t) => set.has(t));
+  }, [pair]);
+
+  const onShare = async () => {
+    if (!pair) return;
+    const themeLine = pair.a.theme || pair.b.theme || "shared moment";
+    const message = `Two strangers, same vibe — ${themeLine}. ${pair.a.country} ${pair.a.countryFlag} ↔ ${pair.b.country} ${pair.b.countryFlag}. Found on Echo.`;
+    try {
+      await Share.share({ message });
+    } catch {
+      // user cancelled — no-op
+    }
+  };
+
   const topPadding = Platform.OS === "web" ? 16 : insets.top + 8;
   const bottomPadding = Platform.OS === "web" ? 24 : insets.bottom + 24;
 
@@ -47,7 +86,7 @@ export default function EchoPairScreen() {
       <View style={[styles.header, { paddingTop: topPadding }]}>
         <TouchableOpacity
           onPress={() => router.back()}
-          style={[styles.backBtn, { borderColor: colors.border }]}
+          style={[styles.iconBtn, { borderColor: colors.border }]}
           hitSlop={8}
           accessibilityLabel="Close"
         >
@@ -56,7 +95,18 @@ export default function EchoPairScreen() {
         <Text style={[styles.headerTitle, { color: colors.foreground }]}>
           Echo
         </Text>
-        <View style={{ width: 36 }} />
+        <TouchableOpacity
+          onPress={onShare}
+          disabled={!pair}
+          style={[
+            styles.iconBtn,
+            { borderColor: colors.border, opacity: pair ? 1 : 0.4 },
+          ]}
+          hitSlop={8}
+          accessibilityLabel="Share"
+        >
+          <Icon name="share" size={18} color={colors.foreground} />
+        </TouchableOpacity>
       </View>
 
       {loading ? (
@@ -70,10 +120,22 @@ export default function EchoPairScreen() {
           </Text>
         </View>
       ) : (
-        <View style={[styles.body, { paddingBottom: bottomPadding }]}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[
+            styles.body,
+            { paddingBottom: bottomPadding },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
           <Text style={[styles.theme, { color: colors.mutedForeground }]}>
             {pair.a.theme || pair.b.theme || "shared moment"}
           </Text>
+          {pair.mutualAt && (
+            <Text style={[styles.mutualAt, { color: colors.mutedForeground }]}>
+              matched {ago(pair.mutualAt)}
+            </Text>
+          )}
           <View style={styles.pairColumn}>
             {/* Neutral country-only labelling: this view is opened both
                 from the user's own inbox AND from public Discover theme
@@ -88,28 +150,81 @@ export default function EchoPairScreen() {
             />
             <PairSide side={pair.b} />
           </View>
+
+          {sharedTags.length > 0 && (
+            <View style={styles.detailBlock}>
+              <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>
+                Shared vibes
+              </Text>
+              <View style={styles.tagRow}>
+                {sharedTags.map((t) => (
+                  <View
+                    key={t}
+                    style={[
+                      styles.tagChip,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.tagText, { color: colors.foreground }]}>
+                      {t}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
+          <TouchableOpacity
+            onPress={onShare}
+            style={[
+              styles.shareBtn,
+              { backgroundColor: colors.primary },
+            ]}
+            activeOpacity={0.85}
+          >
+            <Icon name="share" size={18} color={colors.primaryForeground} />
+            <Text
+              style={[styles.shareBtnText, { color: colors.primaryForeground }]}
+            >
+              Share this echo
+            </Text>
+          </TouchableOpacity>
+
           <Text style={[styles.footer, { color: colors.mutedForeground }]}>
             Two strangers, same vibe.
           </Text>
-        </View>
+        </ScrollView>
       )}
     </View>
   );
 }
 
-function PairSide({ side }: { side: PhotoPairResult["a"] }) {
+function PairSide({ side }: { side: PhotoPairSide }) {
   const colors = useColors();
   return (
     <View style={styles.side}>
       <Image source={{ uri: side.uri }} style={styles.bigPhoto} />
       <View style={styles.sideMeta}>
         <Text style={styles.flag}>{side.countryFlag}</Text>
-        <Text
-          style={[styles.country, { color: colors.foreground }]}
-          numberOfLines={1}
-        >
-          {side.country}
-        </Text>
+        <View style={{ flex: 1 }}>
+          <Text
+            style={[styles.country, { color: colors.foreground }]}
+            numberOfLines={1}
+          >
+            {side.country}
+          </Text>
+          {side.createdAt && (
+            <Text
+              style={[styles.posted, { color: colors.mutedForeground }]}
+              numberOfLines={1}
+            >
+              posted {ago(side.createdAt)}
+            </Text>
+          )}
+        </View>
       </View>
     </View>
   );
@@ -123,7 +238,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 16,
   },
-  backBtn: {
+  iconBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,
@@ -139,11 +254,11 @@ const styles = StyleSheet.create({
   },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   empty: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  scroll: { flex: 1 },
   body: {
-    flex: 1,
     paddingHorizontal: 20,
     gap: 18,
-    alignItems: "stretch",
+    flexGrow: 1,
   },
   theme: {
     fontSize: 12,
@@ -152,24 +267,49 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textAlign: "center",
   },
+  mutualAt: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+    marginTop: -10,
+  },
   pairColumn: { gap: 14 },
   side: { gap: 10 },
   bigPhoto: { width: "100%", aspectRatio: 1, borderRadius: 18 },
   sideMeta: { flexDirection: "row", alignItems: "center", gap: 12 },
   flag: { fontSize: 26 },
   country: { fontSize: 15, fontFamily: "Inter_700Bold" },
-  label: {
+  posted: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 1 },
+  divider: { height: 1, marginHorizontal: 40 },
+  detailBlock: { gap: 8 },
+  detailLabel: {
     fontSize: 11,
     fontFamily: "Inter_500Medium",
     textTransform: "uppercase",
     letterSpacing: 0.5,
-    marginTop: 2,
   },
-  divider: { height: 1, marginHorizontal: 40 },
+  tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  tagChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  tagText: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  shareBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 14,
+    marginTop: 4,
+  },
+  shareBtnText: { fontSize: 14, fontFamily: "Inter_700Bold" },
   footer: {
     textAlign: "center",
     fontSize: 12,
     fontFamily: "Inter_400Regular",
-    marginTop: "auto",
+    marginTop: 8,
   },
 });

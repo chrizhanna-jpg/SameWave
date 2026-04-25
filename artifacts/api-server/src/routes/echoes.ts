@@ -544,7 +544,11 @@ router.get("/echoes/pair", async (req, res) => {
     // anyone could otherwise fetch any two photos by guessing IDs.
     const { lowId, highId } = orderPair(aId, bId, null, null);
     const echoRows = await db
-      .select({ id: echoesTable.id, state: echoesTable.state })
+      .select({
+        id: echoesTable.id,
+        state: echoesTable.state,
+        mutualAt: echoesTable.mutualAt,
+      })
       .from(echoesTable)
       .where(
         and(
@@ -566,6 +570,9 @@ router.get("/echoes/pair", async (req, res) => {
         mimeType: photosTable.mimeType,
         countryCode: photosTable.countryCode,
         theme: photosTable.theme,
+        tags: photosTable.tags,
+        musicGenre: photosTable.musicGenre,
+        createdAt: photosTable.createdAt,
       })
       .from(photosTable)
       .where(or(eq(photosTable.id, aId), eq(photosTable.id, bId)));
@@ -584,18 +591,40 @@ router.get("/echoes/pair", async (req, res) => {
     // any signed-in user may view any *mutual* echo pair (this is what
     // powers the public Discover theme grids). The mutual-state guard
     // above prevents IDOR against pending offers / arbitrary photos.
+    // Defensive fallback: any legacy mutual row missing a mutual_at
+    // timestamp (column allows null at the DB level) shouldn't blank
+    // out the "matched X ago" line in the UI. Fall back to the more
+    // recent of the two photo createdAt's, which is a strict lower
+    // bound on when this echo could have become mutual.
+    const fallbackMutualAt =
+      echoRow.mutualAt ??
+      (a.createdAt && b.createdAt
+        ? new Date(
+            Math.max(
+              new Date(a.createdAt).getTime(),
+              new Date(b.createdAt).getTime(),
+            ),
+          )
+        : null);
     res.json({
+      mutualAt: fallbackMutualAt,
       a: {
         id: a.id,
         uri: `data:${a.mimeType};base64,${a.bytesBase64}`,
         countryCode: a.countryCode,
         theme: a.theme,
+        tags: a.tags ?? [],
+        musicGenre: a.musicGenre,
+        createdAt: a.createdAt,
       },
       b: {
         id: b.id,
         uri: `data:${b.mimeType};base64,${b.bytesBase64}`,
         countryCode: b.countryCode,
         theme: b.theme,
+        tags: b.tags ?? [],
+        musicGenre: b.musicGenre,
+        createdAt: b.createdAt,
       },
     });
   } catch (err) {

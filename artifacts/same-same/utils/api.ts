@@ -490,9 +490,17 @@ export async function fetchEchoesByTheme(theme: string): Promise<{
   }
 }
 
+export interface PhotoPairSide extends ServerEchoSide {
+  theme: string;
+  tags: string[];
+  musicGenre: string | null;
+  createdAt: string | null;
+}
+
 export interface PhotoPairResult {
-  a: ServerEchoSide & { theme: string };
-  b: ServerEchoSide & { theme: string };
+  mutualAt: string | null;
+  a: PhotoPairSide;
+  b: PhotoPairSide;
 }
 
 export async function fetchPair(aId: string, bId: string): Promise<PhotoPairResult | null> {
@@ -504,13 +512,40 @@ export async function fetchPair(aId: string, bId: string): Promise<PhotoPairResu
     );
     if (!res.ok) return null;
     const json = (await res.json()) as {
-      a?: { id: string; uri: string; countryCode: string | null; theme: string };
-      b?: { id: string; uri: string; countryCode: string | null; theme: string };
+      mutualAt?: string | null;
+      a?: {
+        id: string;
+        uri: string;
+        countryCode: string | null;
+        theme: string;
+        tags?: string[];
+        musicGenre?: string | null;
+        createdAt?: string | null;
+      };
+      b?: {
+        id: string;
+        uri: string;
+        countryCode: string | null;
+        theme: string;
+        tags?: string[];
+        musicGenre?: string | null;
+        createdAt?: string | null;
+      };
     };
     if (!json.a || !json.b) return null;
+    const decorate = (
+      raw: NonNullable<typeof json.a>,
+    ): PhotoPairSide => ({
+      ...decorateSide(raw),
+      theme: raw.theme ?? "",
+      tags: Array.isArray(raw.tags) ? raw.tags : [],
+      musicGenre: raw.musicGenre ?? null,
+      createdAt: raw.createdAt ?? null,
+    });
     return {
-      a: { ...decorateSide(json.a), theme: json.a.theme ?? "" },
-      b: { ...decorateSide(json.b), theme: json.b.theme ?? "" },
+      mutualAt: json.mutualAt ?? null,
+      a: decorate(json.a),
+      b: decorate(json.b),
     };
   } catch {
     return null;
