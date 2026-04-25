@@ -73,6 +73,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 ## Future Ideas (post-launch backlog)
 
 - **User-recorded vibe audio**: when uploading a photo, let users optionally record their own audio clip (matching the same length as the existing music clips) instead of picking from the music library. Could be them talking, singing, ambient sound, or live music. Plays back on the card the same way the music clips do. Adds a "moment" feel that pre-recorded music can't match. (Captured during Play Store submission; ship after first internal-test cycle.)
+- **Pro tier (paywall)**: paid upgrade. Initial perks idea: photos kept indefinitely (vs. 30-day auto-delete on free), possibly extra daily uploads and special themes. Phase 3 in the storage architecture notes above. (Captured during Play Store submission; design + pricing TBD before build.)
 
 ## Key Commands
 
