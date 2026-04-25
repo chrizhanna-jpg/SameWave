@@ -232,7 +232,7 @@ export function EchoFlash({
               { opacity: popIn, transform: [{ scale: popScale }] },
             ]}
           >
-            <GlobeAnimation size={72} />
+            <GlobeAnimation size={64} />
           </Animated.View>
 
           <Animated.View
@@ -329,29 +329,33 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     marginBottom: 4,
   },
+  // Headline kept readable but no longer dwarfing the photos. The
+  // celebration's two thumbnails were bumped to a tall portrait
+  // 5:7 so the imagery is the visual anchor of the moment, with
+  // the globe between them and a slim text/button stack around.
   headline: {
-    fontSize: 30,
+    fontSize: 22,
     fontWeight: "900",
     color: "#001018",
     letterSpacing: 1,
-    marginBottom: 18,
+    marginBottom: 8,
     textAlign: "center",
   },
   thumbsRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    marginBottom: 18,
+    gap: 10,
+    marginBottom: 12,
   },
   thumbWrap: {
     width: 100,
-    height: 100,
+    height: 140,
     borderRadius: 18,
     position: "relative",
   },
   thumb: {
     width: 100,
-    height: 100,
+    height: 140,
     borderRadius: 18,
     backgroundColor: "rgba(0,16,24,0.18)",
   },
@@ -366,33 +370,33 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: -6,
     right: -6,
-    fontSize: 28,
+    fontSize: 24,
     textShadowColor: "rgba(0,0,0,0.45)",
     textShadowRadius: 4,
   },
   globeWrap: {
-    width: 72,
-    height: 72,
+    width: 64,
+    height: 64,
     alignItems: "center",
     justifyContent: "center",
   },
   subline: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: "600",
     color: "#001018",
-    marginBottom: 12,
+    marginBottom: 8,
     textAlign: "center",
     paddingHorizontal: 8,
   },
   themePill: {
     backgroundColor: "rgba(0,16,24,0.12)",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 999,
-    marginBottom: 22,
+    marginBottom: 14,
   },
   themeText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "700",
     color: "#001018",
     letterSpacing: 0.3,
@@ -400,22 +404,22 @@ const styles = StyleSheet.create({
   actionRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 14,
-    marginTop: 4,
+    gap: 12,
+    marginTop: 2,
     flexWrap: "wrap",
     justifyContent: "center",
   },
   openPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 8,
     backgroundColor: "#fff",
-    paddingHorizontal: 32,
-    paddingVertical: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
     borderRadius: 999,
   },
   openText: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "800",
     color: "#001018",
     letterSpacing: 0.5,
@@ -423,20 +427,20 @@ const styles = StyleSheet.create({
   secondaryPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 8,
     backgroundColor: "rgba(0,16,24,0.65)",
-    paddingHorizontal: 32,
-    paddingVertical: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
     borderRadius: 999,
   },
   secondaryText: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "700",
     color: "#fff",
     letterSpacing: 0.3,
   },
   hint: {
-    marginTop: 18,
+    marginTop: 12,
     fontSize: 11,
     color: "rgba(0,16,24,0.55)",
     fontWeight: "600",
