@@ -78,7 +78,7 @@ export default function EchoesScreen() {
             Echoes
           </Text>
           <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
-            Mutual same-same with strangers
+            Your echoes with strangers
           </Text>
         </View>
       </View>
@@ -137,7 +137,7 @@ export default function EchoesScreen() {
               />
             )}
             {mutualEchoes.map((echo) => (
-              <MutualEchoCard key={echo.id} echo={echo} />
+              <EchoListCard key={echo.id} echo={echo} />
             ))}
           </>
         )}
@@ -255,7 +255,7 @@ function PendingEchoCard({
   );
 }
 
-function MutualEchoCard({ echo }: { echo: EchoCardType }) {
+function EchoListCard({ echo }: { echo: EchoCardType }) {
   const colors = useColors();
   const stamp = echo.mutualAt ? new Date(echo.mutualAt) : new Date(echo.createdAt);
   const ago = timeAgo(stamp);
@@ -287,7 +287,7 @@ function MutualEchoCard({ echo }: { echo: EchoCardType }) {
             style={[styles.cardSub, { color: colors.mutedForeground }]}
             numberOfLines={1}
           >
-            mutual echo · {ago}
+            echo · {ago}
           </Text>
         </View>
         <Text style={styles.echoEmoji}>🔁</Text>

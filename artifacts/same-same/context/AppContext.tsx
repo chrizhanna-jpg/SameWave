@@ -259,6 +259,16 @@ interface AppContextValue extends AppState {
    * (needed by photoKey-based dedup) when candidate fetches come back.
    */
   primeSeenFromCandidates: (items: { id: string; uri: string }[]) => void;
+  // ── Echo flash celebration (transient overlay) ─────────────────────
+  /**
+   * The next echo to celebrate with the full-screen EchoFlash overlay.
+   * Set automatically when an offer is accepted, or when the polling
+   * refresh detects a new mutual echo on this side. Cleared by
+   * `dismissFlashEcho`.
+   */
+  pendingFlashEcho: EchoCard | null;
+  /** Hide the celebration overlay. */
+  dismissFlashEcho: () => void;
 }
 
 const defaultBadges: Badge[] = [
@@ -293,6 +303,42 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  // Echo flash celebration overlay state. Lives outside the persisted
+  // AppState so it doesn't survive a cold start (otherwise the user
+  // would see the same celebration again on every relaunch).
+  const [pendingFlashEcho, setPendingFlashEcho] = useState<EchoCard | null>(
+    null,
+  );
+  // FIFO of newly-mutual echoes that arrived while another celebration
+  // was already on screen. We pop one off whenever the current overlay
+  // dismisses so back-to-back mutuals never get silently dropped.
+  const flashQueueRef = useRef<EchoCard[]>([]);
+  // Set of mutual-echo IDs we've already enqueued (queued or shown)
+  // in this app session. The very first refresh after launch seeds
+  // this with whatever mutuals already exist on the server, so we
+  // never celebrate something the user has had for days. After that,
+  // any new ID showing up in the mutual list gets enqueued.
+  const flashEnqueuedRef = useRef<Set<string>>(new Set());
+  const flashSeededRef = useRef(false);
+  // Enqueue a freshly-mutual echo. If nothing is on screen, show it
+  // immediately; otherwise tuck it into the FIFO and let the dismiss
+  // handler drain it.
+  const enqueueFlashEcho = useCallback((echo: EchoCard) => {
+    if (flashEnqueuedRef.current.has(echo.id)) return;
+    flashEnqueuedRef.current.add(echo.id);
+    setPendingFlashEcho((cur) => {
+      if (cur) {
+        flashQueueRef.current.push(echo);
+        return cur;
+      }
+      return echo;
+    });
+  }, []);
+  const dismissFlashEcho = useCallback(() => {
+    const next = flashQueueRef.current.shift() ?? null;
+    setPendingFlashEcho(next);
+  }, []);
 
   useEffect(() => {
     loadState();
@@ -908,6 +954,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         fetchEchoesInbox(),
         fetchEchoesMine(),
       ]);
+      // Detect mutual echoes that weren't here last time. On the very
+      // first refresh we silently seed the "shown" set so old echoes
+      // don't all flash at once. After that, the freshest unseen one
+      // wins the celebration overlay (the polling cadence is 30s, so
+      // typically there's only zero or one new entry per tick).
+      if (!flashSeededRef.current) {
+        for (const e of mine) {
+          if (e.state === "mutual") flashEnqueuedRef.current.add(e.id);
+        }
+        flashSeededRef.current = true;
+      } else {
+        // Enqueue every freshly-mutual echo we haven't seen yet so a
+        // burst of new mutuals (or one arriving while another flash is
+        // open) all get celebrated in turn.
+        for (const e of mine) {
+          if (e.state === "mutual" && !flashEnqueuedRef.current.has(e.id)) {
+            enqueueFlashEcho(e);
+          }
+        }
+      }
       setState((prev) => {
         const newState: AppState = {
           ...prev,
@@ -948,19 +1014,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // the UI feels instant. We reconcile against the server response.
       const target = stateRef.current.pendingEchoes.find((e) => e.id === id);
       if (!target) return "error" as const;
+      const promoted: EchoCard = {
+        ...target,
+        state: "mutual" as const,
+        mutualAt: new Date().toISOString(),
+      };
       setState((prev) => {
         const newPending = prev.pendingEchoes.filter((e) => e.id !== id);
         const newMutual =
-          verdict === "same"
-            ? [
-                {
-                  ...target,
-                  state: "mutual" as const,
-                  mutualAt: new Date().toISOString(),
-                },
-                ...prev.mutualEchoes,
-              ]
-            : prev.mutualEchoes;
+          verdict === "same" ? [promoted, ...prev.mutualEchoes] : prev.mutualEchoes;
         const newState: AppState = {
           ...prev,
           pendingEchoes: newPending,
@@ -976,7 +1038,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           await refreshEchoes();
           return "error" as const;
         }
-        return result.state === "mutual" ? "mutual" : "declined";
+        if (result.state === "mutual") {
+          // Celebrate immediately on the responder's side. enqueueFlashEcho
+          // also marks the id so the next polling refresh doesn't
+          // re-trigger it.
+          enqueueFlashEcho(promoted);
+          return "mutual" as const;
+        }
+        return "declined" as const;
       } catch {
         await refreshEchoes();
         return "error" as const;
@@ -1051,6 +1120,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         hasSeenPhoto,
         resetSeenPhotos,
         primeSeenFromCandidates,
+        pendingFlashEcho,
+        dismissFlashEcho,
       }}
     >
       {children}

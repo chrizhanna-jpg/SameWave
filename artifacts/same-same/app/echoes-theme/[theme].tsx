@@ -81,7 +81,7 @@ export default function EchoesThemeScreen() {
             {emoji}  {title}
           </Text>
           <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
-            {count.toLocaleString()} mutual echo{count === 1 ? "" : "es"}
+            {count.toLocaleString()} echo{count === 1 ? "" : "es"}
             {photos.length > 0 ? ` · ${photos.length} photos` : ""}
           </Text>
         </View>

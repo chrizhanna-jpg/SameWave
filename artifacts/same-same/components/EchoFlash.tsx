@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Easing,
@@ -10,6 +10,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
@@ -62,11 +63,17 @@ export function EchoFlash({
   onOpen,
 }: Props) {
   const colors = useColors();
+  const insets = useSafeAreaInsets();
   const fade = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(0.94)).current;
   const popIn = useRef(new Animated.Value(0)).current;
   const dragY = useRef(new Animated.Value(0)).current;
   const finishedRef = useRef(false);
+  // Photo URIs may 404 (deleted by the other user, expired CDN, etc).
+  // Track per-side load failure so we can render the flag fallback
+  // instead of a blank gray square.
+  const [myImgErr, setMyImgErr] = useState(false);
+  const [theirImgErr, setTheirImgErr] = useState(false);
 
   const finish = (action: "auto" | "open" = "auto") => {
     if (finishedRef.current) return;
@@ -179,7 +186,10 @@ export function EchoFlash({
       >
         <Pressable
           onPress={() => finish("auto")}
-          style={styles.dismissBtn}
+          style={[
+            styles.dismissBtn,
+            { top: insets.top + 12, right: insets.right + 16 },
+          ]}
           hitSlop={12}
           accessibilityLabel="Dismiss echo"
         >
@@ -199,8 +209,12 @@ export function EchoFlash({
               { opacity: popIn, transform: [{ scale: popScale }] },
             ]}
           >
-            {myPhotoUri ? (
-              <Image source={{ uri: myPhotoUri }} style={styles.thumb} />
+            {myPhotoUri && !myImgErr ? (
+              <Image
+                source={{ uri: myPhotoUri }}
+                style={styles.thumb}
+                onError={() => setMyImgErr(true)}
+              />
             ) : (
               <View style={[styles.thumb, styles.thumbFallback]}>
                 <Text style={styles.thumbFallbackFlag}>
@@ -226,8 +240,12 @@ export function EchoFlash({
               { opacity: popIn, transform: [{ scale: popScale }] },
             ]}
           >
-            {theirPhotoUri ? (
-              <Image source={{ uri: theirPhotoUri }} style={styles.thumb} />
+            {theirPhotoUri && !theirImgErr ? (
+              <Image
+                source={{ uri: theirPhotoUri }}
+                style={styles.thumb}
+                onError={() => setTheirImgErr(true)}
+              />
             ) : (
               <View style={[styles.thumb, styles.thumbFallback]}>
                 <Text style={styles.thumbFallbackFlag}>
