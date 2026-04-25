@@ -87,7 +87,7 @@ const OBJECT_TAGS = [
   "trees", "clouds", "stars", "mountains",
   "water", "beach", "snow", "plants", "flowers", "garden",
   "dog", "cat", "animal", "wildlife", "bird",
-  "art", "music", "laptop", "desk",
+  "art", "laptop", "desk",
 ];
 
 const OBJECT_PROMPT = `You are looking at a photo for a global "match by object" feature.

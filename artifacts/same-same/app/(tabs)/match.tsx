@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Animated,
   Dimensions,
   Image,
@@ -37,7 +38,13 @@ import {
   ENABLE_SYNTHETIC_MATCHES,
   type SamplePhoto,
 } from "@/data/samplePhotos";
-import { fetchCandidates, votePhoto, fetchMatchStats, markPhotosSeen } from "@/utils/api";
+import {
+  fetchCandidates,
+  votePhoto,
+  fetchMatchStats,
+  markPhotosSeen,
+  matchByObject,
+} from "@/utils/api";
 import {
   getGenre,
   pickClipForSeed,
@@ -310,6 +317,19 @@ export default function SwipeScreen() {
   // from "current photo was just marked seen by us" (no action needed).
   const sessionDisplayedRef = useRef<Set<string>>(new Set());
 
+  // ---- "Match by object" mode ---------------------------------------------
+  // The empty-state ghost button asks the AI to re-tag the user's photo by
+  // visible objects only, then re-queries /candidates with those tags so
+  // the deck is ranked by what's literally in the frame instead of the
+  // usual theme + lifestyle-tag overlap. `objectMatchTags` non-null means
+  // we found and applied an object-based pool — the swipe header shows a
+  // small banner with the detected objects so the user understands why
+  // the matches look different. Cleared when the user uploads a fresh
+  // photo (the deps below clear it on theme/tags change).
+  const [objectMatchLoading, setObjectMatchLoading] = useState(false);
+  const [objectMatchTags, setObjectMatchTags] = useState<string[] | null>(null);
+  const [objectMatchError, setObjectMatchError] = useState<string | null>(null);
+
   // Build the exclusion set passed into scoreCandidates / generator: the
   // user's own photo + the persistent ledger. When bypassSeenRef is true
   // (the "Show photos I've seen" override) we drop the ledger so every
@@ -478,6 +498,11 @@ export default function SwipeScreen() {
   useEffect(() => {
     bypassSeenRef.current = false;
     sessionDisplayedRef.current = new Set();
+    // A new photo means the user's frame has changed — the previously
+    // detected objects no longer apply. Clear the object-mode banner
+    // and any error so the empty state starts fresh next time.
+    setObjectMatchTags(null);
+    setObjectMatchError(null);
     const next = getTheirPhoto(
       activeTheme,
       myTags,
@@ -956,67 +981,167 @@ export default function SwipeScreen() {
                 style={[
                   styles.emptyStateBtn,
                   styles.emptyStateBtnGhost,
-                  { borderColor: colors.border, marginTop: 10 },
+                  {
+                    borderColor: colors.border,
+                    marginTop: 10,
+                    opacity: objectMatchLoading ? 0.6 : 1,
+                  },
                 ]}
-                onPress={() => {
-                  // "Show again" — flip the per-mount bypass so the next
-                  // pick ignores the persistent ledger. The ledger itself
-                  // is preserved (we don't want to forget the user's
-                  // history), and mark-on-display is suppressed for the
-                  // bypassed picks via sessionDisplayedRef so we don't
-                  // immediately re-flag everything as seen.
-                  bypassSeenRef.current = true;
-                  // Pre-seed sessionDisplayedRef with the current ledger
-                  // so the post-mount re-pick effect won't clobber the
-                  // bypass on the very next render.
-                  for (const k of seenSetRef.current) {
-                    sessionDisplayedRef.current.add(k);
-                  }
-                  const next = getTheirPhoto(
-                    activeTheme,
-                    myTags,
-                    buildExcludeKeys(),
-                    undefined,
-                    realPoolRef.current,
-                  );
-                  if (next) {
-                    setTheirPhoto(next.photo);
-                    setMatchedTheme(next.matchedTheme);
-                    setSharedTags(next.sharedTags);
-                    setNoMore(false);
+                disabled={objectMatchLoading || !todaysPhoto?.backendId}
+                onPress={async () => {
+                  // "Match by object" — alternative AI matching strategy.
+                  // Asks the server to re-tag the user's own photo using
+                  // an object-focused vision pass, then re-queries
+                  // /candidates with those tags only (no theme), so the
+                  // deck is ranked by what's literally visible in the
+                  // frame instead of the usual theme + lifestyle-tag
+                  // overlap. The user gets a fresh pool to swipe through
+                  // when the strict pool is exhausted.
+                  const photoId = todaysPhoto?.backendId;
+                  if (!photoId) return;
+                  setObjectMatchLoading(true);
+                  setObjectMatchError(null);
+                  let objects: string[];
+                  try {
+                    objects = await matchByObject(photoId);
+                  } catch {
+                    setObjectMatchError(
+                      "Couldn't reach the matcher. Try again in a moment.",
+                    );
+                    setObjectMatchLoading(false);
                     return;
                   }
-                  // Fallback — getTheirPhoto can return null even with the
-                  // bypass on (e.g. the candidate pool was refetched after
-                  // the user uploaded a new photo and nothing in it clears
-                  // the same-theme / shared-tag floor). The user explicitly
-                  // asked to see something they've already seen, so be
-                  // lenient: pick any photo in the real pool that isn't
-                  // their own. Guarantees the button always does *something*
-                  // when there is anything at all to show.
-                  const fallbackPool = realPoolRef.current.filter((p) => {
-                    const k = photoKey(p.uri);
-                    return !!k && k !== myPhotoKey;
-                  });
-                  if (fallbackPool.length > 0) {
-                    const pick =
-                      fallbackPool[Math.floor(Math.random() * fallbackPool.length)];
-                    const shared = pick.tags.filter((t) => myTags.includes(t));
-                    setTheirPhoto(pick);
-                    setMatchedTheme(pick.theme);
-                    setSharedTags(shared);
-                    setNoMore(false);
+                  if (objects.length === 0) {
+                    setObjectMatchError(
+                      "Couldn't spot any clear objects in your photo.",
+                    );
+                    setObjectMatchLoading(false);
+                    return;
+                  }
+                  try {
+                    const cands = await fetchCandidates({
+                      tags: objects,
+                      limit: 24,
+                    });
+                    const ids = new Map<string, string>();
+                    const exclude = buildExcludeKeys();
+                    const mapped: SamplePhoto[] = cands.map((c) => {
+                      const code = (c.countryCode ?? "ZZ").toUpperCase();
+                      const minutesAgo = Math.max(
+                        1,
+                        Math.round(
+                          (Date.now() - new Date(c.createdAt).getTime()) /
+                            60000,
+                        ),
+                      );
+                      ids.set(c.uri, c.id);
+                      return {
+                        id: `live-${c.id}`,
+                        uri: c.uri,
+                        country: nameFor(code) ?? "Somewhere",
+                        countryCode: code,
+                        countryFlag: flagFor(code),
+                        theme: c.theme || activeTheme,
+                        minutesAgo,
+                        tags: c.tags,
+                        musicGenre: c.musicGenre ?? undefined,
+                        customAudioUrl: c.customAudioUrl ?? undefined,
+                      };
+                    });
+                    // Merge the new IDs into the existing lookup so vote
+                    // posts still find the right backend ID after a swipe.
+                    for (const [uri, id] of ids) {
+                      realPhotoIdsRef.current.set(uri, id);
+                    }
+                    primeSeenFromCandidates(
+                      cands.map((c) => ({ id: c.id, uri: c.uri })),
+                    );
+                    // Drop the user's own photo and any already-seen
+                    // candidates from the new pool before showing one.
+                    const fresh = mapped.filter((p) => {
+                      const k = photoKey(p.uri);
+                      return !!k && !exclude.has(k);
+                    });
+                    if (fresh.length === 0) {
+                      setObjectMatchError(
+                        "No fresh matches for those objects yet.",
+                      );
+                      return;
+                    }
+                    setObjectMatchTags(objects);
+                    setRealPool(fresh);
+                    // Pick a candidate immediately with the relax flag so
+                    // the user sees a result without another tap. Shared
+                    // tags fall out of the candidate's overlap with the
+                    // user's own original tag list (not the AI objects).
+                    const next = getTheirPhoto(
+                      activeTheme,
+                      myTags,
+                      exclude,
+                      undefined,
+                      fresh,
+                    );
+                    if (next) {
+                      setTheirPhoto(next.photo);
+                      setMatchedTheme(next.matchedTheme);
+                      setSharedTags(next.sharedTags);
+                      setNoMore(false);
+                    }
+                  } catch {
+                    setObjectMatchError("Match by object failed. Try again.");
+                  } finally {
+                    setObjectMatchLoading(false);
                   }
                 }}
                 activeOpacity={0.85}
               >
-                <Text
-                  style={[styles.emptyStateBtnText, { color: colors.mutedForeground }]}
-                >
-                  Show photos I've seen
-                </Text>
+                {objectMatchLoading ? (
+                  <ActivityIndicator
+                    size="small"
+                    color={colors.mutedForeground}
+                  />
+                ) : (
+                  <Text
+                    style={[
+                      styles.emptyStateBtnText,
+                      { color: colors.mutedForeground },
+                    ]}
+                  >
+                    Match by object
+                  </Text>
+                )}
               </TouchableOpacity>
+              {objectMatchError && (
+                <Text
+                  style={{
+                    color: colors.mutedForeground,
+                    fontSize: 12,
+                    marginTop: 8,
+                    textAlign: "center",
+                  }}
+                >
+                  {objectMatchError}
+                </Text>
+              )}
             </View>
+          </View>
+        )}
+        {hasUploadedPhoto && !noMore && objectMatchTags && objectMatchTags.length > 0 && (
+          <View
+            style={{
+              alignSelf: "center",
+              paddingHorizontal: 14,
+              paddingVertical: 6,
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.card,
+              marginBottom: 8,
+            }}
+          >
+            <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+              matching by object: {objectMatchTags.join(", ")}
+            </Text>
           </View>
         )}
         {hasUploadedPhoto && !noMore && (

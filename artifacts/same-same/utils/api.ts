@@ -175,29 +175,29 @@ export async function fetchCandidates(input: {
 
 /**
  * Ask the server to re-tag the user's own photo using object-focused
- * AI vision. Returns up to 6 detected object tags from the fixed
- * vocabulary; an empty list means the model couldn't identify anything
- * (e.g. abstract photo, text-only image). The mobile swipe screen feeds
- * these tags back into fetchCandidates as the "match by object"
- * matching strategy.
+ * AI vision. Resolves to up to 6 detected object tags from the fixed
+ * vocabulary; an empty array means the model ran successfully but
+ * couldn't identify anything (e.g. abstract photo, text-only image).
+ *
+ * Throws on transport / server errors so the swipe screen can tell
+ * "AI saw nothing" apart from "network or server failed" — the two
+ * deserve different copy in the UI.
  */
 export async function matchByObject(photoId: string): Promise<string[]> {
-  try {
-    const base = getApiBase();
-    const res = await fetch(`${base}/api/photos/match-by-object`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(await authedHeaders()),
-      },
-      body: JSON.stringify({ photoId }),
-    });
-    if (!res.ok) return [];
-    const json = (await res.json()) as { objects?: string[] };
-    return Array.isArray(json.objects) ? json.objects : [];
-  } catch {
-    return [];
+  const base = getApiBase();
+  const res = await fetch(`${base}/api/photos/match-by-object`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(await authedHeaders()),
+    },
+    body: JSON.stringify({ photoId }),
+  });
+  if (!res.ok) {
+    throw new Error(`match-by-object failed: ${res.status}`);
   }
+  const json = (await res.json()) as { objects?: string[] };
+  return Array.isArray(json.objects) ? json.objects : [];
 }
 
 export interface VoteResult {
