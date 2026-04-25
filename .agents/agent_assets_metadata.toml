@@ -23,3 +23,15 @@ id = "tqg15ozWKmBcJITwKwtpl"
 uri = "file://artifacts/same-same/assets/images/icon.png"
 type = "image"
 title = "Same Same — New App Icon"
+
+[[outputs]]
+id = "Dlds7fvWSzu07AMcdgCz5"
+uri = "file://artifacts/same-same/store-listing/play-store-icon-512.png"
+type = "image"
+title = "Play Store Icon (512×512)"
+
+[[outputs]]
+id = "rRvC1qZXINpvx-wam4Ng9"
+uri = "file://artifacts/same-same/store-listing/feature-graphic-1024x500.png"
+type = "image"
+title = "Feature Graphic (1024×500)"
