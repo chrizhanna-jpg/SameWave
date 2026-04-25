@@ -38,6 +38,7 @@ import {
   resetPlaybackMode,
   stop as stopAudio,
   stopIfLease,
+  togglePreview,
 } from "@/utils/audio";
 import { MicBadge } from "@/components/MicBadge";
 import { Audio } from "expo-av";
@@ -1252,17 +1253,19 @@ export default function CameraScreen() {
               {myPhotos.slice(0, 8).map((photo, i) => (
                 <View key={i} style={styles.prevItem}>
                   {/* Tap on the photo body re-selects it for a fresh post
-                      AND starts previewing its voice clip if one exists —
+                      AND toggles preview of its voice clip if one exists —
                       this way users can both hear their past recording and
-                      re-share that photo with a single tap. The mic badge
+                      re-share that photo with a single tap. We route through
+                      `togglePreview` (rather than calling `playClip` directly)
+                      so the resulting lease is tracked by `pausePreview()` and
+                      gets paused when the user navigates away. The mic badge
                       below uses its own Pressable to toggle play/pause
                       without affecting the selection. */}
                   <TouchableOpacity
                     onPress={() => {
                       setSelectedPhoto(photo.uri);
                       if (photo.customAudioUrl) {
-                        markUserInteracted();
-                        playClip(photo.customAudioUrl);
+                        togglePreview(photo.customAudioUrl);
                       }
                     }}
                     activeOpacity={0.85}
