@@ -54,6 +54,11 @@ interface ResolvedClip {
   url: string;
   label: string;
   genre: MusicGenre;
+  // When the photo carries a custom voice clip, this overrides `url`
+  // for actual playback. We keep the genre fields populated so the
+  // (suppressed-on-discover) vibe label and per-genre styling still
+  // resolve coherently elsewhere.
+  customAudioUrl?: string;
 }
 
 interface CardClips {
@@ -73,13 +78,23 @@ function resolvePhotoClip(
   const storedMeta = stored ? getGenre(stored) : undefined;
   if (storedMeta) {
     const clip = pickClipForSeed(storedMeta.id, photo.uri);
-    return { url: clip.url, label: storedMeta.label, genre: storedMeta.id };
+    return {
+      url: clip.url,
+      label: storedMeta.label,
+      genre: storedMeta.id,
+      customAudioUrl: photo.customAudioUrl,
+    };
   }
   const fallbackGenre = suggestGenre(theme, photo.tags);
   const fallbackMeta = getGenre(fallbackGenre);
   if (!fallbackMeta) return null;
   const clip = pickClipForSeed(fallbackMeta.id, photo.uri);
-  return { url: clip.url, label: fallbackMeta.label, genre: fallbackMeta.id };
+  return {
+    url: clip.url,
+    label: fallbackMeta.label,
+    genre: fallbackMeta.id,
+    customAudioUrl: photo.customAudioUrl,
+  };
 }
 
 // Resolve clips for BOTH photos on a card. Discover plays them
@@ -550,7 +565,12 @@ export default function DiscoverScreen() {
       void pause();
       return;
     }
-    playLeaseRef.current = playClip(current.clip.url);
+    // Prefer the photo's custom voice clip over the genre-resolved
+    // music clip so feed autoplay matches the badge tap + photo tap
+    // paths (which both prefer customAudioUrl).
+    playLeaseRef.current = playClip(
+      current.clip.customAudioUrl ?? current.clip.url,
+    );
   }, [current, focused]);
 
   // Cold-start kick: the very first interaction (a mute toggle, a card
@@ -571,7 +591,11 @@ export default function DiscoverScreen() {
       // Capture the lease here too — without this, the focus blur
       // cleanup's pauseIfLease() would no-op against a stale lease
       // and Discover's audio would keep playing after a tab switch.
-      if (c) playLeaseRef.current = playClip(c.clip.url);
+      if (c) {
+        playLeaseRef.current = playClip(
+          c.clip.customAudioUrl ?? c.clip.url,
+        );
+      }
     });
   }, []);
 
