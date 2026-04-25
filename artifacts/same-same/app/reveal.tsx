@@ -388,7 +388,7 @@ export default function RevealScreen() {
               <View style={styles.watermarkRow}>
                 <Text style={styles.watermarkSparkle}>✨</Text>
                 <Text style={[styles.watermarkText, { color: "#FFFFFF" }]}>
-                  echo · same same
+                  Echo
                 </Text>
               </View>
               <Text style={[styles.watermarkSubtext, { color: colors.teal }]}>
