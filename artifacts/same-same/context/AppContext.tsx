@@ -269,6 +269,14 @@ interface AppContextValue extends AppState {
   pendingFlashEcho: EchoCard | null;
   /** Hide the celebration overlay. */
   dismissFlashEcho: () => void;
+  /**
+   * True once the persistent AsyncStorage state has been read into memory
+   * (whether or not anything was found). Consumers that pick a candidate
+   * before hydration completes (e.g. the swipe deck's initial card) can
+   * use this signal to re-evaluate against the now-hydrated seen-photo
+   * ledger and replace stale picks from previous sessions.
+   */
+  hasHydrated: boolean;
 }
 
 const defaultBadges: Badge[] = [
@@ -340,8 +348,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setPendingFlashEcho(next);
   }, []);
 
+  // Becomes true once `loadState` completes, regardless of whether
+  // anything was found in AsyncStorage. Consumers (notably the swipe
+  // deck) use this to know that `seenPhotoKeys` and friends now reflect
+  // the full persisted ledger and any pre-hydration picks should be
+  // re-evaluated.
+  const [hasHydrated, setHasHydrated] = useState(false);
+
   useEffect(() => {
-    loadState();
+    loadState().finally(() => setHasHydrated(true));
   }, []);
 
   // Server-side mirror of the seen ledger. We learn IDs on launch (the
@@ -1122,6 +1137,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         primeSeenFromCandidates,
         pendingFlashEcho,
         dismissFlashEcho,
+        hasHydrated,
       }}
     >
       {children}

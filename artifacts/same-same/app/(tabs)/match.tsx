@@ -242,6 +242,7 @@ export default function SwipeScreen() {
     resetSeenPhotos,
     primeSeenFromCandidates,
     proUnlocked,
+    hasHydrated,
   } = useApp();
   // DEV-only debug pill — visibility-toggled state lives at the top
   // of the component so the floating button rendered at the very end
@@ -350,15 +351,27 @@ export default function SwipeScreen() {
 
   // When the persistent ledger hydrates AFTER mount, the current card
   // might be a photo the user already swiped on in a previous session.
-  // Detect that and re-pick once. We compare against sessionDisplayedRef
-  // so we never re-pick a card we just placed (which would loop because
-  // mark-on-display adds it to the ledger immediately).
+  // Detect that and re-pick once. We normally compare against
+  // sessionDisplayedRef so we never re-pick a card we just placed
+  // (which would loop because mark-on-display adds it to the ledger
+  // immediately) — but the very first card is added to that ref BEFORE
+  // hydration, so without an exception it would trap a stale pick from
+  // the previous session forever. `postHydrationRecheckedRef` lets the
+  // first post-hydration pass bypass the loop-breaker exactly once.
+  const postHydrationRecheckedRef = useRef(false);
   useEffect(() => {
     const currentUri = theirPhotoRef.current?.uri;
     if (!currentUri) return;
     const k = photoKey(currentUri);
     if (!k) return;
-    if (sessionDisplayedRef.current.has(k)) return;
+    const allowFirstPostHydrationPass =
+      hasHydrated && !postHydrationRecheckedRef.current;
+    if (hasHydrated) postHydrationRecheckedRef.current = true;
+    if (
+      !allowFirstPostHydrationPass &&
+      sessionDisplayedRef.current.has(k)
+    )
+      return;
     if (!seenSet.has(k)) return;
     const next = getTheirPhoto(
       activeThemeRef.current,
@@ -373,7 +386,7 @@ export default function SwipeScreen() {
       setSharedTags(next.sharedTags);
       setNoMore(false);
     }
-  }, [seenSet, buildExcludeKeys]);
+  }, [seenSet, buildExcludeKeys, hasHydrated]);
 
   // Real candidates from the backend. Empty until the first fetch resolves;
   // SwipeScreen still renders something via SAMPLE_PHOTOS in dev / a graceful
