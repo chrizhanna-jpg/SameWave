@@ -649,39 +649,43 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontFamily: "Inter_600SemiBold",
   },
+  // Layout deliberately favours the two photos: tight outer padding,
+  // tight stack gap, compact title + chips above, and a portrait
+  // (4:5) aspect ratio on each photo so the imagery dominates the
+  // captured share card.
   shareCard: {
     borderRadius: 24,
     borderWidth: 1,
-    paddingVertical: 22,
+    paddingVertical: 12,
     paddingHorizontal: 18,
-    gap: 16,
+    gap: 10,
     overflow: "hidden",
     alignItems: "center",
   },
   shareTitle: {
-    fontSize: 34,
+    fontSize: 22,
     fontFamily: "Inter_700Bold",
-    letterSpacing: -1,
+    letterSpacing: -0.5,
     textTransform: "lowercase",
   },
   shareChipsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 6,
     justifyContent: "center",
   },
   shareChip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 999,
     borderWidth: 1,
   },
-  shareChipEmoji: { fontSize: 14 },
+  shareChipEmoji: { fontSize: 12 },
   shareChipText: {
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: "Inter_700Bold",
     letterSpacing: 0.3,
     textTransform: "lowercase",
@@ -704,7 +708,12 @@ const styles = StyleSheet.create({
   },
   sharePhotoFrame: {
     flex: 1,
-    aspectRatio: 1,
+    // Portrait 4:5. Each photo column is roughly half the card
+    // width, so this gives a tall, magazine-like frame that
+    // dominates the captured image — the title/chips above and the
+    // flags/watermark below collapse into a thin top and bottom
+    // strip around two big photos.
+    aspectRatio: 4 / 5,
     borderRadius: 16,
     overflow: "hidden",
     position: "relative",
@@ -725,16 +734,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   shareFlagBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
   shareFlagText: {
-    fontSize: 20,
-    lineHeight: 22,
+    fontSize: 16,
+    lineHeight: 18,
   },
   sectionDivider: {
     flexDirection: "row",

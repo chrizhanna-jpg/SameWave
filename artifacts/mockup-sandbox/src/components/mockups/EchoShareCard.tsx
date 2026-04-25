@@ -38,15 +38,70 @@ export default function EchoShareCard() {
             backgroundColor: colors.card,
             borderRadius: 24,
             border: `1px solid ${colors.border}`,
-            padding: 16,
-            paddingBottom: 18,
+            paddingTop: 12,
+            paddingBottom: 12,
+            paddingLeft: 18,
+            paddingRight: 18,
           }}
         >
           <div
             style={{
-              display: "flex",
-              gap: 8,
+              textAlign: "center",
+              fontSize: 22,
+              fontFamily: "Inter, system-ui, sans-serif",
+              fontWeight: 700,
+              letterSpacing: -0.5,
+              color: colors.foreground,
               marginBottom: 10,
+            }}
+          >
+            same same
+          </div>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 6,
+              justifyContent: "center",
+              marginBottom: 10,
+            }}
+          >
+            {[
+              { emoji: "✨", label: "single star" },
+              { emoji: "☀️", label: "same day" },
+              { emoji: "🌍", label: "same world" },
+            ].map((c) => (
+              <span
+                key={c.label}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  paddingLeft: 10,
+                  paddingRight: 10,
+                  paddingTop: 4,
+                  paddingBottom: 4,
+                  borderRadius: 999,
+                  border: `1px solid ${colors.teal}55`,
+                  backgroundColor: `${colors.teal}1a`,
+                  color: colors.teal,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  letterSpacing: 0.3,
+                }}
+              >
+                <span style={{ fontSize: 12 }}>{c.emoji}</span>
+                {c.label}
+              </span>
+            ))}
+          </div>
+          <div
+            style={{
+              display: "flex",
+              gap: 6,
+              marginBottom: 10,
+              marginLeft: -18,
+              marginRight: -18,
             }}
           >
             <PhotoSlot
@@ -66,8 +121,10 @@ export default function EchoShareCard() {
           <div
             style={{
               display: "flex",
-              gap: 8,
-              marginBottom: 14,
+              gap: 6,
+              marginBottom: 10,
+              marginLeft: -18,
+              marginRight: -18,
             }}
           >
             <FlagPill flag="🇮🇪" colors={colors} />
