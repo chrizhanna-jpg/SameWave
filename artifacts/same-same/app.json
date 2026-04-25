@@ -2,7 +2,7 @@
   "expo": {
     "name": "Echo",
     "slug": "same-same",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "same-same",
@@ -24,7 +24,7 @@
     },
     "android": {
       "package": "app.echo.samesame",
-      "versionCode": 2,
+      "versionCode": 3,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#071828"
