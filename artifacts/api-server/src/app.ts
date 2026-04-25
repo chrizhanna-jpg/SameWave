@@ -2,6 +2,7 @@ import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
+import legalRouter from "./routes/legal";
 import { logger } from "./lib/logger";
 
 const app: Express = express();
@@ -31,5 +32,6 @@ app.use(express.json({ limit: "12mb" }));
 app.use(express.urlencoded({ extended: true, limit: "12mb" }));
 
 app.use("/api", router);
+app.use(legalRouter);
 
 export default app;
