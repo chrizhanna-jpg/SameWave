@@ -5,7 +5,6 @@ import {
   Image,
   PanResponder,
   Pressable,
-  Share,
   StyleSheet,
   Text,
   View,
@@ -47,7 +46,12 @@ interface Props {
 // - Swipe up or down → dismiss (snaps back if you don't pull far).
 // - × button → dismiss.
 // - Open → calls onOpen (parent navigates to /echo-pair).
-// - Share → opens the system share sheet with a celebration message.
+// - Share → also navigates to /echo-pair (the "It's an Echo!" reveal),
+//   where the actual system share sheet lives. We deliberately do NOT
+//   pop the share sheet from the banner itself: the user expects a
+//   match-style reveal moment first, where they can see both photos and
+//   then choose to share. Going straight to the share sheet from the
+//   banner felt jarring.
 //
 // We deliberately do NOT auto-dismiss. The user just got the rarest,
 // best moment in the app — the flash sticks until they choose what
@@ -88,15 +92,12 @@ export function EchoFlash({
     });
   };
 
-  const handleShare = async () => {
-    try {
-      const message = themeTitle
-        ? `Echo! Someone in ${theirCountry} just shared the same "${themeTitle}" vibe as me on Echo. ${theirCountryFlag} ${myCountryFlag ?? ""}`
-        : `Echo! Same vibe as someone in ${theirCountry} ${theirCountryFlag} on the Echo app.`;
-      await Share.share({ message });
-    } catch {
-      /* user cancelled or share unavailable — non-fatal */
-    }
+  // Both action buttons (Open and Share) navigate to the /echo-pair
+  // reveal screen. The reveal screen is where the actual system share
+  // sheet is invoked, so the user always sees the celebration moment
+  // and both photos before deciding what to do.
+  const handleShare = () => {
+    finish("open");
   };
 
   const panResponder = useRef(

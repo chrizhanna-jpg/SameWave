@@ -128,14 +128,28 @@ export default function EchoPairScreen() {
           ]}
           showsVerticalScrollIndicator={false}
         >
-          <Text style={[styles.theme, { color: colors.mutedForeground }]}>
-            {pair.a.theme || pair.b.theme || "shared moment"}
-          </Text>
-          {pair.mutualAt && (
-            <Text style={[styles.mutualAt, { color: colors.mutedForeground }]}>
-              matched {ago(pair.mutualAt)}
+          {/* The big "It's an Echo!" reveal headline. This screen is
+              the celebration moment — both when arriving from the
+              EchoFlash banner AND when tapping a pair from inbox /
+              Discover — so it gets the same treatment as a dating-app
+              "It's a Match!" reveal. */}
+          <View style={styles.revealBlock}>
+            <Text style={[styles.revealEyebrow, { color: colors.gold }]}>
+              ✨ ECHO ✨
             </Text>
-          )}
+            <Text style={[styles.revealTitle, { color: colors.foreground }]}>
+              It's an Echo!
+            </Text>
+            <Text style={[styles.theme, { color: colors.mutedForeground }]}>
+              {pair.a.theme || pair.b.theme || "shared moment"}
+            </Text>
+            {pair.mutualAt && (
+              <Text style={[styles.mutualAt, { color: colors.mutedForeground }]}>
+                matched {ago(pair.mutualAt)}
+              </Text>
+            )}
+          </View>
+
           <View style={styles.pairColumn}>
             {/* Neutral country-only labelling: this view is opened both
                 from the user's own inbox AND from public Discover theme
@@ -260,18 +274,33 @@ const styles = StyleSheet.create({
     gap: 18,
     flexGrow: 1,
   },
+  revealBlock: {
+    alignItems: "center",
+    gap: 6,
+    paddingTop: 4,
+  },
+  revealEyebrow: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 3,
+  },
+  revealTitle: {
+    fontSize: 28,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -0.5,
+  },
   theme: {
     fontSize: 12,
     fontFamily: "Inter_500Medium",
     textTransform: "uppercase",
     letterSpacing: 1,
     textAlign: "center",
+    marginTop: 4,
   },
   mutualAt: {
     fontSize: 12,
     fontFamily: "Inter_400Regular",
     textAlign: "center",
-    marginTop: -10,
   },
   pairColumn: { gap: 14 },
   side: { gap: 10 },
