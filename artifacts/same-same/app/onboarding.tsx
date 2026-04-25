@@ -31,7 +31,7 @@ const STEPS = [
     kind: "intro" as const,
     title: null,
     subtitle: null,
-    body: "Share a photo with a vibe. Somewhere in the world, someone is feeling the same as you.",
+    body: "Share a photo with a vibe. Somewhere in the world, someone is having a similar moment as you.",
   },
   {
     kind: "intro" as const,
