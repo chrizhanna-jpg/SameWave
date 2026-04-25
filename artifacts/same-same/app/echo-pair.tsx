@@ -365,18 +365,26 @@ export default function EchoPairScreen() {
                 style={[
                   styles.watermark,
                   {
-                    // Solid black pill with a teal brand outline so the
-                    // watermark reads unambiguously as a watermark and
-                    // is visible on any background. Previous translucent
-                    // black on dark navy was easy to miss.
+                    // Two-line attribution callout: app name on top so
+                    // viewers know what app made the image, "Find it
+                    // on Google Play" beneath so they know where to
+                    // get it. Solid black with a teal brand outline
+                    // is legible on any background. Sits inside the
+                    // ViewShot capture region so it's burned into the
+                    // exported share image.
                     backgroundColor: "#000000",
                     borderColor: colors.teal,
                   },
                 ]}
               >
-                <Text style={styles.watermarkSparkle}>✨</Text>
-                <Text style={[styles.watermarkText, { color: "#FFFFFF" }]}>
-                  echo · same same
+                <View style={styles.watermarkRow}>
+                  <Text style={styles.watermarkSparkle}>✨</Text>
+                  <Text style={[styles.watermarkText, { color: "#FFFFFF" }]}>
+                    echo · same same
+                  </Text>
+                </View>
+                <Text style={[styles.watermarkSubtext, { color: colors.teal }]}>
+                  Find it on Google Play
                 </Text>
               </View>
             )}
@@ -555,22 +563,37 @@ const styles = StyleSheet.create({
     fontSize: 20,
     lineHeight: 22,
   },
+  // Two-line attribution callout. The outer container stacks the
+  // wordmark row above the "Find it on Google Play" subtitle, with
+  // both lines centered. Bigger padding + bolder border so the pill
+  // reads as an intentional "made with X" credit, not a stray UI
+  // element.
   watermark: {
     alignSelf: "center",
+    flexDirection: "column",
+    alignItems: "center",
+    marginTop: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 14,
+    borderWidth: 1.5,
+  },
+  watermarkRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    marginTop: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 999,
-    borderWidth: 1,
   },
   watermarkSparkle: { fontSize: 14 },
   watermarkText: {
     fontSize: 14,
     fontFamily: "Inter_700Bold",
     letterSpacing: 0.5,
+  },
+  watermarkSubtext: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    letterSpacing: 0.4,
+    marginTop: 2,
   },
   // Burned-in watermark overlaid on the photo pair. Centered along the
   // bottom of the pair using a stretched container; the inner pill auto-
