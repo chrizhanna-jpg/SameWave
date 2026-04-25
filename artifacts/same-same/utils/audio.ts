@@ -329,6 +329,16 @@ export function onPlaybackChange(cb: () => void): () => void {
   };
 }
 
+// Lease handed back by the most recent `togglePreview()` start. We stash
+// it module-side (rather than asking every caller to thread it through)
+// so screens can simply call `pausePreview()` on blur without juggling
+// per-row lease state. If anything else has taken playback since (a
+// vibe clip on Discover, a different mic badge), the lease no longer
+// matches `playToken` and `pausePreview()` is a no-op — exactly what we
+// want, so leaving the photos screen never kills audio another surface
+// just started.
+let lastPreviewLease = 0;
+
 /**
  * Toggle preview playback for a user-owned clip URL. If this URL is already
  * the active clip and playing, pause it; otherwise start it. Counts as a
@@ -340,9 +350,23 @@ export function togglePreview(url: string | null | undefined): void {
   markUserInteracted();
   if (isPlayingUrl(url)) {
     void pause();
+    lastPreviewLease = 0;
   } else {
-    playClip(url);
+    lastPreviewLease = playClip(url);
   }
+}
+
+/**
+ * Pause the most recent preview started via `togglePreview()`, but only if
+ * that preview is still the active clip. Safe to call from screen-blur
+ * cleanup: if Discover/Match has since taken over the singleton player
+ * the lease is stale and this is a no-op, so we never stomp on another
+ * surface's audio.
+ */
+export async function pausePreview(): Promise<void> {
+  const lease = lastPreviewLease;
+  lastPreviewLease = 0;
+  await pauseIfLease(lease);
 }
 
 /**

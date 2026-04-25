@@ -33,6 +33,7 @@ import {
 } from "@/data/musicLibrary";
 import {
   markUserInteracted,
+  pausePreview,
   playClip,
   resetPlaybackMode,
   stop as stopAudio,
@@ -536,24 +537,34 @@ export default function CameraScreen() {
   // (origin detection, AI heuristics, analysis) still applies — the
   // photo went through our own camera so it can never be AI-generated,
   // but the rest of the flow is identical to the library path.
+  //
+  // The blur cleanup also pauses any voice-clip preview the user
+  // started by tapping a recent-photo mic badge, so a previewed clip
+  // doesn't keep looping in the background after the user taps a tab
+  // or navigates away. `pausePreview()` is lease-aware: if Discover
+  // or Match has since taken over playback, this no-ops.
   useFocusEffect(
     useCallback(() => {
       const cap = consumePendingCapture();
-      if (!cap) return;
-      const asset: ImagePicker.ImagePickerAsset = {
-        uri: cap.uri,
-        base64: cap.base64,
-        mimeType: cap.mimeType,
-        width: 0,
-        height: 0,
-        type: "image",
-        fileName: null,
-        fileSize: undefined,
-        exif: null,
-        assetId: null,
-        duration: null,
-      } as unknown as ImagePicker.ImagePickerAsset;
-      acceptPhoto(asset, "camera");
+      if (cap) {
+        const asset: ImagePicker.ImagePickerAsset = {
+          uri: cap.uri,
+          base64: cap.base64,
+          mimeType: cap.mimeType,
+          width: 0,
+          height: 0,
+          type: "image",
+          fileName: null,
+          fileSize: undefined,
+          exif: null,
+          assetId: null,
+          duration: null,
+        } as unknown as ImagePicker.ImagePickerAsset;
+        acceptPhoto(asset, "camera");
+      }
+      return () => {
+        void pausePreview();
+      };
     }, []),
   );
 

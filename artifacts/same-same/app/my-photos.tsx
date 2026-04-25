@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback } from "react";
 import {
   Platform,
   ScrollView,
@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
@@ -15,12 +15,24 @@ import { useApp } from "@/context/AppContext";
 import { PhotoCard } from "@/components/PhotoCard";
 import { tagEmoji, tagLabel } from "@/utils/interests";
 import { timeAgo } from "@/utils/timeAgo";
-import { togglePreview } from "@/utils/audio";
+import { pausePreview, togglePreview } from "@/utils/audio";
 
 export default function MyPhotosScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { myPhotos } = useApp();
+
+  // Pause any voice-clip preview the user kicked off here when they
+  // navigate away, so a previewed clip doesn't keep looping in the
+  // background. Lease-aware: if Discover/Match has since taken over
+  // the singleton player, this no-ops.
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        void pausePreview();
+      };
+    }, []),
+  );
 
   const topPadding = Platform.OS === "web" ? 8 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 24 : insets.bottom + 24;
