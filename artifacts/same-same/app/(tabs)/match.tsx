@@ -990,17 +990,7 @@ export default function SwipeScreen() {
                   </Text>
                 </GradientCard>
               </PressableScale>
-              <TouchableOpacity
-                style={[
-                  styles.emptyStateBtn,
-                  styles.emptyStateBtnGhost,
-                  {
-                    borderColor: colors.border,
-                    marginTop: 10,
-                    opacity: objectMatchLoading ? 0.6 : 1,
-                  },
-                ]}
-                disabled={objectMatchLoading || !todaysPhoto?.backendId}
+              <PressableScale
                 onPress={async () => {
                   // "Match by object" — alternative AI matching strategy.
                   // Asks the server to re-tag the user's own photo using
@@ -1011,7 +1001,15 @@ export default function SwipeScreen() {
                   // overlap. The user gets a fresh pool to swipe through
                   // when the strict pool is exhausted.
                   const photoId = todaysPhoto?.backendId;
-                  if (!photoId) return;
+                  if (!photoId) {
+                    // Photo upload hasn't completed yet (or failed).
+                    // Surface that explicitly so the user knows the
+                    // tap registered and what to do about it.
+                    setObjectMatchError(
+                      "Your photo is still uploading — try again in a few seconds.",
+                    );
+                    return;
+                  }
                   setObjectMatchLoading(true);
                   setObjectMatchError(null);
                   let objects: string[];
@@ -1106,24 +1104,44 @@ export default function SwipeScreen() {
                     setObjectMatchLoading(false);
                   }
                 }}
-                activeOpacity={0.85}
+                disabled={objectMatchLoading}
+                haptic="light"
+                style={[
+                  styles.emptyStateBtn,
+                  { marginTop: 10, opacity: objectMatchLoading ? 0.6 : 1 },
+                ]}
               >
-                {objectMatchLoading ? (
-                  <ActivityIndicator
-                    size="small"
-                    color={colors.mutedForeground}
-                  />
-                ) : (
-                  <Text
-                    style={[
-                      styles.emptyStateBtnText,
-                      { color: colors.mutedForeground },
-                    ]}
-                  >
-                    Match by object
-                  </Text>
-                )}
-              </TouchableOpacity>
+                <View
+                  style={[
+                    styles.emptyStateBtnInner,
+                    styles.emptyStateBtnGhost,
+                    { borderColor: colors.border },
+                  ]}
+                >
+                  {objectMatchLoading ? (
+                    <ActivityIndicator
+                      size="small"
+                      color={colors.mutedForeground}
+                    />
+                  ) : (
+                    <>
+                      <Icon
+                        name="shuffle"
+                        size={16}
+                        color={colors.mutedForeground}
+                      />
+                      <Text
+                        style={[
+                          styles.emptyStateBtnText,
+                          { color: colors.mutedForeground, marginLeft: 8 },
+                        ]}
+                      >
+                        Match by object
+                      </Text>
+                    </>
+                  )}
+                </View>
+              </PressableScale>
               {objectMatchError && (
                 <Text
                   style={{
