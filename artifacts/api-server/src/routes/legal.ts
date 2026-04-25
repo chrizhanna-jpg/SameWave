@@ -109,7 +109,7 @@ const PRIVACY_HTML = layout(
   <p>If we change this policy in any material way we will update the date at the top of the page and, where appropriate, surface a notice inside the App.</p>
 
   <h2>Contact</h2>
-  <p>Questions or deletion requests: <a href="mailto:CONTACT_EMAIL_PLACEHOLDER">CONTACT_EMAIL_PLACEHOLDER</a></p>
+  <p>Questions or deletion requests: <a href="mailto:twin2win.support@gmail.com">twin2win.support@gmail.com</a></p>
 
   <hr />
   <p class="meta"><a href="/terms">Terms of Service</a></p>
@@ -153,7 +153,7 @@ const TERMS_HTML = layout(
   <p>We may update these terms; the "last updated" date above will reflect the most recent version. Continued use of the App after a change constitutes acceptance.</p>
 
   <h2>Contact</h2>
-  <p><a href="mailto:CONTACT_EMAIL_PLACEHOLDER">CONTACT_EMAIL_PLACEHOLDER</a></p>
+  <p><a href="mailto:twin2win.support@gmail.com">twin2win.support@gmail.com</a></p>
 
   <hr />
   <p class="meta"><a href="/privacy">Privacy Policy</a></p>
