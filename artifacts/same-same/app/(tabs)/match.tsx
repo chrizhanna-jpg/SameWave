@@ -77,6 +77,7 @@ function scoreCandidates(
   myTags: string[],
   excludeKeys: Set<string>,
   extraPool: SamplePhoto[] = [],
+  relaxFloor: boolean = false,
 ): Scored[] {
   const chain = getThemeChain(preferredTheme);
   const chainIndex = (theme: string) => {
@@ -136,7 +137,14 @@ function scoreCandidates(
     //       neighbouring themes is OK only if there's also a tag link)
     // Single-tag-only crossovers (the kayak-with-"warm" failure mode)
     // are dropped outright.
+    //
+    // `relaxFloor` skips this check entirely. The caller (getTheirPhoto's
+    // empty-pool retry) uses it as a graceful fallback for early-stage
+    // data sparsity: with only ~100 photos spread across ~100 themes,
+    // almost no candidate will clear the strict bar even though there
+    // are real photos to show. A weak match beats "you're all caught up".
     .filter((c) => {
+      if (relaxFloor) return true;
       const sameTheme = c.photo.theme === preferredTheme;
       if (sameTheme) return true;
       if (c.sharedTags.length >= 2) return true;
@@ -157,7 +165,15 @@ function getTheirPhoto(
   currentKey: string | undefined,
   extraPool: SamplePhoto[] = [],
 ): { photo: typeof SAMPLE_PHOTOS[number]; matchedTheme: string; sharedTags: string[] } | null {
-  const ranked = scoreCandidates(preferredTheme, myTags, excludeKeys, extraPool);
+  let ranked = scoreCandidates(preferredTheme, myTags, excludeKeys, extraPool);
+  if (ranked.length === 0) {
+    // First fallback — drop the strict same-theme / shared-tag floor.
+    // The early-stage backend has ~100 photos across ~100 themes, so the
+    // strict floor returns nothing for almost any user even when there
+    // are plenty of candidates. A weak match (any other user's photo)
+    // beats showing "you're all caught up" at this stage.
+    ranked = scoreCandidates(preferredTheme, myTags, excludeKeys, extraPool, true);
+  }
   if (ranked.length === 0) {
     // Pool genuinely exhausted for this session. We deliberately do NOT
     // recycle already-seen photos — the swipe screen shows a "you've
