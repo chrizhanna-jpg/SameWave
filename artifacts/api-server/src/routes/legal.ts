@@ -112,7 +112,7 @@ const PRIVACY_HTML = layout(
   <p>Questions or deletion requests: <a href="mailto:twin2win.support@gmail.com">twin2win.support@gmail.com</a></p>
 
   <hr />
-  <p class="meta"><a href="/terms">Terms of Service</a></p>
+  <p class="meta"><a href="/api/terms">Terms of Service</a></p>
   `,
 );
 
@@ -156,7 +156,7 @@ const TERMS_HTML = layout(
   <p><a href="mailto:twin2win.support@gmail.com">twin2win.support@gmail.com</a></p>
 
   <hr />
-  <p class="meta"><a href="/privacy">Privacy Policy</a></p>
+  <p class="meta"><a href="/api/privacy">Privacy Policy</a></p>
   `,
 );
 
