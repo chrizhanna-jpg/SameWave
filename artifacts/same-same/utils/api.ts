@@ -98,6 +98,7 @@ export interface UploadedPhoto {
   theme: string;
   tags: string[];
   musicGenre: string | null;
+  hasCustomAudio: boolean;
 }
 
 export async function uploadPhoto(input: {
@@ -105,6 +106,10 @@ export async function uploadPhoto(input: {
   mimeType?: string;
   countryCode?: string;
   musicGenre?: string;
+  /** Optional user-recorded vibe clip — base64-encoded audio. */
+  customAudioBase64?: string;
+  /** Mime type for the recording (e.g. "audio/m4a", "audio/mp4"). */
+  customAudioMime?: string;
 }): Promise<UploadedPhoto | null> {
   try {
     const base = getApiBase();
@@ -121,6 +126,7 @@ export async function uploadPhoto(input: {
       theme: json.theme ?? "",
       tags: Array.isArray(json.tags) ? json.tags : [],
       musicGenre: typeof json.musicGenre === "string" ? json.musicGenre : null,
+      hasCustomAudio: json.hasCustomAudio === true,
     };
   } catch {
     return null;
@@ -134,6 +140,12 @@ export interface CandidatePhoto {
   countryCode: string | null;
   /** Music vibe label; null for legacy photos uploaded pre-feature. */
   musicGenre: string | null;
+  /**
+   * `data:` URL for a user-recorded vibe clip if the uploader added one.
+   * When non-null, playback should use this in place of the music_genre
+   * clip — same player, just a different URL.
+   */
+  customAudioUrl: string | null;
   uri: string; // data: URI (MVP) — server returns inline base64
   createdAt: string;
   score: number;

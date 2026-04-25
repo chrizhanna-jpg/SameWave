@@ -386,6 +386,7 @@ export default function SwipeScreen() {
             minutesAgo,
             tags: c.tags,
             musicGenre: c.musicGenre ?? undefined,
+            customAudioUrl: c.customAudioUrl ?? undefined,
           };
         });
         realPhotoIdsRef.current = ids;
@@ -547,6 +548,14 @@ export default function SwipeScreen() {
       void pauseAudio();
       return;
     }
+    // User-recorded vibe trumps the music_genre clip — same player,
+    // just a different URL. The candidate API returns this as a fully
+    // formed `data:` URL (or null), so we can hand it straight to the
+    // audio singleton.
+    if (theirPhoto.customAudioUrl) {
+      playLeaseRef.current = playClip(theirPhoto.customAudioUrl);
+      return;
+    }
     // Resolve the genre defensively: a stored value that isn't in the
     // canonical library (legacy upload, server bug, hand-crafted JSON)
     // falls back to a fresh local suggestion instead of crashing the
@@ -556,7 +565,15 @@ export default function SwipeScreen() {
       suggestGenre(theirPhoto.theme, theirPhoto.tags);
     const clip = pickClipForSeed(genre, theirPhoto.uri);
     playLeaseRef.current = playClip(clip.url);
-  }, [theirPhoto.uri, theirPhoto.id, theirPhoto.musicGenre, theirPhoto.theme, noMore, fullscreenUri]);
+  }, [
+    theirPhoto.uri,
+    theirPhoto.id,
+    theirPhoto.musicGenre,
+    theirPhoto.customAudioUrl,
+    theirPhoto.theme,
+    noMore,
+    fullscreenUri,
+  ]);
 
   // Stop audio when the screen unmounts (tab switch, navigation
   // away) — but ONLY if our last lease is still the active one. A

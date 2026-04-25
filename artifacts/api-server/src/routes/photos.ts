@@ -16,6 +16,12 @@ const router: IRouter = Router();
 // Hard cap on a single base64-encoded photo. The express body-parser limit
 // is 12 MB; we conservatively cap binary at 8 MB (≈ 11 MB base64).
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+// Hard cap on the user-recorded vibe clip. ~10s at low-bitrate AAC is
+// roughly 80 KB; we allow 1 MB binary (≈ 1.4 MB base64) to be generous
+// even if the encoder picks a higher bitrate or the user records a
+// little long.
+const MAX_AUDIO_BYTES = 1 * 1024 * 1024;
+const ALLOWED_AUDIO_MIME_PREFIXES = ["audio/"];
 // 30-day retention for free users. Pro users get null expiresAt (forever).
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 // Hide any photo flagged by ≥ this many distinct reports — pulled from the
@@ -37,6 +43,8 @@ router.post("/photos", async (req, res) => {
       mimeType?: unknown;
       countryCode?: unknown;
       musicGenre?: unknown;
+      customAudioBase64?: unknown;
+      customAudioMime?: unknown;
     };
     const b64 = typeof body.imageBase64 === "string" ? body.imageBase64 : "";
     if (!b64) {
@@ -104,6 +112,29 @@ router.post("/photos", async (req, res) => {
         ? body.musicGenre
         : null;
 
+    // Optional user-recorded vibe clip. Only persist when both fields
+    // are valid and the size fits — otherwise silently drop so a
+    // misbehaving client never blocks the photo upload itself.
+    let customAudioBase64: string | null = null;
+    let customAudioMime: string | null = null;
+    if (
+      typeof body.customAudioBase64 === "string" &&
+      body.customAudioBase64.length > 0 &&
+      typeof body.customAudioMime === "string" &&
+      ALLOWED_AUDIO_MIME_PREFIXES.some((p) =>
+        (body.customAudioMime as string).startsWith(p),
+      )
+    ) {
+      const audioStripped = body.customAudioBase64.replace(
+        /^data:[^;]+;base64,/,
+        "",
+      );
+      if (approxBase64Bytes(audioStripped) <= MAX_AUDIO_BYTES) {
+        customAudioBase64 = audioStripped;
+        customAudioMime = body.customAudioMime;
+      }
+    }
+
     const [row] = await db
       .insert(photosTable)
       .values({
@@ -114,6 +145,8 @@ router.post("/photos", async (req, res) => {
         tags,
         countryCode,
         musicGenre,
+        customAudioBase64,
+        customAudioMime,
         status: "active",
         expiresAt: new Date(Date.now() + RETENTION_MS),
       })
@@ -131,6 +164,7 @@ router.post("/photos", async (req, res) => {
       theme: row.theme,
       tags: row.tags,
       musicGenre: row.musicGenre,
+      hasCustomAudio: customAudioBase64 !== null,
     });
   } catch (err) {
     req.log.error({ err }, "photo upload failed");
@@ -199,6 +233,8 @@ router.get("/photos/candidates", async (req, res) => {
           p.tags,
           p.country_code AS "countryCode",
           p.music_genre AS "musicGenre",
+          p.custom_audio_base64 AS "customAudioBase64",
+          p.custom_audio_mime AS "customAudioMime",
           p.bytes_base64 AS "bytesBase64",
           p.mime_type AS "mimeType",
           p.created_at AS "createdAt",
@@ -252,16 +288,28 @@ router.get("/photos/candidates", async (req, res) => {
       LIMIT ${limit}
     `);
 
-    const photos = (rows.rows as Array<Record<string, unknown>>).map((r) => ({
-      id: String(r.id),
-      theme: String(r.theme ?? ""),
-      tags: Array.isArray(r.tags) ? (r.tags as string[]) : [],
-      countryCode: (r.countryCode as string | null) ?? null,
-      musicGenre: (r.musicGenre as string | null) ?? null,
-      uri: `data:${String(r.mimeType)};base64,${String(r.bytesBase64)}`,
-      createdAt: r.createdAt as string | Date,
-      score: Number(r.tag_overlap ?? 0) + Number(r.theme_score ?? 0),
-    }));
+    const photos = (rows.rows as Array<Record<string, unknown>>).map((r) => {
+      const customAudioBase64 = (r.customAudioBase64 as string | null) ?? null;
+      const customAudioMime = (r.customAudioMime as string | null) ?? null;
+      // Build a `data:` URL the audio singleton can play directly.
+      // Only emit when both fields are present so the playback path
+      // can fall back cleanly to the music_genre clip otherwise.
+      const customAudioUrl =
+        customAudioBase64 && customAudioMime
+          ? `data:${customAudioMime};base64,${customAudioBase64}`
+          : null;
+      return {
+        id: String(r.id),
+        theme: String(r.theme ?? ""),
+        tags: Array.isArray(r.tags) ? (r.tags as string[]) : [],
+        countryCode: (r.countryCode as string | null) ?? null,
+        musicGenre: (r.musicGenre as string | null) ?? null,
+        customAudioUrl,
+        uri: `data:${String(r.mimeType)};base64,${String(r.bytesBase64)}`,
+        createdAt: r.createdAt as string | Date,
+        score: Number(r.tag_overlap ?? 0) + Number(r.theme_score ?? 0),
+      };
+    });
 
     res.json({ photos });
   } catch (err) {

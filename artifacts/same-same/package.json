@@ -60,6 +60,7 @@
     "expo-camera": "^17.0.10",
     "expo-clipboard": "^55.0.13",
     "expo-device": "^55.0.15",
+    "expo-file-system": "~19.0.21",
     "expo-image-manipulator": "^14.0.8",
     "expo-notifications": "^55.0.19",
     "expo-sharing": "^14.0.8",

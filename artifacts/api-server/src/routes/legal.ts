@@ -62,6 +62,7 @@ const PRIVACY_HTML = layout(
   <h2>What we collect</h2>
   <ul>
     <li><strong>Photos you upload.</strong> Only the photos you choose to share are sent to our server.</li>
+    <li><strong>Audio recordings you choose to attach</strong> to a photo. The "record your own vibe" feature is opt-in: nothing is recorded unless you tap the record button. Recordings are short (capped at ~10 seconds) and stored alongside the photo, so other users hear them when they see your photo. They are deleted when the photo is deleted.</li>
     <li><strong>Theme and tags</strong> derived from each photo (e.g. "morning coffee", "outdoors", "warm"). These power the matching.</li>
     <li><strong>Country</strong> you select during onboarding (country only — not your precise location). Location permission is requested only to suggest your country, and you can decline and pick manually.</li>
     <li><strong>An anonymous device identifier</strong> generated on first launch and stored on your device. We use it to recognise your device across sessions. It is not linked to your name, email, phone number, or any other personally identifying account.</li>

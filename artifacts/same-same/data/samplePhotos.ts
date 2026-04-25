@@ -15,6 +15,13 @@ export interface SamplePhoto {
    * back to suggestGenre(theme, tags) at render time when missing.
    */
   musicGenre?: string;
+  /**
+   * Optional `data:` (or file://) URL for a user-recorded vibe clip.
+   * When present, the match screen plays this clip *instead* of the
+   * music_genre clip. Sample photos never set this; live candidates
+   * may include it when the uploader recorded their own audio.
+   */
+  customAudioUrl?: string;
 }
 
 // Helper used by PhotoCard to know whether to overlay the "sample" globe

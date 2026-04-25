@@ -49,6 +49,13 @@ export interface MyPhoto {
    * before the feature shipped.
    */
   musicGenre?: string;
+  /**
+   * Local `data:` URL for a user-recorded vibe clip. When present, the
+   * match feed will play this in place of the music_genre clip. Stored
+   * on-device so the uploader can preview it from "My photos" without
+   * a round-trip to the server.
+   */
+  customAudioUrl?: string;
 }
 
 // Module-scoped registry of URIs flagged as AI. Kept in sync with the
@@ -200,6 +207,7 @@ interface AppContextValue extends AppState {
     tags?: string[],
     isAI?: boolean,
     musicGenre?: string,
+    customAudioUrl?: string,
   ) => void;
   /**
    * Patch a previously-added local photo with the backend ID returned by
@@ -656,6 +664,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     tags?: string[],
     isAI?: boolean,
     musicGenre?: string,
+    customAudioUrl?: string,
   ) => {
     const photo: MyPhoto = {
       uri,
@@ -664,6 +673,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       tags: tags ?? [],
       isAI: isAI ?? false,
       musicGenre: musicGenre,
+      customAudioUrl,
     };
     setState((prev) => {
       const newState = { ...prev, myPhotos: [photo, ...prev.myPhotos] };

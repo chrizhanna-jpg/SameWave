@@ -46,6 +46,13 @@ export const photosTable = pgTable(
     // its local suggestGenre() in that case.
     musicGenre: varchar("music_genre", { length: 32 }),
 
+    // Optional user-recorded vibe clip. When present, the match feed
+    // plays this on loop INSTEAD of the music_genre clip — same
+    // playback infra, just a `data:` URL. Capped to ~10s of audio
+    // upstream so the row stays under a few hundred KB.
+    customAudioBase64: text("custom_audio_base64"),
+    customAudioMime: varchar("custom_audio_mime", { length: 32 }),
+
     // Lifecycle.
     status: varchar("status", { length: 16 }).notNull().default("active"),
     reportCount: integer("report_count").notNull().default(0),

@@ -37,6 +37,17 @@ import {
   stop as stopAudio,
   stopIfLease,
 } from "@/utils/audio";
+import { Audio } from "expo-av";
+import * as FileSystem from "expo-file-system/legacy";
+
+// Hard cap on recordings: 10s of audio at the AAC preset below lands well
+// under our 1MB API budget (typically ~80–120KB) and keeps clips snappy
+// in the match feed. We auto-stop at this length so no UI work needed.
+const MAX_RECORD_MS = 10_000;
+
+// `audio/m4a` reads natively on both iOS and Android in expo-av. Mime is
+// recorded alongside the bytes so the playback `data:` URL works on both.
+const RECORDING_MIME = "audio/m4a";
 
 const MAX_TAGS = 4;
 const QUICK_THEMES = [
@@ -114,6 +125,241 @@ export default function CameraScreen() {
   // user navigated away and the next screen began its own clip),
   // our lease is stale and the cleanup is a safe no-op.
   const playLeaseRef = useRef<number>(0);
+
+  // ── User-recorded vibe clip ────────────────────────────────────────
+  // When `customAudioUrl` is set, the photo will ship its own audio to
+  // the match feed instead of falling back to the picked music_genre
+  // clip. The base64 + mime are what we POST to the backend; the URL
+  // is the local file:// uri kept around so the user can preview their
+  // own recording right in the camera screen.
+  const [customAudioUrl, setCustomAudioUrl] = useState<string | null>(null);
+  const [customAudioBase64, setCustomAudioBase64] = useState<string | null>(
+    null,
+  );
+  const [recordedDurationMs, setRecordedDurationMs] = useState(0);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingProgressMs, setRecordingProgressMs] = useState(0);
+  const [isPreviewingRecording, setIsPreviewingRecording] = useState(false);
+  // Live recording handle. We keep it in a ref so the auto-stop timer can
+  // reach it without having to thread it through dependency arrays.
+  const recordingRef = useRef<Audio.Recording | null>(null);
+  const recordingStopGuardRef = useRef(false);
+  const previewSoundRef = useRef<Audio.Sound | null>(null);
+  const recordTickIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
+  const recordAutoStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
+  const clearRecordingTimers = () => {
+    if (recordTickIntervalRef.current) {
+      clearInterval(recordTickIntervalRef.current);
+      recordTickIntervalRef.current = null;
+    }
+    if (recordAutoStopTimerRef.current) {
+      clearTimeout(recordAutoStopTimerRef.current);
+      recordAutoStopTimerRef.current = null;
+    }
+  };
+
+  const teardownPreviewSound = useCallback(async () => {
+    const s = previewSoundRef.current;
+    previewSoundRef.current = null;
+    if (s) {
+      try {
+        await s.stopAsync();
+      } catch {
+        /* already stopped */
+      }
+      try {
+        await s.unloadAsync();
+      } catch {
+        /* already unloaded */
+      }
+    }
+    setIsPreviewingRecording(false);
+  }, []);
+
+  const stopRecording = useCallback(async (): Promise<{
+    base64: string;
+    durationMs: number;
+    uri: string;
+  } | null> => {
+    // Guard against double-fires from the timer + onPressOut racing.
+    if (recordingStopGuardRef.current) return null;
+    recordingStopGuardRef.current = true;
+    clearRecordingTimers();
+    const rec = recordingRef.current;
+    recordingRef.current = null;
+    setIsRecording(false);
+    if (!rec) {
+      recordingStopGuardRef.current = false;
+      return null;
+    }
+    try {
+      await rec.stopAndUnloadAsync();
+    } catch {
+      /* already stopped */
+    }
+    let uri: string | null = null;
+    let durationMs = 0;
+    try {
+      uri = rec.getURI();
+      const status = await rec.getStatusAsync();
+      durationMs =
+        status && "durationMillis" in status && status.durationMillis
+          ? status.durationMillis
+          : 0;
+    } catch {
+      /* ignore */
+    }
+    // Restore the audio session so other playback (preview clips) sounds
+    // through the speaker normally instead of the earpiece.
+    try {
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+    } catch {
+      /* best effort */
+    }
+    if (!uri) {
+      recordingStopGuardRef.current = false;
+      return null;
+    }
+    let base64 = "";
+    try {
+      base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+    } catch {
+      base64 = "";
+    }
+    recordingStopGuardRef.current = false;
+    if (!base64) return null;
+    return { base64, durationMs, uri };
+  }, []);
+
+  // Synchronous lock so a fast double-tap can't fire two startRecording
+  // calls concurrently between the await points below — without this,
+  // both would pass the isRecording check, both would prepareToRecord,
+  // and we'd leak a recorder + audio session.
+  const startingRef = useRef(false);
+  const startRecording = useCallback(async () => {
+    if (startingRef.current || isRecording || recordingRef.current) return;
+    startingRef.current = true;
+    // Tear down any preview playback first — recording while a preview
+    // sound is loaded leaves the audio session in an awkward state.
+    await teardownPreviewSound();
+    void stopAudio();
+
+    try {
+      const perm = await Audio.requestPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert(
+          "Microphone needed",
+          "To record your vibe, allow microphone access in Settings.",
+        );
+        return;
+      }
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+      const rec = new Audio.Recording();
+      await rec.prepareToRecordAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY,
+      );
+      await rec.startAsync();
+      recordingRef.current = rec;
+      recordingStopGuardRef.current = false;
+      setIsRecording(true);
+      setRecordingProgressMs(0);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+
+      const startedAt = Date.now();
+      recordTickIntervalRef.current = setInterval(() => {
+        const elapsed = Date.now() - startedAt;
+        setRecordingProgressMs(Math.min(elapsed, MAX_RECORD_MS));
+      }, 100);
+      // Auto-stop at the cap so we never overshoot the 1MB upload limit.
+      recordAutoStopTimerRef.current = setTimeout(() => {
+        void finishRecording();
+      }, MAX_RECORD_MS);
+    } catch {
+      Alert.alert(
+        "Couldn't start recording",
+        "Please try again — if it keeps happening, check the app's microphone permission.",
+      );
+      recordingRef.current = null;
+      setIsRecording(false);
+    } finally {
+      startingRef.current = false;
+    }
+  }, [isRecording, teardownPreviewSound]);
+
+  const finishRecording = useCallback(async () => {
+    const result = await stopRecording();
+    if (!result) return;
+    setCustomAudioBase64(result.base64);
+    setCustomAudioUrl(result.uri);
+    setRecordedDurationMs(result.durationMs);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
+      () => {},
+    );
+  }, [stopRecording]);
+
+  const cancelRecording = useCallback(async () => {
+    await stopRecording();
+    setRecordingProgressMs(0);
+  }, [stopRecording]);
+
+  const clearRecording = useCallback(async () => {
+    await teardownPreviewSound();
+    setCustomAudioBase64(null);
+    setCustomAudioUrl(null);
+    setRecordedDurationMs(0);
+    Haptics.selectionAsync().catch(() => {});
+  }, [teardownPreviewSound]);
+
+  const togglePreviewRecording = useCallback(async () => {
+    if (!customAudioUrl) return;
+    if (isPreviewingRecording) {
+      await teardownPreviewSound();
+      return;
+    }
+    // Stop any music-vibe preview so we don't have two sounds at once.
+    void stopAudio();
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+      });
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: customAudioUrl },
+        { shouldPlay: true },
+      );
+      previewSoundRef.current = sound;
+      setIsPreviewingRecording(true);
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (
+          status.isLoaded &&
+          (status.didJustFinish || (!status.isPlaying && status.positionMillis > 0))
+        ) {
+          if (status.didJustFinish) {
+            void teardownPreviewSound();
+          }
+        }
+      });
+    } catch {
+      setIsPreviewingRecording(false);
+    }
+  }, [customAudioUrl, isPreviewingRecording, teardownPreviewSound]);
+
+  const formatMs = (ms: number) => {
+    const total = Math.round(ms / 1000);
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  };
 
   const toggleTag = (id: string) => {
     setSelectedTags((prev) => {
@@ -197,6 +443,15 @@ export default function CameraScreen() {
     setGenreEdited(false);
     genreEditedRef.current = false;
     void stopAudio();
+    // Drop any vibe recording from the previous photo so each upload
+    // starts with a clean slate. Best-effort — the user can always
+    // re-record before submitting.
+    void teardownPreviewSound();
+    if (recordingRef.current) void cancelRecording();
+    setCustomAudioBase64(null);
+    setCustomAudioUrl(null);
+    setRecordedDurationMs(0);
+    setRecordingProgressMs(0);
   };
 
   // Once AI analysis lands (or when the user types a theme that changes
@@ -222,6 +477,26 @@ export default function CameraScreen() {
   useEffect(() => {
     return () => {
       void stopIfLease(playLeaseRef.current);
+      // Make sure no recording or preview keeps the mic / audio
+      // session locked after the screen unmounts.
+      clearRecordingTimers();
+      const rec = recordingRef.current;
+      recordingRef.current = null;
+      if (rec) {
+        void rec.stopAndUnloadAsync().catch(() => {});
+      }
+      const s = previewSoundRef.current;
+      previewSoundRef.current = null;
+      if (s) {
+        void s.unloadAsync().catch(() => {});
+      }
+      // Reset the iOS audio session back to playback-only — without
+      // this, allowsRecordingIOS=true persists across screens and the
+      // match feed routes through the earpiece instead of the speaker.
+      void Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+      }).catch(() => {});
     };
   }, []);
 
@@ -347,9 +622,22 @@ export default function CameraScreen() {
     // a sensible vibe instead of nothing.
     const finalGenre: MusicGenre =
       musicGenreRef.current ?? suggestGenre(finalTheme, merged);
-    addMyPhoto(selectedPhoto, finalTheme, merged, isAi, finalGenre);
+    // Snapshot the recorded clip too — addMyPhoto stores the local URL so
+    // the user can preview their own vibe from "My photos", and uploadPhoto
+    // ships the base64 to the backend so others hear it on match.
+    const recordedBase64 = customAudioBase64;
+    const recordedUrl = customAudioUrl;
+    addMyPhoto(
+      selectedPhoto,
+      finalTheme,
+      merged,
+      isAi,
+      finalGenre,
+      recordedUrl ?? undefined,
+    );
     // Stop the preview clip — user is leaving the screen.
     void stopAudio();
+    void teardownPreviewSound();
     // Fire-and-forget upload to the backend so other users can match against
     // this photo. Local-only state stays the source of truth for *this*
     // user's UI; the backend just makes the photo discoverable to others.
@@ -363,6 +651,8 @@ export default function CameraScreen() {
         mimeType: captured.mimeType,
         countryCode: myCountryCode,
         musicGenre: finalGenre,
+        customAudioBase64: recordedBase64 ?? undefined,
+        customAudioMime: recordedBase64 ? RECORDING_MIME : undefined,
       })
         .then((res) => {
           // Store the backend ID back onto the local photo record so future
@@ -539,6 +829,12 @@ export default function CameraScreen() {
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.musicChips}
+                style={{
+                  // When the user has recorded their own clip, the chip
+                  // picker no longer drives playback — fade it out so
+                  // the override is visually obvious.
+                  opacity: customAudioUrl ? 0.45 : 1,
+                }}
               >
                 {MUSIC_LIBRARY.map((g) => {
                   const active = musicGenre === g.id;
@@ -547,6 +843,7 @@ export default function CameraScreen() {
                       key={g.id}
                       onPress={() => handleGenreTap(g.id)}
                       activeOpacity={0.85}
+                      disabled={!!customAudioUrl}
                       style={[
                         styles.musicChip,
                         {
@@ -573,6 +870,156 @@ export default function CameraScreen() {
                 })}
               </ScrollView>
             </View>
+
+            {/* Voice memo / vibe recording. Sits right under the music
+                vibe chips because conceptually it's "the other source
+                of audio for this photo" — picking a chip OR recording
+                yourself fills the same slot for the matched stranger.
+                Web is excluded because expo-av's recorder is mobile-only. */}
+            {Platform.OS !== "web" && (
+              <View style={styles.themeSection}>
+                <View style={styles.tagSectionHeader}>
+                  <Text
+                    style={[
+                      styles.themeSectionLabel,
+                      { color: colors.mutedForeground },
+                    ]}
+                  >
+                    Your voice (optional)
+                  </Text>
+                  <Text
+                    style={[
+                      styles.tagCount,
+                      { color: colors.mutedForeground },
+                    ]}
+                  >
+                    up to 10s · plays instead of music
+                  </Text>
+                </View>
+
+                {customAudioUrl ? (
+                  <View
+                    style={[
+                      styles.recorderCard,
+                      { backgroundColor: colors.card, borderColor: colors.teal },
+                    ]}
+                  >
+                    <TouchableOpacity
+                      style={[
+                        styles.recorderPlayBtn,
+                        { backgroundColor: colors.teal },
+                      ]}
+                      onPress={togglePreviewRecording}
+                      activeOpacity={0.85}
+                      accessibilityLabel={
+                        isPreviewingRecording
+                          ? "Stop preview"
+                          : "Play your recording"
+                      }
+                    >
+                      <Icon
+                        name={isPreviewingRecording ? "x" : "volume-2"}
+                        size={20}
+                        color="#001018"
+                      />
+                    </TouchableOpacity>
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[
+                          styles.recorderTitle,
+                          { color: colors.foreground },
+                        ]}
+                      >
+                        Your vibe is set
+                      </Text>
+                      <Text
+                        style={[
+                          styles.recorderSub,
+                          { color: colors.mutedForeground },
+                        ]}
+                      >
+                        {formatMs(recordedDurationMs)} ·{" "}
+                        {isPreviewingRecording ? "Playing…" : "Tap to preview"}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={clearRecording}
+                      hitSlop={10}
+                      accessibilityLabel="Remove recording"
+                    >
+                      <Icon name="x" size={18} color={colors.mutedForeground} />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    onPressIn={startRecording}
+                    onPressOut={() => {
+                      // Release fires for both finished and cancelled
+                      // touches — finishRecording is idempotent thanks
+                      // to the stop guard, so it's safe in either case.
+                      void finishRecording();
+                    }}
+                    delayPressOut={150}
+                    activeOpacity={0.9}
+                    style={[
+                      styles.recorderCard,
+                      {
+                        backgroundColor: isRecording
+                          ? colors.primary + "1A"
+                          : colors.card,
+                        borderColor: isRecording
+                          ? colors.primary
+                          : colors.border,
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.recorderMicBtn,
+                        {
+                          backgroundColor: isRecording
+                            ? colors.primary
+                            : colors.background,
+                          borderColor: isRecording
+                            ? colors.primary
+                            : colors.border,
+                        },
+                      ]}
+                    >
+                      <Icon
+                        name="mic"
+                        size={20}
+                        color={
+                          isRecording
+                            ? colors.primaryForeground
+                            : colors.foreground
+                        }
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[
+                          styles.recorderTitle,
+                          { color: colors.foreground },
+                        ]}
+                      >
+                        {isRecording ? "Recording…" : "Hold to record"}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.recorderSub,
+                          { color: colors.mutedForeground },
+                        ]}
+                      >
+                        {isRecording
+                          ? `${formatMs(recordingProgressMs)} / 0:10 — release to save`
+                          : "Say a word, hum a tune, share the moment"}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
 
             <View style={styles.themeSection}>
               <View style={styles.tagSectionHeader}>
@@ -1079,5 +1526,39 @@ const styles = StyleSheet.create({
   musicChipLabel: {
     fontSize: 13,
     fontFamily: "Inter_500Medium",
+  },
+  recorderCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginTop: 8,
+  },
+  recorderMicBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  recorderPlayBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  recorderTitle: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+  },
+  recorderSub: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    marginTop: 2,
   },
 });
