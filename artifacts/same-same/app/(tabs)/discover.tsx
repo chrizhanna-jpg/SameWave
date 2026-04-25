@@ -46,6 +46,7 @@ import {
   onUserInteracted,
   pause,
   pauseIfLease,
+  pausePreview,
   playClip,
   setMuted,
 } from "@/utils/audio";
@@ -526,6 +527,12 @@ export default function DiscoverScreen() {
       return () => {
         setFocused(false);
         void pauseIfLease(playLeaseRef.current);
+        // Also pause any voice-clip preview the user kicked off via a
+        // mic badge tap. `pausePreview()` is lease-aware and only
+        // touches the singleton player if the active clip was started
+        // by `togglePreview()`, so it won't disturb feed background
+        // music (handled by pauseIfLease above).
+        void pausePreview();
       };
     }, []),
   );

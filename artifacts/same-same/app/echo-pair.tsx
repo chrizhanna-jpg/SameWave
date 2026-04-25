@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -11,7 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import * as Sharing from "expo-sharing";
@@ -23,12 +23,26 @@ import { useApp } from "@/context/AppContext";
 import { getTimeTier, getGeoTier } from "@/utils/celebrations";
 import { DAILY_CHALLENGES } from "@/data/samplePhotos";
 import { fetchPair, type PhotoPairResult } from "@/utils/api";
+import { pausePreview } from "@/utils/audio";
 
 export default function EchoPairScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ a?: string; b?: string }>();
   const { proUnlocked } = useApp();
+
+  // Pause any voice-clip preview the user kicked off via a mic badge
+  // tap when they navigate away. `pausePreview()` is lease-aware and
+  // no-ops if some other screen has since taken over playback, so it
+  // won't disturb unrelated background audio.
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        void pausePreview();
+      };
+    }, []),
+  );
+
   const [pair, setPair] = useState<PhotoPairResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState(false);

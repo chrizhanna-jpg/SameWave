@@ -57,6 +57,7 @@ import {
   markUserInteracted,
   onMuteChange,
   pause as pauseAudio,
+  pausePreview,
   playClip,
   setMuted as setAudioMuted,
   stopIfLease,
@@ -226,6 +227,15 @@ export default function SwipeScreen() {
   useFocusEffect(
     useCallback(() => {
       markTabVisited("match");
+      // Pause any voice-clip preview the user kicked off via a mic
+      // badge tap when they navigate away. Lease-aware: if the active
+      // clip is the swipe card's background music (started via
+      // playClip above) or another screen has since taken over, this
+      // no-ops — that case is handled by stopIfLease in the unmount
+      // effect below.
+      return () => {
+        void pausePreview();
+      };
     }, []),
   );
   const {

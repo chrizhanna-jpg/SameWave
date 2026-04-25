@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -10,12 +10,13 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
 import { MicBadge } from "@/components/MicBadge";
 import { useColors } from "@/hooks/useColors";
 import { fetchEchoesByTheme, type ThemeEchoPhoto } from "@/utils/api";
+import { pausePreview } from "@/utils/audio";
 
 export default function EchoesThemeScreen() {
   const colors = useColors();
@@ -28,6 +29,18 @@ export default function EchoesThemeScreen() {
   const theme = String(params.theme ?? "");
   const title = String(params.title ?? theme);
   const emoji = String(params.emoji ?? "✨");
+
+  // Pause any voice-clip preview the user kicked off via a mic badge
+  // tap when they navigate away. `pausePreview()` is lease-aware and
+  // no-ops if some other screen has since taken over playback, so it
+  // won't disturb unrelated background audio.
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        void pausePreview();
+      };
+    }, []),
+  );
 
   const [photos, setPhotos] = useState<ThemeEchoPhoto[]>([]);
   const [count, setCount] = useState(0);
