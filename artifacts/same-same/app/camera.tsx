@@ -970,16 +970,7 @@ export default function CameraScreen() {
                     </TouchableOpacity>
                   </View>
                 ) : (
-                  <TouchableOpacity
-                    onPressIn={startRecording}
-                    onPressOut={() => {
-                      // Release fires for both finished and cancelled
-                      // touches — finishRecording is idempotent thanks
-                      // to the stop guard, so it's safe in either case.
-                      void finishRecording();
-                    }}
-                    delayPressOut={150}
-                    activeOpacity={0.9}
+                  <View
                     style={[
                       styles.recorderCard,
                       {
@@ -992,7 +983,22 @@ export default function CameraScreen() {
                       },
                     ]}
                   >
-                    <View
+                    {/* Only the mic button itself is pressable. The
+                        surrounding card / text is non-interactive so a
+                        thumb scrolling past the row no longer triggers
+                        an accidental recording. */}
+                    <TouchableOpacity
+                      onPressIn={startRecording}
+                      onPressOut={() => {
+                        // Release fires for both finished and cancelled
+                        // touches — finishRecording is idempotent thanks
+                        // to the stop guard, so it's safe in either case.
+                        void finishRecording();
+                      }}
+                      delayPressIn={120}
+                      delayPressOut={150}
+                      activeOpacity={0.9}
+                      accessibilityLabel="Hold to record vibe"
                       style={[
                         styles.recorderMicBtn,
                         {
@@ -1014,15 +1020,15 @@ export default function CameraScreen() {
                             : colors.foreground
                         }
                       />
-                    </View>
-                    <View style={{ flex: 1 }}>
+                    </TouchableOpacity>
+                    <View style={{ flex: 1 }} pointerEvents="none">
                       <Text
                         style={[
                           styles.recorderTitle,
                           { color: colors.foreground },
                         ]}
                       >
-                        {isRecording ? "Recording…" : "Hold to record"}
+                        {isRecording ? "Recording…" : "Hold mic to record"}
                       </Text>
                       <Text
                         style={[
@@ -1035,7 +1041,7 @@ export default function CameraScreen() {
                           : "Say a word, hum a tune, share the moment"}
                       </Text>
                     </View>
-                  </TouchableOpacity>
+                  </View>
                 )}
               </View>
             )}
