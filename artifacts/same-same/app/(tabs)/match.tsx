@@ -1232,7 +1232,7 @@ export default function SwipeScreen() {
             ]}
           >
             <Text style={[styles.labelText, { color: colors.teal }]}>
-              SAME SAME
+              WAVE
             </Text>
           </Animated.View>
 
@@ -1326,7 +1326,7 @@ export default function SwipeScreen() {
                 style={[styles.actionBtn, styles.matchBtn, { backgroundColor: colors.teal }]}
                 onPress={() => handleSwipe("right")}
                 activeOpacity={0.85}
-                accessibilityLabel="Same Same"
+                accessibilityLabel="Wave"
               >
                 <MatchHearts size={30} color="#001018" />
               </TouchableOpacity>

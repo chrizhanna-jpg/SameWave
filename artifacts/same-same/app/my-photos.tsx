@@ -79,7 +79,7 @@ export default function MyPhotosScreen() {
             </Text>
             <Text style={[styles.emptyDesc, { color: colors.mutedForeground }]}>
               Take today's challenge to post your first photo and start
-              receiving echoes from around the world.
+              receiving waves from around the world.
             </Text>
           </View>
         ) : (

@@ -261,7 +261,34 @@ export function GlobeAnimation({ size = 200 }: Props) {
         />
       </View>
 
-      {/* Connection arcs + dots — fixed overlay SVG */}
+      {/* Connection arcs + dots — fixed overlay SVG.
+          Two parallel sine-wave ribbons cross the globe, slightly
+          offset so they overlap into a soft "S" — the SameWave
+          mark sitting on top of the world. */}
+      <Svg
+        style={[StyleSheet.absoluteFill, { top: 0, left: 0 }]}
+        width={size}
+        height={size}
+        viewBox="0 0 200 200"
+      >
+        {/* Double-wave overlay — drawn before arcs so dots & arcs
+            sit cleanly above. White at low opacity reads on every
+            rotating continent colour. */}
+        <Path
+          d="M 18,92 Q 55,72 92,92 T 182,92"
+          fill="none"
+          stroke="rgba(255,255,255,0.55)"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+        />
+        <Path
+          d="M 18,116 Q 55,136 92,116 T 182,116"
+          fill="none"
+          stroke="rgba(255,255,255,0.42)"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+        />
+      </Svg>
       <Svg
         style={[StyleSheet.absoluteFill, { top: 0, left: 0 }]}
         width={size}

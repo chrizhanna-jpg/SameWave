@@ -127,7 +127,7 @@ export default function MatchHistoryScreen() {
               No matches yet
             </Text>
             <Text style={[styles.emptyDesc, { color: colors.mutedForeground }]}>
-              Swipe Same Same on photo pairs to start your journey.
+              Swipe Wave on photo pairs to start your journey.
             </Text>
           </View>
         ) : (

@@ -30,6 +30,7 @@ import {
   User,
   Volume2,
   VolumeX,
+  Waves,
   X,
   Zap,
   type LucideIcon,
@@ -66,6 +67,8 @@ const ICONS: Record<string, LucideIcon> = {
   user: User,
   volume2: Volume2,
   volumeX: VolumeX,
+  wave: Waves,
+  ripple: Waves,
   x: X,
   zap: Zap,
 };

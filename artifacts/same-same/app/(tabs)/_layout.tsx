@@ -184,10 +184,10 @@ export default function TabLayout() {
       <Tabs.Screen
         name="match"
         options={{
-          title: "Match",
+          title: "Ripple",
           tabBarIcon: ({ color, focused }) => (
             <TabIcon
-              name="layers"
+              name="ripple"
               color={color}
               focused={focused}
               activeColor={colors.primary}
@@ -201,7 +201,7 @@ export default function TabLayout() {
           title: "Discover",
           tabBarIcon: ({ color, focused }) => (
             <TabIcon
-              name="zap"
+              name="wave"
               color={color}
               focused={focused}
               activeColor={colors.primary}

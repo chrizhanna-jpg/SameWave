@@ -95,7 +95,7 @@ export default function EchoesThemeScreen() {
             {emoji}  {title}
           </Text>
           <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
-            {count.toLocaleString()} echo{count === 1 ? "" : "es"}
+            {count.toLocaleString()} wave{count === 1 ? "" : "s"}
             {photos.length > 0 ? ` · ${photos.length} photos` : ""}
           </Text>
         </View>
@@ -109,8 +109,8 @@ export default function EchoesThemeScreen() {
         <View style={styles.center}>
           <Text style={styles.bigEmoji}>🌱</Text>
           <Text style={[styles.empty, { color: colors.mutedForeground }]}>
-            No echoes here yet. Tap same-same on a {title.toLowerCase()} photo
-            and start one.
+            No waves here yet. Wave on a {title.toLowerCase()} photo and start
+            one.
           </Text>
         </View>
       ) : (

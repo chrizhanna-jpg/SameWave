@@ -17,10 +17,10 @@ export function EchoGlobeLogo({
   taglineColor = "rgba(255,255,255,0.65)",
   showTagline = true,
 }: Props) {
-  // Word size scales with the globe so ECHO always sits comfortably across
+  // Word size scales with the globe so the wordmark sits comfortably across
   // the equator. No plate — the text floats directly on the globe with a
   // soft dark glow behind it for legibility against the rotating colours.
-  const wordSize = Math.round(globeSize * 0.24);
+  const wordSize = Math.round(globeSize * 0.18);
   const taglineSize = Math.max(11, Math.round(globeSize * 0.07));
 
   return (
@@ -46,11 +46,11 @@ export function EchoGlobeLogo({
               {
                 color,
                 fontSize: wordSize,
-                letterSpacing: Math.round(wordSize * 0.18),
+                letterSpacing: Math.max(0.5, Math.round(wordSize * 0.04)),
               },
             ]}
           >
-            echo
+            SameWave
           </Text>
         </View>
       </View>
@@ -65,7 +65,7 @@ export function EchoGlobeLogo({
             },
           ]}
         >
-          same same
+          where minds meet
         </Text>
       )}
     </View>
@@ -98,7 +98,7 @@ const styles = StyleSheet.create({
   },
   tagline: {
     fontFamily: "Inter_500Medium",
-    letterSpacing: 3,
+    letterSpacing: 1.2,
     textTransform: "lowercase",
     textAlign: "center",
   },

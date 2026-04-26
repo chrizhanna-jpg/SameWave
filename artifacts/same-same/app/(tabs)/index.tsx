@@ -64,7 +64,7 @@ export default function HomeScreen() {
             taglineColor={colors.mutedForeground}
           />
           <Text style={[styles.tagline, { color: colors.mutedForeground, marginTop: 10 }]}>
-            Echo your vibe.
+            Where minds meet.
           </Text>
         </View>
 
@@ -75,9 +75,9 @@ export default function HomeScreen() {
               {matchesAnim}
             </Text>
             <View style={styles.statLabelRow}>
-              <Icon name="layers" size={12} color={colors.teal} />
+              <Icon name="ripple" size={12} color={colors.teal} />
               <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
-                Matches
+                Ripples
               </Text>
             </View>
           </View>
@@ -136,8 +136,8 @@ export default function HomeScreen() {
             end={{ x: 1, y: 0 }}
           >
             <View style={styles.matchBtnInner}>
-              <Icon name="layers" size={20} color="#fff" />
-              <Text style={styles.matchBtnText}>Start Matching</Text>
+              <Icon name="ripple" size={20} color="#fff" />
+              <Text style={styles.matchBtnText}>Start Rippling</Text>
             </View>
           </GradientCard>
         </PressableScale>
@@ -189,7 +189,7 @@ export default function HomeScreen() {
                       {m.theirCountry}
                     </Text>
                     <Text style={[styles.recentVerdict, { color: colors.teal }]}>
-                      Same Same{sameDay ? " · same day" : ""}
+                      Same wave{sameDay ? " · same day" : ""}
                     </Text>
                   </View>
                   <Icon name="heart" size={14} color={colors.teal} />

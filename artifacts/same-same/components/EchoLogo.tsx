@@ -9,9 +9,9 @@ type Props = {
 };
 
 const SIZE_MAP = {
-  sm: { word: 22, tagline: 10, gap: 1, letterSpacing: 4 },
-  md: { word: 36, tagline: 12, gap: 3, letterSpacing: 6 },
-  lg: { word: 56, tagline: 14, gap: 5, letterSpacing: 9 },
+  sm: { word: 18, tagline: 10, gap: 1, letterSpacing: 1 },
+  md: { word: 30, tagline: 12, gap: 3, letterSpacing: 1.5 },
+  lg: { word: 46, tagline: 14, gap: 5, letterSpacing: 2 },
 } as const;
 
 // Compact typographic wordmark used in places that don't have the full
@@ -32,7 +32,7 @@ export function EchoLogo({
           { color, fontSize: s.word, letterSpacing: s.letterSpacing },
         ]}
       >
-        ECHO
+        SameWave
       </Text>
       {showTagline && (
         <Text
@@ -41,7 +41,7 @@ export function EchoLogo({
             { color: taglineColor, fontSize: s.tagline, marginTop: s.gap },
           ]}
         >
-          same same
+          where minds meet
         </Text>
       )}
     </View>
@@ -58,7 +58,7 @@ const styles = StyleSheet.create({
   },
   tagline: {
     fontFamily: "Inter_500Medium",
-    letterSpacing: 2,
+    letterSpacing: 1,
     textTransform: "lowercase",
     textAlign: "center",
   },

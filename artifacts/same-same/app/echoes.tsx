@@ -75,10 +75,10 @@ export default function EchoesScreen() {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-            Echoes
+            Waves
           </Text>
           <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
-            Your echoes with strangers
+            Mutual moments with people elsewhere
           </Text>
         </View>
       </View>
@@ -104,12 +104,12 @@ export default function EchoesScreen() {
           >
             <Text style={styles.emptyEmoji}>🔁</Text>
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-              No echoes yet
+              No waves yet
             </Text>
             <Text style={[styles.emptyDesc, { color: colors.mutedForeground }]}>
-              When a stranger says same same to one of your photos, you'll be
-              asked here whether you feel the same back. If you do, an echo
-              is born.
+              When someone rides your ripple, you'll be asked here whether
+              you feel the same back. If you do, that's a wave — a mutual
+              moment between two minds.
             </Text>
           </View>
         ) : (
@@ -117,7 +117,7 @@ export default function EchoesScreen() {
             {pendingEchoes.length > 0 && (
               <SectionHeader
                 title="Waiting on you"
-                subtitle="Strangers tapped same-same on one of your photos. Tap back to make it an echo."
+                subtitle="Someone rippled one of your photos. Wave back to make it mutual."
               />
             )}
             {pendingEchoes.map((echo) => (
@@ -131,8 +131,8 @@ export default function EchoesScreen() {
 
             {mutualEchoes.length > 0 && (
               <SectionHeader
-                title="Your echoes"
-                subtitle="Two strangers, same vibe — both said same same."
+                title="Your waves"
+                subtitle="Two minds, one wavelength — both rode the wave."
                 spaceTop={pendingEchoes.length > 0}
               />
             )}
@@ -203,7 +203,7 @@ function PendingEchoCard({
             style={[styles.cardSub, { color: colors.mutedForeground }]}
             numberOfLines={1}
           >
-            said same same to your photo · {ago}
+            rippled your photo · {ago}
           </Text>
         </View>
       </View>
@@ -219,7 +219,7 @@ function PendingEchoCard({
         >
           <Text style={styles.celebrateEmoji}>✨</Text>
           <Text style={[styles.celebrateText, { color: colors.gold }]}>
-            Echo born! Two strangers, same vibe.
+            Wave! Two minds, one wavelength.
           </Text>
         </View>
       ) : (
@@ -246,7 +246,7 @@ function PendingEchoCard({
             activeOpacity={0.85}
           >
             <Text style={[styles.actionLabel, { color: "#001018" }]}>
-              same same
+              wave
             </Text>
           </TouchableOpacity>
         </View>
@@ -287,7 +287,7 @@ function EchoListCard({ echo }: { echo: EchoCardType }) {
             style={[styles.cardSub, { color: colors.mutedForeground }]}
             numberOfLines={1}
           >
-            echo · {ago}
+            wave · {ago}
           </Text>
         </View>
         <Text style={styles.echoEmoji}>🔁</Text>

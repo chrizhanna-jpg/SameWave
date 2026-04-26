@@ -192,13 +192,13 @@ export function EchoFlash({
             { top: insets.top + 12, right: insets.right + 16 },
           ]}
           hitSlop={12}
-          accessibilityLabel="Dismiss echo"
+          accessibilityLabel="Dismiss wave"
         >
           <Icon name="x" size={20} color="rgba(0,16,24,0.7)" />
         </Pressable>
 
-        <Text style={styles.tagline}>echo</Text>
-        <Text style={styles.headline}>same same!</Text>
+        <Text style={styles.tagline}>wave</Text>
+        <Text style={styles.headline}>a wave!</Text>
 
         {/* The two photo thumbnails with the spinning Echo globe
             between them — visually communicates "your vibes met in
@@ -259,7 +259,7 @@ export function EchoFlash({
         </View>
 
         <Text style={styles.subline}>
-          You and someone in {theirCountry} both swiped same.
+          You and someone in {theirCountry} are on the same wavelength.
         </Text>
 
         {themeTitle && (
@@ -275,7 +275,7 @@ export function EchoFlash({
               finish("open");
             }}
             style={styles.openPill}
-            accessibilityLabel="Open echo"
+            accessibilityLabel="Open wave"
           >
             <Text style={styles.openText}>Open</Text>
             <Icon name="arrow-right" size={20} color="#001018" />
@@ -287,7 +287,7 @@ export function EchoFlash({
               void handleShare();
             }}
             style={styles.secondaryPill}
-            accessibilityLabel="Share echo"
+            accessibilityLabel="Share wave"
           >
             <Icon name="share" size={20} color="#fff" />
             <Text style={styles.secondaryText}>Share</Text>

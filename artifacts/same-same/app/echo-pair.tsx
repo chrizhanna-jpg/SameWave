@@ -112,7 +112,7 @@ export default function EchoPairScreen() {
         } else {
           await Sharing.shareAsync(uri, {
             mimeType: "image/jpeg",
-            dialogTitle: "Share this echo",
+            dialogTitle: "Share this wave",
           });
         }
       }
@@ -143,7 +143,7 @@ export default function EchoPairScreen() {
         <Icon name="x" size={20} color={colors.foreground} />
       </TouchableOpacity>
       <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-        same same
+        a wave
       </Text>
       <TouchableOpacity
         onPress={handleShare}
@@ -177,7 +177,7 @@ export default function EchoPairScreen() {
         {renderHeader()}
         <View style={styles.center}>
           <Text style={[styles.empty, { color: colors.mutedForeground }]}>
-            This echo isn't available right now.
+            This wave isn't available right now.
           </Text>
         </View>
       </View>
@@ -278,14 +278,14 @@ export default function EchoPairScreen() {
                 ✨
               </Text>
               <Text style={[styles.shareTitle, { color: colors.gold }]}>
-                echo
+                wave
               </Text>
               <Text style={[styles.shareTitleSparkle, { color: colors.gold }]}>
                 ✨
               </Text>
             </View>
             <Text style={[styles.shareSubtitle, { color: colors.teal }]}>
-              same same · mutual
+              a wave · mutual
             </Text>
 
             <View style={styles.shareChipsRow}>
@@ -340,7 +340,7 @@ export default function EchoPairScreen() {
                     <View style={styles.photoOverlayWatermarkContainer}>
                       <View style={styles.photoOverlayWatermark}>
                         <Text style={styles.photoOverlayWatermarkSparkle}>✨</Text>
-                        <Text style={styles.photoOverlayWatermarkText}>Echo</Text>
+                        <Text style={styles.photoOverlayWatermarkText}>SameWave</Text>
                       </View>
                     </View>
                   )}
@@ -360,7 +360,7 @@ export default function EchoPairScreen() {
                     <View style={styles.photoOverlayWatermarkContainer}>
                       <View style={styles.photoOverlayWatermark}>
                         <Text style={styles.photoOverlayWatermarkSparkle}>✨</Text>
-                        <Text style={styles.photoOverlayWatermarkText}>Echo</Text>
+                        <Text style={styles.photoOverlayWatermarkText}>SameWave</Text>
                       </View>
                     </View>
                   )}
@@ -420,7 +420,7 @@ export default function EchoPairScreen() {
                 <View style={styles.watermarkRow}>
                   <Text style={styles.watermarkSparkle}>✨</Text>
                   <Text style={[styles.watermarkText, { color: "#FFFFFF" }]}>
-                    Echo
+                    SameWave
                   </Text>
                 </View>
                 <Text style={[styles.watermarkSubtext, { color: colors.teal }]}>
@@ -473,12 +473,12 @@ export default function EchoPairScreen() {
           <Text
             style={[styles.shareBtnText, { color: colors.primaryForeground }]}
           >
-            {sharing ? "Preparing…" : "Share this echo"}
+            {sharing ? "Preparing…" : "Share this wave"}
           </Text>
         </TouchableOpacity>
 
         <Text style={[styles.footer, { color: colors.mutedForeground }]}>
-          Two strangers, same vibe.
+          Two minds, one wave.
         </Text>
       </ScrollView>
     </View>

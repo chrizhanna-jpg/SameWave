@@ -198,7 +198,7 @@ export default function InCameraScreen() {
             lineHeight: 20,
           }}
         >
-          Echo needs your camera so you can take a photo of today.
+          SameWave needs your camera so you can take a photo of today.
         </Text>
         <TouchableOpacity
           style={{

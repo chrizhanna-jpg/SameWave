@@ -82,7 +82,7 @@ export default function RevealScreen() {
         } else {
           await Sharing.shareAsync(uri, {
             mimeType: "image/jpeg",
-            dialogTitle: "Share your Echo",
+            dialogTitle: "Share your Wave",
           });
         }
       }
@@ -254,7 +254,7 @@ export default function RevealScreen() {
           <Icon name="x" size={20} color={colors.foreground} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-          same same
+          a wave
         </Text>
         <View style={{ width: 40 }} />
       </View>
@@ -291,7 +291,7 @@ export default function RevealScreen() {
           ]}
         >
           <Text style={[styles.shareTitle, { color: colors.foreground }]}>
-            same same
+            a wave
           </Text>
 
           <View style={styles.shareChipsRow}>
@@ -339,7 +339,7 @@ export default function RevealScreen() {
                   <View style={styles.photoOverlayWatermarkContainer}>
                     <View style={styles.photoOverlayWatermark}>
                       <Text style={styles.photoOverlayWatermarkSparkle}>✨</Text>
-                      <Text style={styles.photoOverlayWatermarkText}>Echo</Text>
+                      <Text style={styles.photoOverlayWatermarkText}>SameWave</Text>
                     </View>
                   </View>
                 )}
@@ -354,7 +354,7 @@ export default function RevealScreen() {
                   <View style={styles.photoOverlayWatermarkContainer}>
                     <View style={styles.photoOverlayWatermark}>
                       <Text style={styles.photoOverlayWatermarkSparkle}>✨</Text>
-                      <Text style={styles.photoOverlayWatermarkText}>Echo</Text>
+                      <Text style={styles.photoOverlayWatermarkText}>SameWave</Text>
                     </View>
                   </View>
                 )}
@@ -404,7 +404,7 @@ export default function RevealScreen() {
               <View style={styles.watermarkRow}>
                 <Text style={styles.watermarkSparkle}>✨</Text>
                 <Text style={[styles.watermarkText, { color: "#FFFFFF" }]}>
-                  Echo
+                  SameWave
                 </Text>
               </View>
               <Text style={[styles.watermarkSubtext, { color: colors.teal }]}>
@@ -569,7 +569,7 @@ export default function RevealScreen() {
 
             <Text style={styles.paywallSparkle}>✨</Text>
             <Text style={[styles.paywallTitle, { color: colors.foreground }]}>
-              Echo Pro
+              SameWave Pro
             </Text>
             <Text style={[styles.paywallPrice, { color: colors.gold }]}>
               £1 · one-time, lifetime

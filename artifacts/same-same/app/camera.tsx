@@ -775,7 +775,7 @@ export default function CameraScreen() {
                       Looks AI-generated
                     </Text>
                     <Text style={[styles.aiBannerLabel, { color: colors.mutedForeground, marginTop: 2 }]}>
-                      It'll be marked with an AI badge and won't count as an echo connection.
+                      It'll be marked with an AI badge and won't count as a wave connection.
                     </Text>
                   </View>
                 </View>
@@ -1244,7 +1244,7 @@ export default function CameraScreen() {
             <View style={[styles.authenticNote, { borderColor: colors.border }]}>
               <Icon name="info" size={14} color={colors.mutedForeground} />
               <Text style={[styles.authenticNoteText, { color: colors.mutedForeground }]}>
-                AI-generated images are welcome but get an AI badge and don't count as echo connections.
+                AI-generated images are welcome but get an AI badge and don't count as wave connections.
               </Text>
             </View>
           </View>

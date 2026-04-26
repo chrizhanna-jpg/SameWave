@@ -211,7 +211,7 @@ export function MatchFlash({
           <Icon name="x" size={20} color="rgba(0,16,24,0.7)" />
         </Pressable>
 
-        <Text style={styles.tagline}>same same</Text>
+        <Text style={styles.tagline}>a ripple</Text>
 
         {/* Two photo thumbnails — one from each country — with the
             corresponding flag badged into the bottom-right corner.

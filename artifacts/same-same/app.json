@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Echo",
+    "name": "SameWave",
     "slug": "same-same",
-    "version": "1.1.1",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "same-same",
@@ -17,14 +17,14 @@
       "supportsTablet": false,
       "bundleIdentifier": "app.echo.samesame",
       "infoPlist": {
-        "NSCameraUsageDescription": "Echo uses your camera to take photos of your day so you can match with people sharing similar moments.",
-        "NSPhotoLibraryUsageDescription": "Echo lets you pick a photo from your library to share as today's moment.",
-        "NSLocationWhenInUseUsageDescription": "Echo uses your country (not precise location) to celebrate matches with people nearby."
+        "NSCameraUsageDescription": "SameWave uses your camera to take photos of your day so you can ripple with people sharing similar moments.",
+        "NSPhotoLibraryUsageDescription": "SameWave lets you pick a photo from your library to share as today's moment.",
+        "NSLocationWhenInUseUsageDescription": "SameWave uses your country (not precise location) to celebrate ripples with people nearby."
       }
     },
     "android": {
       "package": "app.echo.samesame",
-      "versionCode": 3,
+      "versionCode": 4,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#071828"
@@ -52,20 +52,20 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Echo needs access to your photo library so you can share a photo of today.",
-          "cameraPermission": "Echo needs your camera so you can take a photo of today."
+          "photosPermission": "SameWave needs access to your photo library so you can share a photo of today.",
+          "cameraPermission": "SameWave needs your camera so you can take a photo of today."
         }
       ],
       [
         "expo-camera",
         {
-          "cameraPermission": "Echo needs your camera so you can take a photo of today."
+          "cameraPermission": "SameWave needs your camera so you can take a photo of today."
         }
       ],
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Echo uses your country (not precise location) to celebrate matches with people nearby."
+          "locationAlwaysAndWhenInUsePermission": "SameWave uses your country (not precise location) to celebrate ripples with people nearby."
         }
       ],
       [

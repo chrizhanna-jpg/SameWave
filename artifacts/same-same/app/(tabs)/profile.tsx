@@ -206,8 +206,8 @@ export default function ProfileScreen() {
           ]}
           accessibilityLabel={
             unreadEchoes > 0
-              ? `${unreadEchoes} new echo${unreadEchoes === 1 ? "" : "es"}`
-              : "Echoes — others connecting to your photos"
+              ? `${unreadEchoes} new wave${unreadEchoes === 1 ? "" : "s"}`
+              : "Waves — others connecting to your photos"
           }
           hitSlop={6}
         >
@@ -262,14 +262,14 @@ export default function ProfileScreen() {
             <View style={styles.heroStats}>
               <View style={styles.heroStat}>
                 <Text style={styles.heroStatNum}>{totalMatches}</Text>
-                <Text style={styles.heroStatLabel}>matches</Text>
+                <Text style={styles.heroStatLabel}>ripples</Text>
               </View>
               <View style={[styles.heroDivider]} />
               <View style={styles.heroStat}>
                 <Text style={styles.heroStatNum}>
                   {mutualEchoes.length + pendingEchoes.length}
                 </Text>
-                <Text style={styles.heroStatLabel}>echoes</Text>
+                <Text style={styles.heroStatLabel}>waves</Text>
               </View>
               <View style={[styles.heroDivider]} />
               <View style={styles.heroStat}>

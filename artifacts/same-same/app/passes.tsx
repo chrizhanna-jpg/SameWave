@@ -134,10 +134,10 @@ export default function PassesScreen() {
                 <TouchableOpacity
                   onPress={() => reconsiderAsSame(match.id)}
                   style={[styles.reconsiderBtn, { backgroundColor: colors.teal }]}
-                  accessibilityLabel={`Mark photo from ${match.theirCountry} as Same Same`}
+                  accessibilityLabel={`Mark photo from ${match.theirCountry} as Wave`}
                   hitSlop={8}
                 >
-                  <Text style={styles.reconsiderBtnText}>Same Same</Text>
+                  <Text style={styles.reconsiderBtnText}>Wave</Text>
                 </TouchableOpacity>
               </View>
             </View>

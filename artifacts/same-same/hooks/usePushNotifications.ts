@@ -91,7 +91,7 @@ async function registerForPushAsync(): Promise<string | null> {
   if (Platform.OS === "android") {
     try {
       await Notifications.setNotificationChannelAsync("echoes", {
-        name: "Echoes",
+        name: "Waves",
         importance: Notifications.AndroidImportance.HIGH,
         sound: "default",
         vibrationPattern: [0, 250, 250, 250],
@@ -182,9 +182,9 @@ export function usePushNotifications() {
       // (mutual vs incoming offer) regardless of the server-side copy.
       const state = typeof data?.state === "string" ? data.state : null;
       const brandedTitle =
-        state === "mutual" ? "Echo matched ✨" : "New Echo 💫";
+        state === "mutual" ? "Wave! ✨" : "A new ripple 💫";
       const body =
-        content.body ?? "Someone just echoed your photo — tap to view.";
+        content.body ?? "Someone just rippled your photo — tap to view.";
       showToast({
         title: brandedTitle,
         body,

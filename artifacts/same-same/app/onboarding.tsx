@@ -31,19 +31,19 @@ const STEPS = [
     kind: "intro" as const,
     title: null,
     subtitle: null,
-    body: "Share a photo with a vibe. Somewhere in the world, someone is having a similar moment as you.",
+    body: "Share a photo of your moment. Somewhere in the world, someone is on the same wavelength as you.",
   },
   {
     kind: "intro" as const,
-    title: "Echo back.",
-    subtitle: "Make it mutual.",
-    body: "Swipe 'Same Same' on photos that match your vibe. When someone Same-Sames you back — that's an Echo. Anonymous.",
+    title: "Send a ripple.",
+    subtitle: "Catch a wave.",
+    body: "Swipe 🌊 'Wave!' on photos that share your vibe — that's a ripple. When the other person waves back, it's a wave: a mutual moment, fully anonymous.",
   },
   {
     kind: "country" as const,
     title: "Where are you?",
     subtitle: null,
-    body: "We use your country to celebrate when you match with someone close — same country, same continent, same little planet.",
+    body: "We use your country to celebrate when you ripple with someone close — same country, same continent, same little planet.",
   },
 ];
 
