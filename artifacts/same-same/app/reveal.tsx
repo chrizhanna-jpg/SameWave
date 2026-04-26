@@ -402,7 +402,7 @@ export default function RevealScreen() {
               ]}
             >
               <View style={styles.watermarkRow}>
-                <Icon name="wave" size={14} color="#FFFFFF" />
+                <Icon name="wave" size={28} color="#FFFFFF" />
                 <Text style={[styles.watermarkText, { color: "#FFFFFF" }]}>
                   SameWave
                 </Text>
