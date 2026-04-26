@@ -9,17 +9,23 @@ type Props = {
   showTagline?: boolean;
 };
 
-// Hero lockup: ECHO label sits across the globe (the "world" is part of
-// the logo). "same same" tagline below.
+// Brand wordmark colours — mirrors the attached app-icon artwork:
+// "Same" in clean white, "Wave" in bright cyan-blue. The cyan is a
+// touch lighter / more luminous than the primary brand cyan so the
+// wordmark reads on dark backgrounds the way it does in the icon.
+const SAME_COLOR = "#FFFFFF";
+const WAVE_COLOR = "#5DC3F5";
+
+// Hero lockup that matches the SameWave app-icon artwork: animated
+// globe on top, two-tone "SameWave" wordmark below, tagline beneath.
 export function EchoGlobeLogo({
   globeSize = 190,
-  color = "#FFFFFF",
+  color = SAME_COLOR,
   taglineColor = "rgba(255,255,255,0.65)",
   showTagline = true,
 }: Props) {
-  // Word size scales with the globe so the wordmark sits comfortably across
-  // the equator. No plate — the text floats directly on the globe with a
-  // soft dark glow behind it for legibility against the rotating colours.
+  // Word size scales with the globe so the lockup stays balanced at
+  // any size the screen requests.
   const wordSize = Math.round(globeSize * 0.18);
   const taglineSize = Math.max(11, Math.round(globeSize * 0.07));
 
@@ -32,28 +38,23 @@ export function EchoGlobeLogo({
         ]}
       >
         <GlobeAnimation size={globeSize} />
-        {/* Label overlay — sits across the equator, transparent */}
-        <View
-          pointerEvents="none"
-          style={[
-            styles.labelLayer,
-            { width: globeSize, height: globeSize },
-          ]}
-        >
-          <Text
-            style={[
-              styles.word,
-              {
-                color,
-                fontSize: wordSize,
-                letterSpacing: Math.max(0.5, Math.round(wordSize * 0.04)),
-              },
-            ]}
-          >
-            SameWave
-          </Text>
-        </View>
       </View>
+
+      {/* Two-tone wordmark sits below the globe, matching the icon. */}
+      <Text
+        style={[
+          styles.word,
+          {
+            fontSize: wordSize,
+            letterSpacing: Math.max(0.5, Math.round(wordSize * 0.04)),
+            marginTop: Math.round(globeSize * 0.08),
+          },
+        ]}
+      >
+        <Text style={{ color }}>Same</Text>
+        <Text style={{ color: WAVE_COLOR }}>Wave</Text>
+      </Text>
+
       {showTagline && (
         <Text
           style={[
@@ -61,7 +62,7 @@ export function EchoGlobeLogo({
             {
               color: taglineColor,
               fontSize: taglineSize,
-              marginTop: Math.round(globeSize * 0.06),
+              marginTop: Math.round(globeSize * 0.05),
             },
           ]}
         >
@@ -81,18 +82,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  labelLayer: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   word: {
     fontFamily: "Inter_700Bold",
     textAlign: "center",
     includeFontPadding: false,
-    textShadowColor: "rgba(0, 0, 0, 0.85)",
+    textShadowColor: "rgba(0, 0, 0, 0.55)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 6,
   },
