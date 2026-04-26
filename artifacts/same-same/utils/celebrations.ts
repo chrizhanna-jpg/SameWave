@@ -191,7 +191,7 @@ export function getGeoTier(myCode?: string, theirCode?: string): GeoTier {
     kind: "planet",
     rank: 1,
     label: "Same Planet",
-    sub: "Across the world, on the same little planet.",
+    sub: "Across the world, on the same planet.",
     emoji: "🌍",
   };
 }
