@@ -384,6 +384,14 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   // requires >=2 photos to pair, so these themes won't appear in Discover
   // until verified additional photos arrive. The themes still work for
   // user uploads via the Match flow.
+
+  // Music (new) — vinyl, headphones, vintage radios, DJ decks. Falls back
+  // to "hobbies" via THEME_ADJACENCY so a music ripple still finds a wave
+  // even on quiet days.
+  { id: "109", uri: "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400", country: "Japan", countryCode: "JP", countryFlag: "🇯🇵", theme: "music", minutesAgo: 22, tags: ["music","vintage","hobby"] },
+  { id: "110", uri: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400", country: "Sweden", countryCode: "SE", countryFlag: "🇸🇪", theme: "music", minutesAgo: 95, tags: ["music","cozy","hobby"] },
+  { id: "111", uri: "https://images.unsplash.com/photo-1485579149621-3123dd979885?w=400", country: "Italy", countryCode: "IT", countryFlag: "🇮🇹", theme: "music", minutesAgo: 240, tags: ["music","vintage"] },
+  { id: "112", uri: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400", country: "Brazil", countryCode: "BR", countryFlag: "🇧🇷", theme: "music", minutesAgo: 47, tags: ["music","party"] },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -750,6 +758,7 @@ export const SUGGESTED_TAGS_BY_THEME: Record<string, string[]> = {
   hobbies: ["hobby", "music", "photography", "crafts", "reading"],
   birds: ["bird", "wildlife", "outdoors", "animal"],
   plants: ["plants", "flowers", "garden", "trees"],
+  music: ["music", "vintage", "hobby", "cozy", "party"],
 };
 
 // The daily challenge pool. One theme is shown to the entire world each
@@ -799,6 +808,7 @@ export const DAILY_CHALLENGES = [
   { id: "birds", title: "A bird you spotted", description: "Backyard, balcony, park, anywhere", emoji: "🐦" },
   // (rocks challenge removed — see SAMPLE_PHOTOS rocks comment.)
   { id: "plants", title: "A plant you noticed", description: "House plant, tree, weed, flower — close-up", emoji: "🪴" },
+  { id: "music", title: "Your music", description: "What's playing — vinyl, speaker, headphones, anything", emoji: "🎵" },
 ];
 
 // Themes that "feel" related — used as fallback when the active theme
@@ -815,9 +825,10 @@ export const THEME_ADJACENCY: Record<string, string[]> = {
   pets: ["nature", "joy", "birds"],
   furniture: ["home", "hobbies"],
   games: ["hobbies", "joy", "playing"],
-  hobbies: ["games", "creative", "made"],
+  hobbies: ["games", "creative", "made", "music"],
   birds: ["nature", "pets", "plants"],
   plants: ["nature", "home", "furniture"],
+  music: ["hobbies", "joy", "made"],
 };
 
 export function getThemeChain(theme: string): string[] {
