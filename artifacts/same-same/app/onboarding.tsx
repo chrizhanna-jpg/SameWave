@@ -2,6 +2,7 @@ import React, { useRef } from "react";
 import {
   Animated,
   Dimensions,
+  Image,
   Platform,
   StyleSheet,
   Text,
@@ -11,7 +12,6 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
-import { EchoGlobeLogo } from "@/components/EchoGlobeLogo";
 import { CountryPickerModal } from "@/components/CountryPickerModal";
 import { Surface } from "@/components/Surface";
 import { GradientCard } from "@/components/GradientCard";
@@ -131,11 +131,20 @@ export default function OnboardingScreen() {
         ]}
       >
         <Animated.View style={{ transform: [{ scale: globeScale }], alignItems: "center" }}>
-          <EchoGlobeLogo
-            globeSize={isHeroStep ? 200 : 120}
-            color="#FFFFFF"
-            taglineColor={colors.mutedForeground}
-            showTagline={isHeroStep}
+          {/* Static SameWave brand lockup (matches the app icon exactly).
+              The icon image already contains the globe + wordmark + brand
+              frame, so we render it directly at two sizes — bigger on the
+              hero step, smaller on subsequent steps to leave room for
+              the body copy. */}
+          <Image
+            source={require("@/assets/images/samewave-logo.png")}
+            style={{
+              width: isHeroStep ? 280 : 160,
+              height: isHeroStep ? 280 : 160,
+            }}
+            resizeMode="contain"
+            accessibilityRole="image"
+            accessibilityLabel="SameWave"
           />
         </Animated.View>
       </View>
