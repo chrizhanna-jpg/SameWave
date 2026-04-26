@@ -278,7 +278,7 @@ export default function MatchHistoryScreen() {
               router.push({
                 pathname: "/reveal",
                 params: {
-                  matchData: JSON.stringify(match),
+                  matchId: match.id,
                   ...(action ? { action } : {}),
                 },
               });

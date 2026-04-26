@@ -36,6 +36,7 @@ export default function RevealScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
   const {
+    matches,
     matchedCountries,
     proUnlocked,
     unlockPro,
@@ -104,54 +105,57 @@ export default function RevealScreen() {
   const fadeIn = useRef(new Animated.Value(0)).current;
   const scaleIn = useRef(new Animated.Value(0.92)).current;
   const sparklePulse = useRef(new Animated.Value(0)).current;
+  const matchInitedRef = useRef(false);
 
   useEffect(() => {
-    if (params.matchData) {
-      try {
-        const m = JSON.parse(params.matchData as string) as Match;
-        setMatch(m);
+    if (matchInitedRef.current) return;
+    const id = params.matchId as string | undefined;
+    if (!id || matches.length === 0) return;
+    const found = matches.find((m) => m.id === id);
+    if (!found) return;
 
-        // The match is already persisted by the swipe handler in match.tsx
-        // before navigating here — calling addMatch again would create a
-        // duplicate row with the same id (React duplicate-key warning).
-        savedRef.current = true;
+    matchInitedRef.current = true;
+    setMatch(found);
 
-        Animated.parallel([
-          Animated.timing(fadeIn, {
-            toValue: 1,
-            duration: 600,
-            useNativeDriver: true,
-          }),
-          Animated.spring(scaleIn, {
-            toValue: 1,
-            tension: 80,
-            friction: 8,
-            useNativeDriver: true,
-          }),
-        ]).start();
+    // The match is already persisted by the swipe handler in match.tsx
+    // before navigating here — calling addMatch again would create a
+    // duplicate row with the same id (React duplicate-key warning).
+    savedRef.current = true;
 
-        Animated.loop(
-          Animated.sequence([
-            Animated.timing(sparklePulse, {
-              toValue: 1,
-              duration: 1100,
-              useNativeDriver: true,
-            }),
-            Animated.timing(sparklePulse, {
-              toValue: 0,
-              duration: 1100,
-              useNativeDriver: true,
-            }),
-          ])
-        ).start();
+    Animated.parallel([
+      Animated.timing(fadeIn, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleIn, {
+        toValue: 1,
+        tension: 80,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+    ]).start();
 
-        setTimeout(() => {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        }, 400);
-      } catch {}
-    }
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(sparklePulse, {
+          toValue: 1,
+          duration: 1100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(sparklePulse, {
+          toValue: 0,
+          duration: 1100,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    setTimeout(() => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }, 400);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.matchData]);
+  }, [params.matchId, matches]);
 
   // Auto-fire the requested deep-link action once the match has loaded
   // and the share-card has had a tick to lay out (otherwise captureRef

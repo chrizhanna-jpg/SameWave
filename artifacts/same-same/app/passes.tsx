@@ -32,7 +32,7 @@ export default function PassesScreen() {
     if (flipped) {
       router.push({
         pathname: "/reveal",
-        params: { matchData: JSON.stringify(flipped) },
+        params: { matchId: flipped.id },
       });
     }
   };

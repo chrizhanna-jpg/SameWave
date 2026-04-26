@@ -1367,7 +1367,7 @@ export default function SwipeScreen() {
               router.push({
                 pathname: "/reveal",
                 params: {
-                  matchData: JSON.stringify(data),
+                  matchId: data.id,
                   // Optional auto-action: "share" or "paywall". /reveal
                   // fires it once the share-card has laid out so the
                   // capture isn't blank.

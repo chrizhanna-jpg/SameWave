@@ -319,7 +319,7 @@ export default function ProfileScreen() {
                     onPress={() =>
                       router.push({
                         pathname: "/reveal",
-                        params: { matchData: JSON.stringify(m) },
+                        params: { matchId: m.id },
                       })
                     }
                     style={[styles.recentMatchCard, colors.shadows.sm]}
