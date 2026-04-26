@@ -11,7 +11,7 @@
     "splash": {
       "image": "./assets/images/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#071828"
+      "backgroundColor": "#0A2552"
     },
     "ios": {
       "supportsTablet": false,
@@ -27,7 +27,7 @@
       "versionCode": 4,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
-        "backgroundColor": "#071828"
+        "backgroundColor": "#0A2552"
       },
       "permissions": [
         "android.permission.CAMERA",
@@ -71,7 +71,7 @@
       [
         "expo-notifications",
         {
-          "color": "#071828"
+          "color": "#0A2552"
         }
       ]
     ],

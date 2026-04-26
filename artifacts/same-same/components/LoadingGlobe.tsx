@@ -7,11 +7,10 @@ type Props = {
 };
 
 // High-contrast palette so the spinner is obviously "working" against
-// the dark navy card it sits on. Previously the globe body (#1565a0)
-// blended into colors.card (#0d2340), so only the thin yellow arcs
-// signalled motion. The brighter OCEAN, more visible GRID, and the new
-// outer RING give the wheel a clear boundary and visible rotation.
-const OCEAN = "#0AA0E8";
+// the royal-blue card it sits on. The OCEAN tone matches the brighter
+// brand cyan introduced with the SameWave icon refresh, and the outer
+// RING in teal gives the wheel a clear boundary and visible rotation.
+const OCEAN = "#1FA9F0";
 const RING = "#00BFA5";
 const GRID = "rgba(255,255,255,0.45)";
 const ARC = "#FFD166";

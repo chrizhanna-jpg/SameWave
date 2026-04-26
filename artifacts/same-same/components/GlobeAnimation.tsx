@@ -4,12 +4,13 @@ import Svg, { Circle, Ellipse, G, Path } from "react-native-svg";
 
 const AnimatedView = Animated.View;
 
-const OCEAN = "#1565a0";
-// Continent greens are tuned to lean cool/teal rather than pure
-// forest green so they harmonise with the cyan-blue + teal-accent
-// palette used everywhere else in the app.
-const LAND = "#2C806B";
-const LAND_LIGHT = "#3C9583";
+// Tuned to mirror the brand app-icon artwork: vivid royal-blue ocean
+// (a touch brighter than Material Blue 800) with warm earthy olive
+// continents instead of forest green, so the spinning globe reads the
+// same way the icon does.
+const OCEAN = "#1976D2";
+const LAND = "#7A6E47";
+const LAND_LIGHT = "#968358";
 const GRID = "rgba(255,255,255,0.12)";
 const DOT = "#FFD166";
 const ARC = "#FFD166";
@@ -551,8 +552,8 @@ const styles = StyleSheet.create({
   atmosphere: {
     position: "absolute",
     borderWidth: 2,
-    borderColor: "rgba(2, 136, 209, 0.25)",
-    shadowColor: "#0288D1",
+    borderColor: "rgba(31, 169, 240, 0.30)",
+    shadowColor: "#1FA9F0",
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.4,
     shadowRadius: 12,

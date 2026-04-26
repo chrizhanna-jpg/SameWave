@@ -612,7 +612,7 @@ const styles = StyleSheet.create({
     height: 38,
     borderRadius: 10,
     borderWidth: 2,
-    borderColor: "#0d2340",
+    borderColor: "#133370",
   },
   thumbFront: {
     position: "absolute",
@@ -622,7 +622,7 @@ const styles = StyleSheet.create({
     height: 38,
     borderRadius: 10,
     borderWidth: 2,
-    borderColor: "#0d2340",
+    borderColor: "#133370",
   },
   cardKicker: {
     fontSize: 10,
