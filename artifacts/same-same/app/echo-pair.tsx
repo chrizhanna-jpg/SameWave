@@ -482,7 +482,7 @@ export default function EchoPairScreen() {
         </TouchableOpacity>
 
         <Text style={[styles.footer, { color: colors.mutedForeground }]}>
-          Two minds, one wave.
+          Where minds meet
         </Text>
       </ScrollView>
     </View>
