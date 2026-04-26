@@ -16,17 +16,36 @@ import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { PhotoCard } from "@/components/PhotoCard";
 import { MatchTierChips } from "@/components/MatchTierChips";
+import { timeAgo } from "@/utils/timeAgo";
 
 export default function MatchHistoryScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { matches, removeMatch, changeVerdict, myCountryCode, proUnlocked } =
-    useApp();
+  const {
+    matches,
+    mutualEchoes,
+    removeMatch,
+    changeVerdict,
+    myCountryCode,
+    proUnlocked,
+  } = useApp();
 
+  // Ripples = every "same same" swipe the user has sent. The list is the
+  // user's outgoing intent, regardless of whether the other side has
+  // reciprocated yet.
   const confirmedMatches = React.useMemo(
     () => matches.filter((m) => m.verdict === "same"),
     [matches],
   );
+  // Waves = mutual moments confirmed by the server. Sorted newest-first
+  // by mutualAt so the most recent celebration is at the top.
+  const sortedWaves = React.useMemo(() => {
+    return [...mutualEchoes].sort((a, b) => {
+      const at = a.mutualAt ? new Date(a.mutualAt).getTime() : 0;
+      const bt = b.mutualAt ? new Date(b.mutualAt).getTime() : 0;
+      return bt - at;
+    });
+  }, [mutualEchoes]);
 
   const confirmPassInstead = (id: string, country: string) => {
     const doFlip = () => {
@@ -98,12 +117,14 @@ export default function MatchHistoryScreen() {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-            Match History
+            Ripples & Waves
           </Text>
           <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
+            {sortedWaves.length}{" "}
+            {sortedWaves.length === 1 ? "wave" : "waves"} ·{" "}
             {confirmedMatches.length}{" "}
-            {confirmedMatches.length === 1 ? "match" : "matches"} · tap any to
-            change
+            {confirmedMatches.length === 1 ? "ripple" : "ripples"} · tap any to
+            revisit
           </Text>
         </View>
       </View>
@@ -115,7 +136,7 @@ export default function MatchHistoryScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {confirmedMatches.length === 0 ? (
+        {confirmedMatches.length === 0 && sortedWaves.length === 0 ? (
           <View
             style={[
               styles.emptyCard,
@@ -124,14 +145,130 @@ export default function MatchHistoryScreen() {
           >
             <Icon name="globe" size={32} color={colors.mutedForeground} />
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-              No matches yet
+              No ripples yet
             </Text>
             <Text style={[styles.emptyDesc, { color: colors.mutedForeground }]}>
-              Swipe Wave on photo pairs to start your journey.
+              Send a Ripple on photo pairs to start your journey. When
+              the other side reciprocates, your Ripple becomes a Wave.
             </Text>
           </View>
         ) : (
-          confirmedMatches.map((match) => {
+          <>
+            {/* ─────────────── My Waves (mutual moments) ───────────────
+                Always rendered first so the milestone moments lead. Each
+                row deep-links to /echo-pair where the user can re-share
+                the celebratory share-card with the hero brand graphic. */}
+            {sortedWaves.length > 0 && (
+              <>
+                <View style={styles.sectionHeaderRow}>
+                  <Icon name="wave" size={14} />
+                  <Text
+                    style={[styles.sectionTitle, { color: colors.gold }]}
+                  >
+                    My Waves · {sortedWaves.length}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.sectionSub,
+                      { color: colors.mutedForeground },
+                    ]}
+                  >
+                    mutual moments
+                  </Text>
+                </View>
+                {sortedWaves.map((echo) => {
+                  const stamp = echo.mutualAt
+                    ? new Date(echo.mutualAt)
+                    : new Date(echo.createdAt);
+                  return (
+                    <TouchableOpacity
+                      key={echo.id}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        router.push({
+                          pathname: "/echo-pair",
+                          params: {
+                            a: echo.mine.id,
+                            b: echo.theirs.id,
+                          },
+                        });
+                      }}
+                      activeOpacity={0.85}
+                      accessibilityLabel={`Open wave with ${echo.theirs.country}`}
+                      style={[
+                        styles.matchRow,
+                        {
+                          backgroundColor: colors.card,
+                          borderColor: colors.gold + "55",
+                        },
+                      ]}
+                    >
+                      <PhotoCard uri={echo.mine.uri} size="sm" />
+                      <View style={styles.matchMeta}>
+                        <View style={styles.matchFlags}>
+                          <Text style={styles.matchFlag}>🌍</Text>
+                          <Icon
+                            name="arrow-right"
+                            size={12}
+                            color={colors.mutedForeground}
+                          />
+                          <Text style={styles.matchFlag}>
+                            {echo.theirs.countryFlag}
+                          </Text>
+                        </View>
+                        <Text
+                          style={[
+                            styles.matchCountry,
+                            { color: colors.foreground },
+                          ]}
+                        >
+                          {echo.theirs.country}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.waveSub,
+                            { color: colors.gold },
+                          ]}
+                        >
+                          Wave · {timeAgo(stamp)}
+                        </Text>
+                      </View>
+                      <PhotoCard uri={echo.theirs.uri} size="sm" />
+                    </TouchableOpacity>
+                  );
+                })}
+              </>
+            )}
+
+            {/* ─────────────── My Ripples (one-way swipes) ───────────────
+                The user's full outgoing intent. Some of these will also
+                appear above as Waves once the other side reciprocates;
+                we deliberately don't filter those out — the Ripple list
+                is the user's "what I sent" record. */}
+            {confirmedMatches.length > 0 && (
+              <>
+                <View
+                  style={[
+                    styles.sectionHeaderRow,
+                    sortedWaves.length > 0 && styles.sectionHeaderRowSpaced,
+                  ]}
+                >
+                  <Icon name="ripple" size={14} color={colors.teal} />
+                  <Text
+                    style={[styles.sectionTitle, { color: colors.teal }]}
+                  >
+                    My Ripples · {confirmedMatches.length}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.sectionSub,
+                      { color: colors.mutedForeground },
+                    ]}
+                  >
+                    swipes you've sent
+                  </Text>
+                </View>
+                {confirmedMatches.map((match) => {
             // Tapping the row anywhere outside the inline controls
             // re-opens the full /reveal so the user can re-share or
             // remove the watermark from a past match. Tapping with an
@@ -280,7 +417,10 @@ export default function MatchHistoryScreen() {
                 </TouchableOpacity>
               </TouchableOpacity>
             );
-          })
+          })}
+              </>
+            )}
+          </>
         )}
       </ScrollView>
     </View>
@@ -368,6 +508,31 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
+  },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 4,
+    marginBottom: 2,
+    paddingHorizontal: 2,
+  },
+  sectionHeaderRowSpaced: {
+    marginTop: 18,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -0.2,
+  },
+  sectionSub: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+  },
+  waveSub: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    marginTop: 2,
   },
   emptyCard: {
     padding: 28,
