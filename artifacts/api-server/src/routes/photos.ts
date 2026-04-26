@@ -436,11 +436,24 @@ router.get("/photos/candidates", async (req, res) => {
         uri: `data:${String(r.mimeType)};base64,${String(r.bytesBase64)}`,
         createdAt: r.createdAt as string | Date,
         // Surface vibe + theme + shape together so the client knows
-        // how the row scored on the new 50/50 axis.
-        score:
-          Number(r.tag_overlap ?? 0) +
-          Number(r.theme_score ?? 0) +
-          Number(r.shape_overlap ?? 0),
+        // how the row scored on the new 50/50 axis. Mirrors the
+        // weighted server-side rank: vibe = LEAST(overlap,5)*2 (0..10),
+        // theme = 0/4/10, shape = LEAST(overlap,5)*2 (0..10), shape
+        // term skipped when either side has no shape tags. Computing
+        // here (rather than aliasing rank_score) keeps the displayed
+        // score deterministic across requests, since rank_score also
+        // includes a small random tiebreaker.
+        score: (() => {
+          const vibe = Math.min(Number(r.tag_overlap ?? 0), 5) * 2;
+          const theme = Number(r.theme_score ?? 0);
+          const myShapesCount = Array.isArray(r.shapeTags)
+            ? (r.shapeTags as string[]).length
+            : 0;
+          const shapeOverlap = Number(r.shape_overlap ?? 0);
+          const shape =
+            myShapesCount === 0 ? 0 : Math.min(shapeOverlap, 5) * 2;
+          return vibe + theme + shape;
+        })(),
       };
     });
 
@@ -521,6 +534,18 @@ router.post("/photos/match-by-object", async (req, res) => {
 // the caller re-invokes until the response reports `processed === 0`.
 router.post("/photos/backfill-shapes", async (req, res) => {
   try {
+    // Admin gate: this triggers per-row Gemini calls across the
+    // entire active photos table. Without a guard, any device that
+    // can reach /api could rack up unbounded Gemini cost. We require
+    // an X-Admin-Token header that matches BACKFILL_ADMIN_TOKEN
+    // (server env). If the env var is unset, the route is closed
+    // entirely — fail-safe rather than fail-open.
+    const adminToken = process.env.BACKFILL_ADMIN_TOKEN;
+    const provided = req.header("x-admin-token");
+    if (!adminToken || !provided || provided !== adminToken) {
+      res.status(403).json({ error: "forbidden" });
+      return;
+    }
     const user = await resolveUserFromRequest(req);
     if (!user) {
       res.status(401).json({ error: "missing or invalid X-Device-Id" });
