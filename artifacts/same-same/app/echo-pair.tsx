@@ -273,13 +273,17 @@ export default function EchoPairScreen() {
             <Text style={styles.cornerSparkleBL}>✨</Text>
             <Text style={styles.cornerSparkleBR}>✨</Text>
 
+            {/* Hero brand mark — replaces the old plain "wave" wordmark
+                so the Wave (mutual) share card visually elevates above
+                the one-way Ripple share card on /reveal. The brand icon
+                acts as the centerpiece, flanked by gold sparkles to
+                signal "milestone moment". WaveIcon scales 2× internally
+                so size={48} renders at ~96 px in the captured image. */}
             <View style={styles.shareTitleRow}>
               <Text style={[styles.shareTitleSparkle, { color: colors.gold }]}>
                 ✨
               </Text>
-              <Text style={[styles.shareTitle, { color: colors.gold }]}>
-                wave
-              </Text>
+              <Icon name="wave" size={48} />
               <Text style={[styles.shareTitleSparkle, { color: colors.gold }]}>
                 ✨
               </Text>
