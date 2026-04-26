@@ -71,7 +71,10 @@ router.post("/photos", async (req, res) => {
     }
 
     const stripped = b64.replace(/^data:[^;]+;base64,/, "");
-    const { theme, tags } = await analyzePhoto({ base64: stripped, mimeType });
+    const { theme, tags, shapes } = await analyzePhoto({
+      base64: stripped,
+      mimeType,
+    });
 
     // Music-vibe id chosen on the client. Whitelisted to the canonical
     // emotional set defined in artifacts/same-same/data/musicLibrary.ts
@@ -143,6 +146,7 @@ router.post("/photos", async (req, res) => {
         mimeType,
         theme,
         tags,
+        shapeTags: shapes,
         countryCode,
         musicGenre,
         customAudioBase64,
@@ -187,23 +191,30 @@ router.post("/photos", async (req, res) => {
 });
 
 // ---- GET /api/photos/candidates -------------------------------------------
-// Query: ?theme=&tags=tag1,tag2&musicGenre=lofi&limit=24
+// Query: ?theme=&tags=tag1,tag2&shapes=circles,vertical&musicGenre=lofi&limit=24
 // Header: X-Device-Id (required).
 //
-// Scoring (computed in SQL) — rebalanced to favour vibe + theme similarity:
-//   tag_overlap*2 = count of tags shared with the requesting user's photo,
-//                   doubled (lifestyle / vibe tags carry the user's mood)
-//   theme_score   = 10 if exact match, 4 if either string contains the
-//                   other, 0 otherwise — the daily challenge / theme is
-//                   the strongest single similarity signal we have
-//   music_score   = 5 if same musicGenre as the requester's photo,
-//                   0 otherwise (vibe match)
-//   jitter        = tiny random factor (0..0.3) so two consecutive calls
-//                   don't return the exact same ordering
+// Scoring (computed in SQL) — vibe and theme weighted 50/50 in the
+// primary deck, with shapes adding a third equal-weight axis for the
+// secondary "match by subject matter" deck:
+//   vibe_score  = least(tag_overlap, 5) * 2 → 0..10. Lifestyle / vibe
+//                 tags share the photo's mood; capped at 5 so a long
+//                 tag list can't overpower a strong theme match.
+//   theme_score = 10 if exact match, 4 if either string contains the
+//                 other, 0 otherwise — the daily challenge / theme is
+//                 the other strongest signal we have.
+//   shape_score = least(shape_overlap, 5) * 2 → 0..10. Visual-form
+//                 (circles, vertical, layered…) overlap. Always
+//                 contributes when both photos have shapes — does
+//                 double duty as the secondary deck's other half.
+//   music_score = 5 if same musicGenre as the requester's photo, else 0.
+//   jitter      = tiny random factor (0..0.3) so two consecutive calls
+//                 don't return the exact same ordering.
 //
-// The "subject matter match" feature calls this same endpoint with only
-// `tags=` populated (no theme, no musicGenre) so the deck is re-ranked
-// purely by visible-object overlap.
+// Primary deck (theme set):  theme + vibe each up to 10, shapes/music
+//                            ride along as soft boosts (0..15).
+// Subject-matter deck (no theme): vibe (subject objects) + shapes each
+//                            up to 10, equal weighting → 50/50 split.
 //
 // We exclude the user's own photos, expired/removed/over-reported, and
 // anything they've already voted on or seen.
@@ -219,6 +230,16 @@ router.get("/photos/candidates", async (req, res) => {
       typeof req.query.theme === "string" ? req.query.theme.toLowerCase().trim() : "";
     const tagsStr = typeof req.query.tags === "string" ? req.query.tags : "";
     const tags = tagsStr
+      .split(",")
+      .map((t) => t.trim().toLowerCase())
+      .filter(Boolean);
+    // Visual-form / shape tags (circles, vertical, layered…). Used by
+    // both decks: subject-matter mode sends them alongside object tags
+    // for a 50/50 score; the primary deck includes them as a soft
+    // tie-breaker when the requester's photo was analyzed with the
+    // shapes-aware prompt.
+    const shapesStr = typeof req.query.shapes === "string" ? req.query.shapes : "";
+    const shapes = shapesStr
       .split(",")
       .map((t) => t.trim().toLowerCase())
       .filter(Boolean);
@@ -259,6 +280,13 @@ router.get("/photos/candidates", async (req, res) => {
             sql`, `,
           )}]::text[]`
         : sql`ARRAY[]::text[]`;
+    const shapesExpr =
+      shapes.length > 0
+        ? sql`ARRAY[${sql.join(
+            shapes.map((s) => sql`${s}`),
+            sql`, `,
+          )}]::text[]`
+        : sql`ARRAY[]::text[]`;
     // Same shape for the client-supplied exclude list. Empty array is
     // a no-op against `<> ALL` so we don't need a CASE.
     const excludeIdsExpr =
@@ -292,6 +320,7 @@ router.get("/photos/candidates", async (req, res) => {
           p.created_at AS "createdAt",
           md5(substring(p.bytes_base64 from 1 for 4096)) AS content_hash,
           cardinality(ARRAY(SELECT unnest(p.tags) INTERSECT SELECT unnest(${tagsExpr}))) AS tag_overlap,
+          cardinality(ARRAY(SELECT unnest(p.shape_tags) INTERSECT SELECT unnest(${shapesExpr}))) AS shape_overlap,
           CASE
             WHEN ${theme} = '' THEN 0
             WHEN p.theme = ${theme} THEN 10
@@ -304,16 +333,37 @@ router.get("/photos/candidates", async (req, res) => {
             ELSE 0
           END AS music_score,
           (
-            -- Lifestyle / vibe tag overlap is doubled so 3 shared vibe
-            -- tags ≈ a substring theme match. The user's lifestyle tags
-            -- carry the mood of the photo, so they're worth more than
-            -- the previous 1-per-tag baseline.
-            cardinality(ARRAY(SELECT unnest(p.tags) INTERSECT SELECT unnest(${tagsExpr}))) * 2
+            -- Vibe / lifestyle tag overlap, capped at 5 shared and
+            -- weighted *2 → 0..10 pts. Equal-weight to theme so a
+            -- strong vibe match (3-5 shared lifestyle tags) ties
+            -- with an exact same-theme match. The cap stops a long
+            -- tag list from overpowering theme.
+            LEAST(
+              cardinality(ARRAY(SELECT unnest(p.tags) INTERSECT SELECT unnest(${tagsExpr}))),
+              5
+            ) * 2
             + CASE
                 WHEN ${theme} = '' THEN 0
                 WHEN p.theme = ${theme} THEN 10
                 WHEN p.theme ILIKE '%' || ${theme} || '%' OR ${theme} ILIKE '%' || p.theme || '%' THEN 4
                 ELSE 0
+              END
+            -- Shape overlap → 0..10 pts. In subject-matter mode
+            -- (theme empty, shapes sent) this and vibe split the
+            -- score 50/50. In primary mode it's a soft tie-breaker.
+            -- Skip the term entirely when either side has no shape
+            -- tags so legacy rows (uploaded before the shape pass
+            -- existed, with empty shape_tags) are not penalised
+            -- relative to fully-tagged rows that happen to share
+            -- zero shapes. Both score 0; only rows that actually
+            -- share shapes earn the bonus.
+            + CASE
+                WHEN cardinality(${shapesExpr}) = 0 THEN 0
+                WHEN cardinality(p.shape_tags) = 0 THEN 0
+                ELSE LEAST(
+                  cardinality(ARRAY(SELECT unnest(p.shape_tags) INTERSECT SELECT unnest(${shapesExpr}))),
+                  5
+                ) * 2
               END
             + CASE
                 WHEN ${musicGenre} = '' THEN 0
@@ -426,11 +476,11 @@ router.post("/photos/match-by-object", async (req, res) => {
       res.status(404).json({ error: "photo not found" });
       return;
     }
-    const { objects } = await extractObjectTags({
+    const { objects, shapes } = await extractObjectTags({
       base64: row.bytesBase64,
       mimeType: row.mimeType ?? "image/jpeg",
     });
-    res.json({ objects });
+    res.json({ objects, shapes });
   } catch (err) {
     req.log.error({ err }, "match-by-object failed");
     res.status(500).json({ error: "match-by-object failed" });

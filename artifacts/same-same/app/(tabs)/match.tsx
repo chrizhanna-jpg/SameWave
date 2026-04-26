@@ -76,6 +76,13 @@ type Scored = {
   photo: typeof SAMPLE_PHOTOS[number];
   score: number;
   sharedTags: string[];
+  /**
+   * Visual-form / shape tags the candidate shares with the requester's
+   * photo. Filled from `photo.shapes ∩ myShapes`. Empty when either
+   * side has no shapes recorded — those candidates simply earn 0
+   * shape points instead of being excluded.
+   */
+  sharedShapes: string[];
   inChain: boolean;
 };
 
@@ -84,7 +91,15 @@ function scoreCandidates(
   myTags: string[],
   excludeKeys: Set<string>,
   extraPool: SamplePhoto[] = [],
-  relaxFloor: boolean = false,
+  // `relaxFloor` is kept as an arg for source-compat with existing
+  // callers but is no longer consulted. The previous strict floor
+  // (same-theme OR ≥2 shared tags) hid almost every candidate when the
+  // pool was thin (95 sample photos spread across ~100 themes). The
+  // rebalanced score already promotes related photos to the top of the
+  // ranking, so we always return the full ranked list and let the
+  // caller's top-tier window do the curation.
+  _relaxFloor: boolean = false,
+  myShapes: string[] = [],
 ): Scored[] {
   const chain = getThemeChain(preferredTheme);
   const chainIndex = (theme: string) => {
@@ -92,6 +107,7 @@ function scoreCandidates(
     return i === -1 ? -1 : i;
   };
   const myTagSet = new Set(myTags);
+  const myShapeSet = new Set(myShapes);
 
   // Production: pool is REAL candidates only (extraPool comes from
   // /api/photos/candidates, populated by SwipeScreen below).
@@ -119,45 +135,40 @@ function scoreCandidates(
     })
     .map((p) => {
       const sharedTags = p.tags.filter((t) => myTagSet.has(t));
+      const sharedShapes = (p.shapes ?? []).filter((s) => myShapeSet.has(s));
       const idx = chainIndex(p.theme);
       const inChain = idx >= 0;
       const sameTheme = p.theme === preferredTheme;
-      // SCORING — theme dominates. The previous weights had per-tag = 6
-      // and same-theme = 4, which meant a single weak vibe match (e.g.
-      // "warm" appearing on both a hand photo and a kayak) outranked
-      // actual same-subject photos. The user's chosen theme ("Your
-      // hands", "Your morning", etc.) is by far the strongest signal we
-      // have without true visual ML, so a same-theme photo with zero tag
-      // overlap now outranks a different-theme photo sharing one tag.
+      // SCORING — vibe and theme weighted 50/50, mirrors the server's
+      // /candidates SQL so the swipe feel is consistent whether the
+      // pool is sample data or live backend candidates:
+      //   • theme  : 10 pts on exact match (the strongest single signal)
+      //   • vibe   : min(sharedTags, 5) × 2  → 0..10 pts
+      //   • shapes : min(sharedShapes, 5) × 2 → 0..10 pts. Acts as the
+      //              second 50% in subject-matter mode and a soft
+      //              tie-breaker in the primary deck.
+      //   • chain  : small adjacent-theme bleed (max +3) so themes in
+      //              the same chain don't feel disconnected when the
+      //              same-theme bucket is thin.
+      //   • recency: tiny decay so fresh uploads outrank week-old ones.
+      const vibeScore = Math.min(sharedTags.length, 5) * 2;
+      const shapeScore = Math.min(sharedShapes.length, 5) * 2;
       const score =
         (sameTheme ? 10 : 0) +
-        sharedTags.length * 4 +
+        vibeScore +
+        shapeScore +
         (inChain && !sameTheme ? Math.max(0, 3 - idx * 1) : 0) +
         Math.max(0, 0.6 - p.minutesAgo / 4320); // up to +0.6, decays over 3 days
-      return { photo: p, score, sharedTags, inChain };
+      return { photo: p, score, sharedTags, sharedShapes, inChain };
     })
-    // Hard floor — only show genuinely related photos. A candidate must
-    // satisfy at least one of:
-    //   (a) same theme as the user's photo  ← the dominant signal
-    //   (b) ≥ 2 shared tags                 ← multi-tag overlap is real
-    //   (c) chain-adjacent AND ≥ 1 shared tag (mild bleed between
-    //       neighbouring themes is OK only if there's also a tag link)
-    // Single-tag-only crossovers (the kayak-with-"warm" failure mode)
-    // are dropped outright.
-    //
-    // `relaxFloor` skips this check entirely. The caller (getTheirPhoto's
-    // empty-pool retry) uses it as a graceful fallback for early-stage
-    // data sparsity: with only ~100 photos spread across ~100 themes,
-    // almost no candidate will clear the strict bar even though there
-    // are real photos to show. A weak match beats "you're all caught up".
-    .filter((c) => {
-      if (relaxFloor) return true;
-      const sameTheme = c.photo.theme === preferredTheme;
-      if (sameTheme) return true;
-      if (c.sharedTags.length >= 2) return true;
-      if (c.inChain && c.sharedTags.length >= 1) return true;
-      return false;
-    })
+    // No hard floor — the rebalanced score (theme=10, vibe up to 10,
+    // shapes up to 10) already pushes related photos to the top. With
+    // only ~95 sample photos spread across ~100 themes the previous
+    // strict gate (same-theme OR ≥2 shared tags) silently dropped most
+    // of the pool, so the user saw "all caught up" while real
+    // candidates were sitting unseen. Trusting the score lets every
+    // sample/stock photo surface and the top-tier window in
+    // getTheirPhoto curates the actual pick.
     .sort((a, b) => b.score - a.score);
   return candidates;
 }
@@ -171,16 +182,20 @@ function getTheirPhoto(
   excludeKeys: Set<string>,
   currentKey: string | undefined,
   extraPool: SamplePhoto[] = [],
+  myShapes: string[] = [],
 ): { photo: typeof SAMPLE_PHOTOS[number]; matchedTheme: string; sharedTags: string[] } | null {
-  let ranked = scoreCandidates(preferredTheme, myTags, excludeKeys, extraPool);
-  if (ranked.length === 0) {
-    // First fallback — drop the strict same-theme / shared-tag floor.
-    // The early-stage backend has ~100 photos across ~100 themes, so the
-    // strict floor returns nothing for almost any user even when there
-    // are plenty of candidates. A weak match (any other user's photo)
-    // beats showing "you're all caught up" at this stage.
-    ranked = scoreCandidates(preferredTheme, myTags, excludeKeys, extraPool, true);
-  }
+  // Single ranking pass — `scoreCandidates` no longer applies a strict
+  // floor, so the second relaxed-mode call is unnecessary. Shapes flow
+  // through so subject-matter mode (caller passes objects as `myTags`
+  // and visual shapes as `myShapes`) gets the 50/50 split.
+  const ranked = scoreCandidates(
+    preferredTheme,
+    myTags,
+    excludeKeys,
+    extraPool,
+    false,
+    myShapes,
+  );
   if (ranked.length === 0) {
     // Pool genuinely exhausted for this session. We deliberately do NOT
     // recycle already-seen photos — the swipe screen shows a "you've
@@ -339,6 +354,11 @@ export default function SwipeScreen() {
   // photo (the deps below clear it on theme/tags change).
   const [objectMatchLoading, setObjectMatchLoading] = useState(false);
   const [objectMatchTags, setObjectMatchTags] = useState<string[] | null>(null);
+  // Visual-form / shape tags returned alongside the subject tags by the
+  // matcher. Stored separately so the banner can show them in their own
+  // line (helps the user understand the secondary deck is now ranked
+  // 50/50 by subject and shape).
+  const [objectMatchShapes, setObjectMatchShapes] = useState<string[]>([]);
   const [objectMatchError, setObjectMatchError] = useState<string | null>(null);
 
   // Build the exclusion set passed into scoreCandidates / generator: the
@@ -539,6 +559,7 @@ export default function SwipeScreen() {
     // detected objects no longer apply. Clear the object-mode banner
     // and any error so the empty state starts fresh next time.
     setObjectMatchTags(null);
+    setObjectMatchShapes([]);
     setObjectMatchError(null);
     const next = getTheirPhoto(
       activeTheme,
@@ -1072,8 +1093,11 @@ export default function SwipeScreen() {
                   setObjectMatchLoading(true);
                   setObjectMatchError(null);
                   let objects: string[];
+                  let shapes: string[];
                   try {
-                    objects = await matchByObject(photoId);
+                    const result = await matchByObject(photoId);
+                    objects = result.objects;
+                    shapes = result.shapes;
                   } catch {
                     setObjectMatchError(
                       "Couldn't reach the matcher. Try again in a moment.",
@@ -1081,7 +1105,11 @@ export default function SwipeScreen() {
                     setObjectMatchLoading(false);
                     return;
                   }
-                  if (objects.length === 0) {
+                  // Empty subject *and* empty shapes → AI saw nothing
+                  // usable. If either side has values we can still
+                  // re-rank: shapes alone surface visually-similar
+                  // photos even when no concrete subject was spotted.
+                  if (objects.length === 0 && shapes.length === 0) {
                     setObjectMatchError(
                       "Couldn't spot any clear objects in your photo.",
                     );
@@ -1090,7 +1118,12 @@ export default function SwipeScreen() {
                   }
                   try {
                     const cands = await fetchCandidates({
+                      // Subject matter mode: send objects as `tags` and
+                      // shapes alongside so the server's CTE splits the
+                      // score 50/50 between subject overlap and shape
+                      // overlap (no theme / music in this query).
                       tags: objects,
+                      shapes,
                       limit: 24,
                       // Same hard exclusion as the primary deck — we never
                       // want a previously-shown photo to resurface just
@@ -1143,17 +1176,32 @@ export default function SwipeScreen() {
                       return;
                     }
                     setObjectMatchTags(objects);
+                    setObjectMatchShapes(shapes);
                     setRealPool(fresh);
-                    // Pick a candidate immediately with the relax flag so
-                    // the user sees a result without another tap. Shared
-                    // tags fall out of the candidate's overlap with the
-                    // user's own original tag list (not the AI objects).
+                    // Pick a candidate immediately so the user sees a
+                    // result without another tap. We deliberately
+                    // *replace* the ranking inputs in subject-matter
+                    // mode so the local re-rank reflects what the user
+                    // just asked for: ranking by `objects` + `shapes`
+                    // overlap, not by the user's original photo theme.
+                    //   • preferredTheme = ""   → no theme contribution
+                    //     (theme bucket is irrelevant when the user
+                    //     re-queries by visual content).
+                    //   • myTags = objects     → vibe-overlap term
+                    //     scores against the AI-detected subjects.
+                    //   • myShapes = shapes    → shape-overlap term
+                    //     gives the second 50% of the score.
+                    // This mirrors the server's CTE which is invoked
+                    // with the same `tags=objects&shapes=shapes` query
+                    // params above, keeping client and server ranking
+                    // in agreement.
                     const next = getTheirPhoto(
-                      activeTheme,
-                      myTags,
+                      "",
+                      objects,
                       exclude,
                       undefined,
                       fresh,
+                      shapes,
                     );
                     if (next) {
                       setTheirPhoto(next.photo);
@@ -1235,6 +1283,9 @@ export default function SwipeScreen() {
           >
             <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
               matching by subject matter: {objectMatchTags.join(", ")}
+              {objectMatchShapes.length > 0
+                ? ` · shapes: ${objectMatchShapes.join(", ")}`
+                : ""}
             </Text>
           </View>
         )}

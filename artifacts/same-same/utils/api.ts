@@ -64,6 +64,14 @@ async function authedHeaders(extra?: Record<string, string>): Promise<Record<str
 export interface PhotoAnalysis {
   tags: string[];
   theme: string;
+  /**
+   * Visual-form / composition tags returned by the same Gemini pass
+   * (circles, vertical, layered…). Always present — empty when the
+   * model returns nothing usable. The camera screen does not display
+   * shapes today, but uploads forward them so the server can persist
+   * `shape_tags` for the candidate scoring rebalance.
+   */
+  shapes: string[];
 }
 
 export async function analyzePhoto(input: {
@@ -78,14 +86,19 @@ export async function analyzePhoto(input: {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
     });
-    if (!res.ok) return { tags: [], theme: "" };
-    const json = (await res.json()) as { tags?: string[]; theme?: string };
+    if (!res.ok) return { tags: [], theme: "", shapes: [] };
+    const json = (await res.json()) as {
+      tags?: string[];
+      theme?: string;
+      shapes?: string[];
+    };
     return {
       tags: Array.isArray(json.tags) ? json.tags : [],
       theme: typeof json.theme === "string" ? json.theme : "",
+      shapes: Array.isArray(json.shapes) ? json.shapes : [],
     };
   } catch {
-    return { tags: [], theme: "" };
+    return { tags: [], theme: "", shapes: [] };
   }
 }
 
@@ -155,6 +168,14 @@ export async function fetchCandidates(input: {
   theme?: string;
   tags?: string[];
   /**
+   * Visual-form / shape tags (circles, vertical, layered…). Sent
+   * alongside `tags` so the server can split the score 50/50 between
+   * subject overlap and shape overlap in the secondary "match by
+   * subject matter" deck. Optional in the primary deck — adds a soft
+   * tie-breaker when the requester's photo has shapes recorded.
+   */
+  shapes?: string[];
+  /**
    * Music vibe id chosen by the user on their own photo. Sent to the
    * server so the candidate scoring can boost rows with the same
    * music vibe — strengthens the "match by vibe + theme" intent of
@@ -177,6 +198,9 @@ export async function fetchCandidates(input: {
     const params = new URLSearchParams();
     if (input.theme) params.set("theme", input.theme);
     if (input.tags && input.tags.length > 0) params.set("tags", input.tags.join(","));
+    if (input.shapes && input.shapes.length > 0) {
+      params.set("shapes", input.shapes.join(","));
+    }
     if (input.musicGenre) params.set("musicGenre", input.musicGenre);
     if (input.limit) params.set("limit", String(input.limit));
     if (input.excludeIds && input.excludeIds.length > 0) {
@@ -207,7 +231,20 @@ export async function fetchCandidates(input: {
  * "AI saw nothing" apart from "network or server failed" — the two
  * deserve different copy in the UI.
  */
-export async function matchByObject(photoId: string): Promise<string[]> {
+/**
+ * Result of a "match by subject matter" extraction. Contains both the
+ * concrete subjects/objects Gemini saw (people, plants, food, sky…)
+ * and the visual-form / shape tags (circles, vertical, layered…) that
+ * round out the secondary deck's 50/50 score split.
+ */
+export interface MatchByObjectResult {
+  objects: string[];
+  shapes: string[];
+}
+
+export async function matchByObject(
+  photoId: string,
+): Promise<MatchByObjectResult> {
   const base = getApiBase();
   const res = await fetch(`${base}/api/photos/match-by-object`, {
     method: "POST",
@@ -220,8 +257,14 @@ export async function matchByObject(photoId: string): Promise<string[]> {
   if (!res.ok) {
     throw new Error(`match-by-object failed: ${res.status}`);
   }
-  const json = (await res.json()) as { objects?: string[] };
-  return Array.isArray(json.objects) ? json.objects : [];
+  const json = (await res.json()) as {
+    objects?: string[];
+    shapes?: string[];
+  };
+  return {
+    objects: Array.isArray(json.objects) ? json.objects : [],
+    shapes: Array.isArray(json.shapes) ? json.shapes : [],
+  };
 }
 
 export interface VoteResult {

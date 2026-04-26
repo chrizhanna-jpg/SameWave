@@ -34,6 +34,14 @@ export const photosTable = pgTable(
     // AI-derived metadata used for similarity + display.
     theme: varchar("theme", { length: 64 }).notNull().default(""),
     tags: text("tags").array().notNull().default(sql`ARRAY[]::text[]`),
+    // Visual-form / composition tags (circles, lines, vertical, symmetry…)
+    // returned by the same Gemini pass that produces `theme` and `tags`.
+    // Used by the secondary "match by subject matter" mode, which scores
+    // 50% on shared subject (objects) and 50% on shared shapes — and as a
+    // soft tie-breaker in the primary deck. Defaults to an empty array
+    // so legacy rows uploaded before the column existed still load
+    // cleanly (the scoring SQL treats an empty intersection as 0 pts).
+    shapeTags: text("shape_tags").array().notNull().default(sql`ARRAY[]::text[]`),
     // Gemini text-embedding-004 → 768 dimensions.
     embedding: vector("embedding", { dimensions: 768 }),
 

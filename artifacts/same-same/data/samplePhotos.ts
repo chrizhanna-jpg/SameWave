@@ -10,6 +10,14 @@ export interface SamplePhoto {
   minutesAgo: number;
   tags: string[];
   /**
+   * Visual-form / composition tags (circles, vertical, layered…). Used
+   * by scoreCandidates to credit shape overlap as a third axis (each
+   * shared shape worth 2 pts up to 5). Optional so legacy entries
+   * still load — `[]` is treated as "no shapes recorded" and silently
+   * yields 0 shape points without penalising the candidate.
+   */
+  shapes?: string[];
+  /**
    * Music vibe label paired with this photo. Optional so legacy sample
    * data without an explicit pick still loads — the match screen falls
    * back to suggestGenre(theme, tags) at render time when missing.
@@ -47,6 +55,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     theme: "morning",
     minutesAgo: 45,
     tags: ["coffee","drink","people","art","warm"],
+    shapes: ["circles","curves","centered","geometric"],
   },
   {
     id: "2",
@@ -57,6 +66,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     theme: "morning",
     minutesAgo: 127,
     tags: ["coffee","drink","people","art","warm"],
+    shapes: ["circles","curves","centered","geometric"],
   },
   {
     id: "3",
@@ -67,6 +77,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     theme: "food",
     minutesAgo: 210,
     tags: ["meal"],
+    shapes: ["circles","centered","layered"],
   },
   {
     id: "4",
@@ -77,6 +88,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     theme: "food",
     minutesAgo: 68,
     tags: ["meal","bread","drink","warm"],
+    shapes: ["circles","centered","layered","organic"],
   },
   {
     id: "5",
@@ -87,6 +99,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     theme: "work",
     minutesAgo: 361,
     tags: ["people","coffee","laptop","desk"],
+    shapes: ["lines","horizontal","geometric","centered"],
   },
   {
     id: "6",
@@ -97,6 +110,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     theme: "work",
     minutesAgo: 22,
     tags: ["people","desk","laptop"],
+    shapes: ["lines","horizontal","geometric","centered"],
   },
   {
     id: "7",
@@ -107,6 +121,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     theme: "nature",
     minutesAgo: 720,
     tags: ["mountains","clouds","sunset","outdoors"],
+    shapes: ["organic","layered","horizontal"],
   },
   {
     id: "8",
@@ -117,6 +132,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     theme: "nature",
     minutesAgo: 244,
     tags: ["sunset","water","outdoors","clouds","trees","warm"],
+    shapes: ["organic","layered","horizontal"],
   },
   {
     id: "9",
@@ -127,6 +143,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     theme: "joy",
     minutesAgo: 18,
     tags: ["people"],
+    shapes: ["curves","organic","centered"],
   },
   {
     id: "10",
@@ -137,6 +154,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     theme: "joy",
     minutesAgo: 480,
     tags: ["water","art"],
+    shapes: ["curves","organic","centered","horizontal"],
   },
   {
     id: "11",
@@ -147,6 +165,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     theme: "joy",
     minutesAgo: 153,
     tags: ["warm"],
+    shapes: ["curves","organic","centered"],
   },
   {
     id: "12",
@@ -157,6 +176,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     theme: "sky",
     minutesAgo: 1090,
     tags: ["art","clouds","water","night","stars","sunset"],
+    shapes: ["horizontal","layered","minimal","geometric"],
   },
   {
     id: "13",
@@ -167,6 +187,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     theme: "pets",
     minutesAgo: 96,
     tags: ["cat","animal","wildlife"],
+    shapes: ["organic","curves","centered"],
   },
   {
     id: "14",
@@ -177,6 +198,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     theme: "pets",
     minutesAgo: 1440,
     tags: ["dog","animal","smile","outdoors","water"],
+    shapes: ["organic","curves","centered","horizontal"],
   },
   {
     id: "15",
@@ -187,6 +209,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     theme: "commute",
     minutesAgo: 305,
     tags: ["transit","mountains","night","outdoors"],
+    shapes: ["vertical","lines","geometric"],
   },
   {
     id: "16",
@@ -197,6 +220,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     theme: "commute",
     minutesAgo: 185,
     tags: ["city","water","outdoors","sunset","clouds"],
+    shapes: ["vertical","lines","geometric","horizontal"],
   },
   {
     id: "17",
@@ -207,6 +231,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     theme: "sky",
     minutesAgo: 2160,
     tags: ["water","clouds","sunset","outdoors"],
+    shapes: ["horizontal","layered","minimal"],
   },
   {
     id: "18",
@@ -217,6 +242,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     theme: "sky",
     minutesAgo: 425,
     tags: ["stars","night","mountains","outdoors"],
+    shapes: ["horizontal","layered","minimal"],
   },
   {
     id: "19",
@@ -227,6 +253,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     theme: "nature",
     minutesAgo: 95,
     tags: ["sunset","clouds","mountains","outdoors"],
+    shapes: ["organic","layered","horizontal"],
   },
   {
     id: "20",
@@ -237,6 +264,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     theme: "sky",
     minutesAgo: 38,
     tags: ["sunset","outdoors","trees","warm"],
+    shapes: ["horizontal","layered","minimal","organic"],
   },
   {
     id: "21",
@@ -247,6 +275,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     theme: "nature",
     minutesAgo: 510,
     tags: ["trees","outdoors","clouds","warm","sunset"],
+    shapes: ["organic","layered","horizontal"],
   },
   { id: "22", uri: "https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=400", country: "Italy", countryCode: "IT", countryFlag: "🇮🇹", theme: "morning", minutesAgo: 12, tags: ["coffee","drink","warm"] },
   { id: "23", uri: "https://images.unsplash.com/photo-1521017432531-fbd92d768814?w=400", country: "Vietnam", countryCode: "VN", countryFlag: "🇻🇳", theme: "morning", minutesAgo: 88, tags: ["coffee","drink"] },

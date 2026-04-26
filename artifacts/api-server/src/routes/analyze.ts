@@ -24,9 +24,19 @@ const ALLOWED_TAGS = [
   "city", "transit", "desk", "laptop",
 ];
 
+// Visual-form / composition vocabulary. Mirrors SHAPE_TAGS in
+// lib/photoAnalysis.ts — the mobile camera screen calls /analyze-photo
+// before upload to populate the chips, so we want both prompts to
+// produce the same shape vocabulary.
+const SHAPE_TAGS = [
+  "circles", "curves", "lines", "vertical", "horizontal", "diagonal",
+  "symmetry", "repeating", "layered", "geometric", "organic", "minimal",
+  "busy", "centered", "framed",
+];
+
 const PROMPT = `You are analyzing a daily-life photo for a global "find people who share your moments and interests" app.
 
-Return TWO things:
+Return THREE things:
 1. "theme" — a SHORT lowercase phrase (1–4 words) naming the activity, moment,
    or subject of the photo. Be specific and natural. Anything is fair game:
    "morning coffee", "street food", "extreme sports", "first steps",
@@ -37,9 +47,14 @@ Return TWO things:
    (e.g. a photo of running shoes on a trail → "running", "outdoors", "fitness";
    a photo of a yarn project → "crafts", "cozy", "home"):
    ${ALLOWED_TAGS.join(", ")}
+3. "shapes" — up to 4 tags from this FIXED visual-form vocabulary, describing
+   the COMPOSITION of the frame (NOT the subject). Pick what is visibly
+   dominant — e.g. a coffee cup top-down → "circles", "centered"; a city
+   skyline → "vertical", "lines", "repeating".
+   Vocabulary: ${SHAPE_TAGS.join(", ")}
 
 Return ONLY this JSON, no prose, no markdown:
-{"theme": "...", "tags": ["..."]}`;
+{"theme": "...", "tags": ["..."], "shapes": ["..."]}`;
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8 MB
 const FETCH_TIMEOUT_MS = 8000;
@@ -146,7 +161,7 @@ router.post("/analyze-photo", async (req, res) => {
       },
     });
 
-    let parsed: { tags?: unknown; theme?: unknown } = {};
+    let parsed: { tags?: unknown; theme?: unknown; shapes?: unknown } = {};
     try {
       parsed = JSON.parse(response.text ?? "{}");
     } catch {
@@ -161,6 +176,14 @@ router.post("/analyze-photo", async (req, res) => {
           .slice(0, 6)
       : [];
 
+    const shapes = Array.isArray(parsed.shapes)
+      ? parsed.shapes
+          .filter((t): t is string => typeof t === "string")
+          .map((t) => t.toLowerCase().trim())
+          .filter((t) => SHAPE_TAGS.includes(t))
+          .slice(0, 4)
+      : [];
+
     let theme = "";
     if (typeof parsed.theme === "string") {
       theme = parsed.theme
@@ -172,10 +195,10 @@ router.post("/analyze-photo", async (req, res) => {
         .join(" ");
     }
 
-    res.json({ tags, theme });
+    res.json({ tags, theme, shapes });
   } catch (err) {
     req.log.error({ err }, "analyze-photo failed");
-    res.status(500).json({ error: "analysis failed", tags: [] });
+    res.status(500).json({ error: "analysis failed", tags: [], shapes: [] });
   }
 });
 
