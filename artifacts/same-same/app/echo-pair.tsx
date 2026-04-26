@@ -289,7 +289,7 @@ export default function EchoPairScreen() {
               </Text>
             </View>
             <Text style={[styles.shareSubtitle, { color: colors.teal }]}>
-              Wave · mutual
+              Wave
             </Text>
 
             <View style={styles.shareChipsRow}>
@@ -547,11 +547,11 @@ const styles = StyleSheet.create({
     textTransform: "lowercase",
   },
   shareSubtitle: {
-    fontSize: 11,
+    fontSize: 22,
     fontFamily: "Inter_700Bold",
-    letterSpacing: 2,
+    letterSpacing: 3,
     textTransform: "uppercase",
-    marginTop: -2,
+    marginTop: 2,
   },
   // Tiny gold sparkles tucked into the four corners of the share
   // card. Absolute-positioned so they don't disturb the centered
