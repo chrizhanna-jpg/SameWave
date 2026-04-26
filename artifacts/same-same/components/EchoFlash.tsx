@@ -198,7 +198,7 @@ export function EchoFlash({
         </Pressable>
 
         <Text style={styles.tagline}>wave</Text>
-        <Text style={styles.headline}>a wave!</Text>
+        <Text style={styles.headline}>Wave!</Text>
 
         {/* The two photo thumbnails with the spinning Echo globe
             between them — visually communicates "your vibes met in

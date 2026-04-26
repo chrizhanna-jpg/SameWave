@@ -143,7 +143,7 @@ export default function EchoPairScreen() {
         <Icon name="x" size={20} color={colors.foreground} />
       </TouchableOpacity>
       <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-        a wave
+        Wave
       </Text>
       <TouchableOpacity
         onPress={handleShare}
@@ -285,7 +285,7 @@ export default function EchoPairScreen() {
               </Text>
             </View>
             <Text style={[styles.shareSubtitle, { color: colors.teal }]}>
-              a wave · mutual
+              Wave · mutual
             </Text>
 
             <View style={styles.shareChipsRow}>

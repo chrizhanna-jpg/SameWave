@@ -254,7 +254,7 @@ export default function RevealScreen() {
           <Icon name="x" size={20} color={colors.foreground} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-          a wave
+          Wave
         </Text>
         <View style={{ width: 40 }} />
       </View>
@@ -291,7 +291,7 @@ export default function RevealScreen() {
           ]}
         >
           <Text style={[styles.shareTitle, { color: colors.foreground }]}>
-            a wave
+            Wave
           </Text>
 
           <View style={styles.shareChipsRow}>
