@@ -34,6 +34,11 @@
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.RECORD_AUDIO",
         "android.permission.ACCESS_FINE_LOCATION"
       ]
     },
@@ -84,6 +89,12 @@
         "projectId": "435d5953-8fbe-48a4-9b0c-85096db24c53"
       }
     },
-    "owner": "chrizhanna"
+    "owner": "chrizhanna",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/435d5953-8fbe-48a4-9b0c-85096db24c53"
+    }
   }
 }
