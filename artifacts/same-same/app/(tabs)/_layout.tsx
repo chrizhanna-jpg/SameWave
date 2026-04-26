@@ -201,7 +201,7 @@ export default function TabLayout() {
           title: "Discover",
           tabBarIcon: ({ color, focused }) => (
             <TabIcon
-              name="wave"
+              name="compass"
               color={color}
               focused={focused}
               activeColor={colors.primary}
@@ -215,7 +215,7 @@ export default function TabLayout() {
           title: "My World",
           tabBarIcon: ({ color, focused }) => (
             <TabIcon
-              name="globe"
+              name="wave"
               color={color}
               focused={focused}
               activeColor={colors.primary}

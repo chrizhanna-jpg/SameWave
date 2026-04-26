@@ -65,7 +65,7 @@ export function EchoGlobeLogo({
             },
           ]}
         >
-          where minds meet
+          send a ripple, catch a wave
         </Text>
       )}
     </View>

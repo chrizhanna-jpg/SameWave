@@ -63,9 +63,6 @@ export default function HomeScreen() {
             color="#FFFFFF"
             taglineColor={colors.mutedForeground}
           />
-          <Text style={[styles.tagline, { color: colors.mutedForeground, marginTop: 10 }]}>
-            Where minds meet.
-          </Text>
         </View>
 
         {/* Stats — layered surface, count-up numbers, tabular figures */}

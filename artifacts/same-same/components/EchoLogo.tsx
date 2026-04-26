@@ -41,7 +41,7 @@ export function EchoLogo({
             { color: taglineColor, fontSize: s.tagline, marginTop: s.gap },
           ]}
         >
-          where minds meet
+          send a ripple, catch a wave
         </Text>
       )}
     </View>

@@ -19,7 +19,6 @@ import { router, useFocusEffect } from "expo-router";
 import { markTabVisited } from "@/utils/tabVisits";
 import { Icon } from "@/components/Icon";
 import { MicBadge } from "@/components/MicBadge";
-import { MatchHearts } from "@/components/MatchHearts";
 import { MatchFlash } from "@/components/MatchFlash";
 import { EchoLogo } from "@/components/EchoLogo";
 import { OceanShimmer } from "@/components/OceanShimmer";
@@ -1326,9 +1325,10 @@ export default function SwipeScreen() {
                 style={[styles.actionBtn, styles.matchBtn, { backgroundColor: colors.teal }]}
                 onPress={() => handleSwipe("right")}
                 activeOpacity={0.85}
-                accessibilityLabel="Wave"
+                accessibilityLabel="Send ripple"
+                accessibilityHint="Sends a ripple on this photo. If the other person reciprocates, it becomes a wave."
               >
-                <MatchHearts size={30} color="#001018" />
+                <Icon name="ripple" size={30} color="#001018" />
               </TouchableOpacity>
             </View>
           </View>

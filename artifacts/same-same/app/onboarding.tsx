@@ -16,6 +16,7 @@ import { CountryPickerModal } from "@/components/CountryPickerModal";
 import { Surface } from "@/components/Surface";
 import { GradientCard } from "@/components/GradientCard";
 import { PressableScale } from "@/components/PressableScale";
+import { Icon } from "@/components/Icon";
 
 // Only enforce country selection in production / published builds. In
 // dev / Expo Go we keep the legacy "Skip — I'll set it later" behaviour
@@ -26,21 +27,30 @@ const REQUIRE_COUNTRY = !__DEV__;
 
 const { width } = Dimensions.get("window");
 
-const STEPS = [
+type Step = {
+  kind: "intro" | "country";
+  title: string | null;
+  subtitle: string | null;
+  body: string | null;
+  bodyKind?: "ripple-wave";
+};
+
+const STEPS: Step[] = [
   {
-    kind: "intro" as const,
+    kind: "intro",
     title: null,
     subtitle: null,
     body: "Share a photo of your moment. Somewhere in the world, someone is on the same wavelength as you.",
   },
   {
-    kind: "intro" as const,
+    kind: "intro",
     title: "Send a ripple.",
     subtitle: "Catch a wave.",
-    body: "Swipe 🌊 'Wave!' on photos that share your vibe — that's a ripple. When the other person waves back, it's a wave: a mutual moment, fully anonymous.",
+    body: null,
+    bodyKind: "ripple-wave",
   },
   {
-    kind: "country" as const,
+    kind: "country",
     title: "Where are you?",
     subtitle: null,
     body: "We use your country to celebrate when you ripple with someone close — same country, same continent, same little planet.",
@@ -149,15 +159,55 @@ export default function OnboardingScreen() {
             {currentStep.subtitle}
           </Text>
         )}
-        <Text
-          style={[
-            styles.body,
-            { color: colors.mutedForeground },
-            isHeroStep && styles.bodyHero,
-          ]}
-        >
-          {currentStep.body}
-        </Text>
+        {currentStep.bodyKind === "ripple-wave" ? (
+          <View
+            style={styles.bodyRowWrap}
+            accessibilityLabel="Swipe ripple for photos that match your vibe. If the other person reciprocates, it's a Wave — a mutual moment, fully anonymous."
+          >
+            <Text style={[styles.bodyChunk, { color: colors.mutedForeground }]}>
+              Swipe
+            </Text>
+            <Icon
+              name="ripple"
+              size={18}
+              color={colors.teal}
+              style={styles.inlineIcon}
+            />
+            <Text style={[styles.bodyChunk, { color: colors.mutedForeground }]}>
+              for photos that match your
+            </Text>
+            <Text
+              style={[
+                styles.bodyChunk,
+                { color: colors.mutedForeground, fontStyle: "italic" },
+              ]}
+            >
+              {"'vibe'."}
+            </Text>
+            <Text style={[styles.bodyChunk, { color: colors.mutedForeground }]}>
+              If the other person reciprocates, it&apos;s a Wave
+            </Text>
+            <Icon
+              name="wave"
+              size={18}
+              color={colors.gold}
+              style={styles.inlineIcon}
+            />
+            <Text style={[styles.bodyChunk, { color: colors.mutedForeground }]}>
+              : a mutual moment, fully anonymous.
+            </Text>
+          </View>
+        ) : (
+          <Text
+            style={[
+              styles.body,
+              { color: colors.mutedForeground },
+              isHeroStep && styles.bodyHero,
+            ]}
+          >
+            {currentStep.body}
+          </Text>
+        )}
 
         {isCountryStep && (
           <PressableScale
@@ -345,6 +395,25 @@ const styles = StyleSheet.create({
   bodyHero: {
     fontSize: 17,
     lineHeight: 26,
+  },
+  bodyRowWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "center",
+    columnGap: 4,
+    rowGap: 4,
+    marginTop: 4,
+    paddingHorizontal: 4,
+  },
+  bodyChunk: {
+    fontSize: 15,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 23,
+    flexShrink: 1,
+  },
+  inlineIcon: {
+    marginHorizontal: 2,
   },
   footer: {
     paddingHorizontal: 24,
