@@ -85,6 +85,10 @@ export interface Match {
   // couple of lifestyle/hobby tags) — used to surface similar interests
   // beyond the single photo subject.
   theirVibe?: string[];
+  // Music info captured from the matched photo at swipe time so the
+  // reveal screen can replay the exact clip the user heard on the card.
+  theirMusicGenre?: string;
+  theirCustomAudioUrl?: string;
   // How many other people also said "same same" to the matched photo,
   // bucketed by time. Populated asynchronously after a "same" verdict.
   // Used by the reveal screen and discovery feed to show social weight.

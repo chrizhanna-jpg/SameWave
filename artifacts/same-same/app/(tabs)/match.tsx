@@ -654,6 +654,33 @@ export default function SwipeScreen() {
     };
   }, []);
 
+  // When the user returns from a push screen (e.g. /reveal), the music
+  // useEffect above won't re-fire because its deps haven't changed.
+  // This focus effect restarts the current card's clip after any such
+  // return. We skip the very first focus (initial mount) because the
+  // music useEffect handles that — avoiding a double-play at startup.
+  const musicFocusInitRef = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (!musicFocusInitRef.current) {
+        musicFocusInitRef.current = true;
+        return;
+      }
+      const photo = theirPhotoRef.current;
+      if (!photo?.uri || photo.id === "placeholder" || noMore) return;
+      if (photo.customAudioUrl) {
+        playLeaseRef.current = playClip(photo.customAudioUrl);
+        return;
+      }
+      const stored = photo.musicGenre;
+      const genre: MusicGenre =
+        (stored && getGenre(stored)?.id) ||
+        suggestGenre(photo.theme, photo.tags);
+      const clip = pickClipForSeed(genre, photo.uri);
+      playLeaseRef.current = playClip(clip.url);
+    }, [noMore]),
+  );
+
   const toggleMute = useCallback(() => {
     const next = !audioIsMuted();
     setAudioMuted(next);
@@ -758,6 +785,8 @@ export default function SwipeScreen() {
           myPhotoUploadedAt: snapshotMyUploadedAt,
           sharedTags: snapshotShared,
           theirVibe: expandToVibe(snapshotPhoto.tags ?? [], snapshotPhoto.uri),
+          theirMusicGenre: snapshotPhoto.musicGenre,
+          theirCustomAudioUrl: snapshotPhoto.customAudioUrl,
         };
         const liveId = realPhotoIdsRef.current.get(snapshotPhoto.uri);
         // For "same" verdicts attach a stats payload so the reveal screen

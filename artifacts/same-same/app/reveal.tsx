@@ -21,6 +21,17 @@ import * as Sharing from "expo-sharing";
 import ViewShot, { captureRef } from "react-native-view-shot";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
+import {
+  getGenre,
+  pickClipForSeed,
+  suggestGenre,
+  type MusicGenre,
+} from "@/data/musicLibrary";
+import {
+  markUserInteracted,
+  playClip,
+  stopIfLease,
+} from "@/utils/audio";
 import { CountryReveal } from "@/components/CountryReveal";
 import { ConnectSheet } from "@/components/ConnectSheet";
 import { DAILY_CHALLENGES } from "@/data/samplePhotos";
@@ -101,6 +112,28 @@ export default function RevealScreen() {
     unlockPro();
     setPaywallOpen(false);
   };
+
+  // Audio: play the matched card's clip while the reveal is open,
+  // then stop on unmount so we don't bleed into the next screen.
+  const playLeaseRef = useRef<number>(0);
+  useEffect(() => {
+    if (!match) return;
+    markUserInteracted();
+    if (match.theirCustomAudioUrl) {
+      playLeaseRef.current = playClip(match.theirCustomAudioUrl);
+      return;
+    }
+    const stored = match.theirMusicGenre;
+    const genre: MusicGenre =
+      (stored && getGenre(stored)?.id) || suggestGenre(match.theme, []);
+    const clip = pickClipForSeed(genre, match.theirPhoto);
+    playLeaseRef.current = playClip(clip.url);
+  }, [match]);
+  useEffect(() => {
+    return () => {
+      void stopIfLease(playLeaseRef.current);
+    };
+  }, []);
 
   const fadeIn = useRef(new Animated.Value(0)).current;
   const scaleIn = useRef(new Animated.Value(0.92)).current;
