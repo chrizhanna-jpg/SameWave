@@ -57,8 +57,18 @@ function RootLayoutNav() {
           onOpen={() => {
             const a = pendingFlashEcho.mine.id;
             const b = pendingFlashEcho.theirs.id;
-            dismissFlashEcho();
+            // Push the share-card route FIRST and tear down the flash
+            // overlay only after the screen-push transition has had
+            // time to cover it. If we dismiss synchronously the
+            // overlay disappears immediately, exposing the underlying
+            // match screen for the ~300 ms the navigation animation
+            // takes — which reads as a flicker back to the match
+            // screen before the share card "lands". The timeout
+            // matches React Navigation's default stack/modal push
+            // duration; the overlay then unmounts behind the new
+            // screen, invisible to the user.
             router.push({ pathname: "/echo-pair", params: { a, b } });
+            setTimeout(() => dismissFlashEcho(), 400);
           }}
         />
       )}
