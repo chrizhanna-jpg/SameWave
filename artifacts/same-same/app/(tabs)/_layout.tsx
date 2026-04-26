@@ -139,6 +139,7 @@ export default function TabLayout() {
           shadowOffset: { width: 0, height: -4 },
           ...(isWeb ? { height: 84 } : { height: 70 }),
           paddingTop: 6,
+          paddingBottom: 9,
         },
         tabBarBackground: () =>
           isIOS ? (
