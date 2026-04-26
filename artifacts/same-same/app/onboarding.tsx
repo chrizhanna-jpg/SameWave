@@ -178,7 +178,7 @@ export default function OnboardingScreen() {
             </Text>
             <Icon
               name="ripple"
-              size={18}
+              size={32}
               color={colors.teal}
               style={styles.inlineIcon}
             />
