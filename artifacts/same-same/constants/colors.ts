@@ -31,14 +31,14 @@ const palette = {
   borderSubtle: "rgba(255, 255, 255, 0.06)",
   input: "#143554",
 
-  success: "#43A047",
+  success: "#3DA478",
   successForeground: "#ffffff",
 
   gold: "#FFD166",
   teal: "#00BFA5",
   coral: "#0288D1",
   navy: "#071828",
-  green: "#43A047",
+  green: "#3DA478",
 };
 
 const radii = { sm: 12, md: 16, lg: 20, xl: 28, pill: 999 } as const;

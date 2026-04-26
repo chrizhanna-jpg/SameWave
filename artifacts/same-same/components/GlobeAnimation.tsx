@@ -5,8 +5,11 @@ import Svg, { Circle, Ellipse, G, Path } from "react-native-svg";
 const AnimatedView = Animated.View;
 
 const OCEAN = "#1565a0";
-const LAND = "#2e7d32";
-const LAND_LIGHT = "#388e3c";
+// Continent greens are tuned to lean cool/teal rather than pure
+// forest green so they harmonise with the cyan-blue + teal-accent
+// palette used everywhere else in the app.
+const LAND = "#2C806B";
+const LAND_LIGHT = "#3C9583";
 const GRID = "rgba(255,255,255,0.12)";
 const DOT = "#FFD166";
 const ARC = "#FFD166";
