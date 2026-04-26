@@ -203,7 +203,7 @@ export default function OnboardingScreen() {
               style={styles.inlineIcon}
             />
             <Text style={[styles.bodyChunk, { color: colors.mutedForeground }]}>
-              — a mutual moment, fully anonymous.
+              ... a mutual moment, fully anonymous.
             </Text>
           </View>
         ) : (
