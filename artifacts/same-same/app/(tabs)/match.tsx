@@ -184,11 +184,10 @@ function getTheirPhoto(
   extraPool: SamplePhoto[] = [],
   myShapes: string[] = [],
 ): { photo: typeof SAMPLE_PHOTOS[number]; matchedTheme: string; sharedTags: string[] } | null {
-  // Single ranking pass — `scoreCandidates` no longer applies a strict
-  // floor, so the second relaxed-mode call is unnecessary. Shapes flow
-  // through so subject-matter mode (caller passes objects as `myTags`
-  // and visual shapes as `myShapes`) gets the 50/50 split.
-  const ranked = scoreCandidates(
+  // Primary ranking pass with shapes threaded through so subject-matter
+  // mode (caller passes objects as `myTags` and visual shapes as
+  // `myShapes`) gets the 50/50 split.
+  let ranked = scoreCandidates(
     preferredTheme,
     myTags,
     excludeKeys,
@@ -196,6 +195,21 @@ function getTheirPhoto(
     false,
     myShapes,
   );
+  if (ranked.length === 0) {
+    // Safety net for the rare case where the dedupe / exclusion combo
+    // empties the pool entirely. The strict floor is no longer applied
+    // by scoreCandidates, but we keep the relax-mode call site so any
+    // future tightening of the score gating still has a graceful
+    // fallback before we hand back null.
+    ranked = scoreCandidates(
+      preferredTheme,
+      myTags,
+      excludeKeys,
+      extraPool,
+      true,
+      myShapes,
+    );
+  }
   if (ranked.length === 0) {
     // Pool genuinely exhausted for this session. We deliberately do NOT
     // recycle already-seen photos — the swipe screen shows a "you've
@@ -462,6 +476,11 @@ export default function SwipeScreen() {
             theme: c.theme || activeTheme,
             minutesAgo,
             tags: c.tags,
+            // Forward the candidate's shape tags so scoreCandidates can
+            // compute shape overlap during local re-rank. Server returns
+            // [] for legacy rows — handled by the `(p.shapes ?? [])`
+            // guard inside scoreCandidates.
+            shapes: c.shapeTags,
             musicGenre: c.musicGenre ?? undefined,
             customAudioUrl: c.customAudioUrl ?? undefined,
           };
@@ -1151,6 +1170,11 @@ export default function SwipeScreen() {
                         theme: c.theme || activeTheme,
                         minutesAgo,
                         tags: c.tags,
+                        // Same as the primary deck — forward shapeTags
+                        // so the local re-rank in subject-mode (which
+                        // passes `shapes` as myShapes) actually scores
+                        // candidate-side shape overlap instead of 0.
+                        shapes: c.shapeTags,
                         musicGenre: c.musicGenre ?? undefined,
                         customAudioUrl: c.customAudioUrl ?? undefined,
                       };

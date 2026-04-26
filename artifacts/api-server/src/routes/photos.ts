@@ -311,6 +311,12 @@ router.get("/photos/candidates", async (req, res) => {
           p.id,
           p.theme,
           p.tags,
+          -- Visual-form / shape tags travel back to the client so the
+          -- mobile re-rank in scoreCandidates can compute shape overlap
+          -- against the requester's shapes. Without this field, the
+          -- client's local shape_score term is always 0 and the
+          -- subject-matter deck's 50/50 split collapses to subject-only.
+          p.shape_tags AS "shapeTags",
           p.country_code AS "countryCode",
           p.music_genre AS "musicGenre",
           p.custom_audio_base64 AS "customAudioBase64",
@@ -419,12 +425,22 @@ router.get("/photos/candidates", async (req, res) => {
         id: String(r.id),
         theme: String(r.theme ?? ""),
         tags: Array.isArray(r.tags) ? (r.tags as string[]) : [],
+        // Surface the candidate's shape tags so the client-side
+        // re-rank in scoreCandidates can compute shape overlap. Empty
+        // for legacy rows whose shape_tags was never populated; the
+        // client tolerates `[]` and just earns 0 shape points.
+        shapeTags: Array.isArray(r.shapeTags) ? (r.shapeTags as string[]) : [],
         countryCode: (r.countryCode as string | null) ?? null,
         musicGenre: (r.musicGenre as string | null) ?? null,
         customAudioUrl,
         uri: `data:${String(r.mimeType)};base64,${String(r.bytesBase64)}`,
         createdAt: r.createdAt as string | Date,
-        score: Number(r.tag_overlap ?? 0) + Number(r.theme_score ?? 0),
+        // Surface vibe + theme + shape together so the client knows
+        // how the row scored on the new 50/50 axis.
+        score:
+          Number(r.tag_overlap ?? 0) +
+          Number(r.theme_score ?? 0) +
+          Number(r.shape_overlap ?? 0),
       };
     });
 
@@ -484,6 +500,108 @@ router.post("/photos/match-by-object", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "match-by-object failed");
     res.status(500).json({ error: "match-by-object failed" });
+  }
+});
+
+// ---- POST /api/photos/backfill-shapes -------------------------------------
+// Body (optional): { limit?: number }   — default 20, max 100
+// Header: X-Device-Id (required).
+//
+// One-shot backfill so legacy photos (uploaded before the shape pass
+// existed) get visual-form tags written to `shape_tags`. Without this,
+// older rows can only earn the subject half of the secondary deck's
+// 50/50 score and quietly drop relative to fresh uploads.
+//
+// Idempotent: only photos with empty `shape_tags` are processed, and
+// rows that come back with no shapes from Gemini are written back as
+// the empty array they already had (so a second pass with the same
+// limit just no-ops). Best-effort per row — failures are logged and
+// the loop continues so a single transient Gemini error doesn't kill
+// the whole batch. Bounded by `limit` to keep memory/cost predictable;
+// the caller re-invokes until the response reports `processed === 0`.
+router.post("/photos/backfill-shapes", async (req, res) => {
+  try {
+    const user = await resolveUserFromRequest(req);
+    if (!user) {
+      res.status(401).json({ error: "missing or invalid X-Device-Id" });
+      return;
+    }
+    const body = (req.body ?? {}) as { limit?: unknown };
+    const requested =
+      typeof body.limit === "number" && Number.isFinite(body.limit)
+        ? Math.floor(body.limit)
+        : 20;
+    const limit = Math.max(1, Math.min(100, requested));
+
+    const rows = await db
+      .select({
+        id: photosTable.id,
+        bytesBase64: photosTable.bytesBase64,
+        mimeType: photosTable.mimeType,
+      })
+      .from(photosTable)
+      .where(
+        and(
+          eq(photosTable.status, "active"),
+          sql`cardinality(${photosTable.shapeTags}) = 0`,
+        ),
+      )
+      .limit(limit);
+
+    let updated = 0;
+    let failed = 0;
+    for (const row of rows) {
+      try {
+        const { shapes } = await extractObjectTags({
+          base64: row.bytesBase64,
+          mimeType: row.mimeType ?? "image/jpeg",
+        });
+        // Always write something so the row's cardinality > 0 and
+        // it won't be picked up again on the next backfill pass —
+        // otherwise rows that genuinely have no detectable shapes
+        // would loop forever and the documented `processed === 0`
+        // termination contract would never be reached.
+        //
+        // For no-shape rows we write a single underscore-prefixed
+        // sentinel ("_none") that is not in the user-facing
+        // SHAPE_TAGS vocabulary, so it can never overlap with a
+        // real query's `shapes=` and earns 0 shape-overlap points
+        // at scoring time without polluting the visible tag space.
+        const toWrite = shapes.length > 0 ? shapes : ["_none"];
+        await db
+          .update(photosTable)
+          .set({ shapeTags: toWrite })
+          .where(eq(photosTable.id, row.id));
+        updated++;
+      } catch (err) {
+        req.log.warn({ err, photoId: row.id }, "backfill row failed");
+        failed++;
+        // Mark the row so it's not retried forever. Some uploads
+        // have base64 payloads that Gemini rejects ("Provided image
+        // is not valid") — without a sentinel, every backfill call
+        // would re-pick the same poison row and never converge.
+        // "_failed" lives outside SHAPE_TAGS so it can never match
+        // a real `shapes=` query.
+        try {
+          await db
+            .update(photosTable)
+            .set({ shapeTags: ["_failed"] })
+            .where(eq(photosTable.id, row.id));
+        } catch (writeErr) {
+          req.log.error({ writeErr, photoId: row.id }, "failed to mark row");
+        }
+      }
+    }
+    res.json({
+      processed: rows.length,
+      updated,
+      failed,
+      // Caller polls until processed === 0 to know the backfill is done.
+      done: rows.length < limit,
+    });
+  } catch (err) {
+    req.log.error({ err }, "backfill-shapes failed");
+    res.status(500).json({ error: "backfill failed" });
   }
 });
 

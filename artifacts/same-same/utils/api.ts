@@ -150,6 +150,14 @@ export interface CandidatePhoto {
   id: string;
   theme: string;
   tags: string[];
+  /**
+   * Visual-form / shape tags persisted server-side. Returned so the
+   * mobile re-rank can compute shape overlap against the requester's
+   * shapes — without it, the local subject-matter score collapses to
+   * subject-only (vibe term) and loses the 50/50 split. Empty array
+   * for legacy rows uploaded before the shape pass.
+   */
+  shapeTags: string[];
   countryCode: string | null;
   /** Music vibe label; null for legacy photos uploaded pre-feature. */
   musicGenre: string | null;

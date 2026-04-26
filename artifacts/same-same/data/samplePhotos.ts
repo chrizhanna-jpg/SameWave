@@ -76,7 +76,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇲🇽",
     theme: "food",
     minutesAgo: 210,
-    tags: ["meal"],
+    tags: ["meal","warm","people"],
     shapes: ["circles","centered","layered"],
   },
   {
@@ -142,7 +142,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇧🇷",
     theme: "joy",
     minutesAgo: 18,
-    tags: ["people"],
+    tags: ["people","warm"],
     shapes: ["curves","organic","centered"],
   },
   {
@@ -153,7 +153,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇰🇷",
     theme: "joy",
     minutesAgo: 480,
-    tags: ["water","art"],
+    tags: ["water","art","people"],
     shapes: ["curves","organic","centered","horizontal"],
   },
   {
@@ -164,7 +164,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     countryFlag: "🇲🇦",
     theme: "joy",
     minutesAgo: 153,
-    tags: ["warm"],
+    tags: ["warm","people"],
     shapes: ["curves","organic","centered"],
   },
   {
