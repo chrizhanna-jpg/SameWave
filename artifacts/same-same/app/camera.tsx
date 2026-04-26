@@ -99,6 +99,12 @@ export default function CameraScreen() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [aiTags, setAiTags] = useState<string[]>([]);
   const [aiTheme, setAiTheme] = useState<string>("");
+  // Free-form concrete subjects from Gemini (apple, sculpture…). Not
+  // shown to the user but persisted on the local MyPhoto record so the
+  // match screen can pass them into /candidates as `subjects=`. Mirror
+  // ref kept in sync so submit() reads the freshest value after the
+  // analyzePhoto await.
+  const aiSubjectsRef = useRef<string[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
   const [showAllTags, setShowAllTags] = useState(false);
   const themeEditedRef = useRef(false);
@@ -573,21 +579,31 @@ export default function CameraScreen() {
     const reqId = ++analyzeReqIdRef.current;
     aiTagsRef.current = [];
     setAiTags([]);
+    aiSubjectsRef.current = [];
     setAnalyzing(true);
     const p = (async () => {
-      let result: { tags: string[]; theme: string } = { tags: [], theme: "" };
+      let result: { tags: string[]; theme: string; subjects: string[] } = {
+        tags: [],
+        theme: "",
+        subjects: [],
+      };
       try {
-        result = await analyzePhoto(
+        const r = await analyzePhoto(
           asset.base64
             ? { imageBase64: asset.base64, mimeType: asset.mimeType ?? "image/jpeg" }
             : { imageUrl: asset.uri }
         );
+        // analyzePhoto returns shapes too — we don't surface them in
+        // the camera UI, but subjects are pulled out so submit() can
+        // forward them into addMyPhoto.
+        result = { tags: r.tags, theme: r.theme, subjects: r.subjects };
       } catch {
-        result = { tags: [], theme: "" };
+        result = { tags: [], theme: "", subjects: [] };
       }
       // Drop stale results (user picked a newer photo while we were waiting).
       if (reqId !== analyzeReqIdRef.current) return;
       aiTagsRef.current = result.tags;
+      aiSubjectsRef.current = result.subjects;
       setAiTags(result.tags);
       setAiTheme(result.theme);
       // Autofill the theme input only if the user hasn't typed anything yet.
@@ -647,6 +663,11 @@ export default function CameraScreen() {
       isAi,
       finalGenre,
       recordedUrl ?? undefined,
+      // Free-form subjects from Gemini — captured in analyzeSelected
+      // and stashed on the local MyPhoto so the match screen can pass
+      // them into /candidates as the `subjects=` query param. Empty if
+      // analysis hadn't returned by the time the user submitted.
+      aiSubjectsRef.current,
     );
     // Stop the preview clip — user is leaving the screen.
     void stopAudio();
@@ -670,8 +691,17 @@ export default function CameraScreen() {
         .then((res) => {
           // Store the backend ID back onto the local photo record so future
           // votes against this photo can flag it as the voter's side and
-          // form echo offers.
-          if (res?.id && localUri) setMyPhotoBackendId(localUri, res.id);
+          // form echo offers. Also forward the upload-time `subjects`
+          // array — the upload's analysis is the authoritative one (it's
+          // what got persisted and what /candidates ranks against), so
+          // any drift between the pre-upload analyze pass and the
+          // upload-time pass is reconciled in favor of the server.
+          // setMyPhotoBackendId no-ops when the array is empty so a
+          // failed upload-time analysis doesn't wipe usable local
+          // subjects we already had.
+          if (res?.id && localUri) {
+            setMyPhotoBackendId(localUri, res.id, res.subjects);
+          }
         })
         .catch(() => {});
     }

@@ -1,7 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 
-// Photo analysis (theme + tags + shapes) was previously inline in
-// routes/analyze.ts. We extract it here so the upload endpoint can
+// Photo analysis (theme + tags + shapes + subjects) was previously inline
+// in routes/analyze.ts. We extract it here so the upload endpoint can
 // reuse it and stay DRY.
 const ALLOWED_TAGS = [
   "coffee", "drink", "meal", "bread", "dessert", "cooking", "baking", "warm", "cafe",
@@ -27,9 +27,53 @@ const SHAPE_TAGS = [
   "busy", "centered", "framed",
 ];
 
+// Hard caps applied to the FREE-FORM `subjects` field returned by both
+// analyzePhoto and extractObjectTags. These bound DB row size and stop a
+// runaway model from blowing the candidate scoring vocabulary out.
+const MAX_SUBJECTS = 6;
+const MAX_SUBJECT_LEN = 32;
+// Generic stop-words we always strip even if the model returns them —
+// they'd silently sink the subject signal by inflating overlap noise
+// (every outdoor photo would otherwise share "scene", "object", etc).
+const SUBJECT_STOPWORDS = new Set([
+  "scene", "object", "thing", "stuff", "item", "items", "photo", "photograph",
+  "picture", "image", "background", "foreground",
+]);
+
+function normaliseSubject(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  // Lowercase, strip everything that isn't a letter, digit, space, hyphen
+  // or apostrophe (so "Apple's", "latte-art" survive but punctuation /
+  // emoji / quotes don't), collapse whitespace, then trim.
+  const cleaned = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9 \-']/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return null;
+  if (cleaned.length > MAX_SUBJECT_LEN) return null;
+  if (SUBJECT_STOPWORDS.has(cleaned)) return null;
+  return cleaned;
+}
+
+function parseSubjects(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const r of raw) {
+    const norm = normaliseSubject(r);
+    if (!norm) continue;
+    if (seen.has(norm)) continue;
+    seen.add(norm);
+    out.push(norm);
+    if (out.length >= MAX_SUBJECTS) break;
+  }
+  return out;
+}
+
 const PROMPT = `You are analyzing a daily-life photo for a global "find people who share your moments and interests" app.
 
-Return THREE things:
+Return FOUR things:
 1. "theme" — a SHORT lowercase phrase (1–4 words) naming the activity, moment,
    or subject of the photo. Be specific and natural.
 2. "tags" — up to 6 tags from this FIXED vocabulary, capturing BOTH the visual
@@ -41,9 +85,17 @@ Return THREE things:
    skyline → "vertical", "lines", "repeating"; a forest path → "vertical",
    "lines", "organic". Skip a shape if it's not clearly present.
    Vocabulary: ${SHAPE_TAGS.join(", ")}
+4. "subjects" — up to 6 SHORT noun tokens (1–3 words each, lowercase) naming
+   the CONCRETE THINGS literally visible in the photo. NO fixed vocabulary —
+   use whatever specific words best describe what's in the frame. Examples:
+   ["apple", "sculpture", "park", "bench"] for a park sculpture of an apple
+   core; ["latte art", "ceramic mug", "wood table"] for a coffee shot;
+   ["golden retriever", "tennis ball", "grass"] for a dog playing fetch.
+   Skip lifestyle / mood / activity words (those go in "tags") — only name
+   physical things, materials, or proper nouns visible in the frame.
 
 Return ONLY this JSON, no prose, no markdown:
-{"theme": "...", "tags": ["..."], "shapes": ["..."]}`;
+{"theme": "...", "tags": ["..."], "shapes": ["..."], "subjects": ["..."]}`;
 
 const ai = new GoogleGenAI({
   apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY ?? "",
@@ -56,7 +108,12 @@ const ai = new GoogleGenAI({
 export async function analyzePhoto(args: {
   base64: string;
   mimeType: string;
-}): Promise<{ theme: string; tags: string[]; shapes: string[] }> {
+}): Promise<{
+  theme: string;
+  tags: string[];
+  shapes: string[];
+  subjects: string[];
+}> {
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash",
     contents: [
@@ -70,7 +127,12 @@ export async function analyzePhoto(args: {
     ],
     config: { responseMimeType: "application/json", maxOutputTokens: 8192 },
   });
-  let parsed: { tags?: unknown; theme?: unknown; shapes?: unknown } = {};
+  let parsed: {
+    tags?: unknown;
+    theme?: unknown;
+    shapes?: unknown;
+    subjects?: unknown;
+  } = {};
   try {
     parsed = JSON.parse(response.text ?? "{}");
   } catch {
@@ -90,6 +152,7 @@ export async function analyzePhoto(args: {
         .filter((t) => SHAPE_TAGS.includes(t))
         .slice(0, 4)
     : [];
+  const subjects = parseSubjects(parsed.subjects);
   let theme = "";
   if (typeof parsed.theme === "string") {
     theme = parsed.theme
@@ -100,29 +163,20 @@ export async function analyzePhoto(args: {
       .slice(0, 4)
       .join(" ");
   }
-  return { theme, tags, shapes };
+  return { theme, tags, shapes, subjects };
 }
-
-// Subset of ALLOWED_TAGS that name PHYSICAL OBJECTS or LIVING THINGS,
-// as opposed to lifestyle / activity / mood / location words. Used by
-// the "match by subject matter" matching mode so the AI re-tags the
-// user's photo focused only on what's literally visible in the frame.
-const OBJECT_TAGS = [
-  "coffee", "drink", "meal", "bread", "dessert",
-  "trees", "clouds", "stars", "mountains",
-  "water", "beach", "snow", "plants", "flowers", "garden",
-  "dog", "cat", "animal", "wildlife", "bird",
-  "art", "laptop", "desk",
-];
 
 const OBJECT_PROMPT = `You are looking at a photo for a global "match by subject matter" feature.
 
 Return TWO things:
-1. "objects" — up to 6 tags naming the PHYSICAL OBJECTS or LIVING THINGS
-   that are clearly visible in the photo, choosing from this fixed
-   vocabulary. Skip lifestyle, activity, mood, location, or sentiment
-   words — only name what's literally in the frame.
-   Vocabulary: ${OBJECT_TAGS.join(", ")}
+1. "objects" — up to 6 SHORT noun tokens (1–3 words each, lowercase) naming
+   the CONCRETE THINGS literally visible in the photo. NO fixed vocabulary —
+   use whatever specific words best describe what's in the frame. Examples:
+   ["apple", "sculpture", "park", "bench"] for a park sculpture of an apple
+   core; ["latte art", "ceramic mug"] for a coffee shot; ["golden retriever",
+   "tennis ball"] for a dog playing fetch. Skip lifestyle / mood / activity
+   / location-feeling words — only name physical things, materials, or proper
+   nouns visible in the frame.
 2. "shapes" — up to 4 tags from this FIXED visual-form vocabulary,
    describing the COMPOSITION of the frame (NOT the subject). Pick what
    is visibly dominant — e.g. a coffee cup top-down → "circles",
@@ -133,10 +187,10 @@ Return ONLY this JSON, no prose, no markdown:
 {"objects": ["..."], "shapes": ["..."]}`;
 
 // Object-focused vision pass used by the "match by subject matter" button
-// on the swipe screen. Lighter than analyzePhoto: returns the subject
-// tag list and the visual-form (shape) tag list, no theme. Mobile uses
-// these as a /candidates query so the user gets a fresh deck ranked by
-// visible-object overlap + shape overlap (50/50) instead of the usual
+// on the swipe screen. Lighter than analyzePhoto: returns the free-form
+// subject tag list and the visual-form (shape) tag list, no theme. Mobile
+// uses these as a /candidates query so the user gets a fresh deck ranked
+// by visible-object overlap + shape overlap (50/50) instead of the usual
 // theme + lifestyle-tag overlap.
 export async function extractObjectTags(args: {
   base64: string;
@@ -161,13 +215,7 @@ export async function extractObjectTags(args: {
   } catch {
     parsed = {};
   }
-  const objects = Array.isArray(parsed.objects)
-    ? parsed.objects
-        .filter((t): t is string => typeof t === "string")
-        .map((t) => t.toLowerCase().trim())
-        .filter((t) => OBJECT_TAGS.includes(t))
-        .slice(0, 6)
-    : [];
+  const objects = parseSubjects(parsed.objects);
   const shapes = Array.isArray(parsed.shapes)
     ? parsed.shapes
         .filter((t): t is string => typeof t === "string")
@@ -178,4 +226,4 @@ export async function extractObjectTags(args: {
   return { objects, shapes };
 }
 
-export { ALLOWED_TAGS, OBJECT_TAGS, SHAPE_TAGS };
+export { ALLOWED_TAGS, SHAPE_TAGS };

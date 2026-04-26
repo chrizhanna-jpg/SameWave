@@ -83,6 +83,14 @@ type Scored = {
    * shape points instead of being excluded.
    */
   sharedShapes: string[];
+  /**
+   * Free-form concrete subjects the candidate shares with the
+   * requester's photo. Filled from `photo.subjects ∩ mySubjects` —
+   * empty when either side has no subjects recorded (legacy rows or
+   * sample data). Drives the heaviest single-axis bonus, mirrored on
+   * the server in the /candidates SQL.
+   */
+  sharedSubjects: string[];
   inChain: boolean;
 };
 
@@ -100,6 +108,12 @@ function scoreCandidates(
   // caller's top-tier window do the curation.
   _relaxFloor: boolean = false,
   myShapes: string[] = [],
+  // Free-form concrete subjects (apple, sculpture, latte art…) from
+  // the requester's photo. Defaults to empty so legacy callers get the
+  // old 0-pt subject term and behaviour stays unchanged for them.
+  // Mirrors the server's `subjects=` query param exactly so live and
+  // dev/synthetic candidates rank in the same order.
+  mySubjects: string[] = [],
 ): Scored[] {
   const chain = getThemeChain(preferredTheme);
   const chainIndex = (theme: string) => {
@@ -108,6 +122,7 @@ function scoreCandidates(
   };
   const myTagSet = new Set(myTags);
   const myShapeSet = new Set(myShapes);
+  const mySubjectSet = new Set(mySubjects);
 
   // Production: pool is REAL candidates only (extraPool comes from
   // /api/photos/candidates, populated by SwipeScreen below).
@@ -136,30 +151,54 @@ function scoreCandidates(
     .map((p) => {
       const sharedTags = p.tags.filter((t) => myTagSet.has(t));
       const sharedShapes = (p.shapes ?? []).filter((s) => myShapeSet.has(s));
+      const sharedSubjects = (p.subjects ?? []).filter((s) =>
+        mySubjectSet.has(s),
+      );
       const idx = chainIndex(p.theme);
       const inChain = idx >= 0;
       const sameTheme = p.theme === preferredTheme;
-      // SCORING — vibe and theme weighted 50/50, mirrors the server's
-      // /candidates SQL so the swipe feel is consistent whether the
-      // pool is sample data or live backend candidates:
-      //   • theme  : 10 pts on exact match (the strongest single signal)
+      // SCORING — mirrors the server's /candidates SQL exactly so the
+      // swipe feel is consistent whether the pool is sample data or
+      // live backend candidates. Subject overlap is the heaviest
+      // single axis because it's the only one with free-form
+      // vocabulary — sharing concrete nouns ("apple", "sculpture") is
+      // a much stronger "this is the same thing" signal than sharing
+      // a lifestyle bucket:
+      //   • subject: min(sharedSubjects, 5) × 3 → 0..15 pts. Heaviest
+      //              term — fixes the "two apple sculptures don't
+      //              match" failure the constrained `tags` couldn't.
+      //              Skipped (0 pts) when either side has no subjects
+      //              recorded so legacy rows aren't penalised.
+      //   • theme  : 10 pts on exact match (still a strong signal)
       //   • vibe   : min(sharedTags, 5) × 2  → 0..10 pts
-      //   • shapes : min(sharedShapes, 5) × 2 → 0..10 pts. Acts as the
-      //              second 50% in subject-matter mode and a soft
-      //              tie-breaker in the primary deck.
+      //   • shapes : min(sharedShapes, 5) × 2 → 0..10 pts. Soft
+      //              tie-breaker in the primary deck and the second
+      //              axis in subject-matter mode.
       //   • chain  : small adjacent-theme bleed (max +3) so themes in
       //              the same chain don't feel disconnected when the
       //              same-theme bucket is thin.
       //   • recency: tiny decay so fresh uploads outrank week-old ones.
+      const subjectScore =
+        mySubjects.length === 0 || (p.subjects ?? []).length === 0
+          ? 0
+          : Math.min(sharedSubjects.length, 5) * 3;
       const vibeScore = Math.min(sharedTags.length, 5) * 2;
       const shapeScore = Math.min(sharedShapes.length, 5) * 2;
       const score =
+        subjectScore +
         (sameTheme ? 10 : 0) +
         vibeScore +
         shapeScore +
         (inChain && !sameTheme ? Math.max(0, 3 - idx * 1) : 0) +
         Math.max(0, 0.6 - p.minutesAgo / 4320); // up to +0.6, decays over 3 days
-      return { photo: p, score, sharedTags, sharedShapes, inChain };
+      return {
+        photo: p,
+        score,
+        sharedTags,
+        sharedShapes,
+        sharedSubjects,
+        inChain,
+      };
     })
     // No hard floor — the rebalanced score (theme=10, vibe up to 10,
     // shapes up to 10) already pushes related photos to the top. With
@@ -183,10 +222,17 @@ function getTheirPhoto(
   currentKey: string | undefined,
   extraPool: SamplePhoto[] = [],
   myShapes: string[] = [],
+  // Free-form concrete subjects from the requester's photo. Forwarded
+  // straight into scoreCandidates so the local re-rank can earn the
+  // heaviest single-axis bonus on top of the existing theme/vibe/shape
+  // signals. Empty for legacy call sites — those just see the old 0-pt
+  // subject term and behave unchanged.
+  mySubjects: string[] = [],
 ): { photo: typeof SAMPLE_PHOTOS[number]; matchedTheme: string; sharedTags: string[] } | null {
-  // Primary ranking pass with shapes threaded through so subject-matter
-  // mode (caller passes objects as `myTags` and visual shapes as
-  // `myShapes`) gets the 50/50 split.
+  // Primary ranking pass with shapes + subjects threaded through so
+  // both the primary deck (subjects from the user's own photo) and
+  // subject-matter mode (caller passes AI-detected objects as
+  // `mySubjects` and visual shapes as `myShapes`) score correctly.
   let ranked = scoreCandidates(
     preferredTheme,
     myTags,
@@ -194,6 +240,7 @@ function getTheirPhoto(
     extraPool,
     false,
     myShapes,
+    mySubjects,
   );
   if (ranked.length === 0) {
     // Safety net for the rare case where the dedupe / exclusion combo
@@ -208,6 +255,7 @@ function getTheirPhoto(
       extraPool,
       true,
       myShapes,
+      mySubjects,
     );
   }
   if (ranked.length === 0) {
@@ -310,13 +358,28 @@ export default function SwipeScreen() {
   }, [myPhotos]);
 
   // User's photo is LOCKED for the session — only changes when they upload a new one
-  const myPhotoData = React.useMemo<{ uri: string; uploadedAt: string; theme: string; tags: string[] }>(() => {
+  const myPhotoData = React.useMemo<{
+    uri: string;
+    uploadedAt: string;
+    theme: string;
+    tags: string[];
+    /**
+     * Free-form concrete subjects (apple, sculpture, latte art…)
+     * detected by Gemini at upload time. Threaded through into both
+     * the /candidates fetch (`subjects=` query param) and the local
+     * scoreCandidates re-rank so the heaviest single-axis bonus
+     * actually fires. Empty for sample data and for legacy uploads
+     * that predate the column.
+     */
+    subjects: string[];
+  }>(() => {
     if (todaysPhoto) {
       return {
         uri: todaysPhoto.uri,
         uploadedAt: todaysPhoto.uploadedAt,
         theme: todaysPhoto.theme,
         tags: todaysPhoto.tags ?? [],
+        subjects: todaysPhoto.subjects ?? [],
       };
     }
     const sample = SAMPLE_PHOTOS[0];
@@ -325,12 +388,14 @@ export default function SwipeScreen() {
       uploadedAt: simulatedPostedAt(5).toISOString(),
       theme: sample.theme,
       tags: sample.tags,
+      subjects: sample.subjects ?? [],
     };
   }, [todaysPhoto]);
 
   const myPhotoUri = myPhotoData.uri;
   const activeTheme = myPhotoData.theme;
   const myTags = myPhotoData.tags;
+  const mySubjects = myPhotoData.subjects;
   // The user's theme is freeform — find a matching daily challenge for the
   // emoji if possible, otherwise default to ✨ and show the raw theme text.
   const themeMeta = DAILY_CHALLENGES.find(
@@ -342,6 +407,18 @@ export default function SwipeScreen() {
   // Stable signature of the user's tag list — included in deps so re-uploading
   // the same URI/theme but with different tags re-seeds the candidate pool.
   const myTagsKey = React.useMemo(() => [...myTags].sort().join("|"), [myTags]);
+
+  // Same role for subjects: when `setMyPhotoBackendId` patches the local
+  // photo with the authoritative upload-time subjects (often richer
+  // than the pre-upload analyze pass), we want the candidate fetch
+  // effects to re-run with the corrected `subjects=` query so the deck
+  // re-ranks against the right axis. Without this, an empty/weak
+  // pre-upload subjects array would lock the deck into a 0-subject
+  // ranking even after the patch arrives.
+  const mySubjectsKey = React.useMemo(
+    () => [...mySubjects].sort().join("|"),
+    [mySubjects],
+  );
 
   // Stable photoKey for the user's own photo — never offered as a match.
   const myPhotoKey = React.useMemo(() => photoKey(myPhotoUri), [myPhotoUri]);
@@ -422,6 +499,8 @@ export default function SwipeScreen() {
       buildExcludeKeys(k),
       k,
       realPoolRef.current,
+      [],
+      mySubjectsRef.current,
     );
     if (next) {
       setTheirPhoto(next.photo);
@@ -445,6 +524,12 @@ export default function SwipeScreen() {
     fetchCandidates({
       theme: activeTheme,
       tags: myTags,
+      // Free-form concrete subjects from the user's own photo. This
+      // is the heaviest single signal at scoring time (3 pts × min
+      // overlap, 5 = 0..15) — the axis that lets two apple sculptures
+      // match each other when neither tags nor theme would carry the
+      // overlap. Skipped silently when the photo predates the column.
+      subjects: mySubjects,
       // Pass the user's chosen music vibe so the server can boost
       // candidates with the same vibe (theme + lifestyle tags +
       // music vibe = the primary "vibe match" signal).
@@ -481,6 +566,10 @@ export default function SwipeScreen() {
             // [] for legacy rows — handled by the `(p.shapes ?? [])`
             // guard inside scoreCandidates.
             shapes: c.shapeTags,
+            // Same role for the new subjects axis — without this, the
+            // local re-rank's subject term is always 0 and the heaviest
+            // single-axis bonus collapses to nothing.
+            subjects: c.subjects,
             musicGenre: c.musicGenre ?? undefined,
             customAudioUrl: c.customAudioUrl ?? undefined,
           };
@@ -501,7 +590,11 @@ export default function SwipeScreen() {
     return () => {
       cancelled = true;
     };
-  }, [activeTheme, myTagsKey]);
+    // mySubjectsKey: see comment on the useMemo. Including it ensures
+    // the candidate fetch re-runs after `setMyPhotoBackendId` patches
+    // the local photo with the upload-time subjects, so the deck
+    // re-ranks against the authoritative subjects.
+  }, [activeTheme, myTagsKey, mySubjectsKey]);
 
   const realPoolRef = useRef<SamplePhoto[]>(realPool);
   realPoolRef.current = realPool;
@@ -533,6 +626,8 @@ export default function SwipeScreen() {
         buildExcludeKeys(),
         undefined,
         realPool,
+        [],
+        mySubjects,
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
@@ -559,6 +654,12 @@ export default function SwipeScreen() {
   activeThemeRef.current = activeTheme;
   const myTagsRef = useRef(myTags);
   myTagsRef.current = myTags;
+  // Mirror of mySubjects so the post-hydration / loadNextCandidate
+  // callbacks (which read latest ref values inside stable closures)
+  // pick up subjects from the freshest upload without re-creating
+  // the callback on every state change.
+  const mySubjectsRef = useRef(mySubjects);
+  mySubjectsRef.current = mySubjects;
   const myPhotoUriRef = useRef(myPhotoUri);
   myPhotoUriRef.current = myPhotoUri;
   const isAnimatingOutRef = useRef(false);
@@ -586,6 +687,8 @@ export default function SwipeScreen() {
       buildExcludeKeys(),
       undefined,
       realPool,
+      [],
+      mySubjects,
     );
     if (next) {
       setTheirPhoto(next.photo);
@@ -599,8 +702,11 @@ export default function SwipeScreen() {
     pan.setValue({ x: 0, y: 0 });
     cardScale.setValue(1);
     sameOpacity.setValue(0);
+    // mySubjectsKey: also re-pick when the upload-time subjects patch
+    // arrives, so the freshly-fetched candidates are scored against
+    // the authoritative array.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myPhotoUri, activeTheme, myTagsKey]);
+  }, [myPhotoUri, activeTheme, myTagsKey, mySubjectsKey]);
 
   // Mark the currently-displayed photo as seen the moment it lands on
   // screen. This closes the swipe-right race window — the photo behind
@@ -738,6 +844,8 @@ export default function SwipeScreen() {
       buildExcludeKeys(currentKey),
       currentKey,
       realPoolRef.current,
+      [],
+      mySubjectsRef.current,
     );
     // After the swipe-out animation, the native-driven transform is parked
     // off-screen. Calling setValue from JS does NOT reliably propagate back
@@ -1145,11 +1253,18 @@ export default function SwipeScreen() {
                   }
                   try {
                     const cands = await fetchCandidates({
-                      // Subject matter mode: send objects as `tags` and
-                      // shapes alongside so the server's CTE splits the
-                      // score 50/50 between subject overlap and shape
-                      // overlap (no theme / music in this query).
-                      tags: objects,
+                      // Subject matter mode: send the AI-detected
+                      // objects as `subjects=` (free-form, heaviest
+                      // weight at scoring time — 3 pts × min(overlap,
+                      // 5) = 0..15) and the shape tags alongside so
+                      // the server still has a second axis to break
+                      // ties on. Tags is left empty: the constrained
+                      // lifestyle vocabulary can't represent concrete
+                      // nouns like "apple" / "sculpture" anyway and
+                      // sending objects there would double-count
+                      // against the same candidates the subjects axis
+                      // already promoted.
+                      subjects: objects,
                       shapes,
                       limit: 24,
                       // Same hard exclusion as the primary deck — we never
@@ -1183,6 +1298,13 @@ export default function SwipeScreen() {
                         // passes `shapes` as myShapes) actually scores
                         // candidate-side shape overlap instead of 0.
                         shapes: c.shapeTags,
+                        // And forward subjects so the local re-rank
+                        // can credit subject overlap against the
+                        // AI-detected `objects` we passed in below as
+                        // `mySubjects`. Without this, the heaviest
+                        // axis would be 0 on the client even though
+                        // the server already used it for ranking.
+                        subjects: c.subjects,
                         musicGenre: c.musicGenre ?? undefined,
                         customAudioUrl: c.customAudioUrl ?? undefined,
                       };
@@ -1214,26 +1336,24 @@ export default function SwipeScreen() {
                     // result without another tap. We deliberately
                     // *replace* the ranking inputs in subject-matter
                     // mode so the local re-rank reflects what the user
-                    // just asked for: ranking by `objects` + `shapes`
-                    // overlap, not by the user's original photo theme.
-                    //   • preferredTheme = ""   → no theme contribution
-                    //     (theme bucket is irrelevant when the user
-                    //     re-queries by visual content).
-                    //   • myTags = objects     → vibe-overlap term
-                    //     scores against the AI-detected subjects.
-                    //   • myShapes = shapes    → shape-overlap term
-                    //     gives the second 50% of the score.
-                    // This mirrors the server's CTE which is invoked
-                    // with the same `tags=objects&shapes=shapes` query
-                    // params above, keeping client and server ranking
-                    // in agreement.
+                    // just asked for. Mirrors the server's matching
+                    // SQL exactly so client and server agree:
+                    //   • preferredTheme = "" → no theme contribution
+                    //     (the user explicitly opted out of theme).
+                    //   • myTags        = []  → no vibe-overlap term;
+                    //     constrained lifestyle tags don't carry the
+                    //     concrete-noun signal we care about here.
+                    //   • myShapes      = shapes  → shape-overlap term.
+                    //   • mySubjects    = objects → subject-overlap term
+                    //     (heaviest single axis, 0..15 pts).
                     const next = getTheirPhoto(
                       "",
-                      objects,
+                      [],
                       exclude,
                       undefined,
                       fresh,
                       shapes,
+                      objects,
                     );
                     if (next) {
                       setTheirPhoto(next.photo);

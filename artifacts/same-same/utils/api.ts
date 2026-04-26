@@ -72,6 +72,15 @@ export interface PhotoAnalysis {
    * `shape_tags` for the candidate scoring rebalance.
    */
   shapes: string[];
+  /**
+   * Free-form concrete subjects ("apple", "sculpture", "park"…)
+   * returned by the same Gemini pass. Up to 6 short noun tokens with
+   * no allowlist — this is the axis that lets semantically-similar
+   * photos (two apple sculptures, two latte arts) match each other
+   * even when they share neither theme nor lifestyle tags. Empty if
+   * the model returns nothing usable.
+   */
+  subjects: string[];
 }
 
 export async function analyzePhoto(input: {
@@ -86,19 +95,21 @@ export async function analyzePhoto(input: {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
     });
-    if (!res.ok) return { tags: [], theme: "", shapes: [] };
+    if (!res.ok) return { tags: [], theme: "", shapes: [], subjects: [] };
     const json = (await res.json()) as {
       tags?: string[];
       theme?: string;
       shapes?: string[];
+      subjects?: string[];
     };
     return {
       tags: Array.isArray(json.tags) ? json.tags : [],
       theme: typeof json.theme === "string" ? json.theme : "",
       shapes: Array.isArray(json.shapes) ? json.shapes : [],
+      subjects: Array.isArray(json.subjects) ? json.subjects : [],
     };
   } catch {
-    return { tags: [], theme: "", shapes: [] };
+    return { tags: [], theme: "", shapes: [], subjects: [] };
   }
 }
 
@@ -110,6 +121,14 @@ export interface UploadedPhoto {
   id: string;
   theme: string;
   tags: string[];
+  /**
+   * Free-form concrete subjects Gemini saw at upload time. Threaded
+   * back to the client so AppContext can stash them on the in-memory
+   * `MyPhoto` and the match screen can pass them into /candidates as
+   * the `subjects=` query param — that's what unlocks the heaviest
+   * subject-overlap scoring axis. Empty if the model returned nothing.
+   */
+  subjects: string[];
   musicGenre: string | null;
   hasCustomAudio: boolean;
 }
@@ -138,6 +157,7 @@ export async function uploadPhoto(input: {
       id: json.id,
       theme: json.theme ?? "",
       tags: Array.isArray(json.tags) ? json.tags : [],
+      subjects: Array.isArray(json.subjects) ? json.subjects : [],
       musicGenre: typeof json.musicGenre === "string" ? json.musicGenre : null,
       hasCustomAudio: json.hasCustomAudio === true,
     };
@@ -158,6 +178,15 @@ export interface CandidatePhoto {
    * for legacy rows uploaded before the shape pass.
    */
   shapeTags: string[];
+  /**
+   * Free-form concrete subjects ("apple", "sculpture", "park"…)
+   * persisted server-side. Surfaced so the local re-rank in
+   * scoreCandidates can compute subject overlap and award the
+   * heaviest single-axis bonus (3 pts × min(overlap,5) = 0..15).
+   * Empty for legacy rows uploaded before the subjects pass / before
+   * the backfill ran — those rows still match on the other axes.
+   */
+  subjects: string[];
   countryCode: string | null;
   /** Music vibe label; null for legacy photos uploaded pre-feature. */
   musicGenre: string | null;
@@ -184,6 +213,16 @@ export async function fetchCandidates(input: {
    */
   shapes?: string[];
   /**
+   * Free-form concrete subjects (apple, sculpture, latte art…) from
+   * the requester's own photo. Sent to the server so the matcher can
+   * compute concrete-noun overlap — the heaviest single-axis bonus
+   * (3 pts × min(overlap,5) = 0..15). Optional but the most important
+   * signal the client can pass when present; it's what fixes the
+   * "two apple sculptures don't match" failure that the constrained
+   * `tags` vocabulary couldn't carry.
+   */
+  subjects?: string[];
+  /**
    * Music vibe id chosen by the user on their own photo. Sent to the
    * server so the candidate scoring can boost rows with the same
    * music vibe — strengthens the "match by vibe + theme" intent of
@@ -208,6 +247,9 @@ export async function fetchCandidates(input: {
     if (input.tags && input.tags.length > 0) params.set("tags", input.tags.join(","));
     if (input.shapes && input.shapes.length > 0) {
       params.set("shapes", input.shapes.join(","));
+    }
+    if (input.subjects && input.subjects.length > 0) {
+      params.set("subjects", input.subjects.join(","));
     }
     if (input.musicGenre) params.set("musicGenre", input.musicGenre);
     if (input.limit) params.set("limit", String(input.limit));

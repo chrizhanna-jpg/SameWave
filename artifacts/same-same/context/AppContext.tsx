@@ -30,6 +30,15 @@ export interface MyPhoto {
   theme: string;
   tags?: string[];
   /**
+   * Free-form concrete subjects (apple, sculpture, latte art…)
+   * returned by Gemini at upload time. Cached on-device so the match
+   * screen can pass them into /candidates as the `subjects=` query
+   * param — that's what unlocks the heaviest subject-overlap scoring
+   * axis (3 pts × min(overlap, 5) = 0..15). Optional for backwards
+   * compatibility with photos uploaded before the column existed.
+   */
+  subjects?: string[];
+  /**
    * Marked true when the photo failed our EXIF authenticity check
    * (no camera metadata, AI software signature, etc). AI photos are
    * shown with an "AI" badge and excluded from echo connections.
@@ -238,14 +247,31 @@ interface AppContextValue extends AppState {
     isAI?: boolean,
     musicGenre?: string,
     customAudioUrl?: string,
+    /**
+     * Free-form concrete subjects from Gemini at upload time. Threaded
+     * straight into the `MyPhoto` record so the match screen can pass
+     * them into /candidates as the `subjects=` query param. Defaults
+     * to empty when callers (e.g. legacy paths) don't have them.
+     */
+    subjects?: string[],
   ) => void;
   /**
    * Patch a previously-added local photo with the backend ID returned by
    * the upload API. Called from the camera screen once the network round
    * trip completes; safe to call before or after the photo is consumed
    * by the swipe deck.
+   *
+   * Optional `subjects` arg patches the local photo's free-form subjects
+   * with the upload-time analysis result (the authoritative one — it's
+   * what got persisted on the row /candidates ranks against). Empty /
+   * missing arrays no-op so a transient upload-time analyze failure
+   * doesn't wipe out the pre-upload subjects we already had locally.
    */
-  setMyPhotoBackendId: (uri: string, backendId: string) => void;
+  setMyPhotoBackendId: (
+    uri: string,
+    backendId: string,
+    subjects?: string[],
+  ) => void;
   completeOnboarding: () => void;
   resetOnboarding: () => void;
   unlockPro: () => void;
@@ -475,6 +501,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               uploadedAt: p.uploadedAt ?? new Date().toISOString(),
               theme: p.theme ?? "joy",
               tags: p.tags ?? [],
+              // Preserve subjects across restarts so the match screen
+              // can keep passing them into /candidates after a cold
+              // start. Defaults to [] for photos persisted before the
+              // field existed — those still match on theme/vibe/shape
+              // and the next fresh upload will populate the field.
+              subjects: Array.isArray(p.subjects) ? p.subjects : [],
               isAI: p.isAI ?? false,
               // Preserve the backend ID across restarts so votes from
               // already-uploaded photos still create echo offers.
@@ -885,12 +917,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     isAI?: boolean,
     musicGenre?: string,
     customAudioUrl?: string,
+    subjects?: string[],
   ) => {
     const photo: MyPhoto = {
       uri,
       uploadedAt: new Date().toISOString(),
       theme,
       tags: tags ?? [],
+      // Persist subjects on the local record. Empty array (rather than
+      // undefined) keeps the match screen's `mySubjects ?? []` paths
+      // simple and matches the server-side `default ARRAY[]::text[]`.
+      subjects: subjects ?? [],
       isAI: isAI ?? false,
       musicGenre: musicGenre,
       customAudioUrl,
@@ -915,22 +952,38 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const setMyPhotoBackendId = useCallback((uri: string, backendId: string) => {
-    setState((prev) => {
-      let changed = false;
-      const newPhotos = prev.myPhotos.map((p) => {
-        if (p.uri === uri && p.backendId !== backendId) {
+  const setMyPhotoBackendId = useCallback(
+    (uri: string, backendId: string, subjects?: string[]) => {
+      setState((prev) => {
+        let changed = false;
+        const newPhotos = prev.myPhotos.map((p) => {
+          if (p.uri !== uri) return p;
+          // Patch backendId, and (when the upload response surfaces a
+          // non-empty subjects array) also patch subjects. The pre-
+          // upload analyze pass and the upload-time analysis run the
+          // same Gemini prompt, but they are two independent calls and
+          // the upload's pass is authoritative — it is what was
+          // actually persisted to the row that /candidates ranks
+          // against. Only overwrite when we have something to overwrite
+          // with so a transient upload-time analysis failure (sentinel
+          // [], or [_failed] swapped to []) doesn't wipe the local
+          // pre-upload subjects we already had.
+          const nextSubjects =
+            subjects && subjects.length > 0 ? subjects : p.subjects;
+          if (p.backendId === backendId && nextSubjects === p.subjects) {
+            return p;
+          }
           changed = true;
-          return { ...p, backendId };
-        }
-        return p;
+          return { ...p, backendId, subjects: nextSubjects };
+        });
+        if (!changed) return prev;
+        const newState = { ...prev, myPhotos: newPhotos };
+        saveState(newState);
+        return newState;
       });
-      if (!changed) return prev;
-      const newState = { ...prev, myPhotos: newPhotos };
-      saveState(newState);
-      return newState;
-    });
-  }, []);
+    },
+    [],
+  );
 
   const completeOnboarding = useCallback(() => {
     setState((prev) => {

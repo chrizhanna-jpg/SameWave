@@ -18,6 +18,15 @@ export interface SamplePhoto {
    */
   shapes?: string[];
   /**
+   * Free-form concrete subjects ("apple", "sculpture", "park"…) used by
+   * scoreCandidates as the heaviest single-axis bonus (3 pts × min
+   * overlap, 5 = 0..15). Mirrors the server-side `subjects` column.
+   * Optional so curated sample data and legacy entries still load —
+   * `[]` / undefined is treated as "no subjects recorded" and silently
+   * yields 0 subject points without penalising the candidate.
+   */
+  subjects?: string[];
+  /**
    * Music vibe label paired with this photo. Optional so legacy sample
    * data without an explicit pick still loads — the match screen falls
    * back to suggestGenre(theme, tags) at render time when missing.

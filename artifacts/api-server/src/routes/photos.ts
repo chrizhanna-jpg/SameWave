@@ -71,7 +71,7 @@ router.post("/photos", async (req, res) => {
     }
 
     const stripped = b64.replace(/^data:[^;]+;base64,/, "");
-    const { theme, tags, shapes } = await analyzePhoto({
+    const { theme, tags, shapes, subjects } = await analyzePhoto({
       base64: stripped,
       mimeType,
     });
@@ -147,6 +147,7 @@ router.post("/photos", async (req, res) => {
         theme,
         tags,
         shapeTags: shapes,
+        subjects,
         countryCode,
         musicGenre,
         customAudioBase64,
@@ -158,6 +159,7 @@ router.post("/photos", async (req, res) => {
         id: photosTable.id,
         theme: photosTable.theme,
         tags: photosTable.tags,
+        subjects: photosTable.subjects,
         musicGenre: photosTable.musicGenre,
         createdAt: photosTable.createdAt,
         expiresAt: photosTable.expiresAt,
@@ -181,6 +183,11 @@ router.post("/photos", async (req, res) => {
       id: row.id,
       theme: row.theme,
       tags: row.tags,
+      // Free-form concrete subjects detected by Gemini. Surfaced so the
+      // mobile app can stash them on the local MyPhoto record and pass
+      // them into /candidates as the `subjects=` query param — that's
+      // what unlocks subject-overlap scoring in the matcher.
+      subjects: row.subjects ?? [],
       musicGenre: row.musicGenre,
       hasCustomAudio: customAudioBase64 !== null,
     });
@@ -191,30 +198,37 @@ router.post("/photos", async (req, res) => {
 });
 
 // ---- GET /api/photos/candidates -------------------------------------------
-// Query: ?theme=&tags=tag1,tag2&shapes=circles,vertical&musicGenre=lofi&limit=24
+// Query: ?theme=&tags=tag1,tag2&shapes=circles,vertical&subjects=apple,sculpture
+//        &musicGenre=lofi&limit=24
 // Header: X-Device-Id (required).
 //
-// Scoring (computed in SQL) — vibe and theme weighted 50/50 in the
-// primary deck, with shapes adding a third equal-weight axis for the
-// secondary "match by subject matter" deck:
+// Scoring (computed in SQL). Subject overlap is the heaviest single
+// signal because it's the only axis with free-form vocabulary —
+// sharing concrete nouns like ["apple","sculpture"] is a much stronger
+// "this is the same thing" signal than sharing the lifestyle bucket
+// ["art","outdoors"]:
+//   subject_score = least(subject_overlap, 5) * 3 → 0..15. Free-form
+//                 concrete-noun overlap (e.g. apple, sculpture, latte
+//                 art). Heaviest weight by design — this is the axis
+//                 that fixes the "two apple sculptures don't match"
+//                 failure mode the constrained `tags` vocabulary had.
 //   vibe_score  = least(tag_overlap, 5) * 2 → 0..10. Lifestyle / vibe
 //                 tags share the photo's mood; capped at 5 so a long
 //                 tag list can't overpower a strong theme match.
 //   theme_score = 10 if exact match, 4 if either string contains the
 //                 other, 0 otherwise — the daily challenge / theme is
-//                 the other strongest signal we have.
+//                 still a strong signal in the primary deck.
 //   shape_score = least(shape_overlap, 5) * 2 → 0..10. Visual-form
-//                 (circles, vertical, layered…) overlap. Always
-//                 contributes when both photos have shapes — does
-//                 double duty as the secondary deck's other half.
+//                 (circles, vertical, layered…) overlap.
 //   music_score = 5 if same musicGenre as the requester's photo, else 0.
 //   jitter      = tiny random factor (0..0.3) so two consecutive calls
 //                 don't return the exact same ordering.
 //
-// Primary deck (theme set):  theme + vibe each up to 10, shapes/music
-//                            ride along as soft boosts (0..15).
-// Subject-matter deck (no theme): vibe (subject objects) + shapes each
-//                            up to 10, equal weighting → 50/50 split.
+// Primary deck (theme set): subject (0..15) + vibe (0..10) + theme
+//                          (0..10) + shapes (0..10) + music (0..5).
+// Subject-matter deck (no theme): subject (0..15) + shapes (0..10),
+//                          subject heavily dominates (it's the whole
+//                          point of the deck).
 //
 // We exclude the user's own photos, expired/removed/over-reported, and
 // anything they've already voted on or seen.
@@ -243,6 +257,19 @@ router.get("/photos/candidates", async (req, res) => {
       .split(",")
       .map((t) => t.trim().toLowerCase())
       .filter(Boolean);
+    // Free-form concrete subjects (apple, sculpture, latte art…). Sent
+    // by the client from the requester's own photo.subjects so the
+    // matcher can compute concrete-noun overlap. Each token capped at
+    // 32 chars to mirror the upload-time normaliseSubject() cap, and
+    // the list capped at 12 so a malicious client can't blow the SQL
+    // ARRAY size.
+    const subjectsStr =
+      typeof req.query.subjects === "string" ? req.query.subjects : "";
+    const subjects = subjectsStr
+      .split(",")
+      .map((t) => t.trim().toLowerCase())
+      .filter((t) => t.length > 0 && t.length <= 32)
+      .slice(0, 12);
     // Music vibe is whitelisted in /photos POST, so it's safe to trust
     // the value the client echoes back here. Empty string disables the
     // bonus for callers (e.g. subject-matter match) that don't send it.
@@ -287,6 +314,16 @@ router.get("/photos/candidates", async (req, res) => {
             sql`, `,
           )}]::text[]`
         : sql`ARRAY[]::text[]`;
+    // Same parameterised array literal pattern as `tagsExpr`/`shapesExpr`
+    // so individual subject strings can never be used for SQL injection
+    // (each is its own bound $N param).
+    const subjectsExpr =
+      subjects.length > 0
+        ? sql`ARRAY[${sql.join(
+            subjects.map((s) => sql`${s}`),
+            sql`, `,
+          )}]::text[]`
+        : sql`ARRAY[]::text[]`;
     // Same shape for the client-supplied exclude list. Empty array is
     // a no-op against `<> ALL` so we don't need a CASE.
     const excludeIdsExpr =
@@ -317,6 +354,10 @@ router.get("/photos/candidates", async (req, res) => {
           -- client's local shape_score term is always 0 and the
           -- subject-matter deck's 50/50 split collapses to subject-only.
           p.shape_tags AS "shapeTags",
+          -- Free-form concrete subjects ("apple", "sculpture", "park"…)
+          -- surfaced so the client can show them and so scoreCandidates
+          -- in the mobile app can re-rank locally with the same weights.
+          p.subjects AS "subjects",
           p.country_code AS "countryCode",
           p.music_genre AS "musicGenre",
           p.custom_audio_base64 AS "customAudioBase64",
@@ -327,6 +368,7 @@ router.get("/photos/candidates", async (req, res) => {
           md5(substring(p.bytes_base64 from 1 for 4096)) AS content_hash,
           cardinality(ARRAY(SELECT unnest(p.tags) INTERSECT SELECT unnest(${tagsExpr}))) AS tag_overlap,
           cardinality(ARRAY(SELECT unnest(p.shape_tags) INTERSECT SELECT unnest(${shapesExpr}))) AS shape_overlap,
+          cardinality(ARRAY(SELECT unnest(p.subjects) INTERSECT SELECT unnest(${subjectsExpr}))) AS subject_overlap,
           CASE
             WHEN ${theme} = '' THEN 0
             WHEN p.theme = ${theme} THEN 10
@@ -339,12 +381,29 @@ router.get("/photos/candidates", async (req, res) => {
             ELSE 0
           END AS music_score,
           (
+            -- Subject overlap (free-form concrete nouns). Heaviest
+            -- single signal: 3 pts x min(overlap, 5) = 0..15. This
+            -- is the axis that fixes the "two apple sculptures dont
+            -- match" failure -- the constrained tags vocabulary
+            -- could never carry words like "apple" or "sculpture",
+            -- so similar subjects collapsed into the same generic
+            -- bucket. Skip when either side has no subjects so
+            -- legacy rows (uploaded pre-column or pre-backfill) are
+            -- not penalised relative to fully-tagged rows.
+            CASE
+              WHEN cardinality(${subjectsExpr}) = 0 THEN 0
+              WHEN cardinality(p.subjects) = 0 THEN 0
+              ELSE LEAST(
+                cardinality(ARRAY(SELECT unnest(p.subjects) INTERSECT SELECT unnest(${subjectsExpr}))),
+                5
+              ) * 3
+            END
             -- Vibe / lifestyle tag overlap, capped at 5 shared and
             -- weighted *2 → 0..10 pts. Equal-weight to theme so a
             -- strong vibe match (3-5 shared lifestyle tags) ties
             -- with an exact same-theme match. The cap stops a long
             -- tag list from overpowering theme.
-            LEAST(
+            + LEAST(
               cardinality(ARRAY(SELECT unnest(p.tags) INTERSECT SELECT unnest(${tagsExpr}))),
               5
             ) * 2
@@ -430,29 +489,43 @@ router.get("/photos/candidates", async (req, res) => {
         // for legacy rows whose shape_tags was never populated; the
         // client tolerates `[]` and just earns 0 shape points.
         shapeTags: Array.isArray(r.shapeTags) ? (r.shapeTags as string[]) : [],
+        // Free-form concrete subjects ("apple", "sculpture", "park"…).
+        // Same role as shapeTags above — surfaced so the client-side
+        // re-rank in scoreCandidates can compute subject overlap and
+        // award the heaviest single-axis bonus. Empty for legacy rows
+        // until POST /photos/backfill-subjects fills them in.
+        subjects: Array.isArray(r.subjects) ? (r.subjects as string[]) : [],
         countryCode: (r.countryCode as string | null) ?? null,
         musicGenre: (r.musicGenre as string | null) ?? null,
         customAudioUrl,
         uri: `data:${String(r.mimeType)};base64,${String(r.bytesBase64)}`,
         createdAt: r.createdAt as string | Date,
-        // Surface vibe + theme + shape together so the client knows
-        // how the row scored on the new 50/50 axis. Mirrors the
-        // weighted server-side rank: vibe = LEAST(overlap,5)*2 (0..10),
-        // theme = 0/4/10, shape = LEAST(overlap,5)*2 (0..10), shape
-        // term skipped when either side has no shape tags. Computing
-        // here (rather than aliasing rank_score) keeps the displayed
-        // score deterministic across requests, since rank_score also
-        // includes a small random tiebreaker.
+        // Surface subject + vibe + theme + shape together so the client
+        // knows how the row scored on the rebalanced multi-axis rank.
+        // Mirrors the weighted server-side rank: subject =
+        // LEAST(overlap,5)*3 (0..15), vibe = LEAST(overlap,5)*2 (0..10),
+        // theme = 0/4/10, shape = LEAST(overlap,5)*2 (0..10). Subject
+        // and shape terms are skipped when either side has no values
+        // for that axis (so legacy rows aren't penalised). Computed
+        // here rather than aliased from rank_score so the displayed
+        // score stays deterministic — rank_score includes a tiny
+        // random tiebreaker.
         score: (() => {
-          const vibe = Math.min(Number(r.tag_overlap ?? 0), 5) * 2;
-          const theme = Number(r.theme_score ?? 0);
           const myShapesCount = Array.isArray(r.shapeTags)
             ? (r.shapeTags as string[]).length
             : 0;
+          const mySubjectsCount = Array.isArray(r.subjects)
+            ? (r.subjects as string[]).length
+            : 0;
+          const subjectOverlap = Number(r.subject_overlap ?? 0);
+          const subject =
+            mySubjectsCount === 0 ? 0 : Math.min(subjectOverlap, 5) * 3;
+          const vibe = Math.min(Number(r.tag_overlap ?? 0), 5) * 2;
+          const theme = Number(r.theme_score ?? 0);
           const shapeOverlap = Number(r.shape_overlap ?? 0);
           const shape =
             myShapesCount === 0 ? 0 : Math.min(shapeOverlap, 5) * 2;
-          return vibe + theme + shape;
+          return subject + vibe + theme + shape;
         })(),
       };
     });
@@ -626,6 +699,110 @@ router.post("/photos/backfill-shapes", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "backfill-shapes failed");
+    res.status(500).json({ error: "backfill failed" });
+  }
+});
+
+// ---- POST /api/photos/backfill-subjects -----------------------------------
+// Body (optional): { limit?: number }   — default 20, max 100
+// Header: X-Device-Id (required), X-Admin-Token (matches BACKFILL_ADMIN_TOKEN).
+//
+// Same shape as POST /photos/backfill-shapes — exists for the same
+// reason: existing rows uploaded before the `subjects` column existed
+// have no concrete-noun vocabulary, so they can never participate in
+// the heaviest scoring axis. Without a backfill they'd quietly drop
+// to the bottom of every deck relative to fresh uploads.
+//
+// Idempotent and bounded: only rows with `cardinality(subjects) = 0`
+// are picked up; the loop is best-effort per row; sentinel writes
+// (`_none` / `_failed`) keep poison rows from looping forever so the
+// caller's `processed === 0` polling contract converges.
+router.post("/photos/backfill-subjects", async (req, res) => {
+  try {
+    // Same admin gate as backfill-shapes — this fans out per-row
+    // Gemini calls across the table. Without the env var set, the
+    // route is closed entirely (fail-safe rather than fail-open).
+    const adminToken = process.env.BACKFILL_ADMIN_TOKEN;
+    const provided = req.header("x-admin-token");
+    if (!adminToken || !provided || provided !== adminToken) {
+      res.status(403).json({ error: "forbidden" });
+      return;
+    }
+    const user = await resolveUserFromRequest(req);
+    if (!user) {
+      res.status(401).json({ error: "missing or invalid X-Device-Id" });
+      return;
+    }
+    const body = (req.body ?? {}) as { limit?: unknown };
+    const requested =
+      typeof body.limit === "number" && Number.isFinite(body.limit)
+        ? Math.floor(body.limit)
+        : 20;
+    const limit = Math.max(1, Math.min(100, requested));
+
+    const rows = await db
+      .select({
+        id: photosTable.id,
+        bytesBase64: photosTable.bytesBase64,
+        mimeType: photosTable.mimeType,
+      })
+      .from(photosTable)
+      .where(
+        and(
+          eq(photosTable.status, "active"),
+          sql`cardinality(${photosTable.subjects}) = 0`,
+        ),
+      )
+      .limit(limit);
+
+    let updated = 0;
+    let failed = 0;
+    for (const row of rows) {
+      try {
+        // Run the full analyzePhoto pass (rather than just the object
+        // pass) so the subjects field gets populated with the same
+        // contract a fresh upload would produce — same prompt, same
+        // normalisation, same 6-token cap.
+        const { subjects } = await analyzePhoto({
+          base64: row.bytesBase64,
+          mimeType: row.mimeType ?? "image/jpeg",
+        });
+        // Always write something so cardinality > 0 and the row is
+        // skipped by the next backfill pass — same convergence trick
+        // as backfill-shapes. "_none" lives outside any real
+        // free-form vocabulary the client might send, so it earns 0
+        // overlap points and stays invisible to scoring.
+        const toWrite = subjects.length > 0 ? subjects : ["_none"];
+        await db
+          .update(photosTable)
+          .set({ subjects: toWrite })
+          .where(eq(photosTable.id, row.id));
+        updated++;
+      } catch (err) {
+        req.log.warn({ err, photoId: row.id }, "backfill-subjects row failed");
+        failed++;
+        // Same poison-pill protection as backfill-shapes: mark the
+        // row so it's never retried. Rare but real — Gemini rejects
+        // a small fraction of legacy base64 payloads with "Provided
+        // image is not valid" and we'd otherwise loop forever.
+        try {
+          await db
+            .update(photosTable)
+            .set({ subjects: ["_failed"] })
+            .where(eq(photosTable.id, row.id));
+        } catch (writeErr) {
+          req.log.error({ writeErr, photoId: row.id }, "failed to mark row");
+        }
+      }
+    }
+    res.json({
+      processed: rows.length,
+      updated,
+      failed,
+      done: rows.length < limit,
+    });
+  } catch (err) {
+    req.log.error({ err }, "backfill-subjects failed");
     res.status(500).json({ error: "backfill failed" });
   }
 });

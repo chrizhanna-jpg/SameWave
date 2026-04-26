@@ -34,9 +34,22 @@ const SHAPE_TAGS = [
   "busy", "centered", "framed",
 ];
 
+// Mirrors lib/photoAnalysis.ts — keep these two constants in lockstep
+// with that file. Pre-upload subjects (this route) and upload-time
+// subjects (lib/photoAnalysis.ts) MUST normalize identically; otherwise
+// the camera screen and the persisted DB row would carry different
+// arrays and `setMyPhotoBackendId`'s authoritative-overwrite semantics
+// would silently drift the deck's subject query off the user's actual
+// pre-upload state. If you change these, change them in both places.
+const MAX_SUBJECT_LEN = 32;
+const SUBJECT_STOPWORDS = new Set([
+  "scene", "object", "thing", "stuff", "item", "items", "photo", "photograph",
+  "picture", "image", "background", "foreground",
+]);
+
 const PROMPT = `You are analyzing a daily-life photo for a global "find people who share your moments and interests" app.
 
-Return THREE things:
+Return FOUR things:
 1. "theme" — a SHORT lowercase phrase (1–4 words) naming the activity, moment,
    or subject of the photo. Be specific and natural. Anything is fair game:
    "morning coffee", "street food", "extreme sports", "first steps",
@@ -52,9 +65,16 @@ Return THREE things:
    dominant — e.g. a coffee cup top-down → "circles", "centered"; a city
    skyline → "vertical", "lines", "repeating".
    Vocabulary: ${SHAPE_TAGS.join(", ")}
+4. "subjects" — up to 6 FREE-FORM concrete-noun tokens (1–3 words each,
+   lowercase) naming the literal things visible in the frame. NO lifestyle
+   or mood words; only physical objects, beings, or places. Examples:
+   apple sculpture in a park → ["apple", "sculpture", "park"];
+   coffee cup on desk → ["coffee cup", "desk", "laptop"];
+   dog on beach → ["dog", "beach", "sand", "waves"]. This drives the
+   strongest matching signal so be specific and accurate.
 
 Return ONLY this JSON, no prose, no markdown:
-{"theme": "...", "tags": ["..."], "shapes": ["..."]}`;
+{"theme": "...", "tags": ["..."], "shapes": ["..."], "subjects": ["..."]}`;
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8 MB
 const FETCH_TIMEOUT_MS = 8000;
@@ -161,7 +181,12 @@ router.post("/analyze-photo", async (req, res) => {
       },
     });
 
-    let parsed: { tags?: unknown; theme?: unknown; shapes?: unknown } = {};
+    let parsed: {
+      tags?: unknown;
+      theme?: unknown;
+      shapes?: unknown;
+      subjects?: unknown;
+    } = {};
     try {
       parsed = JSON.parse(response.text ?? "{}");
     } catch {
@@ -195,10 +220,44 @@ router.post("/analyze-photo", async (req, res) => {
         .join(" ");
     }
 
-    res.json({ tags, theme, shapes });
+    // Free-form concrete subjects. Mirrors the rules in
+    // lib/photoAnalysis.ts EXACTLY so the camera screen's pre-upload
+    // analysis and the upload-time analysis produce comparable arrays
+    // (otherwise the upload-time `subjects` patched onto local state
+    // would silently drift from what /candidates was originally fetched
+    // with). Rules:
+    //   • lowercase, drop everything outside [a-z0-9 \-'] (so "Apple's"
+    //     and "latte-art" survive but quotes / emoji don't),
+    //   • collapse internal whitespace, trim,
+    //   • drop tokens longer than MAX_SUBJECT_LEN (32),
+    //   • drop tokens in SUBJECT_STOPWORDS (generic words like "scene",
+    //     "object", "photo"…) so they don't inflate overlap noise,
+    //   • dedupe in insertion order, cap at 6.
+    const subjectsSeen = new Set<string>();
+    const subjects: string[] = [];
+    if (Array.isArray(parsed.subjects)) {
+      for (const raw of parsed.subjects) {
+        if (typeof raw !== "string") continue;
+        const norm = raw
+          .toLowerCase()
+          .replace(/[^a-z0-9 \-']/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+        if (!norm || norm.length > MAX_SUBJECT_LEN) continue;
+        if (SUBJECT_STOPWORDS.has(norm)) continue;
+        if (subjectsSeen.has(norm)) continue;
+        subjectsSeen.add(norm);
+        subjects.push(norm);
+        if (subjects.length >= 6) break;
+      }
+    }
+
+    res.json({ tags, theme, shapes, subjects });
   } catch (err) {
     req.log.error({ err }, "analyze-photo failed");
-    res.status(500).json({ error: "analysis failed", tags: [], shapes: [] });
+    res
+      .status(500)
+      .json({ error: "analysis failed", tags: [], shapes: [], subjects: [] });
   }
 });
 

@@ -42,6 +42,17 @@ export const photosTable = pgTable(
     // so legacy rows uploaded before the column existed still load
     // cleanly (the scoring SQL treats an empty intersection as 0 pts).
     shapeTags: text("shape_tags").array().notNull().default(sql`ARRAY[]::text[]`),
+    // Free-form concrete subjects/objects visible in the frame
+    // ("apple", "sculpture", "park", "bicycle", "latte art", …). Unlike
+    // `tags`, which draws from a small fixed lifestyle vocabulary, this
+    // column accepts any short noun-token Gemini emits — that's the
+    // whole point: lets the matcher score real subject overlap (e.g.
+    // two apple-core sculptures share ["apple","sculpture"]) instead of
+    // collapsing every outdoor-art photo into the same generic
+    // ["art","outdoors"] bucket. Capped at 6 tokens upstream. Empty
+    // for legacy rows uploaded before the column existed; backfilled by
+    // POST /api/photos/backfill-subjects.
+    subjects: text("subjects").array().notNull().default(sql`ARRAY[]::text[]`),
     // Gemini text-embedding-004 → 768 dimensions.
     embedding: vector("embedding", { dimensions: 768 }),
 

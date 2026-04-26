@@ -41,3 +41,8 @@ externalPort = 3002
 
 [nix]
 channel = "stable-25_05"
+
+[userenv]
+
+[userenv.shared]
+BACKFILL_ADMIN_TOKEN = "908220a7062a6dc41051190263f265f1b171fee79533621e"
