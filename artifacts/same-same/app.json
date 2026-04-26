@@ -19,7 +19,8 @@
       "infoPlist": {
         "NSCameraUsageDescription": "SameWave uses your camera to take photos of your day so you can ripple with people sharing similar moments.",
         "NSPhotoLibraryUsageDescription": "SameWave lets you pick a photo from your library to share as today's moment.",
-        "NSLocationWhenInUseUsageDescription": "SameWave uses your country (not precise location) to celebrate ripples with people nearby."
+        "NSLocationWhenInUseUsageDescription": "SameWave uses your country (not precise location) to celebrate ripples with people nearby.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -30,11 +31,6 @@
         "backgroundColor": "#0A2552"
       },
       "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.READ_MEDIA_IMAGES",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.RECORD_AUDIO",
-        "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.CAMERA",
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.ACCESS_COARSE_LOCATION",
