@@ -198,7 +198,7 @@ export default function OnboardingScreen() {
             </Text>
             <Icon
               name="wave"
-              size={18}
+              size={27}
               color={colors.gold}
               style={styles.inlineIcon}
             />
