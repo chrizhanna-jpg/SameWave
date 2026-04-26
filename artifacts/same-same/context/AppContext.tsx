@@ -164,6 +164,16 @@ interface AppState {
   badges: Badge[];
   myPhotos: MyPhoto[];
   onboardingComplete: boolean;
+  /**
+   * Cold-start counter, bumped once per process load inside `loadState`.
+   * Used by `app/index.tsx` to redirect new users to the tutorial on
+   * their first few app opens (currently the first 3) so the brand
+   * + flow has a chance to land before they're dropped on the home
+   * tab. Existing users who had already finished onboarding before
+   * this counter existed are seeded above the threshold so they do
+   * not regress into seeing the tutorial again.
+   */
+  appOpenCount: number;
   proUnlocked: boolean;
   connectRequests: ConnectRequest[];
   /** Pending offers waiting on me to respond (other side tapped first). */
@@ -313,6 +323,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     badges: defaultBadges,
     myPhotos: [],
     onboardingComplete: false,
+    appOpenCount: 0,
     proUnlocked: false,
     connectRequests: [],
     pendingEchoes: [],
@@ -488,9 +499,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             )
           : [];
         const seenPhotoIds = Array.from(new Set(persistedIds));
+        // App-open counter — bumped once per cold start. Drives the
+        // "show the tutorial on the first N opens" routing in
+        // `app/index.tsx`. For users who had already completed
+        // onboarding before this counter existed, seed above the
+        // threshold so they don't regress into the tutorial.
+        const priorOpenCount =
+          typeof parsed.appOpenCount === "number"
+            ? parsed.appOpenCount
+            : parsed.onboardingComplete
+              ? 999
+              : 0;
+        const nextOpenCount = priorOpenCount + 1;
+        // Persist the bumped count immediately so it survives a quick
+        // app close before any other state mutation triggers a save —
+        // otherwise the user could see the tutorial more than the
+        // intended N times if they kill the app fast.
+        AsyncStorage.setItem(
+          "samesame_state",
+          JSON.stringify({ ...parsed, appOpenCount: nextOpenCount }),
+        ).catch(() => {});
         setState((prev) => ({
           ...prev,
           ...parsed,
+          appOpenCount: nextOpenCount,
           myPhotos: migratedPhotos,
           connectRequests: migratedRequests,
           // Echoes always come from the server now — drop any legacy
