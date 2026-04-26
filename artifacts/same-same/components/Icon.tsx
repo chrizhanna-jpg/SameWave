@@ -1,4 +1,5 @@
 import React from "react";
+import { WaveIcon } from "@/components/WaveIcon";
 import {
   AlertCircle,
   ArrowLeft,
@@ -38,7 +39,13 @@ import {
   type LucideIcon,
 } from "lucide-react-native";
 
-const ICONS: Record<string, LucideIcon> = {
+type IconComponent = React.ComponentType<{
+  size?: number;
+  color?: string;
+  style?: object;
+}>;
+
+const ICONS: Record<string, IconComponent | LucideIcon> = {
   "alert-circle": AlertCircle,
   "arrow-left": ArrowLeft,
   "arrow-right": ArrowRight,
@@ -71,7 +78,7 @@ const ICONS: Record<string, LucideIcon> = {
   user: User,
   volume2: Volume2,
   volumeX: VolumeX,
-  wave: Waves,
+  wave: WaveIcon,
   ripple: Waves,
   x: X,
   zap: Zap,
