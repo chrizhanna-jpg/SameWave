@@ -132,7 +132,7 @@ export default function EchoesScreen() {
             {mutualEchoes.length > 0 && (
               <SectionHeader
                 title="Your waves"
-                subtitle="Two minds, one wavelength — both rode the wave."
+                subtitle="Two minds, one wavelength."
                 spaceTop={pendingEchoes.length > 0}
               />
             )}
