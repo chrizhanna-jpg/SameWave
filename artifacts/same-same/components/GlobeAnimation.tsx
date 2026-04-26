@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { Animated, Easing, StyleSheet, View } from "react-native";
 import Svg, { Circle, Ellipse, G, Path } from "react-native-svg";
 
@@ -15,43 +15,31 @@ const SHINE = "rgba(255,255,255,0.09)";
 // All continent paths in a 200x200 equirectangular tile.
 // This tile repeats (second copy offset +200 on X) for seamless loop rotation.
 const CONTINENT_PATHS = [
-  // North America
   "M 15,25 L 55,18 L 68,30 L 72,50 L 65,68 L 55,80 L 40,85 L 28,75 L 18,58 L 12,40 Z",
-  // Greenland
   "M 52,7 L 73,6 L 77,20 L 66,26 L 52,20 Z",
-  // South America
   "M 42,90 L 65,85 L 74,100 L 72,122 L 66,142 L 53,155 L 38,146 L 30,128 L 32,108 Z",
-  // Europe
   "M 86,22 L 107,16 L 121,26 L 119,40 L 109,48 L 94,46 L 82,36 Z",
-  // Africa
   "M 88,56 L 113,50 L 128,65 L 129,92 L 121,122 L 106,136 L 90,132 L 80,116 L 79,90 L 82,72 Z",
-  // Madagascar
   "M 118,104 L 126,103 L 125,124 L 117,120 Z",
-  // Russia / N Asia
   "M 122,10 L 200,8 L 200,33 L 172,42 L 150,46 L 128,41 L 118,28 Z",
-  // Central/South Asia
   "M 128,50 L 166,44 L 179,58 L 176,76 L 159,83 L 138,79 L 124,65 Z",
-  // Japan/East
   "M 170,42 L 186,38 L 191,50 L 183,56 L 172,52 Z",
-  // Southeast Asia islands
   "M 158,75 L 174,72 L 178,82 L 168,86 L 156,84 Z",
-  // Australia
   "M 148,112 L 186,108 L 193,129 L 189,149 L 169,154 L 145,144 L 140,128 Z",
-  // New Zealand
   "M 192,148 L 198,146 L 200,158 L 193,158 Z",
 ];
 
-// Static dot positions on the globe face (shown on top layer, not moving)
+// Static city dots
 const DOTS = [
-  { x: 42, y: 52 },   // New York
-  { x: 98, y: 32 },   // London
-  { x: 98, y: 90 },   // Lagos
-  { x: 145, y: 62 },  // Mumbai
-  { x: 172, y: 44 },  // Tokyo
-  { x: 58, y: 118 },  // São Paulo
+  { x: 42, y: 52 },
+  { x: 98, y: 32 },
+  { x: 98, y: 90 },
+  { x: 145, y: 62 },
+  { x: 172, y: 44 },
+  { x: 58, y: 118 },
 ];
 
-// Connection arcs between dots (quadratic bezier: x1 y1 cpx cpy x2 y2)
+// Connection arcs (existing — between cities)
 const ARCS = [
   { d: "M 42,52 Q 68,8 98,32", delay: 0 },
   { d: "M 98,32 Q 122,22 145,62", delay: 700 },
@@ -61,25 +49,96 @@ const ARCS = [
   { d: "M 42,52 Q 24,88 58,118", delay: 3500 },
 ];
 
+// Multi-colour wave ribbon flowing across the equator. Each band has its
+// own colour, amplitude, period and animation duration so they layer up
+// into a flowing, parallax-style wave (matching the SameWave brand mark).
+const WAVE_BANDS = [
+  { y: 86, color: "rgba(255,255,255,0.70)", strokeWidth: 2.4, period: 110, amp: 7, duration: 16000 },
+  { y: 95, color: "rgba(180,222,250,0.92)", strokeWidth: 4.2, period: 120, amp: 9, duration: 13000 },
+  { y: 104, color: "rgba(255,130,90,0.90)", strokeWidth: 5.0, period: 130, amp: 11, duration: 10500 },
+  { y: 113, color: "rgba(126,195,240,0.88)", strokeWidth: 4.0, period: 115, amp: 10, duration: 12000 },
+  { y: 122, color: "rgba(255,255,255,0.55)", strokeWidth: 2.4, period: 100, amp: 7, duration: 17500 },
+];
+
+// Twinkling sparkle positions (200x200 viewBox, around the globe).
+const SPARKLES = [
+  { x: 22, y: 30, size: 1.6, delay: 0 },
+  { x: 178, y: 28, size: 1.4, delay: 350 },
+  { x: 12, y: 100, size: 1.8, delay: 700 },
+  { x: 190, y: 92, size: 1.4, delay: 1100 },
+  { x: 28, y: 168, size: 1.6, delay: 1500 },
+  { x: 174, y: 174, size: 1.5, delay: 1850 },
+  { x: 60, y: 14, size: 1.2, delay: 2200 },
+  { x: 138, y: 186, size: 1.4, delay: 2600 },
+  { x: 6, y: 60, size: 1.3, delay: 3000 },
+  { x: 194, y: 142, size: 1.6, delay: 3400 },
+];
+
+// Orbital connection rings precessing around the globe. Each is a thin
+// tilted ellipse that slowly rotates around the globe centre, evoking
+// satellites / signals circling the earth.
+const ORBITS = [
+  { rx: 96, ry: 30, color: "rgba(255,255,255,0.45)", strokeWidth: 1.0, duration: 18000, reverse: false },
+  { rx: 92, ry: 64, color: "rgba(255,255,255,0.32)", strokeWidth: 0.9, duration: 24000, reverse: true },
+  { rx: 96, ry: 16, color: "rgba(255,255,255,0.28)", strokeWidth: 0.7, duration: 30000, reverse: false },
+];
+
 interface Props {
   size?: number;
+}
+
+// Build a long sine-style path so we can translate it horizontally for a
+// seamless flow loop. The path is wider than the visible viewBox; the
+// overflow:hidden on the parent globe view (or the SVG's own clip) hides
+// the offscreen portion.
+function makeWavePath(y: number, amp: number, period: number, startX: number, endX: number) {
+  let path = `M ${startX},${y}`;
+  let x = startX;
+  let direction = -1;
+  while (x < endX) {
+    const ctrlX = x + period / 4;
+    const ctrlY = y + amp * direction;
+    const endpointX = x + period / 2;
+    if (x === startX) {
+      path += ` Q ${ctrlX},${ctrlY} ${endpointX},${y}`;
+    } else {
+      path += ` T ${endpointX},${y}`;
+    }
+    x = endpointX;
+    direction *= -1;
+  }
+  return path;
 }
 
 export function GlobeAnimation({ size = 200 }: Props) {
   const r = size / 2;
 
-  // Rotation: translateX from 0 → -size, looping
   const rotation = useRef(new Animated.Value(0)).current;
-  // Globe entrance scale
   const entrance = useRef(new Animated.Value(0.7)).current;
   const entranceOpacity = useRef(new Animated.Value(0)).current;
-  // Arc opacities
   const arcOpacities = useRef(ARCS.map(() => new Animated.Value(0))).current;
-  // Dot pulses
   const dotPulses = useRef(DOTS.map(() => new Animated.Value(1))).current;
 
+  // Per-band horizontal flow drivers. We translate each band by its own
+  // period so the loop point matches the wave shape and the flow is
+  // perfectly seamless.
+  const waveShifts = useRef(WAVE_BANDS.map(() => new Animated.Value(0))).current;
+  const orbitRotations = useRef(ORBITS.map(() => new Animated.Value(0))).current;
+  const sparkleOpacities = useRef(SPARKLES.map(() => new Animated.Value(0.3))).current;
+
+  // Pre-compute the long wave paths (memoised — they only depend on the
+  // band config, not on size).
+  const wavePaths = useMemo(
+    () =>
+      WAVE_BANDS.map((band) =>
+        // Path runs from -band.period to 200 + band.period so we can shift
+        // by exactly one period and have it land on an identical phase.
+        makeWavePath(band.y, band.amp, band.period, -band.period, 200 + band.period * 2),
+      ),
+    [],
+  );
+
   useEffect(() => {
-    // Entrance animation
     Animated.parallel([
       Animated.spring(entrance, {
         toValue: 1,
@@ -94,17 +153,15 @@ export function GlobeAnimation({ size = 200 }: Props) {
       }),
     ]).start();
 
-    // Continuous rotation
     Animated.loop(
       Animated.timing(rotation, {
         toValue: -size,
         duration: 22000,
         easing: Easing.linear,
         useNativeDriver: true,
-      })
+      }),
     ).start();
 
-    // Dot pulse
     dotPulses.forEach((p, i) => {
       const loop = () => {
         Animated.sequence([
@@ -129,7 +186,6 @@ export function GlobeAnimation({ size = 200 }: Props) {
       loop();
     });
 
-    // Arc fade animations cycling
     const cycleArcs = (idx: number) => {
       Animated.sequence([
         Animated.timing(arcOpacities[idx], {
@@ -151,23 +207,77 @@ export function GlobeAnimation({ size = 200 }: Props) {
     ARCS.forEach((arc, i) => {
       setTimeout(() => cycleArcs(i), arc.delay);
     });
+
+    // Wave bands: translate horizontally by exactly one period for a
+    // perfectly seamless loop. The shift is in *viewBox units*; we scale
+    // it to actual pixels in the transform interpolation below.
+    waveShifts.forEach((shift, i) => {
+      const band = WAVE_BANDS[i];
+      shift.setValue(0);
+      Animated.loop(
+        Animated.timing(shift, {
+          toValue: 1,
+          duration: band.duration,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+      ).start();
+    });
+
+    // Orbit precession: each ring slowly rotates around the globe centre.
+    orbitRotations.forEach((rot, i) => {
+      const orbit = ORBITS[i];
+      rot.setValue(0);
+      Animated.loop(
+        Animated.timing(rot, {
+          toValue: 1,
+          duration: orbit.duration,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+      ).start();
+    });
+
+    // Sparkles: each twinkles in/out with a staggered start.
+    sparkleOpacities.forEach((op, i) => {
+      const spark = SPARKLES[i];
+      const loop = () => {
+        Animated.sequence([
+          Animated.timing(op, {
+            toValue: 1,
+            duration: 700,
+            easing: Easing.out(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(op, {
+            toValue: 0.25,
+            duration: 900,
+            easing: Easing.in(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.delay(1200),
+        ]).start(({ finished }) => {
+          if (finished) loop();
+        });
+      };
+      setTimeout(loop, spark.delay);
+    });
   }, []);
 
-  // Seamless continental tile: two copies at x=0 and x=size, then rotate translateX 0→-size
   const tileContent = [0, size].map((offsetX) =>
-    CONTINENT_PATHS.map((d, i) => {
-      // Offset the path in X by parsing — easier to just use SVG transform
-      return (
-        <G key={`${offsetX}-${i}`} transform={`translate(${offsetX}, 0)`}>
-          <Path
-            d={d}
-            fill={i % 3 === 0 ? LAND_LIGHT : LAND}
-            opacity={0.97}
-          />
-        </G>
-      );
-    })
+    CONTINENT_PATHS.map((d, i) => (
+      <G key={`${offsetX}-${i}`} transform={`translate(${offsetX}, 0)`}>
+        <Path
+          d={d}
+          fill={i % 3 === 0 ? LAND_LIGHT : LAND}
+          opacity={0.97}
+        />
+      </G>
+    )),
   );
+
+  // Convert viewBox-unit horizontal shifts to actual pixels.
+  const vbToPx = size / 200;
 
   return (
     <AnimatedView
@@ -195,7 +305,7 @@ export function GlobeAnimation({ size = 200 }: Props) {
         ]}
       />
 
-      {/* The globe — View-based clipping (avoids SVG clipPath native issues) */}
+      {/* The globe — clipped to a circle */}
       <View
         style={[
           styles.globe,
@@ -207,25 +317,27 @@ export function GlobeAnimation({ size = 200 }: Props) {
           },
         ]}
       >
-        {/* Grid lines — static SVG */}
+        {/* Latitude / meridian grid */}
         <Svg
           style={StyleSheet.absoluteFill}
           width={size}
           height={size}
           viewBox={`0 0 ${size} ${size}`}
         >
-          {/* Latitude lines */}
           <Ellipse cx={r} cy={r} rx={r - 2} ry={(r - 2) * 0.2} fill="none" stroke={GRID} strokeWidth="0.8" />
           <Ellipse cx={r} cy={r} rx={r - 2} ry={(r - 2) * 0.5} fill="none" stroke={GRID} strokeWidth="0.6" />
           <Ellipse cx={r} cy={r} rx={r - 2} ry={(r - 2) * 0.8} fill="none" stroke={GRID} strokeWidth="0.5" />
-          {/* Meridians */}
           <Path
-            d={`M ${r},2 Q ${r + (r * 0.4)},${r} ${r},${size - 2}`}
-            fill="none" stroke={GRID} strokeWidth="0.6"
+            d={`M ${r},2 Q ${r + r * 0.4},${r} ${r},${size - 2}`}
+            fill="none"
+            stroke={GRID}
+            strokeWidth="0.6"
           />
           <Path
-            d={`M ${r},2 Q ${r - (r * 0.4)},${r} ${r},${size - 2}`}
-            fill="none" stroke={GRID} strokeWidth="0.6"
+            d={`M ${r},2 Q ${r - r * 0.4},${r} ${r},${size - 2}`}
+            fill="none"
+            stroke={GRID}
+            strokeWidth="0.6"
           />
         </Svg>
 
@@ -245,8 +357,47 @@ export function GlobeAnimation({ size = 200 }: Props) {
           </Svg>
         </AnimatedView>
 
-        {/* Highlight shine */}
+        {/* Animated multi-colour wave ribbon — clipped to the globe by
+            the overflow:hidden on this parent view. Each band flows at
+            its own speed for a parallax effect. */}
+        {WAVE_BANDS.map((band, i) => {
+          const translateX = waveShifts[i].interpolate({
+            inputRange: [0, 1],
+            // Shift left by exactly one period so the wave loops
+            // seamlessly. Scale viewBox→px.
+            outputRange: [0, -band.period * vbToPx],
+          });
+          return (
+            <AnimatedView
+              key={`wave-${i}`}
+              pointerEvents="none"
+              style={[
+                StyleSheet.absoluteFill,
+                { transform: [{ translateX }] },
+              ]}
+            >
+              <Svg
+                width={size}
+                height={size}
+                viewBox="0 0 200 200"
+              >
+                <Path
+                  d={wavePaths[i]}
+                  fill="none"
+                  stroke={band.color}
+                  strokeWidth={band.strokeWidth}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </Svg>
+            </AnimatedView>
+          );
+        })}
+
+        {/* Highlight shine — sits on top of the waves so the globe still
+            reads as a 3D sphere with a light source. */}
         <View
+          pointerEvents="none"
           style={[
             styles.shine,
             {
@@ -261,44 +412,70 @@ export function GlobeAnimation({ size = 200 }: Props) {
         />
       </View>
 
-      {/* Connection arcs + dots — fixed overlay SVG.
-          Two parallel sine-wave ribbons cross the globe, slightly
-          offset so they overlap into a soft "S" — the SameWave
-          mark sitting on top of the world. */}
+      {/* Orbital connection rings — drawn outside the globe so they wrap
+          around it. Each ring slowly rotates around the globe centre. */}
+      {ORBITS.map((orbit, i) => {
+        const rotateInterp = orbitRotations[i].interpolate({
+          inputRange: [0, 1],
+          outputRange: orbit.reverse ? ["0deg", "-360deg"] : ["0deg", "360deg"],
+        });
+        return (
+          <AnimatedView
+            key={`orbit-${i}`}
+            pointerEvents="none"
+            style={[
+              StyleSheet.absoluteFill,
+              { transform: [{ rotate: rotateInterp }] },
+            ]}
+          >
+            <Svg
+              width={size}
+              height={size}
+              viewBox="0 0 200 200"
+            >
+              <Ellipse
+                cx={100}
+                cy={100}
+                rx={orbit.rx}
+                ry={orbit.ry}
+                fill="none"
+                stroke={orbit.color}
+                strokeWidth={orbit.strokeWidth}
+              />
+            </Svg>
+          </AnimatedView>
+        );
+      })}
+
+      {/* Twinkling sparkles around the globe */}
+      {SPARKLES.map((spark, i) => (
+        <AnimatedView
+          key={`sparkle-${i}`}
+          pointerEvents="none"
+          style={[
+            styles.sparkle,
+            {
+              left: (spark.x / 200) * size - spark.size,
+              top: (spark.y / 200) * size - spark.size,
+              width: spark.size * 2,
+              height: spark.size * 2,
+              borderRadius: spark.size,
+              opacity: sparkleOpacities[i],
+              shadowRadius: spark.size * 3,
+            },
+          ]}
+        />
+      ))}
+
+      {/* Existing static overlay: city dots + faded base arcs */}
       <Svg
         style={[StyleSheet.absoluteFill, { top: 0, left: 0 }]}
         width={size}
         height={size}
         viewBox="0 0 200 200"
+        pointerEvents="none"
       >
-        {/* Double-wave overlay — drawn before arcs so dots & arcs
-            sit cleanly above. White at low opacity reads on every
-            rotating continent colour. */}
-        <Path
-          d="M 18,92 Q 55,72 92,92 T 182,92"
-          fill="none"
-          stroke="rgba(255,255,255,0.55)"
-          strokeWidth="2.4"
-          strokeLinecap="round"
-        />
-        <Path
-          d="M 18,116 Q 55,136 92,116 T 182,116"
-          fill="none"
-          stroke="rgba(255,255,255,0.42)"
-          strokeWidth="2.4"
-          strokeLinecap="round"
-        />
-      </Svg>
-      <Svg
-        style={[StyleSheet.absoluteFill, { top: 0, left: 0 }]}
-        width={size}
-        height={size}
-        viewBox="0 0 200 200"
-      >
-        {/* Arcs — individually animated via wrapper */}
         {ARCS.map((arc, i) => (
-          // Can't use Animated directly on SVG Path opacity in all native versions,
-          // so we render all arcs at low base opacity and pulse them via wrapper trick
           <Path
             key={i}
             d={arc.d}
@@ -309,7 +486,6 @@ export function GlobeAnimation({ size = 200 }: Props) {
             opacity={0.15}
           />
         ))}
-        {/* Dots */}
         {DOTS.map((dot, i) => (
           <G key={i}>
             <Circle cx={dot.x} cy={dot.y} r={4} fill={DOT} opacity={0.35} />
@@ -319,7 +495,7 @@ export function GlobeAnimation({ size = 200 }: Props) {
         ))}
       </Svg>
 
-      {/* Animated arc overlays using View/Animated (avoids SVG animation issues) */}
+      {/* Animated arc highlight overlays */}
       {ARCS.map((arc, i) => (
         <AnimatedView
           key={`arc-anim-${i}`}
@@ -345,7 +521,7 @@ export function GlobeAnimation({ size = 200 }: Props) {
         </AnimatedView>
       ))}
 
-      {/* Animated dot pulses */}
+      {/* Animated city dot pulses */}
       {DOTS.map((dot, i) => (
         <AnimatedView
           key={`dot-${i}`}
@@ -398,5 +574,12 @@ const styles = StyleSheet.create({
     height: 12,
     borderRadius: 6,
     backgroundColor: "rgba(255, 209, 102, 0.3)",
+  },
+  sparkle: {
+    position: "absolute",
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#FFFFFF",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9,
   },
 });
