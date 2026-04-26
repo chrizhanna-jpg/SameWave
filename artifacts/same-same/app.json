@@ -11,12 +11,12 @@
     "splash": {
       "image": "./assets/images/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0A2552"
+      "backgroundColor": "#166FFC"
     },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "app.echo.samesame",
-      "buildNumber": "6",
+      "buildNumber": "7",
       "infoPlist": {
         "NSCameraUsageDescription": "SameWave uses your camera to take photos of your day so you can ripple with people sharing similar moments.",
         "NSPhotoLibraryUsageDescription": "SameWave lets you pick a photo from your library to share as today's moment.",
@@ -26,10 +26,10 @@
     },
     "android": {
       "package": "app.echo.samesame",
-      "versionCode": 6,
+      "versionCode": 7,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
-        "backgroundColor": "#0A2552"
+        "backgroundColor": "#166FFC"
       },
       "permissions": [
         "android.permission.CAMERA",
