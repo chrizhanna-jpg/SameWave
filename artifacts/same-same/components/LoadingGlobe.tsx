@@ -11,7 +11,7 @@ type Props = {
 // brand cyan introduced with the SameWave icon refresh, and the outer
 // RING in teal gives the wheel a clear boundary and visible rotation.
 const OCEAN = "#1FA9F0";
-const RING = "#00BFA5";
+const RING = "#4FD89C";
 const GRID = "rgba(255,255,255,0.45)";
 const ARC = "#FFD166";
 const SHINE = "rgba(255,255,255,0.28)";

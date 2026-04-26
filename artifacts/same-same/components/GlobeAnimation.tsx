@@ -59,7 +59,7 @@ const ARCS = [
 const WAVE_BANDS = [
   { y: 86, color: "rgba(255,255,255,0.70)", strokeWidth: 2.4, period: 110, amp: 7, duration: 16000 },
   { y: 95, color: "rgba(180,222,250,0.92)", strokeWidth: 4.2, period: 120, amp: 9, duration: 13000 },
-  { y: 104, color: "rgba(255,130,90,0.90)", strokeWidth: 5.0, period: 130, amp: 11, duration: 10500 },
+  { y: 104, color: "rgba(79,216,156,0.90)", strokeWidth: 5.0, period: 130, amp: 11, duration: 10500 },
   { y: 113, color: "rgba(126,195,240,0.88)", strokeWidth: 4.0, period: 115, amp: 10, duration: 12000 },
   { y: 122, color: "rgba(255,255,255,0.55)", strokeWidth: 2.4, period: 100, amp: 7, duration: 17500 },
 ];

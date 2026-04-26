@@ -1,5 +1,6 @@
 import React, { useCallback } from "react";
 import {
+  Image,
   Platform,
   ScrollView,
   StyleSheet,
@@ -12,7 +13,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
-import { EchoGlobeLogo } from "@/components/EchoGlobeLogo";
 import { OceanShimmer } from "@/components/OceanShimmer";
 import { Surface } from "@/components/Surface";
 import { GradientCard } from "@/components/GradientCard";
@@ -56,12 +56,18 @@ export default function HomeScreen() {
           { paddingTop: topPadding + 16, paddingBottom: bottomPadding + 110 },
         ]}
       >
-        {/* Hero — globe IS the logo */}
+        {/* Hero — static brand lockup (matches the app icon exactly).
+            Animated globe is paused for v1.2.0; the icon image already
+            contains the globe + wordmark + tagline + brand frame, so we
+            simply render it. Swap this back to <EchoGlobeLogo /> when
+            we're ready to bring the globe back to life. */}
         <View style={styles.hero}>
-          <EchoGlobeLogo
-            globeSize={200}
-            color="#FFFFFF"
-            taglineColor={colors.mutedForeground}
+          <Image
+            source={require("@/assets/images/samewave-logo.png")}
+            style={styles.logo}
+            resizeMode="contain"
+            accessibilityRole="image"
+            accessibilityLabel="SameWave — Where minds meet"
           />
         </View>
 
@@ -212,6 +218,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
     paddingBottom: 4,
+  },
+  logo: {
+    width: 300,
+    height: 300,
   },
   tagline: {
     fontSize: 14,

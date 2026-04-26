@@ -27,8 +27,8 @@ const palette = {
   muted: "#163872",
   mutedForeground: "#92BCE0",
 
-  accent: "#00BFA5",
-  accentForeground: "#FFFFFF",
+  accent: "#4FD89C",
+  accentForeground: "#0A2552",
 
   destructive: "#ef5350",
   destructiveForeground: "#ffffff",
@@ -41,7 +41,12 @@ const palette = {
   successForeground: "#ffffff",
 
   gold: "#FFD166",
-  teal: "#00BFA5",
+  // The brand "teal" token is kept for backwards-compat with existing
+  // call sites (connections, reveal, MatchFlash, MatchTier, etc.) but
+  // its value has shifted to the spring-green ribbon from the SameWave
+  // app icon — the brand accent is no longer teal. New code should
+  // prefer `accent`.
+  teal: "#4FD89C",
   coral: "#1FA9F0",
   navy: "#0A2552",
   green: "#3DA478",
@@ -79,7 +84,7 @@ const shadows = {
     elevation: 10,
   },
   glowAccent: {
-    shadowColor: "#00BFA5",
+    shadowColor: "#4FD89C",
     shadowOpacity: 0.4,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 8 },
@@ -88,7 +93,7 @@ const shadows = {
 } as const;
 
 const gradients = {
-  primary: ["#1FA9F0", "#00BFA5"] as const,
+  primary: ["#1FA9F0", "#4FD89C"] as const,
   warm: ["#FFD166", "#FF9F6A"] as const,
   surface: ["#133370", "#163C7E"] as const,
   surfaceElevated: ["#1A4585", "#133370"] as const,
