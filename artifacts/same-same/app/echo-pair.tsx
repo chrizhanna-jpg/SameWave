@@ -339,7 +339,7 @@ export default function EchoPairScreen() {
                   {!proUnlocked && (
                     <View style={styles.photoOverlayWatermarkContainer}>
                       <View style={styles.photoOverlayWatermark}>
-                        <Text style={styles.photoOverlayWatermarkSparkle}>✨</Text>
+                        <Icon name="wave" size={11} color="#FFFFFF" />
                         <Text style={styles.photoOverlayWatermarkText}>SameWave</Text>
                       </View>
                     </View>
@@ -359,7 +359,7 @@ export default function EchoPairScreen() {
                   {!proUnlocked && (
                     <View style={styles.photoOverlayWatermarkContainer}>
                       <View style={styles.photoOverlayWatermark}>
-                        <Text style={styles.photoOverlayWatermarkSparkle}>✨</Text>
+                        <Icon name="wave" size={11} color="#FFFFFF" />
                         <Text style={styles.photoOverlayWatermarkText}>SameWave</Text>
                       </View>
                     </View>
@@ -418,7 +418,7 @@ export default function EchoPairScreen() {
                 ]}
               >
                 <View style={styles.watermarkRow}>
-                  <Text style={styles.watermarkSparkle}>✨</Text>
+                  <Icon name="wave" size={14} color="#FFFFFF" />
                   <Text style={[styles.watermarkText, { color: "#FFFFFF" }]}>
                     SameWave
                   </Text>

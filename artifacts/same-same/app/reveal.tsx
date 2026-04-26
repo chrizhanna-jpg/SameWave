@@ -338,7 +338,7 @@ export default function RevealScreen() {
                 {!proUnlocked && (
                   <View style={styles.photoOverlayWatermarkContainer}>
                     <View style={styles.photoOverlayWatermark}>
-                      <Text style={styles.photoOverlayWatermarkSparkle}>✨</Text>
+                      <Icon name="wave" size={11} color="#FFFFFF" />
                       <Text style={styles.photoOverlayWatermarkText}>SameWave</Text>
                     </View>
                   </View>
@@ -353,7 +353,7 @@ export default function RevealScreen() {
                 {!proUnlocked && (
                   <View style={styles.photoOverlayWatermarkContainer}>
                     <View style={styles.photoOverlayWatermark}>
-                      <Text style={styles.photoOverlayWatermarkSparkle}>✨</Text>
+                      <Icon name="wave" size={11} color="#FFFFFF" />
                       <Text style={styles.photoOverlayWatermarkText}>SameWave</Text>
                     </View>
                   </View>
@@ -402,7 +402,7 @@ export default function RevealScreen() {
               ]}
             >
               <View style={styles.watermarkRow}>
-                <Text style={styles.watermarkSparkle}>✨</Text>
+                <Icon name="wave" size={14} color="#FFFFFF" />
                 <Text style={[styles.watermarkText, { color: "#FFFFFF" }]}>
                   SameWave
                 </Text>
@@ -567,7 +567,12 @@ export default function RevealScreen() {
               <Icon name="x" size={20} color={colors.mutedForeground} />
             </TouchableOpacity>
 
-            <Text style={styles.paywallSparkle}>✨</Text>
+            <Icon
+              name="wave"
+              size={40}
+              color={colors.gold}
+              style={styles.paywallSparkle}
+            />
             <Text style={[styles.paywallTitle, { color: colors.foreground }]}>
               SameWave Pro
             </Text>
