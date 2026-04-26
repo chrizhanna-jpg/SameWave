@@ -9,7 +9,7 @@ import {
 } from "@workspace/db";
 import { resolveUserFromRequest } from "../lib/users";
 import { analyzePhoto, extractObjectTags } from "../lib/photoAnalysis";
-import { recordEchoOffer } from "./echoes";
+import { recordEchoOffer, revokeEchoForUnvote } from "./echoes";
 
 const router: IRouter = Router();
 
@@ -782,6 +782,76 @@ router.post("/photos/:id/vote", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "vote failed");
     res.status(500).json({ error: "vote failed" });
+  }
+});
+
+// ---- POST /api/photos/:id/unvote ------------------------------------------
+// Withdraw a previously-cast vote on this photo. Used when a user taps
+// "Mark as Different" on a ripple in My Journey, or otherwise undoes a
+// swipe. The unvote is the only way a wave can be cancelled — the user
+// can't undo a wave directly, but undoing either underlying ripple
+// cascades to dissolve it (see revokeEchoForUnvote for the rules).
+//
+// Idempotent: if no vote exists, returns 200 with vote=null. Always
+// returns the cascade summary so the client can refresh inboxes.
+router.post("/photos/:id/unvote", async (req, res) => {
+  try {
+    const user = await resolveUserFromRequest(req);
+    if (!user) {
+      res.status(401).json({ error: "missing or invalid X-Device-Id" });
+      return;
+    }
+    const photoId = req.params.id;
+
+    // Run vote-delete + echo cascade in a single transaction so they
+    // commit atomically. If the cascade throws, the vote stays —
+    // we never want to leave a vote deleted while the wave it was
+    // supporting still exists. Locking happens inside the cascade
+    // (SELECT ... FOR UPDATE on the affected echoes).
+    const result = await db.transaction(async (tx) => {
+      // Snapshot the existing vote (if any) so we know whether a
+      // cascade is needed. Only "same" votes can have produced an
+      // echo — "different" deletions are pure no-ops on the echo
+      // side but we still clear the row so a later re-swipe rebuilds
+      // cleanly.
+      const existing = await tx
+        .select({ verdict: votesTable.verdict })
+        .from(votesTable)
+        .where(
+          and(
+            eq(votesTable.voterUserId, user.id),
+            eq(votesTable.photoId, photoId),
+          ),
+        )
+        .limit(1);
+
+      if (existing.length === 0) {
+        return { vote: null as null, cascade: { updated: 0, deleted: 0 } };
+      }
+
+      await tx
+        .delete(votesTable)
+        .where(
+          and(
+            eq(votesTable.voterUserId, user.id),
+            eq(votesTable.photoId, photoId),
+          ),
+        );
+
+      let cascade = { updated: 0, deleted: 0 };
+      if (existing[0].verdict === "same") {
+        cascade = await revokeEchoForUnvote(tx, {
+          unvoterUserId: user.id,
+          unvotedPhotoId: photoId,
+        });
+      }
+      return { vote: existing[0].verdict, cascade };
+    });
+
+    res.json({ ok: true, vote: result.vote, echo: result.cascade });
+  } catch (err) {
+    req.log.error({ err }, "unvote failed");
+    res.status(500).json({ error: "unvote failed" });
   }
 });
 

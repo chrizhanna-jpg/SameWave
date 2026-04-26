@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { and, desc, eq, or, sql } from "drizzle-orm";
-import { db, echoesTable, photosTable } from "@workspace/db";
+import { db, echoesTable, photosTable, votesTable } from "@workspace/db";
 import { resolveUserFromRequest } from "../lib/users";
 import { sendPushToUser } from "../lib/push";
 import { logger } from "../lib/logger";
@@ -188,6 +188,114 @@ export async function recordEchoOffer(input: {
   }
 
   return { state: row.state === "mutual" ? "mutual" : "pending", id: row.id };
+}
+
+/**
+ * Cascade-clean any echo affected by a user undoing their "same" vote
+ * on a particular photo. Called from inside the unvote transaction
+ * (see POST /photos/:id/unvote) so the vote delete and the cascade
+ * commit atomically — either both happen or neither does.
+ *
+ * Background: a wave (mutual echo) exists only because BOTH sides have
+ * a "same" vote on the other's photo. If either side withdraws their
+ * vote, the wave should dissolve — the user's stated design rule is
+ * "you can't undo a wave directly, but undoing either underlying
+ * ripple cancels it". A pending offer follows the same logic: if the
+ * sole same-vote that created it is gone, the offer is gone too.
+ *
+ * Logic per affected echo (one user has just unvoted on `unvotedPhotoId`):
+ *   - If the OTHER side still has a "same" vote on the unvoter's photo
+ *     in this pair → revert to pending, with the other side as the
+ *     pending offerer (the other side's standing offer is still real).
+ *   - Otherwise → delete the echo. With both votes gone there is no
+ *     longer any pair to track.
+ *
+ * Concurrency: the candidate echoes are SELECTed FOR UPDATE so two
+ * concurrent unvotes on either side of the same pair serialize at the
+ * row level — the second one observes the first one's write and
+ * recomputes correctly.
+ *
+ * Errors propagate to the caller (the route handler) so the enclosing
+ * transaction can roll the vote delete back too. We never want to
+ * leave a vote deleted while its echo lingers.
+ */
+export async function revokeEchoForUnvote(
+  tx: Pick<typeof db, "select" | "update" | "delete">,
+  input: {
+    unvoterUserId: string;
+    unvotedPhotoId: string;
+  },
+): Promise<{ updated: number; deleted: number }> {
+  const { unvoterUserId, unvotedPhotoId } = input;
+  // Find every echo where the unvoter is a participant and the
+  // OTHER photo in the pair is the one they just unvoted on. There
+  // can be multiple if the unvoter has several photos that each
+  // produced an echo with the same target. Lock the rows for the
+  // duration of the transaction so concurrent cascades serialize.
+  const candidates = await tx
+    .select({
+      id: echoesTable.id,
+      photoLowId: echoesTable.photoLowId,
+      photoHighId: echoesTable.photoHighId,
+      userLowId: echoesTable.userLowId,
+      userHighId: echoesTable.userHighId,
+      state: echoesTable.state,
+    })
+    .from(echoesTable)
+    .where(
+      or(
+        and(
+          eq(echoesTable.userLowId, unvoterUserId),
+          eq(echoesTable.photoHighId, unvotedPhotoId),
+        ),
+        and(
+          eq(echoesTable.userHighId, unvoterUserId),
+          eq(echoesTable.photoLowId, unvotedPhotoId),
+        ),
+      ),
+    )
+    .for("update");
+
+  let updated = 0;
+  let deleted = 0;
+  for (const echo of candidates) {
+    const myPhotoId =
+      echo.userLowId === unvoterUserId ? echo.photoLowId : echo.photoHighId;
+    const otherUserId =
+      echo.userLowId === unvoterUserId ? echo.userHighId : echo.userLowId;
+
+    // Does the other side still have a standing "same" vote on MY
+    // photo in this pair? If so, the echo should revert to a pending
+    // offer from them. If not, the pair has nothing left holding it
+    // together.
+    const otherVote = await tx
+      .select({ id: votesTable.id })
+      .from(votesTable)
+      .where(
+        and(
+          eq(votesTable.voterUserId, otherUserId),
+          eq(votesTable.photoId, myPhotoId),
+          eq(votesTable.verdict, "same"),
+        ),
+      )
+      .limit(1);
+
+    if (otherVote.length > 0) {
+      await tx
+        .update(echoesTable)
+        .set({
+          state: "pending",
+          pendingFromUserId: otherUserId,
+          mutualAt: null,
+        })
+        .where(eq(echoesTable.id, echo.id));
+      updated++;
+    } else {
+      await tx.delete(echoesTable).where(eq(echoesTable.id, echo.id));
+      deleted++;
+    }
+  }
+  return { updated, deleted };
 }
 
 // Shape returned by inbox / mutual list endpoints. The "mine" / "theirs"

@@ -834,10 +834,18 @@ export default function SwipeScreen() {
         // immediately with deterministic sample numbers so the UI never
         // flickers with empty zeros, then upgrade to live numbers below
         // once the backend responds.
+        // Stamp the live (DB) photo ID onto the match so a later
+        // undo / flip can call the server to withdraw the vote and
+        // cascade-cancel any wave it produced. Sample photos lack a
+        // backend ID and stay client-side only — the same as before.
         const matchWithStats: Match =
           dir === "right"
-            ? { ...match, matchStats: sampleMatchStats(snapshotPhoto.uri) }
-            : match;
+            ? {
+                ...match,
+                ...(liveId ? { theirPhotoId: liveId } : {}),
+                matchStats: sampleMatchStats(snapshotPhoto.uri),
+              }
+            : { ...match, ...(liveId ? { theirPhotoId: liveId } : {}) };
         addMatch(matchWithStats);
         if (liveId) {
           // Persist the verdict to the backend. Pass the user's currently-

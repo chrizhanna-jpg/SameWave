@@ -12,6 +12,7 @@ import {
   fetchEchoesMine,
   fetchSeenPhotoIds,
   respondEcho as respondEchoApi,
+  unvotePhoto,
   type ServerEcho,
 } from "@/utils/api";
 import { photoKey } from "@/utils/photoKey";
@@ -71,6 +72,12 @@ export interface Match {
   myPhoto: string;
   myPhotoUploadedAt?: string;
   theirPhoto: string;
+  // Backend (DB) ID of the matched photo, when known. Persisted on
+  // every match created from a live discovery candidate so that later
+  // undo / flip actions can call the server to withdraw the original
+  // vote and cascade-cancel any wave it produced. Older matches that
+  // predate this field stay client-side only.
+  theirPhotoId?: string;
   myCountry: string;
   theirCountry: string;
   theirCountryFlag: string;
@@ -736,10 +743,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  // Forward declaration: removeMatch / changeVerdict need to call
+  // refreshEchoes after a server-side unvote to keep the My Journey /
+  // inbox lists in sync with the cascaded wave deletion. refreshEchoes
+  // is defined further down (it depends on a lot of derived state),
+  // so we route through a ref that's filled in by an effect below.
+  const refreshEchoesRef = useRef<(() => Promise<void>) | null>(null);
+
   const removeMatch = useCallback((id: string) => {
+    // Snapshot the target match BEFORE calling setState. React 18's
+    // concurrent renderer is allowed to invoke updater functions more
+    // than once for the same logical state transition, so deriving
+    // the side-effect (server unvote) inside setState risked firing
+    // it 0, 1, or 2 times. stateRef tracks the latest committed state
+    // synchronously and is the safe source of truth for one-shot
+    // side effects like this.
+    const target = stateRef.current.matches.find((m) => m.id === id);
     setState((prev) => {
-      const target = prev.matches.find((m) => m.id === id);
-      if (!target) return prev;
+      const stillThere = prev.matches.find((m) => m.id === id);
+      if (!stillThere) return prev;
 
       const remainingMatches = prev.matches.filter((m) => m.id !== id);
       const confirmed = remainingMatches.filter((m) => m.verdict === "same");
@@ -747,7 +769,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       // Note: we intentionally keep earned badges. Undoing a single match
       // shouldn't take an achievement away — and re-earning is trivial.
-      const wasConfirmed = target.verdict === "same";
+      const wasConfirmed = stillThere.verdict === "same";
       const newState: AppState = {
         ...prev,
         matches: remainingMatches,
@@ -760,28 +782,39 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       saveState(newState);
       return newState;
     });
+    // Only "same" verdicts can have produced a server-side echo /
+    // wave. If the match also has a known backend photo ID, fire a
+    // server unvote so the wave dissolves. Local state already
+    // reflects the removal — a server failure simply leaves the
+    // backend out of sync until the next interaction.
+    if (target && target.verdict === "same" && target.theirPhotoId) {
+      const { theirPhotoId } = target;
+      void unvotePhoto(theirPhotoId).then((ok) => {
+        if (ok) refreshEchoesRef.current?.();
+      });
+    }
   }, []);
 
   const changeVerdict = useCallback(
     (id: string, newVerdict: "same" | "different"): Match | null => {
-      let updated: Match | null = null;
+      // Snapshot pre-flip target from stateRef (see removeMatch comment
+      // above for why we don't read it inside the setState updater).
+      const previous = stateRef.current.matches.find((m) => m.id === id);
+      if (!previous || previous.verdict === newVerdict) return previous ?? null;
+
+      const flipped: Match = {
+        ...previous,
+        verdict: newVerdict,
+        // Refresh timestamp on flip → "Same Same" so it surfaces as
+        // freshly matched in the journey.
+        ...(newVerdict === "same"
+          ? { timestamp: new Date().toISOString() }
+          : {}),
+      };
+
       setState((prev) => {
         const target = prev.matches.find((m) => m.id === id);
-        if (!target) return prev;
-        if (target.verdict === newVerdict) {
-          updated = target;
-          return prev;
-        }
-        const flipped: Match = {
-          ...target,
-          verdict: newVerdict,
-          // Refresh timestamp on flip → "Same Same" so it surfaces as
-          // freshly matched in the journey.
-          ...(newVerdict === "same"
-            ? { timestamp: new Date().toISOString() }
-            : {}),
-        };
-        updated = flipped;
+        if (!target || target.verdict === newVerdict) return prev;
 
         const newMatches = prev.matches.map((m) => (m.id === id ? flipped : m));
         const confirmed = newMatches.filter((m) => m.verdict === "same");
@@ -805,7 +838,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         saveState(newState);
         return newState;
       });
-      return updated;
+
+      // Flipping same → different is a ripple undo: fire a server
+      // unvote so the corresponding wave (if any) cascades away. The
+      // reverse direction (different → same) doesn't currently
+      // re-record a vote on the server — that would require
+      // re-supplying the user's representing photo at the time of the
+      // original swipe, which we don't reliably retain on these older
+      // matches. Treat it as a local-only flip for now; a fresh swipe
+      // in discovery is the canonical way to create a new "same" vote.
+      if (
+        previous.verdict === "same" &&
+        newVerdict === "different" &&
+        previous.theirPhotoId
+      ) {
+        const { theirPhotoId } = previous;
+        void unvotePhoto(theirPhotoId).then((ok) => {
+          if (ok) refreshEchoesRef.current?.();
+        });
+      }
+      return flipped;
     },
     [],
   );
@@ -1131,6 +1183,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     refreshEchoes();
     const id = setInterval(refreshEchoes, 30_000);
     return () => clearInterval(id);
+  }, [refreshEchoes]);
+
+  // Keep the forward-declared ref in sync so removeMatch / changeVerdict
+  // (declared earlier in this component) can fire a refresh after a
+  // server-side cascade revoke.
+  React.useEffect(() => {
+    refreshEchoesRef.current = refreshEchoes;
   }, [refreshEchoes]);
 
   const markAllEchoesSeen = useCallback(() => {

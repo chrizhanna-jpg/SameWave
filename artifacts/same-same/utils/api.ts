@@ -313,6 +313,30 @@ export async function votePhoto(
   }
 }
 
+/**
+ * Withdraw a previously-cast vote on this photo. Used when the user
+ * taps "Mark as Different" on a ripple in My Journey, or otherwise
+ * undoes a swipe. The server cascades to dissolve any wave (mutual
+ * echo) the original "same" vote was holding together — undoing a
+ * ripple is the only way a wave can be cancelled, by design.
+ *
+ * Returns true on any 2xx (including the no-op case where the user
+ * had no vote on file). Network or 5xx failures return false so the
+ * caller can decide whether to keep the local UI flip or roll back.
+ */
+export async function unvotePhoto(photoId: string): Promise<boolean> {
+  try {
+    const base = getApiBase();
+    const res = await fetch(`${base}/api/photos/${photoId}/unvote`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(await authedHeaders()) },
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Seen-photos ledger (server-side mirror of the client's seenPhotoKeys).
 // Lets dedup follow the user across reinstalls / a second device.
