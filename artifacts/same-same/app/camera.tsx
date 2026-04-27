@@ -128,6 +128,13 @@ export default function CameraScreen() {
   const genreEditedRef = useRef(false);
   const musicGenreRef = useRef<MusicGenre | null>(null);
   musicGenreRef.current = musicGenre;
+  // The horizontal vibe-chip ScrollView and a per-chip layout map so we
+  // can auto-scroll the AI's pick into view (centered when possible).
+  // Otherwise the AI might pick a vibe that's off-screen and the user
+  // wouldn't realize one is selected at all.
+  const musicScrollRef = useRef<ScrollView>(null);
+  const chipLayoutsRef = useRef<Record<string, { x: number; width: number }>>({});
+  const musicScrollWidthRef = useRef(0);
   // Lease handed back by the audio singleton for the most recent
   // preview clip THIS screen started. The unmount cleanup uses it
   // with stopIfLease() so we only stop audio we actually own — if a
@@ -477,6 +484,37 @@ export default function CameraScreen() {
     const g = suggestGenre(themeForSuggestion, aiTags);
     setMusicGenre(g);
   }, [aiTheme, aiTags, themeText, selectedPhoto]);
+
+  // Whenever the AI's pick changes (and the user hasn't manually
+  // overridden) auto-scroll the chip ScrollView so the highlighted
+  // vibe is centered. Otherwise an off-screen pick can read as "no
+  // vibe selected" until the user happens to swipe the row.
+  useEffect(() => {
+    if (genreEdited) return;
+    if (!musicGenre) return;
+    // Layout pass may not have run yet on first frame; retry briefly
+    // until the chip's geometry is known. This stays cheap (one frame
+    // delay in the common case, ~3 frames worst case).
+    let cancelled = false;
+    let attempts = 0;
+    const tryScroll = () => {
+      if (cancelled) return;
+      const layout = chipLayoutsRef.current[musicGenre];
+      const viewport = musicScrollWidthRef.current;
+      if (!layout || viewport === 0) {
+        if (attempts++ < 8) {
+          setTimeout(tryScroll, 32);
+        }
+        return;
+      }
+      const target = Math.max(0, layout.x - viewport / 2 + layout.width / 2);
+      musicScrollRef.current?.scrollTo({ x: target, animated: true });
+    };
+    tryScroll();
+    return () => {
+      cancelled = true;
+    };
+  }, [musicGenre, genreEdited]);
 
   // Tear down audio when leaving the screen entirely (back nav, etc).
   // stopIfLease is critical here — if the user has already started
@@ -875,9 +913,13 @@ export default function CameraScreen() {
                 )}
               </View>
               <ScrollView
+                ref={musicScrollRef}
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.musicChips}
+                onLayout={(e) => {
+                  musicScrollWidthRef.current = e.nativeEvent.layout.width;
+                }}
                 style={{
                   // When the user has recorded their own clip, the chip
                   // picker no longer drives playback — fade it out so
@@ -893,6 +935,10 @@ export default function CameraScreen() {
                       onPress={() => handleGenreTap(g.id)}
                       activeOpacity={0.85}
                       disabled={!!customAudioUrl}
+                      onLayout={(e) => {
+                        const { x, width } = e.nativeEvent.layout;
+                        chipLayoutsRef.current[g.id] = { x, width };
+                      }}
                       style={[
                         styles.musicChip,
                         {
