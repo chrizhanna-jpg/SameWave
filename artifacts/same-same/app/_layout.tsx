@@ -57,31 +57,48 @@ function ClerkTokenBridge() {
   return null;
 }
 
-// Gates the app behind the sign-in screen. Renders `null` (a blank
-// branded background, since ClerkProvider sits on top of our dark theme)
-// any time we're either still resolving auth or about to redirect, so
-// the user never sees a flash of the wrong tree before navigation.
+// Gates the app behind sign-in for any screen that isn't a pre-auth
+// surface (the tutorial / onboarding, the sign-in screen itself, or
+// the root index router). The actual decision tree — tutorial first,
+// then sign-in, then tabs — lives in `app/index.tsx`; this gate just
+// makes sure unauthenticated users can't bypass it via a deep link
+// straight into a protected screen, and that signed-in users don't
+// stay parked on /sign-in. Renders `null` while resolving auth or
+// redirecting so the user never sees a flash of the wrong tree.
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { isLoaded, isSignedIn } = useAuth();
   const segments = useSegments();
   const navRouter = useRouter();
 
-  const onSignIn = segments[0] === "sign-in";
+  // Cast to a plain string so the comparisons below don't fight
+  // expo-router's typed-route inference (it constrains segments[0] to
+  // a known union and rejects the empty-string / undefined case).
+  const firstSegment = segments[0] as string | undefined;
+  const onSignIn = firstSegment === "sign-in";
+  // Tutorial is pre-auth: an unauthenticated user is allowed to be on
+  // /onboarding so the brand and flow can land before we ask them to
+  // sign in. The decision in index.tsx routes them here on first opens.
+  const onOnboarding = firstSegment === "onboarding";
+  // The root router (no segment, i.e. on "/") is the decision point —
+  // never block it; let index.tsx pick the next destination.
+  const onRoot = !firstSegment;
+  const onPreAuthScreen = onSignIn || onOnboarding || onRoot;
+
+  // Two cases need a redirect through "/" so the central decision in
+  // index.tsx runs again with fresh state:
+  //  (a) user signed in but is still parked on /sign-in (tutorial may
+  //      still be pending — index.tsx handles either case correctly);
+  //  (b) user is NOT signed in and is on a protected screen (i.e. not
+  //      pre-auth). Bouncing through "/" lets index.tsx decide whether
+  //      to send them to /onboarding or /sign-in next.
   const needsRedirect =
-    isLoaded && ((!isSignedIn && !onSignIn) || (isSignedIn && onSignIn));
+    isLoaded &&
+    ((isSignedIn && onSignIn) || (!isSignedIn && !onPreAuthScreen));
 
   useEffect(() => {
     if (!isLoaded) return;
-    if (!isSignedIn && !onSignIn) {
-      navRouter.replace("/sign-in");
-    } else if (isSignedIn && onSignIn) {
-      // Route through "/" (index.tsx) NOT directly to "/(tabs)".
-      // index.tsx is the tutorial gate — it inspects appOpenCount and
-      // bounces first-time users to /onboarding. Going straight to the
-      // tabs here would silently skip the tutorial after sign-in.
-      navRouter.replace("/");
-    }
-  }, [isLoaded, isSignedIn, onSignIn, navRouter]);
+    if (needsRedirect) navRouter.replace("/");
+  }, [isLoaded, needsRedirect, navRouter]);
 
   if (!isLoaded || needsRedirect) return null;
   return <>{children}</>;

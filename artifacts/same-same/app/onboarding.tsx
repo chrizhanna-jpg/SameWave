@@ -109,7 +109,10 @@ export default function OnboardingScreen() {
       });
     } else {
       completeOnboarding();
-      router.replace("/(tabs)");
+      // Route through "/" so the index gate decides whether sign-in is
+      // still required (first-time users complete the tutorial BEFORE
+      // they're asked to sign in) or it can drop them on the home tabs.
+      router.replace("/");
     }
   };
 
@@ -320,7 +323,9 @@ export default function OnboardingScreen() {
           <PressableScale
             onPress={() => {
               completeOnboarding();
-              router.replace("/(tabs)");
+              // Route through "/" so the gate enforces sign-in next if
+              // the user skipped the tutorial before authenticating.
+              router.replace("/");
             }}
           >
             <Text style={[styles.skip, { color: colors.mutedForeground }]}>

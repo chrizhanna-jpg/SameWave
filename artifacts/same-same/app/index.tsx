@@ -1,33 +1,49 @@
 import { Redirect } from "expo-router";
+import { useAuth } from "@clerk/expo";
 import { useApp } from "@/context/AppContext";
 
 // Show the tutorial automatically on the first N cold starts so the
-// brand + flow has a chance to land before the user is dropped on the
-// home tab. After this threshold, cold starts go straight to /(tabs)
-// — the user can still open the tutorial manually via the "Replay
-// tutorial" button on the home screen.
+// brand + flow has a chance to land before the user is asked to sign
+// in. After this threshold, cold starts skip past the tutorial — the
+// user can still open it manually via the "Replay tutorial" button on
+// the home screen.
 //
-// Currently 2 → tutorial appears on opens 1 and 2 (the user's stated
-// preference: "show the first 2 times someone logs in"). Note that
-// for required-login first installs, the first cold start IS the
-// first login, so this maps cleanly to "first 2 logins" without
-// needing a separate login-counter.
+// Currently 2 → tutorial appears on opens 1 and 2.
 const TUTORIAL_OPENS = 2;
 
+// Single decision point for "where should the user land right now?"
+// Order:
+//   1. Tutorial first — even before sign-in. Skipping the tutorial
+//      counts as completing it (completeOnboarding flips the flag), so
+//      this gate only fires while the user genuinely hasn't seen the
+//      flow yet AND they're inside the first-N-opens window.
+//   2. Required Google sign-in. If the tutorial has been seen but the
+//      user isn't authenticated, send them to the sign-in screen.
+//   3. Otherwise → home tabs.
+//
+// Routing the post-tutorial / post-sign-in transition through here
+// (instead of jumping straight to /(tabs)) keeps the decision in one
+// place: the rest of the app can simply navigate to "/" and trust this
+// gate to land them in the right state.
 export default function Index() {
-  const { appOpenCount, hasHydrated } = useApp();
+  const { appOpenCount, hasHydrated, onboardingComplete } = useApp();
+  const { isLoaded, isSignedIn } = useAuth();
 
-  // Wait for AsyncStorage to hydrate before deciding where to send the
-  // user. Without this gate, a returning user is briefly marked as a
-  // first-open (the default initial state) and we redirect them to
-  // /onboarding before their persisted counter arrives — the tutorial
-  // would then fire on every cold start.
-  if (!hasHydrated) {
+  // Wait for AsyncStorage AND Clerk to hydrate before deciding. Without
+  // these gates, a returning user is briefly marked as a first-open (or
+  // unauthenticated) and we redirect them away before the persisted
+  // state catches up — the tutorial / sign-in screen would then fire
+  // on every cold start.
+  if (!hasHydrated || !isLoaded) {
     return null;
   }
 
-  if (appOpenCount <= TUTORIAL_OPENS) {
+  if (!onboardingComplete && appOpenCount <= TUTORIAL_OPENS) {
     return <Redirect href="/onboarding" />;
+  }
+
+  if (!isSignedIn) {
+    return <Redirect href="/sign-in" />;
   }
 
   return <Redirect href="/(tabs)" />;
