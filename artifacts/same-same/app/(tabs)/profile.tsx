@@ -106,6 +106,26 @@ function NavRow({
   );
 }
 
+// Tiny "Signed in" pill that lives directly under the "My Journey" header
+// title. Purely an ambient cue — the user explicitly asked for a small,
+// always-visible reassurance that the account is active, so they don't
+// have to scroll all the way down to the SignedInRow at the bottom of
+// the tab to know whether they're signed in. The bottom row still owns
+// the actual Sign-out action.
+function HeaderSignedInBadge() {
+  const colors = useColors();
+  const { isSignedIn } = useAuth();
+  if (!isSignedIn) return null;
+  return (
+    <View style={styles.headerSignedInBadge}>
+      <Icon name="check" size={11} color={colors.teal} />
+      <Text style={[styles.headerSignedInText, { color: colors.teal }]}>
+        Signed in
+      </Text>
+    </View>
+  );
+}
+
 // Tiny "Signed in" row + sign-out link. Per product brief, we deliberately
 // don't show the user's Google name/email/photo — the account is just an
 // invisible anchor for their photos and country. After signOut() the root
@@ -249,9 +269,15 @@ export default function ProfileScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <OceanShimmer />
       <View style={[styles.header, { paddingTop: topPadding + 8 }]}>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-          My Journey
-        </Text>
+        <View style={styles.headerTitleCol}>
+          <Text style={[styles.headerTitle, { color: colors.foreground }]}>
+            My Journey
+          </Text>
+          {/* Tiny "Signed in" cue under the title — purely ambient
+              reassurance. The full sign-out row still lives at the
+              bottom of the tab. */}
+          <HeaderSignedInBadge />
+        </View>
         <TouchableOpacity
           onPress={() => router.push("/echoes")}
           activeOpacity={0.8}
@@ -849,10 +875,29 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     opacity: 0.6,
   },
+  headerTitleCol: {
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 4,
+    flexShrink: 1,
+  },
   headerTitle: {
     fontSize: 22,
     fontFamily: "Inter_700Bold",
     letterSpacing: -0.5,
+  },
+  // Tiny pill that sits directly under the "My Journey" title to confirm
+  // the user is signed in. Kept intentionally low-key (small text, no
+  // background) so it reads as ambient status, not a CTA.
+  headerSignedInBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  headerSignedInText: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    letterSpacing: 0.2,
   },
   content: {
     paddingHorizontal: 20,
