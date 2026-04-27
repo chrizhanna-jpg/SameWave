@@ -1,5 +1,5 @@
 import { db, usersTable } from "@workspace/db";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { getAuth } from "@clerk/express";
 import type { Request } from "express";
 
@@ -97,6 +97,3 @@ async function selectByAuthId(authId: string): Promise<string | null> {
     .limit(1);
   return rows.length > 0 ? rows[0].id : null;
 }
-
-// Suppress unused import warning if a future refactor drops sql usage.
-void sql;
