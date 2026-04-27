@@ -647,3 +647,38 @@ export function pickClipForSeed(genre: MusicGenre, seed: string): MusicClip {
   }
   return g.clips[(h >>> 0) % g.clips.length];
 }
+
+/**
+ * Resolve the music URL that a photo should play. Single source of truth
+ * shared by every screen that hears a photo's vibe — Match, Reveal,
+ * preview surfaces — so the same photo always resolves to the same URL
+ * regardless of which screen asks. This is what guarantees that opening
+ * the share card from the Match screen does NOT cause the audio singleton
+ * to switch clips: both screens compute the byte-identical URL.
+ *
+ * Resolution order:
+ * 1. User-recorded vibe (`customAudioUrl`) — takes priority.
+ * 2. Stored canonical `musicGenre` — looked up via getGenre, then a clip
+ *    is picked deterministically from `seed`.
+ * 3. Fallback: derive a vibe from theme + tags via `suggestGenre`.
+ *
+ * Returns null when the photo has no resolvable music (no seed, no genre,
+ * and `suggestGenre` was given nothing to work with). Callers treat null
+ * as "no clip" — silent.
+ */
+export function resolveMusicUrl(input: {
+  customAudioUrl?: string | null;
+  musicGenre?: string | null;
+  theme?: string | null;
+  tags?: string[] | null;
+  seed?: string | null;
+}): string | null {
+  if (input.customAudioUrl) return input.customAudioUrl;
+  const seed = input.seed ?? "";
+  if (!seed) return null;
+  const stored = input.musicGenre;
+  const genre: MusicGenre =
+    (stored && getGenre(stored)?.id) ||
+    suggestGenre(input.theme ?? undefined, input.tags ?? undefined);
+  return pickClipForSeed(genre, seed).url;
+}

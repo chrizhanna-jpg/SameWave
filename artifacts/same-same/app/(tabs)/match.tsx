@@ -45,12 +45,7 @@ import {
   markPhotosSeen,
   matchByObject,
 } from "@/utils/api";
-import {
-  getGenre,
-  pickClipForSeed,
-  suggestGenre,
-  type MusicGenre,
-} from "@/data/musicLibrary";
+import { resolveMusicUrl } from "@/data/musicLibrary";
 import {
   isMuted as audioIsMuted,
   markUserInteracted,
@@ -762,23 +757,19 @@ export default function SwipeScreen() {
       void pauseAudio();
       return;
     }
-    // User-recorded vibe trumps the music_genre clip — same player,
-    // just a different URL. The candidate API returns this as a fully
-    // formed `data:` URL (or null), so we can hand it straight to the
-    // audio singleton.
-    if (theirPhoto.customAudioUrl) {
-      playLeaseRef.current = playClip(theirPhoto.customAudioUrl);
-      return;
-    }
-    // Resolve the genre defensively: a stored value that isn't in the
-    // canonical library (legacy upload, server bug, hand-crafted JSON)
-    // falls back to a fresh local suggestion instead of crashing the
-    // playback path on a missing entry.
-    const stored = theirPhoto.musicGenre;
-    const genre: MusicGenre = (stored && getGenre(stored)?.id) ||
-      suggestGenre(theirPhoto.theme, theirPhoto.tags);
-    const clip = pickClipForSeed(genre, theirPhoto.uri);
-    playLeaseRef.current = playClip(clip.url);
+    // Single source of truth: `resolveMusicUrl` is the same helper the
+    // /reveal screen uses, so the URL we play here is byte-identical to
+    // the one /reveal will play after a tap on Open or Share. That's
+    // what guarantees the audio singleton dedups (no clip switch / no
+    // skip) when the user transitions to the share card.
+    const url = resolveMusicUrl({
+      customAudioUrl: theirPhoto.customAudioUrl,
+      musicGenre: theirPhoto.musicGenre,
+      theme: theirPhoto.theme,
+      tags: theirPhoto.tags,
+      seed: theirPhoto.uri,
+    });
+    if (url) playLeaseRef.current = playClip(url);
   }, [
     theirPhoto.uri,
     theirPhoto.id,
@@ -834,16 +825,14 @@ export default function SwipeScreen() {
       }
       const photo = theirPhotoRef.current;
       if (!photo?.uri || photo.id === "placeholder" || noMore) return;
-      if (photo.customAudioUrl) {
-        playLeaseRef.current = playClip(photo.customAudioUrl);
-        return;
-      }
-      const stored = photo.musicGenre;
-      const genre: MusicGenre =
-        (stored && getGenre(stored)?.id) ||
-        suggestGenre(photo.theme, photo.tags);
-      const clip = pickClipForSeed(genre, photo.uri);
-      playLeaseRef.current = playClip(clip.url);
+      const url = resolveMusicUrl({
+        customAudioUrl: photo.customAudioUrl,
+        musicGenre: photo.musicGenre,
+        theme: photo.theme,
+        tags: photo.tags,
+        seed: photo.uri,
+      });
+      if (url) playLeaseRef.current = playClip(url);
     }, [noMore]),
   );
 
@@ -955,6 +944,23 @@ export default function SwipeScreen() {
           theirVibe: expandToVibe(snapshotPhoto.tags ?? [], snapshotPhoto.uri),
           theirMusicGenre: snapshotPhoto.musicGenre,
           theirCustomAudioUrl: snapshotPhoto.customAudioUrl,
+          // Photo's actual theme + tags, distinct from `theme` above
+          // (which is the user's active challenge theme). Persisted so
+          // a later replay on /reveal can recompute the same music URL
+          // even if `theirMusicUrl` were ever lost in transit.
+          theirActualTheme: snapshotPhoto.theme,
+          theirTags: snapshotPhoto.tags,
+          // Snapshot the resolved music URL so /reveal plays the
+          // byte-identical clip the Match card was already playing —
+          // the audio singleton dedups on URL, so no skip on
+          // Open / Share. See `resolveMusicUrl` for resolution rules.
+          theirMusicUrl: resolveMusicUrl({
+            customAudioUrl: snapshotPhoto.customAudioUrl,
+            musicGenre: snapshotPhoto.musicGenre,
+            theme: snapshotPhoto.theme,
+            tags: snapshotPhoto.tags,
+            seed: snapshotPhoto.uri,
+          }) ?? undefined,
         };
         const liveId = realPhotoIdsRef.current.get(snapshotPhoto.uri);
         // For "same" verdicts attach a stats payload so the reveal screen

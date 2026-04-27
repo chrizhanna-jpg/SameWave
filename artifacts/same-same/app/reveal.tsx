@@ -21,12 +21,7 @@ import * as Sharing from "expo-sharing";
 import ViewShot, { captureRef } from "react-native-view-shot";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
-import {
-  getGenre,
-  pickClipForSeed,
-  suggestGenre,
-  type MusicGenre,
-} from "@/data/musicLibrary";
+import { resolveMusicUrl } from "@/data/musicLibrary";
 import {
   markUserInteracted,
   playClip,
@@ -115,19 +110,33 @@ export default function RevealScreen() {
 
   // Audio: play the matched card's clip while the reveal is open,
   // then stop on unmount so we don't bleed into the next screen.
+  //
+  // Critical: the URL we hand to playClip MUST be byte-identical to
+  // whatever the Match screen was already playing — otherwise the audio
+  // singleton sees a "new" URL and switches clips, producing the
+  // "music skipped to the next photo's vibe when I tapped Open/Share"
+  // bug. So prefer the URL the Match screen snapshotted onto the match
+  // record. Only fall back to recomputing for legacy matches that
+  // predate `theirMusicUrl` — and even then, use the photo's own theme
+  // and tags (saved as `theirActualTheme` / `theirTags`) instead of the
+  // active-challenge `theme` field, which gave a different vibe and is
+  // exactly what regressed this fix in the first place.
   const playLeaseRef = useRef<number>(0);
   useEffect(() => {
     if (!match) return;
     markUserInteracted();
-    if (match.theirCustomAudioUrl) {
-      playLeaseRef.current = playClip(match.theirCustomAudioUrl);
+    if (match.theirMusicUrl) {
+      playLeaseRef.current = playClip(match.theirMusicUrl);
       return;
     }
-    const stored = match.theirMusicGenre;
-    const genre: MusicGenre =
-      (stored && getGenre(stored)?.id) || suggestGenre(match.theme, []);
-    const clip = pickClipForSeed(genre, match.theirPhoto);
-    playLeaseRef.current = playClip(clip.url);
+    const url = resolveMusicUrl({
+      customAudioUrl: match.theirCustomAudioUrl,
+      musicGenre: match.theirMusicGenre,
+      theme: match.theirActualTheme ?? match.theme,
+      tags: match.theirTags,
+      seed: match.theirPhoto,
+    });
+    if (url) playLeaseRef.current = playClip(url);
   }, [match]);
   useEffect(() => {
     return () => {

@@ -105,6 +105,19 @@ export interface Match {
   // reveal screen can replay the exact clip the user heard on the card.
   theirMusicGenre?: string;
   theirCustomAudioUrl?: string;
+  // Pre-resolved clip URL for the matched photo, snapshotted at swipe
+  // time. The reveal screen plays this directly so the audio singleton
+  // dedups on the byte-identical URL the Match screen was already
+  // playing — guarantees the music does NOT skip when the user taps
+  // Open or Share. Older persisted matches from before this field
+  // existed fall back to recomputing from the genre/theme/tags.
+  theirMusicUrl?: string;
+  // Photo's own theme/tags (distinct from the user's active challenge
+  // theme stored in `theme` above). Saved here so legacy matches that
+  // lack `theirMusicUrl` can still recompute the same URL the Match
+  // screen used, instead of guessing with empty tags.
+  theirActualTheme?: string;
+  theirTags?: string[];
   // How many other people also said "same same" to the matched photo,
   // bucketed by time. Populated asynchronously after a "same" verdict.
   // Used by the reveal screen and discovery feed to show social weight.
