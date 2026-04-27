@@ -155,9 +155,11 @@ export default function DiscoverScreen() {
 
   // Always pull the count from the server. Themes the server doesn't
   // mention are themes with zero mutual echoes — show 0, never the
-  // synthetic sample value. DiscoveryCard's WAVE N badge hides the
-  // count text when it isn't > 0, so themes with zero waves don't
-  // render a stray "0" next to the WAVE label.
+  // synthetic sample value. The card itself no longer renders the
+  // count visually (the user cancelled the wave-count badge because
+  // its underlying same-vibe / same-theme matching wasn't reliable),
+  // but the count is still tracked in echoStats for downstream sort
+  // ordering and any future per-card logic.
   const items = useMemo(
     () =>
       baseItems.map((item) => ({
@@ -806,46 +808,51 @@ function DiscoveryCard({
         },
       ]}
     >
-      <View style={styles.cardHeader}>
-        <Text style={styles.themeEmoji}>{item.themeEmoji}</Text>
-        <Text style={[styles.themeTitle, { color: colors.foreground }]}>
-          {item.themeTitle}
-        </Text>
-        <Text style={[styles.timeAgo, { color: colors.mutedForeground }]}>
-          {happenedAgoLabel(item.happenedMinutesAgo)}
-        </Text>
-      </View>
+      {/* Card title — mirrors the share-card title style so the
+          discover feed reads as a feed of Ripple and Wave moments
+          between two individuals.
 
-      {/* "Wave N" badge centered above the two photos. The discover
-          feed only surfaces pairs that have already Waved at each
-          other, so it gets the brand's gold wave glyph + the running
-          echo count. Earlier this lived in a connector column BETWEEN
-          the photos with a lightning bolt — the bolt didn't fit the
-          ripple/wave brand, and the column ate horizontal space the
-          two photos could put to better use. */}
-      <View
-        style={styles.waveHeader}
-        accessible={false}
-        importantForAccessibility="no"
-      >
-        {/* Pure-text "WAVE N" badge in brand gold. We don't render the
-            wave glyph here because the registered <Icon name="wave"/>
-            is the brand logo asset (with its own wordmark baked in)
-            and would render as an illegible thumbnail at this size.
-            The gold color + capitalised "WAVE" label carries the
-            brand cue on its own. */}
-        <Text style={[styles.waveHeaderLabel, { color: colors.gold }]}>
-          Wave
-        </Text>
-        {item.echoStats.sameAllTime > 0 ? (
-          <Text
-            style={[styles.waveHeaderCount, { color: colors.gold }]}
-            numberOfLines={1}
-          >
-            {item.echoStats.sameAllTime.toLocaleString()}
+          - Ripple cards: [ripple icon] Ripple [ripple icon] in the
+            foreground color, matching the Ripple share card in
+            reveal.tsx (a one-way swipe match).
+          - Wave  cards: [wave icon] Wave [wave icon] in teal,
+            matching the Wave share card in echo-pair.tsx (mutual
+            reciprocation between both sides).
+
+          The previous "WAVE N" count was driven by same-vibe / same-
+          theme matching which the user explicitly cancelled — the
+          underlying matching can't be trusted to produce a meaningful
+          count, so we surface the interaction TYPE instead. */}
+      {item.kind === "wave" ? (
+        <View
+          style={styles.shareTitleRow}
+          accessibilityLabel="Wave — mutual reciprocation"
+        >
+          <Icon name="wave" size={11} color={colors.teal} />
+          <Text style={[styles.shareTitle, { color: colors.teal }]}>
+            Wave
           </Text>
-        ) : null}
-      </View>
+          <Icon name="wave" size={11} color={colors.teal} />
+        </View>
+      ) : (
+        <View
+          style={styles.shareTitleRow}
+          accessibilityLabel="Ripple — one-way match"
+        >
+          <Icon name="ripple" size={18} color={colors.foreground} />
+          <Text style={[styles.shareTitle, { color: colors.foreground }]}>
+            Ripple
+          </Text>
+          <Icon name="ripple" size={18} color={colors.foreground} />
+        </View>
+      )}
+      {/* When the match happened — small ambient subtitle. Recency
+          is also conveyed by the time-tier chip below, but the
+          exact "X minutes ago" tells the user how live the moment
+          itself is. */}
+      <Text style={[styles.shareTitleAgo, { color: colors.mutedForeground }]}>
+        {happenedAgoLabel(item.happenedMinutesAgo)}
+      </Text>
 
       <View style={styles.photosRow}>
         <PhotoSlot
@@ -1071,20 +1078,26 @@ const styles = StyleSheet.create({
     gap: 14,
     marginBottom: 14,
   },
-  cardHeader: {
+  // Centered Ripple/Wave title row that mirrors the share-card title
+  // styling on reveal.tsx (Ripple) and echo-pair.tsx (Wave). Smaller
+  // type than the actual share card since it lives inside a feed card.
+  shareTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    justifyContent: "center",
+    gap: 8,
   },
-  themeEmoji: { fontSize: 18 },
-  themeTitle: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
+  shareTitle: {
+    fontSize: 18,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -0.4,
   },
-  timeAgo: {
+  // "5 minutes ago" subtitle directly under the share-card title.
+  shareTitleAgo: {
+    textAlign: "center",
     fontSize: 11,
     fontFamily: "Inter_500Medium",
+    marginTop: -4,
   },
   photosRow: {
     flexDirection: "row",
@@ -1160,25 +1173,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: "Inter_600SemiBold",
     flexShrink: 1,
-  },
-  waveHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    marginTop: -2,
-    marginBottom: 2,
-  },
-  waveHeaderLabel: {
-    fontSize: 12,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-  },
-  waveHeaderCount: {
-    fontSize: 13,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: 0.2,
   },
   chipRow: {
     flexDirection: "row",

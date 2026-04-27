@@ -21,6 +21,15 @@ export interface DiscoveryItem {
   timeTier: TimeTier;
   /** True if both posted in the same minute — the rarest celebration. */
   sameMinute: boolean;
+  /**
+   * Whether this card represents a one-way Ripple (someone swiped this
+   * pair as a match) or a mutual Wave (both sides reciprocated). The
+   * discover feed mixes both so the user can see the full lifecycle of
+   * an interaction. We weight roughly 60% ripple / 40% wave because in
+   * real usage Ripples are more common — Waves require both sides to
+   * reciprocate, which is rarer.
+   */
+  kind: "ripple" | "wave";
   /** How many other people also said "same same" to this match. */
   echoStats: SampleMatchStats;
 }
@@ -158,6 +167,12 @@ export function buildDiscoveryFeed(
       geoTier,
       timeTier,
       sameMinute: timeTier.kind === "minute",
+      // Deterministic 60% Ripple / 40% Wave split per pair so the feed
+      // mixes both interaction types without churning between renders.
+      // Sort the IDs so the kind is stable regardless of which photo
+      // ended up as `a` vs `b` (otherwise the same pair could flip
+      // between Ripple and Wave depending on draw order).
+      kind: hash(`${[a.id, b.id].sort().join("|")}:kind`) < 0.6 ? "ripple" : "wave",
       // Stable per (a,b) pair so the count doesn't churn between renders.
       echoStats: sampleMatchStats(`${a.id}|${b.id}`),
     });
