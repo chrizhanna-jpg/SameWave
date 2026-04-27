@@ -155,8 +155,9 @@ export default function DiscoverScreen() {
 
   // Always pull the count from the server. Themes the server doesn't
   // mention are themes with zero mutual echoes — show 0, never the
-  // synthetic sample value. The chip itself is hidden when the count
-  // isn't > 1 (see DiscoveryCard) so 0/1 themes don't display the chip.
+  // synthetic sample value. DiscoveryCard's WAVE N badge hides the
+  // count text when it isn't > 0, so themes with zero waves don't
+  // render a stray "0" next to the WAVE label.
   const items = useMemo(
     () =>
       baseItems.map((item) => ({
@@ -815,6 +816,37 @@ function DiscoveryCard({
         </Text>
       </View>
 
+      {/* "Wave N" badge centered above the two photos. The discover
+          feed only surfaces pairs that have already Waved at each
+          other, so it gets the brand's gold wave glyph + the running
+          echo count. Earlier this lived in a connector column BETWEEN
+          the photos with a lightning bolt — the bolt didn't fit the
+          ripple/wave brand, and the column ate horizontal space the
+          two photos could put to better use. */}
+      <View
+        style={styles.waveHeader}
+        accessible={false}
+        importantForAccessibility="no"
+      >
+        {/* Pure-text "WAVE N" badge in brand gold. We don't render the
+            wave glyph here because the registered <Icon name="wave"/>
+            is the brand logo asset (with its own wordmark baked in)
+            and would render as an illegible thumbnail at this size.
+            The gold color + capitalised "WAVE" label carries the
+            brand cue on its own. */}
+        <Text style={[styles.waveHeaderLabel, { color: colors.gold }]}>
+          Wave
+        </Text>
+        {item.echoStats.sameAllTime > 0 ? (
+          <Text
+            style={[styles.waveHeaderCount, { color: colors.gold }]}
+            numberOfLines={1}
+          >
+            {item.echoStats.sameAllTime.toLocaleString()}
+          </Text>
+        ) : null}
+      </View>
+
       <View style={styles.photosRow}>
         <PhotoSlot
           photo={item.a}
@@ -823,38 +855,6 @@ function DiscoveryCard({
           vibeLabel={vibeLabel}
           colors={colors}
         />
-
-        <View style={styles.connectorCol}>
-          <View
-            style={[
-              styles.connectorLine,
-              { backgroundColor: colors.border },
-            ]}
-          />
-          <View
-            style={[
-              styles.connectorBadge,
-              { backgroundColor: colors.background, borderColor: colors.border },
-            ]}
-          >
-            <Icon name="zap" size={12} color={colors.teal} />
-          </View>
-          {item.echoStats.sameAllTime > 1 ? (
-            <Text
-              style={[styles.connectorCount, { color: colors.teal }]}
-              numberOfLines={1}
-            >
-              {item.echoStats.sameAllTime.toLocaleString()}
-            </Text>
-          ) : null}
-          <View
-            style={[
-              styles.connectorLine,
-              { backgroundColor: colors.border },
-            ]}
-          />
-        </View>
-
         <PhotoSlot
           photo={item.b}
           clip={cardClips?.b ?? null}
@@ -866,8 +866,7 @@ function DiscoveryCard({
 
       {/* Two equal-width chip slots so the time + geo tiers always
           render at the same size on every card and never clip their
-          labels. The echo count moved up to the connector badge between
-          the photos. */}
+          labels. */}
       <View style={styles.chipRow}>
         <View
           style={[
@@ -1162,28 +1161,24 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
     flexShrink: 1,
   },
-  connectorCol: {
-    width: 28,
+  waveHeader: {
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 6,
+    marginTop: -2,
+    marginBottom: 2,
   },
-  connectorLine: {
-    width: 2,
-    height: 20,
+  waveHeaderLabel: {
+    fontSize: 12,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
   },
-  connectorBadge: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  connectorCount: {
-    fontSize: 11,
+  waveHeaderCount: {
+    fontSize: 13,
     fontFamily: "Inter_700Bold",
     letterSpacing: 0.2,
-    marginTop: 4,
   },
   chipRow: {
     flexDirection: "row",
