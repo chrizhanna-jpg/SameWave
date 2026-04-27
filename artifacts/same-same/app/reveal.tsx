@@ -290,9 +290,11 @@ export default function RevealScreen() {
         >
           <Icon name="x" size={20} color={colors.foreground} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-          RIPPLE
-        </Text>
+        {/* Header title intentionally blank — the Ripple wordmark with
+            its two icons lives on the share card itself; duplicating it
+            in the screen header read as repetition. The empty spacer
+            keeps the close button left-aligned and balanced. */}
+        <View style={{ flex: 1 }} />
         <View style={{ width: 40 }} />
       </View>
 

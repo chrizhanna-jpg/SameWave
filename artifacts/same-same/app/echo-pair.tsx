@@ -142,9 +142,11 @@ export default function EchoPairScreen() {
       >
         <Icon name="x" size={20} color={colors.foreground} />
       </TouchableOpacity>
-      <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-        Wave
-      </Text>
+      {/* Header title intentionally blank — the Wave wordmark with its
+          two icons lives on the share card itself; duplicating it in
+          the screen header read as repetition. The flex spacer keeps
+          the close + share buttons pinned to the edges. */}
+      <View style={{ flex: 1 }} />
       <TouchableOpacity
         onPress={handleShare}
         disabled={!pair || sharing}
