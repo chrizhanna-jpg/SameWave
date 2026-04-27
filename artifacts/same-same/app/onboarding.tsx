@@ -51,9 +51,9 @@ const STEPS: Step[] = [
   },
   {
     kind: "country",
-    title: "Where are you?",
+    title: "Your Country?",
     subtitle: null,
-    body: "We use your country to celebrate when you ripple with someone close — same country, same continent, same planet.",
+    body: "Will you Ripple with someone in the same country, same continent or same planet?",
   },
 ];
 
