@@ -327,9 +327,12 @@ export default function RevealScreen() {
             },
           ]}
         >
-          <Text style={[styles.shareTitle, { color: colors.foreground }]}>
-            RIPPLE
-          </Text>
+          <View style={styles.shareTitleRow}>
+            <Icon name="ripple" size={22} color={colors.foreground} />
+            <Text style={[styles.shareTitle, { color: colors.foreground }]}>
+              Ripple
+            </Text>
+          </View>
 
           <View style={styles.shareChipsRow}>
             {sameChips.map((chip) => (
@@ -704,11 +707,16 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     alignItems: "center",
   },
+  shareTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
   shareTitle: {
     fontSize: 22,
     fontFamily: "Inter_700Bold",
     letterSpacing: -0.5,
-    textTransform: "lowercase",
   },
   shareChipsRow: {
     flexDirection: "row",
