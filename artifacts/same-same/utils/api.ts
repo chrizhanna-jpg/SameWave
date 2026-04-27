@@ -53,9 +53,37 @@ export async function getDeviceId(): Promise<string> {
   return fresh;
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Clerk auth token
+// _layout.tsx wires `setAuthTokenGetter(() => getToken())` once Clerk is
+// loaded. Every authenticated request then carries a Bearer JWT alongside
+// the legacy X-Device-Id header. The server uses the Bearer to identify
+// the user; X-Device-Id is only consulted on the *first* signed-in request
+// from a previously-anonymous install so the user keeps their existing
+// photos. After the link, X-Device-Id is harmless extra noise.
+// ─────────────────────────────────────────────────────────────────────────
+let authTokenGetter: (() => Promise<string | null>) | null = null;
+
+export function setAuthTokenGetter(getter: () => Promise<string | null>): void {
+  authTokenGetter = getter;
+}
+
 async function authedHeaders(extra?: Record<string, string>): Promise<Record<string, string>> {
   const id = await getDeviceId();
-  return { "X-Device-Id": id, ...(extra ?? {}) };
+  const headers: Record<string, string> = {
+    "X-Device-Id": id,
+    ...(extra ?? {}),
+  };
+  if (authTokenGetter) {
+    try {
+      const token = await authTokenGetter();
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+    } catch {
+      // No token yet (e.g. during sign-in) — fall through with just the
+      // device id; the server will return 401 and the caller decides.
+    }
+  }
+  return headers;
 }
 
 // ─────────────────────────────────────────────────────────────────────────

@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
+import { useAuth } from "@clerk/expo";
 import { markTabVisited } from "@/utils/tabVisits";
 import { Icon } from "@/components/Icon";
 import { OceanShimmer } from "@/components/OceanShimmer";
@@ -102,6 +103,64 @@ function NavRow({
         <Icon name="chevron-right" size={18} color={colors.mutedForeground} />
       </Surface>
     </PressableScale>
+  );
+}
+
+// Tiny "Signed in" row + sign-out link. Per product brief, we deliberately
+// don't show the user's Google name/email/photo — the account is just an
+// invisible anchor for their photos and country. After signOut() the root
+// auth gate sends them straight back to the sign-in screen.
+function SignedInRow() {
+  const colors = useColors();
+  const { isSignedIn, signOut } = useAuth();
+  const [busy, setBusy] = React.useState(false);
+  if (!isSignedIn) return null;
+  const onSignOut = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await signOut();
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Surface
+      elevation="sm"
+      radius="lg"
+      background={colors.card}
+      style={[styles.connectionsRow, { marginHorizontal: 20, marginTop: 8 }]}
+    >
+      <View style={[styles.connectionsIcon, { backgroundColor: colors.teal + "22" }]}>
+        <Icon name="check" size={18} color={colors.teal} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.connectionsTitle, { color: colors.foreground }]}>
+          Signed in
+        </Text>
+        <Text style={[styles.connectionsSub, { color: colors.mutedForeground }]}>
+          Your photos and country are saved to your account.
+        </Text>
+      </View>
+      <TouchableOpacity
+        onPress={onSignOut}
+        disabled={busy}
+        accessibilityLabel="Sign out"
+        accessibilityRole="button"
+        hitSlop={10}
+      >
+        <Text
+          style={{
+            color: colors.mutedForeground,
+            fontFamily: "Inter_600SemiBold",
+            fontSize: 13,
+            opacity: busy ? 0.5 : 1,
+          }}
+        >
+          {busy ? "Signing out…" : "Sign out"}
+        </Text>
+      </TouchableOpacity>
+    </Surface>
   );
 }
 
@@ -718,6 +777,8 @@ export default function ProfileScreen() {
           onPress={() => router.push("/my-photos")}
           accessibilityLabel="Open your posted photos"
         />
+
+        <SignedInRow />
 
         {matches.length === 0 && (
           <View style={[styles.emptyCard, { backgroundColor: colors.cardElevated }, colors.shadows.sm]}>

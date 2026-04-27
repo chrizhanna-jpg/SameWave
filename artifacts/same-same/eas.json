@@ -11,7 +11,8 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_DOMAIN": "global-unity-match.replit.app"
+        "EXPO_PUBLIC_DOMAIN": "global-unity-match.replit.app",
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_YXB0LXdvbWJhdC03MS5jbGVyay5hY2NvdW50cy5kZXYk"
       }
     },
     "preview": {
@@ -20,7 +21,8 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_DOMAIN": "global-unity-match.replit.app"
+        "EXPO_PUBLIC_DOMAIN": "global-unity-match.replit.app",
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_YXB0LXdvbWJhdC03MS5jbGVyay5hY2NvdW50cy5kZXYk"
       }
     },
     "production": {
@@ -28,7 +30,8 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_DOMAIN": "global-unity-match.replit.app"
+        "EXPO_PUBLIC_DOMAIN": "global-unity-match.replit.app",
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_YXB0LXdvbWJhdC03MS5jbGVyay5hY2NvdW50cy5kZXYk"
       }
     }
   },

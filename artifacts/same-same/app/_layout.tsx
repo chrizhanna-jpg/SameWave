@@ -6,7 +6,13 @@ import {
   useFonts,
 } from "@expo-google-fonts/inter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack } from "expo-router";
+import {
+  ClerkLoaded,
+  ClerkProvider,
+  useAuth,
+} from "@clerk/expo";
+import { tokenCache } from "@clerk/expo/token-cache";
+import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -18,10 +24,64 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ToastHost } from "@/components/ToastHost";
 import { AppProvider, useApp } from "@/context/AppContext";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
+import { setAuthTokenGetter } from "@/utils/api";
 
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
+
+// Resolve the Clerk publishable key once at module load. We assert it here
+// (vs inline) so the rest of the module sees a non-nullable string and the
+// app fails loudly instead of silently mounting Clerk with `undefined`.
+function requireEnv(name: string): string {
+  const v = process.env[name];
+  if (!v) {
+    throw new Error(`Missing ${name} — check the dev script and eas.json`);
+  }
+  return v;
+}
+const CLERK_PUBLISHABLE_KEY: string = requireEnv(
+  "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY",
+);
+
+// Wires the API client's bearer-token getter to Clerk's session token.
+// This component MUST mount above AppProvider so the getter is in place
+// before any of AppProvider's mount-effects fire their first authed
+// request — otherwise the very first calls go out without a Bearer and
+// 401 against the new clerkMiddleware.
+function ClerkTokenBridge() {
+  const { getToken } = useAuth();
+  useEffect(() => {
+    setAuthTokenGetter(() => getToken());
+  }, [getToken]);
+  return null;
+}
+
+// Gates the app behind the sign-in screen. Renders `null` (a blank
+// branded background, since ClerkProvider sits on top of our dark theme)
+// any time we're either still resolving auth or about to redirect, so
+// the user never sees a flash of the wrong tree before navigation.
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const { isLoaded, isSignedIn } = useAuth();
+  const segments = useSegments();
+  const navRouter = useRouter();
+
+  const onSignIn = segments[0] === "sign-in";
+  const needsRedirect =
+    isLoaded && ((!isSignedIn && !onSignIn) || (isSignedIn && onSignIn));
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (!isSignedIn && !onSignIn) {
+      navRouter.replace("/sign-in");
+    } else if (isSignedIn && onSignIn) {
+      navRouter.replace("/(tabs)");
+    }
+  }, [isLoaded, isSignedIn, onSignIn, navRouter]);
+
+  if (!isLoaded || needsRedirect) return null;
+  return <>{children}</>;
+}
 
 function RootLayoutNav() {
   // Wire device push registration + tap-to-deep-link. Mounted inside
@@ -36,6 +96,7 @@ function RootLayoutNav() {
   return (
     <>
       <Stack screenOptions={{ headerBackTitle: "Back", headerShown: false }}>
+        <Stack.Screen name="sign-in" options={{ headerShown: false, gestureEnabled: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="reveal" options={{ headerShown: false, presentation: "modal" }} />
@@ -93,18 +154,31 @@ export default function RootLayout() {
   if (!fontsLoaded && !fontError) return null;
 
   return (
-    <SafeAreaProvider>
-      <ErrorBoundary>
-        <QueryClientProvider client={queryClient}>
-          <AppProvider>
-            <GestureHandlerRootView style={{ flex: 1 }}>
-              <ToastHost>
-                <RootLayoutNav />
-              </ToastHost>
-            </GestureHandlerRootView>
-          </AppProvider>
-        </QueryClientProvider>
-      </ErrorBoundary>
-    </SafeAreaProvider>
+    <ClerkProvider
+      publishableKey={CLERK_PUBLISHABLE_KEY}
+      tokenCache={tokenCache}
+    >
+      <ClerkLoaded>
+        {/* Wire the bearer-token getter BEFORE AppProvider mounts, so
+            AppProvider's first authed effects already see a valid token.
+            ClerkTokenBridge renders nothing — it's pure side-effect glue. */}
+        <ClerkTokenBridge />
+        <SafeAreaProvider>
+          <ErrorBoundary>
+            <QueryClientProvider client={queryClient}>
+              <AppProvider>
+                <GestureHandlerRootView style={{ flex: 1 }}>
+                  <ToastHost>
+                    <AuthGate>
+                      <RootLayoutNav />
+                    </AuthGate>
+                  </ToastHost>
+                </GestureHandlerRootView>
+              </AppProvider>
+            </QueryClientProvider>
+          </ErrorBoundary>
+        </SafeAreaProvider>
+      </ClerkLoaded>
+    </ClerkProvider>
   );
 }
