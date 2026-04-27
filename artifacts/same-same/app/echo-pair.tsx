@@ -273,24 +273,18 @@ export default function EchoPairScreen() {
             <Text style={styles.cornerSparkleBL}>✨</Text>
             <Text style={styles.cornerSparkleBR}>✨</Text>
 
-            {/* Hero brand mark — replaces the old plain "wave" wordmark
-                so the Wave (mutual) share card visually elevates above
-                the one-way Ripple share card on /reveal. The brand icon
-                acts as the centerpiece, flanked by gold sparkles to
-                signal "milestone moment". WaveIcon scales 2× internally
-                so size={48} renders at ~96 px in the captured image. */}
+            {/* Hero brand mark — the Wave (mutual) share card title
+                renders as [wave-icon] Wave [wave-icon], mirroring the
+                Ripple card's [ripple-icon] Ripple [ripple-icon] layout
+                but with the wave glyph and teal accent color so the
+                two share cards remain visually distinct. */}
             <View style={styles.shareTitleRow}>
-              <Text style={[styles.shareTitleSparkle, { color: colors.gold }]}>
-                ✨
+              <Icon name="wave" size={26} color={colors.teal} />
+              <Text style={[styles.shareTitle, { color: colors.teal }]}>
+                Wave
               </Text>
-              <Icon name="wave" size={48} />
-              <Text style={[styles.shareTitleSparkle, { color: colors.gold }]}>
-                ✨
-              </Text>
+              <Icon name="wave" size={26} color={colors.teal} />
             </View>
-            <Text style={[styles.shareSubtitle, { color: colors.teal }]}>
-              Wave
-            </Text>
 
             <View style={styles.shareChipsRow}>
               {sameChips.map((chip) => (
@@ -535,23 +529,12 @@ const styles = StyleSheet.create({
   shareTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-  },
-  shareTitleSparkle: {
-    fontSize: 18,
+    gap: 8,
   },
   shareTitle: {
-    fontSize: 28,
+    fontSize: 24,
     fontFamily: "Inter_700Bold",
-    letterSpacing: 1.5,
-    textTransform: "lowercase",
-  },
-  shareSubtitle: {
-    fontSize: 22,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: 3,
-    textTransform: "uppercase",
-    marginTop: 2,
+    letterSpacing: -0.5,
   },
   // Tiny gold sparkles tucked into the four corners of the share
   // card. Absolute-positioned so they don't disturb the centered
