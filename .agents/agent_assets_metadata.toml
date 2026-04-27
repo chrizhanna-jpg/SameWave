@@ -35,3 +35,9 @@ id = "rRvC1qZXINpvx-wam4Ng9"
 uri = "file://artifacts/same-same/store-listing/feature-graphic-1024x500.png"
 type = "image"
 title = "Feature Graphic (1024×500)"
+
+[[outputs]]
+id = "WeywheEZ6OYp1jAJFZIER"
+uri = "file://screenshots/wave-card-title-final.jpg"
+type = "image"
+title = "Wave share card — new title row"
