@@ -800,9 +800,21 @@ export default function SwipeScreen() {
     };
   }, []);
 
+  // When the user opens /reveal we DON'T advance the deck immediately —
+  // we want the matched card's music to keep playing through the
+  // navigation (the audio singleton dedups on URL, so /reveal playing
+  // the same clip is a no-op). Instead we set this flag and run the
+  // advance on focus return, which then triggers the music useEffect
+  // to switch to the next card's clip.
+  const pendingAdvanceRef = useRef(false);
+  // Latest loadNextCandidate, accessed through a ref so the focus
+  // effect below (which is declared before loadNextCandidate) avoids
+  // a temporal-dead-zone reference at module evaluation.
+  const loadNextCandidateRef = useRef<() => void>(() => {});
   // When the user returns from a push screen (e.g. /reveal), the music
   // useEffect above won't re-fire because its deps haven't changed.
-  // This focus effect restarts the current card's clip after any such
+  // This focus effect either advances the deck (if a deferred advance
+  // is pending) or restarts the current card's clip after any such
   // return. We skip the very first focus (initial mount) because the
   // music useEffect handles that — avoiding a double-play at startup.
   const musicFocusInitRef = useRef(false);
@@ -810,6 +822,14 @@ export default function SwipeScreen() {
     useCallback(() => {
       if (!musicFocusInitRef.current) {
         musicFocusInitRef.current = true;
+        return;
+      }
+      if (pendingAdvanceRef.current) {
+        pendingAdvanceRef.current = false;
+        // loadNextCandidate updates theirPhoto, which the music useEffect
+        // picks up and plays the next clip — no need to restart the
+        // current clip here, it's about to be replaced.
+        loadNextCandidateRef.current();
         return;
       }
       const photo = theirPhotoRef.current;
@@ -1001,6 +1021,12 @@ export default function SwipeScreen() {
     },
     [sharedTags, myPhotoData.uploadedAt, pan.x, cardScale, loadNextCandidate, addMatch, myCountryName]
   );
+
+  // Keep the ref pointing at the latest loadNextCandidate so the focus
+  // effect (declared above) can call it without a TDZ reference.
+  useEffect(() => {
+    loadNextCandidateRef.current = loadNextCandidate;
+  }, [loadNextCandidate]);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -1594,8 +1620,13 @@ export default function SwipeScreen() {
             onOpenFull={(action) => {
               const data = flashMatch;
               setFlashMatch(null);
-              // Pre-load the next card so it's ready when they come back.
-              loadNextCandidate();
+              // Defer the deck advance until the user returns from /reveal
+              // so the matched card's music keeps playing through the
+              // navigation (audio singleton dedups on URL — same URL =
+              // no restart). The useFocusEffect on this screen runs the
+              // advance on focus return, which then switches the music
+              // to the next card's clip.
+              pendingAdvanceRef.current = true;
               router.push({
                 pathname: "/reveal",
                 params: {
