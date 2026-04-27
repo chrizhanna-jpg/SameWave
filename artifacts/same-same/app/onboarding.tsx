@@ -171,10 +171,10 @@ export default function OnboardingScreen() {
         {currentStep.bodyKind === "ripple-wave" ? (
           <View
             style={styles.bodyRowWrap}
-            accessibilityLabel="Swipe ripple for photos that match your vibe. If they reciprocate, it's a Wave — a mutual moment, fully anonymous."
+            accessibilityLabel="Swipe Ripple for photos that match your moment. If the other person reciprocates, it's a Wave."
           >
             <Text style={[styles.bodyChunk, { color: colors.mutedForeground }]}>
-              Swipe
+              Swipe Ripple
             </Text>
             <Icon
               name="ripple"
@@ -183,18 +183,10 @@ export default function OnboardingScreen() {
               style={styles.inlineIcon}
             />
             <Text style={[styles.bodyChunk, { color: colors.mutedForeground }]}>
-              for photos that match your
-            </Text>
-            <Text
-              style={[
-                styles.bodyChunk,
-                { color: colors.mutedForeground, fontStyle: "italic" },
-              ]}
-            >
-              {"'vibe'."}
+              for photos that match your moment.
             </Text>
             <Text style={[styles.bodyChunk, { color: colors.mutedForeground }]}>
-              If they reciprocate, it&apos;s a Wave
+              If the other person reciprocates, it&apos;s a Wave
             </Text>
             <Icon
               name="wave"
@@ -202,9 +194,6 @@ export default function OnboardingScreen() {
               color={colors.gold}
               style={styles.inlineIcon}
             />
-            <Text style={[styles.bodyChunk, { color: colors.mutedForeground }]}>
-              ... a mutual moment, fully anonymous.
-            </Text>
           </View>
         ) : (
           <Text
