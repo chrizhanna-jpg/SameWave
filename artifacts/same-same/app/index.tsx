@@ -6,7 +6,13 @@ import { useApp } from "@/context/AppContext";
 // home tab. After this threshold, cold starts go straight to /(tabs)
 // — the user can still open the tutorial manually via the "Replay
 // tutorial" button on the home screen.
-const TUTORIAL_OPENS = 3;
+//
+// Currently 2 → tutorial appears on opens 1 and 2 (the user's stated
+// preference: "show the first 2 times someone logs in"). Note that
+// for required-login first installs, the first cold start IS the
+// first login, so this maps cleanly to "first 2 logins" without
+// needing a separate login-counter.
+const TUTORIAL_OPENS = 2;
 
 export default function Index() {
   const { appOpenCount, hasHydrated } = useApp();

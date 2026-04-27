@@ -484,6 +484,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const loadState = async () => {
     try {
       const stored = await AsyncStorage.getItem("samesame_state");
+      if (!stored) {
+        // First-ever launch — no persisted state. We still have to bump
+        // the app-open counter or the tutorial gate in `app/index.tsx`
+        // would treat opens 0, 1, 2 as "first three cold starts" and
+        // show the tutorial three times instead of the intended two.
+        // Persist immediately so even an instant kill-and-relaunch
+        // counts as an opened session.
+        const fresh = { appOpenCount: 1 };
+        AsyncStorage.setItem("samesame_state", JSON.stringify(fresh)).catch(() => {});
+        setState((prev) => ({ ...prev, appOpenCount: 1 }));
+        return;
+      }
       if (stored) {
         const parsed = JSON.parse(stored);
         // Migrate old myPhotos formats to current MyPhoto[]

@@ -18,6 +18,42 @@ uri = "file://artifacts/same-same/assets/images/world_map_bg.png"
 type = "image"
 title = "world map constellation connections"
 
+[[generated]]
+id = "eMhlpnHWLy5LNmZNyyD6v"
+uri = "file://attached_assets/stock_seed/birds_1.png"
+type = "image"
+title = "tropical parrot"
+
+[[generated]]
+id = "VaJex332KP20vgYnBGplR"
+uri = "file://attached_assets/stock_seed/birds_2.png"
+type = "image"
+title = "songbird flight"
+
+[[generated]]
+id = "N6uV5ka4w5elqgkWfjEYy"
+uri = "file://attached_assets/stock_seed/games_1.png"
+type = "image"
+title = "board game"
+
+[[generated]]
+id = "-YDUQTM56IROVhbmvpyKB"
+uri = "file://attached_assets/stock_seed/games_2.png"
+type = "image"
+title = "game controller"
+
+[[generated]]
+id = "j23lMctlbuh10hD0TNDYg"
+uri = "file://attached_assets/stock_seed/made_1.png"
+type = "image"
+title = "ceramic bowl"
+
+[[generated]]
+id = "bkxSi0iKgbI28gi6AOEv7"
+uri = "file://attached_assets/stock_seed/made_2.png"
+type = "image"
+title = "knitted scarf"
+
 [[outputs]]
 id = "tqg15ozWKmBcJITwKwtpl"
 uri = "file://artifacts/same-same/assets/images/icon.png"

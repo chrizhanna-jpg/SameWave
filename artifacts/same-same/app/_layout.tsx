@@ -75,7 +75,11 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     if (!isSignedIn && !onSignIn) {
       navRouter.replace("/sign-in");
     } else if (isSignedIn && onSignIn) {
-      navRouter.replace("/(tabs)");
+      // Route through "/" (index.tsx) NOT directly to "/(tabs)".
+      // index.tsx is the tutorial gate — it inspects appOpenCount and
+      // bounces first-time users to /onboarding. Going straight to the
+      // tabs here would silently skip the tutorial after sign-in.
+      navRouter.replace("/");
     }
   }, [isLoaded, isSignedIn, onSignIn, navRouter]);
 

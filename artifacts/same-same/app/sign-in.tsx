@@ -63,7 +63,13 @@ export default function SignInScreen() {
           session: createdSessionId,
           navigate: async ({ session }) => {
             if (session?.currentTask) return;
-            router.replace("/(tabs)");
+            // Route through "/" (index.tsx) NOT directly to "/(tabs)".
+            // The tutorial gate lives in index.tsx — it checks
+            // appOpenCount and redirects first-time users to
+            // /onboarding. Jumping straight to /(tabs) here would
+            // silently skip the tutorial on every fresh sign-in,
+            // which is the bug we're fixing.
+            router.replace("/");
           },
         });
       } else {
