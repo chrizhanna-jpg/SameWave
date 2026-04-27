@@ -172,32 +172,25 @@ export default function OnboardingScreen() {
           </Text>
         )}
         {currentStep.bodyKind === "ripple-wave" ? (
-          <View
-            style={styles.bodyRowWrap}
+          // One flowing paragraph: words wrap naturally, icons sit
+          // inline at the same baseline as the text. Previously the
+          // row-of-chunks layout broke awkwardly between fragments —
+          // "Swipe Ripple [icon]" would land on its own line while
+          // "for photos that match" wrapped beneath it. Nesting the
+          // icons inside a single <Text> lets the paragraph reflow
+          // cleanly at any width.
+          <Text
+            style={[styles.body, { color: colors.mutedForeground }]}
             accessibilityLabel="Swipe Ripple for photos that match your moment. If the other person reciprocates, it's a Wave."
           >
-            <Text style={[styles.bodyChunk, { color: colors.mutedForeground }]}>
-              Swipe Ripple
-            </Text>
-            <Icon
-              name="ripple"
-              size={32}
-              color={colors.teal}
-              style={styles.inlineIcon}
-            />
-            <Text style={[styles.bodyChunk, { color: colors.mutedForeground }]}>
-              for photos that match your moment.
-            </Text>
-            <Text style={[styles.bodyChunk, { color: colors.mutedForeground }]}>
-              If the other person reciprocates, it&apos;s a Wave
-            </Text>
-            <Icon
-              name="wave"
-              size={27}
-              color={colors.gold}
-              style={styles.inlineIcon}
-            />
-          </View>
+            Swipe Ripple{" "}
+            <Icon name="ripple" size={18} color={colors.teal} />
+            {" "}for photos that match your moment. If the other person reciprocates, it&apos;s a Wave{" "}
+            {/* WaveIcon multiplies its `size` by 2 internally (see
+                components/WaveIcon.tsx WAVE_SCALE) so size={9} renders
+                at ~18px to visually match the 18px ripple inline. */}
+            <Icon name="wave" size={9} color={colors.gold} />.
+          </Text>
         ) : (
           <Text
             style={[
@@ -398,25 +391,6 @@ const styles = StyleSheet.create({
   bodyHero: {
     fontSize: 17,
     lineHeight: 26,
-  },
-  bodyRowWrap: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    justifyContent: "center",
-    columnGap: 4,
-    rowGap: 4,
-    marginTop: 4,
-    paddingHorizontal: 4,
-  },
-  bodyChunk: {
-    fontSize: 15,
-    fontFamily: "Inter_400Regular",
-    lineHeight: 23,
-    flexShrink: 1,
-  },
-  inlineIcon: {
-    marginHorizontal: 2,
   },
   footer: {
     paddingHorizontal: 24,
