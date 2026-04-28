@@ -61,6 +61,7 @@ export default function RevealScreen() {
   // are awaited round-trips through the native store SDK.
   const {
     isPro,
+    proPackage,
     priceString,
     purchase,
     restore,
@@ -125,7 +126,35 @@ export default function RevealScreen() {
   // onto AppContext.proUnlocked, so we just close the sheet here on
   // success and let the rest of the UI react to the flag flipping.
   const handleUnlock = async () => {
-    if (isPurchasing) return;
+    if (isPurchasing || isRestoring) return;
+    // If the offering has no purchasable package, the most common cause
+    // is that the user already owns Pro on this store account — Play
+    // Billing / the RevenueCat Test Store filter consumed non-renewing
+    // products out of the offering once owned. Auto-restore in that
+    // case: if the entitlement comes back active we close the paywall
+    // (same success path as a purchase). Only if there's genuinely no
+    // prior purchase do we surface an error.
+    if (!proPackage) {
+      try {
+        const info = await restore();
+        const granted = info.entitlements.active?.["pro"] != null;
+        if (granted) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          setPaywallOpen(false);
+          return;
+        }
+        Alert.alert(
+          "Pro isn't available right now",
+          "We couldn't find a previous purchase on this store account either. Please try again in a moment.",
+        );
+      } catch (err: any) {
+        Alert.alert(
+          "Couldn't complete purchase",
+          err?.message ?? "Please try again.",
+        );
+      }
+      return;
+    }
     try {
       const info = await purchase();
       const granted = info.entitlements.active?.["pro"] != null;
@@ -818,19 +847,22 @@ export default function RevealScreen() {
                   // Dim the CTA while the store sheet is in flight or
                   // the offering hasn't loaded yet — prevents the user
                   // from spamming the button into a queue of purchases.
-                  opacity: isPurchasing || billingLoading ? 0.6 : 1,
+                  opacity:
+                    isPurchasing || isRestoring || billingLoading ? 0.6 : 1,
                 },
               ]}
               onPress={handleUnlock}
               activeOpacity={0.85}
-              disabled={isPurchasing || billingLoading}
+              disabled={isPurchasing || isRestoring || billingLoading}
             >
               <Text style={styles.paywallCtaText}>
                 {isPurchasing
                   ? "Opening store…"
-                  : priceString
-                    ? `Unlock for ${priceString}`
-                    : "Unlock"}
+                  : isRestoring
+                    ? "Restoring purchase…"
+                    : priceString
+                      ? `Unlock for ${priceString}`
+                      : "Unlock"}
               </Text>
             </TouchableOpacity>
 
