@@ -25,9 +25,8 @@
  * THEME relevance — how often the chosen photo must share theme or vibe
  * with the requester's photo. A candidate is "theme-relevant" when its
  * theme matches the requester's exactly, contains it (or vice versa),
- * sits in the same theme chain, OR shares at least one vibe tag
- * ("warm", "calm", "playful"…). Default 0.6 → ~60% of swipes are
- * on-topic by theme/vibe.
+ * OR shares at least one vibe tag ("warm", "calm", "playful"…).
+ * Default 0.6 → ~60% of swipes are on-topic by theme/vibe.
  *
  * Raise toward 1.0 if users complain the deck feels random; lower toward
  * 0.0 if they say it feels repetitive / too narrow.
