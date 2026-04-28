@@ -12,7 +12,7 @@ import {
   useAuth,
 } from "@clerk/expo";
 import { tokenCache } from "@clerk/expo/token-cache";
-import { Stack, useRouter, useSegments } from "expo-router";
+import { Redirect, Stack, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -68,7 +68,6 @@ function ClerkTokenBridge() {
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { isLoaded, isSignedIn } = useAuth();
   const segments = useSegments();
-  const navRouter = useRouter();
 
   // Cast to a plain string so the comparisons below don't fight
   // expo-router's typed-route inference (it constrains segments[0] to
@@ -91,16 +90,22 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   //  (b) user is NOT signed in and is on a protected screen (i.e. not
   //      pre-auth). Bouncing through "/" lets index.tsx decide whether
   //      to send them to /onboarding or /sign-in next.
+  //
+  // We use a declarative <Redirect> (not an imperative
+  // navRouter.replace in a useEffect) because the imperative form
+  // races with in-flight navigations — e.g. while the Stack is still
+  // settling on /onboarding from index.tsx's <Redirect>, a useEffect
+  // here can fire a second REPLACE that the navigator has already
+  // moved past, producing a "The action 'REPLACE' with payload
+  // {name:'index'} was not handled by any navigator" warning toast on
+  // the first onboarding card. <Redirect> is timed by React's render
+  // cycle and stays in lock-step with whatever screen is mounting.
   const needsRedirect =
     isLoaded &&
     ((isSignedIn && onSignIn) || (!isSignedIn && !onPreAuthScreen));
 
-  useEffect(() => {
-    if (!isLoaded) return;
-    if (needsRedirect) navRouter.replace("/");
-  }, [isLoaded, needsRedirect, navRouter]);
-
-  if (!isLoaded || needsRedirect) return null;
+  if (!isLoaded) return null;
+  if (needsRedirect) return <Redirect href="/" />;
   return <>{children}</>;
 }
 
