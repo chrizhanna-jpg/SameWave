@@ -19,14 +19,29 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { router } from "expo-router";
+import { Alert } from "react-native";
 import { EchoFlash } from "@/components/EchoFlash";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ToastHost } from "@/components/ToastHost";
 import { AppProvider, useApp } from "@/context/AppContext";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { setAuthTokenGetter } from "@/utils/api";
+import {
+  initializeRevenueCat,
+  SubscriptionProvider,
+  useSubscription,
+} from "@/lib/revenuecat";
 
 SplashScreen.preventAutoHideAsync();
+
+// Configure the RevenueCat SDK exactly once at module load. Wrapped in
+// try/catch so a missing public key (e.g. a misconfigured EAS profile)
+// surfaces as a visible alert instead of a white-screen crash.
+try {
+  initializeRevenueCat();
+} catch (err: any) {
+  Alert.alert("Billing unavailable", err?.message ?? "Unknown error");
+}
 
 const queryClient = new QueryClient();
 
@@ -54,6 +69,31 @@ function ClerkTokenBridge() {
   useEffect(() => {
     setAuthTokenGetter(() => getToken());
   }, [getToken]);
+  return null;
+}
+
+// Mirror RevenueCat's "pro" entitlement onto the AppContext flag that
+// the rest of the app reads from (matches.tsx, reveal.tsx, echo-pair,
+// etc. all read `proUnlocked`). This way nothing else has to know
+// about the SDK — they just consume the flag, and this bridge keeps
+// it in lock-step with the live entitlement (initial load, after a
+// purchase, after a restore, after a webhook update).
+//
+// CRITICAL: only write once the SDK has actually resolved the user's
+// CustomerInfo. On cold start `isPro` is `false` simply because we
+// haven't heard back from RevenueCat yet — writing that into
+// proUnlocked would revoke Pro for paid users until the bootstrap
+// completes, and would leave them locked out indefinitely if the
+// bootstrap fails (offline, store unreachable). Gating on
+// `hasResolvedEntitlements` means an unreachable RevenueCat leaves
+// the persisted local flag intact instead of silently flipping it.
+function RevenueCatProBridge() {
+  const { isPro, hasResolvedEntitlements } = useSubscription();
+  const { setProUnlocked } = useApp();
+  useEffect(() => {
+    if (!hasResolvedEntitlements) return;
+    setProUnlocked(isPro);
+  }, [isPro, hasResolvedEntitlements, setProUnlocked]);
   return null;
 }
 
@@ -192,15 +232,20 @@ export default function RootLayout() {
         <SafeAreaProvider>
           <ErrorBoundary>
             <QueryClientProvider client={queryClient}>
-              <AppProvider>
-                <GestureHandlerRootView style={{ flex: 1 }}>
-                  <ToastHost>
-                    <AuthGate>
-                      <RootLayoutNav />
-                    </AuthGate>
-                  </ToastHost>
-                </GestureHandlerRootView>
-              </AppProvider>
+              <SubscriptionProvider>
+                <AppProvider>
+                  {/* Keeps AppContext.proUnlocked in sync with the
+                      RevenueCat "pro" entitlement. Renders nothing. */}
+                  <RevenueCatProBridge />
+                  <GestureHandlerRootView style={{ flex: 1 }}>
+                    <ToastHost>
+                      <AuthGate>
+                        <RootLayoutNav />
+                      </AuthGate>
+                    </ToastHost>
+                  </GestureHandlerRootView>
+                </AppProvider>
+              </SubscriptionProvider>
             </QueryClientProvider>
           </ErrorBoundary>
         </SafeAreaProvider>

@@ -288,6 +288,7 @@ interface AppContextValue extends AppState {
   completeOnboarding: () => void;
   resetOnboarding: () => void;
   unlockPro: () => void;
+  setProUnlocked: (value: boolean) => void;
   getWorldMapCoverage: () => number;
   // Connect requests
   sendConnectRequest: (matchId: string, platform: string, handle: string) => ConnectRequest | null;
@@ -1034,6 +1035,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  // Two-way setter used by the RevenueCat bridge in _layout.tsx so the
+  // local proUnlocked flag stays in lock-step with the live entitlement
+  // (handles purchase, restore, lapse, and webhook-pushed changes). Skips
+  // the persisted state write when nothing actually changed — RevenueCat
+  // emits a customer-info update on every app foreground, and we don't
+  // want to thrash AsyncStorage on every one of those.
+  const setProUnlocked = useCallback((value: boolean) => {
+    setState((prev) => {
+      if (prev.proUnlocked === value) return prev;
+      const newState = { ...prev, proUnlocked: value };
+      saveState(newState);
+      return newState;
+    });
+  }, []);
+
   // --- Connect Requests ---
 
   const REQUEST_TTL_MS = 48 * 60 * 60 * 1000; // 48h
@@ -1377,6 +1393,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         completeOnboarding,
         resetOnboarding,
         unlockPro,
+        setProUnlocked,
         getWorldMapCoverage,
         sendConnectRequest,
         respondConnectRequest,

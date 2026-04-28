@@ -21,6 +21,7 @@ import * as Sharing from "expo-sharing";
 import ViewShot, { captureRef } from "react-native-view-shot";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
+import { useSubscription } from "@/lib/revenuecat";
 import { resolveMusicUrl } from "@/data/musicLibrary";
 import {
   markUserInteracted,
@@ -45,7 +46,6 @@ export default function RevealScreen() {
     matches,
     matchedCountries,
     proUnlocked,
-    unlockPro,
     sendConnectRequest,
     hasOutgoingForMatch,
     myDefaultPlatform,
@@ -54,6 +54,24 @@ export default function RevealScreen() {
     myCountryCode,
     myCountryFlag,
   } = useApp();
+  // Live billing state. We never read the price from a hardcoded
+  // string — `priceString` is the localised, store-formatted figure
+  // ("£1.00" in GB, "$1.29" in US, etc.) so the paywall is always
+  // accurate for the user's storefront. `purchase()` and `restore()`
+  // are awaited round-trips through the native store SDK.
+  const {
+    isPro,
+    priceString,
+    purchase,
+    restore,
+    isLoading: billingLoading,
+    isPurchasing,
+    isRestoring,
+  } = useSubscription();
+  // Prefer the live entitlement when the SDK has answered; until then
+  // fall back to the persisted local flag so the UI doesn't flicker
+  // a watermarked state for users who already own Pro.
+  const proActive = isPro || proUnlocked;
   const [match, setMatch] = useState<Match | null>(null);
   const [sharing, setSharing] = useState(false);
   const [paywallOpen, setPaywallOpen] = useState(false);
@@ -100,12 +118,56 @@ export default function RevealScreen() {
     }
   };
 
-  const handleUnlock = () => {
-    // Stub paywall — real billing (RevenueCat or platform IAP) wires in
-    // at publish time. For now this flips the local pro flag.
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    unlockPro();
-    setPaywallOpen(false);
+  // Real purchase via RevenueCat. The SDK fires the native store
+  // sheet (Test Store in dev / Expo Go, Play Billing in Android prod,
+  // StoreKit in iOS prod) and resolves with the new CustomerInfo. The
+  // RevenueCatProBridge in _layout.tsx then mirrors the entitlement
+  // onto AppContext.proUnlocked, so we just close the sheet here on
+  // success and let the rest of the UI react to the flag flipping.
+  const handleUnlock = async () => {
+    if (isPurchasing) return;
+    try {
+      const info = await purchase();
+      const granted = info.entitlements.active?.["pro"] != null;
+      if (granted) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setPaywallOpen(false);
+      }
+    } catch (err: any) {
+      // Treat user-cancellation as a no-op — RevenueCat sets
+      // `userCancelled: true` on the error in that case. Anything else
+      // is worth surfacing so the user knows it didn't go through.
+      if (err?.userCancelled) return;
+      Alert.alert(
+        "Couldn't complete purchase",
+        err?.message ?? "Please try again.",
+      );
+    }
+  };
+
+  // "Restore purchases" — required by Apple's review guidelines and a
+  // generally good UX so users who reinstall (or sign in on a new
+  // device) can re-claim their Pro unlock without paying again.
+  const handleRestore = async () => {
+    if (isRestoring) return;
+    try {
+      const info = await restore();
+      const granted = info.entitlements.active?.["pro"] != null;
+      if (granted) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setPaywallOpen(false);
+      } else {
+        Alert.alert(
+          "Nothing to restore",
+          "We couldn't find a previous Pro purchase on this account.",
+        );
+      }
+    } catch (err: any) {
+      Alert.alert(
+        "Couldn't restore",
+        err?.message ?? "Please try again.",
+      );
+    }
   };
 
   // Audio: play the matched card's clip while the reveal is open,
@@ -644,22 +706,29 @@ export default function RevealScreen() {
             </Text>
           </TouchableOpacity>
 
-          {!proUnlocked && (
+          {!proActive && (
             <TouchableOpacity
               style={[styles.upsellBtn, { borderColor: colors.gold }]}
               onPress={() => setPaywallOpen(true)}
               activeOpacity={0.85}
             >
-              <Text style={styles.upsellEmoji}>✨</Text>
+              <Icon name="wave" size={16} color={colors.gold} />
               <Text style={[styles.upsellText, { color: colors.gold }]}>
-                Remove watermark · £1
+                {/* Show the live store price ("£1.00", "$1.29", …) so
+                    the button always matches what the user will pay.
+                    While the SDK is still resolving the offering we
+                    fall back to a generic label so the button isn't
+                    blank. */}
+                {priceString
+                  ? `Remove watermark · ${priceString}`
+                  : "Remove watermark"}
               </Text>
             </TouchableOpacity>
           )}
 
-          {proUnlocked && (
+          {proActive && (
             <View style={[styles.proBadge, { backgroundColor: colors.gold + "22", borderColor: colors.gold }]}>
-              <Text style={styles.upsellEmoji}>✨</Text>
+              <Icon name="wave" size={16} color={colors.gold} />
               <Text style={[styles.upsellText, { color: colors.gold }]}>
                 Pro · no watermark
               </Text>
@@ -712,40 +781,75 @@ export default function RevealScreen() {
               SameWave Pro
             </Text>
             <Text style={[styles.paywallPrice, { color: colors.gold }]}>
-              £1 · one-time, lifetime
+              {/* Live price from the store — never hardcoded. Falls
+                  back to a placeholder while RevenueCat is still
+                  fetching the offering on first paint. */}
+              {priceString
+                ? `${priceString} · one-time, lifetime`
+                : "One-time, lifetime"}
             </Text>
 
             <View style={styles.paywallFeatures}>
               <View style={styles.paywallFeature}>
                 <Icon name="check" size={16} color={colors.teal} />
                 <Text style={[styles.paywallFeatureText, { color: colors.foreground }]}>
-                  Share without watermark
+                  Clean share cards — no SameWave watermark
                 </Text>
               </View>
               <View style={styles.paywallFeature}>
                 <Icon name="check" size={16} color={colors.teal} />
                 <Text style={[styles.paywallFeatureText, { color: colors.foreground }]}>
-                  Higher resolution exports
+                  Photos shown full-size, stacked like the match screen
                 </Text>
               </View>
               <View style={styles.paywallFeature}>
                 <Icon name="check" size={16} color={colors.teal} />
                 <Text style={[styles.paywallFeatureText, { color: colors.foreground }]}>
-                  Support a small team
+                  Higher-resolution exports
                 </Text>
               </View>
             </View>
 
             <TouchableOpacity
-              style={[styles.paywallCta, { backgroundColor: colors.gold }]}
+              style={[
+                styles.paywallCta,
+                {
+                  backgroundColor: colors.gold,
+                  // Dim the CTA while the store sheet is in flight or
+                  // the offering hasn't loaded yet — prevents the user
+                  // from spamming the button into a queue of purchases.
+                  opacity: isPurchasing || billingLoading ? 0.6 : 1,
+                },
+              ]}
               onPress={handleUnlock}
               activeOpacity={0.85}
+              disabled={isPurchasing || billingLoading}
             >
-              <Text style={styles.paywallCtaText}>Unlock for £1</Text>
+              <Text style={styles.paywallCtaText}>
+                {isPurchasing
+                  ? "Opening store…"
+                  : priceString
+                    ? `Unlock for ${priceString}`
+                    : "Unlock"}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Restore link — required by Apple's review guidelines and
+                the easiest path for users who reinstalled or signed in
+                on a new device to re-claim their Pro entitlement. */}
+            <TouchableOpacity
+              onPress={handleRestore}
+              disabled={isRestoring}
+              accessibilityLabel="Restore previous purchase"
+              style={styles.paywallRestore}
+            >
+              <Text style={[styles.paywallRestoreText, { color: colors.mutedForeground }]}>
+                {isRestoring ? "Restoring…" : "Restore purchase"}
+              </Text>
             </TouchableOpacity>
 
             <Text style={[styles.paywallFinePrint, { color: colors.mutedForeground }]}>
-              One-time purchase · Restored automatically on this device
+              One-time purchase · Permanent unlock on your account
             </Text>
           </Pressable>
         </Pressable>
@@ -1337,6 +1441,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: "Inter_700Bold",
     color: "#001018",
+  },
+  paywallRestore: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    marginTop: 4,
+  },
+  paywallRestoreText: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+    textDecorationLine: "underline",
   },
   paywallFinePrint: {
     fontSize: 11,
