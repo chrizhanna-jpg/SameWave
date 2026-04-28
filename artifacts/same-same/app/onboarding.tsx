@@ -194,7 +194,7 @@ export default function OnboardingScreen() {
                 inline with the text just like the ripple icon above —
                 no transform needed; the icon's natural baseline aligns
                 with the surrounding sentence. */}
-            <Icon name="wave-glyph" size={56} color={colors.gold} />.
+            <Icon name="wave-glyph" size={28} color={colors.gold} />.
           </Text>
         ) : (
           <Text
