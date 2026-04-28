@@ -161,24 +161,28 @@ export default function OnboardingScreen() {
           },
         ]}
       >
-        {currentStep.title && (
+        {/* Title/subtitle sit above the body for every step EXCEPT the
+            ripple-wave explanation step, where the user explicitly
+            asked for the explanation paragraph to come first and the
+            "Send a ripple. / Catch a wave." pair to land below it as
+            the takeaway flourish. */}
+        {currentStep.bodyKind !== "ripple-wave" && currentStep.title && (
           <Text style={[styles.title, { color: colors.foreground }]}>
             {currentStep.title}
           </Text>
         )}
-        {currentStep.subtitle && (
+        {currentStep.bodyKind !== "ripple-wave" && currentStep.subtitle && (
           <Text style={[styles.subtitle, { color: colors.primary }]}>
             {currentStep.subtitle}
           </Text>
         )}
         {currentStep.bodyKind === "ripple-wave" ? (
-          // One flowing paragraph: words wrap naturally, icons sit
-          // inline at the same baseline as the text. Previously the
-          // row-of-chunks layout broke awkwardly between fragments —
-          // "Swipe Ripple [icon]" would land on its own line while
-          // "for photos that match" wrapped beneath it. Nesting the
-          // icons inside a single <Text> lets the paragraph reflow
-          // cleanly at any width.
+          // Ripple/Wave explanation — three forced lines so the
+          // paragraph reads as a balanced three-beat (one phrase per
+          // line) instead of reflowing differently on every device
+          // width. Icons sit inline at the same baseline as the
+          // surrounding text. The split is roughly even by character
+          // count to keep the visual block tidy.
           <Text
             style={[
               styles.body,
@@ -189,7 +193,9 @@ export default function OnboardingScreen() {
           >
             Swipe Ripple{" "}
             <Icon name="ripple" size={18} color={colors.teal} />
-            {" "}on photos that feel like yours. If they Ripple back, it&apos;s a Wave{" "}
+            {" "}on photos{"\n"}
+            that feel like yours. If they{"\n"}
+            Ripple back, it&apos;s a Wave{" "}
             {/* Wave icon (the standalone wave glyph, no wordmark) sits
                 inline with the text just like the ripple icon above —
                 no transform needed; the icon's natural baseline aligns
@@ -205,6 +211,22 @@ export default function OnboardingScreen() {
             ]}
           >
             {currentStep.body}
+          </Text>
+        )}
+        {currentStep.bodyKind === "ripple-wave" && currentStep.title && (
+          <Text
+            style={[
+              styles.title,
+              styles.titleAfterBody,
+              { color: colors.foreground },
+            ]}
+          >
+            {currentStep.title}
+          </Text>
+        )}
+        {currentStep.bodyKind === "ripple-wave" && currentStep.subtitle && (
+          <Text style={[styles.subtitle, { color: colors.primary }]}>
+            {currentStep.subtitle}
           </Text>
         )}
 
@@ -398,13 +420,20 @@ const styles = StyleSheet.create({
     lineHeight: 26,
   },
   // Override line height for the ripple/wave paragraph only. The wave
-  // glyph in that line renders at 45px (Icon size 22.5 × WAVE_SCALE 2),
-  // which overflows the default 23px line height and crashes into the
-  // line above — clipping the final "it's a Wave" line. 52px gives the
-  // 45px icon ~7px of breathing room and keeps spacing even between
-  // all three wrapped lines, regardless of which one carries an icon.
+  // glyph in that line renders at 28px tall (size=28, transparent
+  // glyph artwork), which overflows the default 23px line height. 36px
+  // gives the glyph ~8px of breathing room and keeps the three forced
+  // lines spaced evenly regardless of which one carries an icon.
   bodyRippleWave: {
-    lineHeight: 52,
+    lineHeight: 36,
+  },
+  // Spacing above the "Send a ripple. / Catch a wave." flourish that
+  // sits BELOW the explanation paragraph on the ripple-wave step —
+  // separates the takeaway tagline from the body copy without
+  // affecting titles on other steps (which sit above the body and
+  // don't need the offset).
+  titleAfterBody: {
+    marginTop: 18,
   },
   footer: {
     paddingHorizontal: 24,
