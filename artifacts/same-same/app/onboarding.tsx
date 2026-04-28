@@ -185,11 +185,11 @@ export default function OnboardingScreen() {
               styles.bodyRippleWave,
               { color: colors.mutedForeground },
             ]}
-            accessibilityLabel="Swipe Ripple for photos that match your moment. If the other person reciprocates, it's a Wave."
+            accessibilityLabel="Swipe Ripple on photos that feel like yours. If they Ripple back, it's a Wave."
           >
             Swipe Ripple{" "}
             <Icon name="ripple" size={18} color={colors.teal} />
-            {" "}for photos that match your moment. If the other person reciprocates, it&apos;s a Wave{" "}
+            {" "}on photos that feel like yours. If they Ripple back, it&apos;s a Wave{" "}
             {/* Wave icon (the standalone wave glyph, no wordmark) sits
                 inline with the text just like the ripple icon above —
                 no transform needed; the icon's natural baseline aligns
