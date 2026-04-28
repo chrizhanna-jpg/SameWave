@@ -180,7 +180,11 @@ export default function OnboardingScreen() {
           // icons inside a single <Text> lets the paragraph reflow
           // cleanly at any width.
           <Text
-            style={[styles.body, { color: colors.mutedForeground }]}
+            style={[
+              styles.body,
+              styles.bodyRippleWave,
+              { color: colors.mutedForeground },
+            ]}
             accessibilityLabel="Swipe Ripple for photos that match your moment. If the other person reciprocates, it's a Wave."
           >
             Swipe Ripple{" "}
@@ -393,6 +397,15 @@ const styles = StyleSheet.create({
   bodyHero: {
     fontSize: 17,
     lineHeight: 26,
+  },
+  // Override line height for the ripple/wave paragraph only. The wave
+  // glyph in that line renders at 45px (Icon size 22.5 × WAVE_SCALE 2),
+  // which overflows the default 23px line height and crashes into the
+  // line above — clipping the final "it's a Wave" line. 52px gives the
+  // 45px icon ~7px of breathing room and keeps spacing even between
+  // all three wrapped lines, regardless of which one carries an icon.
+  bodyRippleWave: {
+    lineHeight: 52,
   },
   footer: {
     paddingHorizontal: 24,
