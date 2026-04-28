@@ -1,41 +1,20 @@
+// The actual brand glyph the mobile app renders. Source PNG is mirrored
+// from artifacts/same-same/assets/images/samewave-glyph.png into
+// artifacts/mockup-sandbox/public/ so the canvas preview matches what
+// users see in the app. Aspect ratio 974×444 ≈ 2.19:1, same as the app.
+const WAVE_GLYPH_ASPECT = 974 / 444;
+
 function WaveGlyph({ size = 52 }: { size?: number }) {
-  // Approximation of the SameWave brand glyph used in the actual app
-  // (artifacts/same-same/assets/images/samewave-logo.png is rendered
-  // there). Inline SVG so the preview is self-contained for the
-  // screenshot tool — final share image uses the brand artwork.
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 64 64"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <circle cx="32" cy="32" r="30" fill="#0d2340" stroke="#00BFA5" strokeWidth="2" />
-      <path
-        d="M8 28 Q14 22, 20 28 T32 28 T44 28 T56 28"
-        stroke="#00BFA5"
-        strokeWidth="3"
-        strokeLinecap="round"
-        fill="none"
-      />
-      <path
-        d="M8 38 Q14 32, 20 38 T32 38 T44 38 T56 38"
-        stroke="#00BFA5"
-        strokeWidth="3"
-        strokeLinecap="round"
-        fill="none"
-        opacity="0.7"
-      />
-      <path
-        d="M8 48 Q14 42, 20 48 T32 48 T44 48 T56 48"
-        stroke="#00BFA5"
-        strokeWidth="3"
-        strokeLinecap="round"
-        fill="none"
-        opacity="0.4"
-      />
-    </svg>
+    <img
+      src="/__mockup/samewave-glyph.png"
+      alt=""
+      style={{
+        width: size * WAVE_GLYPH_ASPECT,
+        height: size,
+        display: "block",
+      }}
+    />
   );
 }
 

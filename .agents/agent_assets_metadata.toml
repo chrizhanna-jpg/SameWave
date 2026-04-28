@@ -77,3 +77,9 @@ id = "WeywheEZ6OYp1jAJFZIER"
 uri = "file://screenshots/wave-card-title-final.jpg"
 type = "image"
 title = "Wave share card — new title row"
+
+[[outputs]]
+id = "5o-FjylS7gN6RZXXPoOqS"
+uri = "file://screenshots/wave-share-card-real.jpg"
+type = "image"
+title = "Wave share card (current)"
