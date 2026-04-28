@@ -828,15 +828,15 @@ function DiscoveryCard({
           style={styles.shareTitleRow}
           accessibilityLabel="Wave — mutual reciprocation"
         >
-          {/* WaveIcon multiplies its `size` by 2 internally (see
-              components/WaveIcon.tsx WAVE_SCALE), so size=22 renders
-              at 44px — double the previous 22px and a clear visual
-              anchor for the "Wave" wordmark on the discovery card. */}
-          <Icon name="wave" size={22} color={colors.teal} />
+          {/* "wave-glyph" is the standalone wave artwork (no wordmark).
+              Same icon and same size used by the Wave share-card title
+              row in echo-pair.tsx so the discovery card and the share
+              card stay visually identical. */}
+          <Icon name="wave-glyph" size={22} color={colors.teal} />
           <Text style={[styles.shareTitle, { color: colors.teal }]}>
             Wave
           </Text>
-          <Icon name="wave" size={22} color={colors.teal} />
+          <Icon name="wave-glyph" size={22} color={colors.teal} />
         </View>
       ) : (
         <View
