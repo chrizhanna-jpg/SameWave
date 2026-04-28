@@ -589,6 +589,15 @@ const SYNTH_PHOTO_BANK = {
     "1416879595882-3373a0480b5b","1497206365907-f5e630693df0","1545241047-6083a3684587",
     "1505691938895-1758d7feb511","1462536943532-57a629f6cc60",
   ],
+  // Passions — the intense cousin of "hobbies": training, performing,
+  // racing, the thing you'd stay up all night for. All IDs reused from
+  // proven-loadable buckets above (active = workouts/cycling/running,
+  // music = concerts/party). Synth-only buckets like this are fine —
+  // sample-photo dedup only matters in SAMPLE_PHOTOS, not here.
+  passions: [
+    "1518611012118-696072aa579a","1517836357463-d25dfeac3438","1571019613454-1cb2f99b2d8b",
+    "1545205597-3d9d02c29597","1514525253161-7a46d19cd819","1485579149621-3123dd979885",
+  ],
 } as const;
 
 // Map common tag IDs → SYNTH_PHOTO_BANK theme buckets so freeform user tags
@@ -638,6 +647,10 @@ const BUCKET_TAG_POOL: Record<keyof typeof SYNTH_PHOTO_BANK, string[]> = {
   hobbies: ["hobby", "music", "photography", "crafts", "reading", "gaming"],
   birds: ["bird", "wildlife", "outdoors", "animal"],
   plants: ["plants", "flowers", "garden", "trees"],
+  // Passions = high-intensity tags only. Deliberately excludes calm
+  // hobby tags (reading, crafts, photography) so a passion synth photo
+  // never gets labelled with low-energy chips.
+  passions: ["music", "dancing", "party", "sports", "fitness", "celebration", "running", "cycling"],
 };
 
 // Builds synthetic candidates that look like real samples but are sampled
@@ -797,6 +810,7 @@ export const SUGGESTED_TAGS_BY_THEME: Record<string, string[]> = {
   birds: ["bird", "wildlife", "outdoors", "animal"],
   plants: ["plants", "flowers", "garden", "trees"],
   music: ["music", "vintage", "hobby", "cozy", "party"],
+  passions: ["music", "fitness", "sports", "dancing", "running", "cycling", "party"],
 };
 
 // The daily challenge pool. One theme is shown to the entire world each
@@ -843,6 +857,7 @@ export const DAILY_CHALLENGES = [
   { id: "furniture", title: "Your favourite chair", description: "Sofa, stool, bench, the seat you love", emoji: "🪑" },
   { id: "games", title: "What you're playing", description: "Board game, video game, cards, anything", emoji: "🎲" },
   { id: "hobbies", title: "Your hobby right now", description: "What you've been into lately", emoji: "🧶" },
+  { id: "passions", title: "Your passion", description: "The thing you'd stay up all night for", emoji: "❤️‍🔥" },
   { id: "birds", title: "A bird you spotted", description: "Backyard, balcony, park, anywhere", emoji: "🐦" },
   // (rocks challenge removed — see SAMPLE_PHOTOS rocks comment.)
   { id: "plants", title: "A plant you noticed", description: "House plant, tree, weed, flower — close-up", emoji: "🪴" },
@@ -863,10 +878,15 @@ export const THEME_ADJACENCY: Record<string, string[]> = {
   pets: ["nature", "joy", "birds"],
   furniture: ["home", "hobbies"],
   games: ["hobbies", "joy", "playing"],
-  hobbies: ["games", "creative", "made", "music"],
+  hobbies: ["games", "creative", "made", "music", "passions"],
   birds: ["nature", "pets", "plants"],
   plants: ["nature", "home", "furniture"],
-  music: ["hobbies", "joy", "made"],
+  music: ["hobbies", "joy", "made", "passions"],
+  // Passions falls back to its lower-energy and adjacent-feeling
+  // cousins so a "stay up all night" ripple still finds a wave on
+  // quiet days. Music sits closest (concert / festival energy);
+  // hobbies and joy widen the net without diluting the vibe.
+  passions: ["music", "hobbies", "joy", "made"],
 };
 
 export function getThemeChain(theme: string): string[] {

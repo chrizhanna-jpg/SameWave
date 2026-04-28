@@ -549,6 +549,8 @@ const THEME_HINTS: Record<string, MusicGenre> = {
   office: "stress",
   challenge: "passion",
   adventure: "passion",
+  passions: "passion",
+  passion: "passion",
   hike: "elated",
   summit: "elated",
   graduation: "pride",
