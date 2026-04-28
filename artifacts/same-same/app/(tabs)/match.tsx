@@ -47,6 +47,13 @@ import {
 } from "@/utils/api";
 import { resolveMusicUrl } from "@/data/musicLibrary";
 import {
+  THEME_RELEVANCE_TARGET,
+  SUBJECT_RELEVANCE_TARGET,
+  isThemeRelevant,
+  isSubjectRelevant,
+  rollRelevance,
+} from "@/data/matchTuning";
+import {
   isMuted as audioIsMuted,
   markUserInteracted,
   onMuteChange,
@@ -261,7 +268,10 @@ function getTheirPhoto(
     if (!ENABLE_SYNTHETIC_MATCHES) return null;
     // Dev only: one last synth attempt with the current key folded into
     // the exclusion set. generateSyntheticCandidates already filters by
-    // seenKeys, so any photo it returns is guaranteed-fresh.
+    // seenKeys, so any photo it returns is guaranteed-fresh. The
+    // synthetic generator already buckets by theme + tags, so the
+    // returned set is on-topic by construction; the relevance gate
+    // doesn't need to re-filter here.
     const widened = currentKey
       ? new Set([...excludeKeys, currentKey])
       : excludeKeys;
@@ -274,10 +284,44 @@ function getTheirPhoto(
       sharedTags: pick.tags.filter((t) => myTags.includes(t)),
     };
   }
+  // Relevance gate — see data/matchTuning.ts for the full rationale.
+  // We roll two INDEPENDENT Bernoulli trials at the configured targets
+  // (default 0.6 / 0.6). Each "fired" gate restricts the ranked pool to
+  // the matching subset before the top-tier window picks. If either
+  // restriction empties the pool we drop that gate gracefully (subject,
+  // then theme, then unrestricted) so we always return a pick when one
+  // exists — preserves the no-regression promise on "all caught up".
+  const themeFired = rollRelevance(THEME_RELEVANCE_TARGET);
+  const subjectFired = rollRelevance(SUBJECT_RELEVANCE_TARGET);
+  let pool = ranked;
+  if (themeFired) {
+    const themeOnly = pool.filter((c) =>
+      isThemeRelevant({
+        candidateTheme: c.photo.theme,
+        preferredTheme,
+        sharedTags: c.sharedTags,
+        inChain: c.inChain,
+      }),
+    );
+    if (themeOnly.length > 0) pool = themeOnly;
+  }
+  if (subjectFired) {
+    const subjectOnly = pool.filter((c) =>
+      isSubjectRelevant({
+        sharedSubjects: c.sharedSubjects,
+        sharedShapes: c.sharedShapes,
+      }),
+    );
+    if (subjectOnly.length > 0) pool = subjectOnly;
+  }
   // Tight top-tier window (0.6 pts) so we only randomise between
   // genuinely-comparable matches, never reach for the next-best-thing.
-  const topScore = ranked[0].score;
-  let topTier = ranked.filter((c) => c.score >= topScore - 0.6).slice(0, 6);
+  // Window is computed against the FILTERED pool so a single relevant
+  // candidate can stand alone instead of being demoted by an irrelevant
+  // higher-scoring outlier (which would have happened on the unrestricted
+  // ranking). Cap of 6 keeps the random pick meaningful.
+  const topScore = pool[0].score;
+  let topTier = pool.filter((c) => c.score >= topScore - 0.6).slice(0, 6);
   // Avoid picking the literal current photo if other top-tier options exist.
   if (currentKey && topTier.length > 1) {
     const filtered = topTier.filter((c) => photoKey(c.photo.uri) !== currentKey);
