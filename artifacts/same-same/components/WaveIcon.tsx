@@ -34,15 +34,21 @@ export function WaveIcon({ size = 24, style }: WaveIconProps) {
 // Standalone wave glyph (no wordmark) — the wide horizontal wave
 // artwork with a transparent background. Used inline in tutorial copy
 // ("…it's a Wave [glyph]") and as the title flanks on the Wave share
-// card ("[glyph] Wave [glyph]"). Renders at the registry size with a
-// 3:1 aspect ratio that matches the source artwork, so it sits neatly
-// next to text without the square letterboxing the wordmark variant
-// would produce.
+// card ("[glyph] Wave [glyph]"). The width multiplier matches the
+// source artwork's intrinsic aspect ratio (currently 974×444 ≈ 2.19:1)
+// so it sits neatly next to text without squashing or stretching. If
+// the source asset is ever swapped, recompute the multiplier as
+// (image width ÷ image height) and update WAVE_GLYPH_ASPECT.
+const WAVE_GLYPH_ASPECT = 974 / 444;
+
 export function WaveGlyphIcon({ size = 24, style }: WaveIconProps) {
   return (
     <Image
       source={require("@/assets/images/samewave-glyph.png")}
-      style={[{ width: size * 3, height: size }, style as object]}
+      style={[
+        { width: size * WAVE_GLYPH_ASPECT, height: size },
+        style as object,
+      ]}
       resizeMode="contain"
     />
   );
