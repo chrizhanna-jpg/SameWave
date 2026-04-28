@@ -347,65 +347,40 @@ export default function EchoPairScreen() {
                 beneath their photo, centered, same 36px size. The mic-
                 badge audio indicator stays inside the photo frame
                 (Echo-only). */}
-            <View style={styles.sharePhotoPair}>
-              <View style={styles.sharePhotoFramesRow}>
-                {/* Watermark used to be burned onto the photos here as a
-                    small "✨ same same" pill at the bottom of the photo
-                    row. User feedback: it cluttered the photos and felt
-                    too small to read as an actual watermark. The
-                    watermark now lives only as the larger pill below the
-                    flag row (see styles.watermark) — clearer, brand-y,
-                    and out of the photo composition. */}
-                <View style={styles.sharePhotoFrame}>
-                  <Image
-                    source={{ uri: pair.a.uri }}
-                    style={styles.sharePhoto}
-                    resizeMode="cover"
-                  />
-                  {pair.a.customAudioUrl ? (
-                    <View style={styles.micBadgeOverlay}>
-                      <MicBadge audioUrl={pair.a.customAudioUrl} size="sm" />
-                    </View>
-                  ) : null}
-                  {!proUnlocked && (
-                    <View style={styles.photoOverlayWatermarkContainer}>
-                      <View style={styles.photoOverlayWatermark}>
-                        <Icon name="wave" size={11} color="#FFFFFF" />
-                        <Text style={styles.photoOverlayWatermarkText}>SameWave</Text>
+            {/* Photo layout has two modes:
+                  free  → side-by-side (same as before): two photos in
+                          a row sharing the card width, two flags in a
+                          row beneath, plus the "Find it on Google
+                          Play" watermark below the card.
+                  Pro   → stacked: each photo takes the full card-edge-
+                          to-card-edge width with a small flag
+                          centered directly beneath it. With the
+                          watermark removed (Pro perk), there's
+                          nothing competing for vertical space, so
+                          the photos can grow as big as the share
+                          card allows — matching the match-screen
+                          presentation the user asked for. The mic
+                          badge stays inside the photo frame in both
+                          modes (Echo-only audio indicator). */}
+            {proUnlocked ? (
+              <View style={styles.sharePhotoStack}>
+                <View style={styles.sharePhotoStackItem}>
+                  <View style={styles.sharePhotoFrameStacked}>
+                    <Image
+                      source={{ uri: pair.a.uri }}
+                      style={styles.sharePhoto}
+                      resizeMode="cover"
+                    />
+                    {pair.a.customAudioUrl ? (
+                      <View style={styles.micBadgeOverlay}>
+                        <MicBadge audioUrl={pair.a.customAudioUrl} size="sm" />
                       </View>
-                    </View>
-                  )}
-                </View>
-                <View style={styles.sharePhotoFrame}>
-                  <Image
-                    source={{ uri: pair.b.uri }}
-                    style={styles.sharePhoto}
-                    resizeMode="cover"
-                  />
-                  {pair.b.customAudioUrl ? (
-                    <View style={styles.micBadgeOverlay}>
-                      <MicBadge audioUrl={pair.b.customAudioUrl} size="sm" />
-                    </View>
-                  ) : null}
-                  {!proUnlocked && (
-                    <View style={styles.photoOverlayWatermarkContainer}>
-                      <View style={styles.photoOverlayWatermark}>
-                        <Icon name="wave" size={11} color="#FFFFFF" />
-                        <Text style={styles.photoOverlayWatermarkText}>SameWave</Text>
-                      </View>
-                    </View>
-                  )}
-                </View>
-              </View>
-              <View style={styles.shareFlagRow}>
-                <View style={styles.shareFlagSlot}>
+                    ) : null}
+                  </View>
                   <View
                     style={[
                       styles.shareFlagBadge,
-                      {
-                        backgroundColor: colors.card,
-                        borderColor: colors.border,
-                      },
+                      { backgroundColor: colors.card, borderColor: colors.border },
                     ]}
                   >
                     <Text style={styles.shareFlagText}>
@@ -413,14 +388,23 @@ export default function EchoPairScreen() {
                     </Text>
                   </View>
                 </View>
-                <View style={styles.shareFlagSlot}>
+                <View style={styles.sharePhotoStackItem}>
+                  <View style={styles.sharePhotoFrameStacked}>
+                    <Image
+                      source={{ uri: pair.b.uri }}
+                      style={styles.sharePhoto}
+                      resizeMode="cover"
+                    />
+                    {pair.b.customAudioUrl ? (
+                      <View style={styles.micBadgeOverlay}>
+                        <MicBadge audioUrl={pair.b.customAudioUrl} size="sm" />
+                      </View>
+                    ) : null}
+                  </View>
                   <View
                     style={[
                       styles.shareFlagBadge,
-                      {
-                        backgroundColor: colors.card,
-                        borderColor: colors.border,
-                      },
+                      { backgroundColor: colors.card, borderColor: colors.border },
                     ]}
                   >
                     <Text style={styles.shareFlagText}>
@@ -429,7 +413,88 @@ export default function EchoPairScreen() {
                   </View>
                 </View>
               </View>
-            </View>
+            ) : (
+              <View style={styles.sharePhotoPair}>
+                <View style={styles.sharePhotoFramesRow}>
+                  {/* Watermark used to be burned onto the photos here
+                      as a small "✨ same same" pill at the bottom of
+                      the photo row. User feedback: it cluttered the
+                      photos and felt too small to read as an actual
+                      watermark. The watermark now lives only as the
+                      larger pill below the flag row (see
+                      styles.watermark) — clearer, brand-y, and out
+                      of the photo composition. */}
+                  <View style={styles.sharePhotoFrame}>
+                    <Image
+                      source={{ uri: pair.a.uri }}
+                      style={styles.sharePhoto}
+                      resizeMode="cover"
+                    />
+                    {pair.a.customAudioUrl ? (
+                      <View style={styles.micBadgeOverlay}>
+                        <MicBadge audioUrl={pair.a.customAudioUrl} size="sm" />
+                      </View>
+                    ) : null}
+                    <View style={styles.photoOverlayWatermarkContainer}>
+                      <View style={styles.photoOverlayWatermark}>
+                        <Icon name="wave" size={11} color="#FFFFFF" />
+                        <Text style={styles.photoOverlayWatermarkText}>SameWave</Text>
+                      </View>
+                    </View>
+                  </View>
+                  <View style={styles.sharePhotoFrame}>
+                    <Image
+                      source={{ uri: pair.b.uri }}
+                      style={styles.sharePhoto}
+                      resizeMode="cover"
+                    />
+                    {pair.b.customAudioUrl ? (
+                      <View style={styles.micBadgeOverlay}>
+                        <MicBadge audioUrl={pair.b.customAudioUrl} size="sm" />
+                      </View>
+                    ) : null}
+                    <View style={styles.photoOverlayWatermarkContainer}>
+                      <View style={styles.photoOverlayWatermark}>
+                        <Icon name="wave" size={11} color="#FFFFFF" />
+                        <Text style={styles.photoOverlayWatermarkText}>SameWave</Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+                <View style={styles.shareFlagRow}>
+                  <View style={styles.shareFlagSlot}>
+                    <View
+                      style={[
+                        styles.shareFlagBadge,
+                        {
+                          backgroundColor: colors.card,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                    >
+                      <Text style={styles.shareFlagText}>
+                        {pair.a.countryFlag ?? "🌍"}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.shareFlagSlot}>
+                    <View
+                      style={[
+                        styles.shareFlagBadge,
+                        {
+                          backgroundColor: colors.card,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                    >
+                      <Text style={styles.shareFlagText}>
+                        {pair.b.countryFlag ?? "🌍"}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            )}
 
             {!proUnlocked && (
               <View
@@ -605,6 +670,31 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 6,
     justifyContent: "center",
+  },
+  // Pro-only stacked photo layout. Mirrors the same shape used on
+  // reveal.tsx — each photo+flag pair sits in its own column item;
+  // the outer stack adds vertical breathing space between the two
+  // pairs (larger than the within-pair gap so each photo reads as
+  // visually paired with its own flag, not the next photo). Same
+  // edge-to-edge break-out as sharePhotoPair so the photos run
+  // flush with the share-card edges.
+  sharePhotoStack: {
+    flexDirection: "column",
+    gap: 14,
+    alignSelf: "stretch",
+    marginHorizontal: -18,
+  },
+  sharePhotoStackItem: {
+    alignSelf: "stretch",
+    alignItems: "center",
+    gap: 6,
+  },
+  sharePhotoFrameStacked: {
+    alignSelf: "stretch",
+    aspectRatio: 4 / 5,
+    borderRadius: 16,
+    overflow: "hidden",
+    position: "relative",
   },
   shareChip: {
     flexDirection: "row",

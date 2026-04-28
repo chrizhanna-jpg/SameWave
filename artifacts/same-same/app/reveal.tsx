@@ -406,48 +406,29 @@ export default function RevealScreen() {
               were previously absolutely-positioned overlays on the top-
               right of each photo — they now live in a small row directly
               beneath their photo, centered, same 36px size. */}
-          <View style={styles.sharePhotoPair}>
-            <View style={styles.sharePhotoFramesRow}>
-              {/* Watermark used to be burned onto the photos here as a
-                  small "✨ same same" pill at the bottom of the photo
-                  row. User feedback: it cluttered the photos and felt
-                  too small to read as an actual watermark. The
-                  watermark now lives only as the larger pill below the
-                  flag row (see styles.watermark) — clearer, brand-y,
-                  and out of the photo composition. */}
-              <View style={styles.sharePhotoFrame}>
-                <Image
-                  source={{ uri: match.myPhoto }}
-                  style={styles.sharePhoto}
-                  resizeMode="cover"
-                />
-                {!proUnlocked && (
-                  <View style={styles.photoOverlayWatermarkContainer}>
-                    <View style={styles.photoOverlayWatermark}>
-                      <Icon name="wave" size={11} color="#FFFFFF" />
-                      <Text style={styles.photoOverlayWatermarkText}>SameWave</Text>
-                    </View>
-                  </View>
-                )}
-              </View>
-              <View style={styles.sharePhotoFrame}>
-                <Image
-                  source={{ uri: match.theirPhoto }}
-                  style={styles.sharePhoto}
-                  resizeMode="cover"
-                />
-                {!proUnlocked && (
-                  <View style={styles.photoOverlayWatermarkContainer}>
-                    <View style={styles.photoOverlayWatermark}>
-                      <Icon name="wave" size={11} color="#FFFFFF" />
-                      <Text style={styles.photoOverlayWatermarkText}>SameWave</Text>
-                    </View>
-                  </View>
-                )}
-              </View>
-            </View>
-            <View style={styles.shareFlagRow}>
-              <View style={styles.shareFlagSlot}>
+          {/* Photo layout has two modes:
+                free  → side-by-side (same as before): two photos in a
+                        row sharing the card width, two flags in a row
+                        beneath, plus the "Find it on Google Play"
+                        watermark below the card. The compact layout
+                        leaves room for the watermark.
+                Pro   → stacked: each photo takes the full card-edge-
+                        to-card-edge width with a small flag centered
+                        directly beneath it. With the watermark
+                        removed (Pro perk), there's nothing competing
+                        for vertical space, so the photos can grow as
+                        big as the share card allows — matching the
+                        match-screen presentation the user asked for. */}
+          {proUnlocked ? (
+            <View style={styles.sharePhotoStack}>
+              <View style={styles.sharePhotoStackItem}>
+                <View style={styles.sharePhotoFrameStacked}>
+                  <Image
+                    source={{ uri: match.myPhoto }}
+                    style={styles.sharePhoto}
+                    resizeMode="cover"
+                  />
+                </View>
                 <View
                   style={[
                     styles.shareFlagBadge,
@@ -457,7 +438,14 @@ export default function RevealScreen() {
                   <Text style={styles.shareFlagText}>{myCountryFlag ?? "🌍"}</Text>
                 </View>
               </View>
-              <View style={styles.shareFlagSlot}>
+              <View style={styles.sharePhotoStackItem}>
+                <View style={styles.sharePhotoFrameStacked}>
+                  <Image
+                    source={{ uri: match.theirPhoto }}
+                    style={styles.sharePhoto}
+                    resizeMode="cover"
+                  />
+                </View>
                 <View
                   style={[
                     styles.shareFlagBadge,
@@ -468,7 +456,68 @@ export default function RevealScreen() {
                 </View>
               </View>
             </View>
-          </View>
+          ) : (
+            <View style={styles.sharePhotoPair}>
+              <View style={styles.sharePhotoFramesRow}>
+                {/* Watermark used to be burned onto the photos here as
+                    a small "✨ same same" pill at the bottom of the
+                    photo row. User feedback: it cluttered the photos
+                    and felt too small to read as an actual watermark.
+                    The watermark now lives only as the larger pill
+                    below the flag row (see styles.watermark) —
+                    clearer, brand-y, and out of the photo
+                    composition. */}
+                <View style={styles.sharePhotoFrame}>
+                  <Image
+                    source={{ uri: match.myPhoto }}
+                    style={styles.sharePhoto}
+                    resizeMode="cover"
+                  />
+                  <View style={styles.photoOverlayWatermarkContainer}>
+                    <View style={styles.photoOverlayWatermark}>
+                      <Icon name="wave" size={11} color="#FFFFFF" />
+                      <Text style={styles.photoOverlayWatermarkText}>SameWave</Text>
+                    </View>
+                  </View>
+                </View>
+                <View style={styles.sharePhotoFrame}>
+                  <Image
+                    source={{ uri: match.theirPhoto }}
+                    style={styles.sharePhoto}
+                    resizeMode="cover"
+                  />
+                  <View style={styles.photoOverlayWatermarkContainer}>
+                    <View style={styles.photoOverlayWatermark}>
+                      <Icon name="wave" size={11} color="#FFFFFF" />
+                      <Text style={styles.photoOverlayWatermarkText}>SameWave</Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+              <View style={styles.shareFlagRow}>
+                <View style={styles.shareFlagSlot}>
+                  <View
+                    style={[
+                      styles.shareFlagBadge,
+                      { backgroundColor: colors.card, borderColor: colors.border },
+                    ]}
+                  >
+                    <Text style={styles.shareFlagText}>{myCountryFlag ?? "🌍"}</Text>
+                  </View>
+                </View>
+                <View style={styles.shareFlagSlot}>
+                  <View
+                    style={[
+                      styles.shareFlagBadge,
+                      { backgroundColor: colors.card, borderColor: colors.border },
+                    ]}
+                  >
+                    <Text style={styles.shareFlagText}>{match.theirCountryFlag ?? "🌍"}</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+          )}
 
           {!proUnlocked && (
             <View
@@ -795,6 +844,33 @@ const styles = StyleSheet.create({
     gap: 8,
     alignSelf: "stretch",
     marginHorizontal: -18,
+  },
+  // Pro-only stacked photo layout. Each photo+flag pair sits in its
+  // own column item; the outer stack adds vertical breathing space
+  // between the two pairs (larger than the within-pair gap so each
+  // photo reads as visually paired with its own flag, not the next
+  // photo). Same edge-to-edge break-out as sharePhotoPair so the
+  // photos run flush with the share-card edges.
+  sharePhotoStack: {
+    flexDirection: "column",
+    gap: 14,
+    alignSelf: "stretch",
+    marginHorizontal: -18,
+  },
+  sharePhotoStackItem: {
+    alignSelf: "stretch",
+    alignItems: "center",
+    gap: 6,
+  },
+  sharePhotoFrameStacked: {
+    alignSelf: "stretch",
+    // Same 4:5 portrait aspect as the side-by-side mode, just at the
+    // full card width — so each stacked photo is roughly twice as
+    // tall as before, dominating the share image as the user asked.
+    aspectRatio: 4 / 5,
+    borderRadius: 16,
+    overflow: "hidden",
+    position: "relative",
   },
   sharePhotoFramesRow: {
     flexDirection: "row",
