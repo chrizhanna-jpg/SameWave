@@ -51,14 +51,12 @@ export const SUBJECT_RELEVANCE_TARGET = 0.6;
  * Predicate inputs — the fields `scoreCandidates` already produces, so
  * we never recompute overlap when filtering. `candidateTheme` is the
  * candidate photo's theme string; `preferredTheme` is the requester's
- * own theme. `inChain` is true when the candidate's theme sits in the
- * same chain as the requester's (already computed for the chain bonus).
+ * own theme.
  */
 type ThemeRelevanceArgs = {
   candidateTheme: string;
   preferredTheme: string;
   sharedTags: string[];
-  inChain: boolean;
 };
 
 /**
@@ -66,11 +64,14 @@ type ThemeRelevanceArgs = {
  *   • exact theme match (the strongest signal),
  *   • either theme contains the other (mirrors the server's ILIKE
  *     fallback for "Cosy mornings" vs "Mornings"),
- *   • the candidate sits in the same theme chain (adjacent themes are
- *     close enough to feel related — e.g. "morning" → "coffee"),
  *   • the candidate shares at least one vibe tag with the requester
  *     ("calm", "warm", "playful" overlap is meaningful even when the
  *     theme bucket differs).
+ *
+ * Note: adjacent themes in the same chain are NOT treated as relevant
+ * here. The chain already earns a small score bonus inside the ranker,
+ * but for the user-facing relevance gate we hold the line at exact /
+ * contains / shared-vibe to match the spec exactly.
  *
  * Empty preferredTheme (subject-matter mode where the user hasn't picked
  * a theme) treats every candidate as theme-relevant — the gate is a
@@ -80,11 +81,9 @@ export function isThemeRelevant({
   candidateTheme,
   preferredTheme,
   sharedTags,
-  inChain,
 }: ThemeRelevanceArgs): boolean {
   if (!preferredTheme) return true;
   if (sharedTags.length > 0) return true;
-  if (inChain) return true;
   if (!candidateTheme) return false;
   if (candidateTheme === preferredTheme) return true;
   return (

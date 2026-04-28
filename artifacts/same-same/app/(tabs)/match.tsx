@@ -260,6 +260,13 @@ function getTheirPhoto(
       mySubjects,
     );
   }
+  // Relevance gate — see data/matchTuning.ts for the full rationale.
+  // We roll two INDEPENDENT Bernoulli trials at the configured targets
+  // (default 0.6 / 0.6). The same two booleans drive both the ranked
+  // pool below AND the synthetic fallback further down, so dev/Expo Go
+  // and prod feel identical under the same tuning.
+  const themeFired = rollRelevance(THEME_RELEVANCE_TARGET);
+  const subjectFired = rollRelevance(SUBJECT_RELEVANCE_TARGET);
   if (ranked.length === 0) {
     // Pool genuinely exhausted for this session. We deliberately do NOT
     // recycle already-seen photos — the swipe screen shows a "you've
@@ -268,31 +275,57 @@ function getTheirPhoto(
     if (!ENABLE_SYNTHETIC_MATCHES) return null;
     // Dev only: one last synth attempt with the current key folded into
     // the exclusion set. generateSyntheticCandidates already filters by
-    // seenKeys, so any photo it returns is guaranteed-fresh. The
-    // synthetic generator already buckets by theme + tags, so the
-    // returned set is on-topic by construction; the relevance gate
-    // doesn't need to re-filter here.
+    // seenKeys, so any photo it returns is guaranteed-fresh.
     const widened = currentKey
       ? new Set([...excludeKeys, currentKey])
       : excludeKeys;
     const fresh = generateSyntheticCandidates(preferredTheme, myTags, 24, widened);
     if (fresh.length === 0) return null;
-    const pick = fresh[Math.floor(Math.random() * fresh.length)];
+    // Apply the same relevance gate to synth photos so dev/Expo Go
+    // honors the configured targets exactly the way prod does. Synth
+    // candidates aren't pre-scored, so we compute the predicate fields
+    // (sharedTags / sharedSubjects / sharedShapes) inline against the
+    // requester's tags/subjects/shapes — same definitions
+    // scoreCandidates uses. Graceful fallback: if a gate empties the
+    // pool, drop it; if both empty it, fall back to the unrestricted
+    // synth set so we never return null when synth photos exist.
+    const myTagSetSynth = new Set(myTags);
+    const myShapeSetSynth = new Set(myShapes);
+    const mySubjectSetSynth = new Set(mySubjects);
+    let synthPool = fresh;
+    if (themeFired) {
+      const themeOnly = synthPool.filter((p) =>
+        isThemeRelevant({
+          candidateTheme: p.theme,
+          preferredTheme,
+          sharedTags: p.tags.filter((t) => myTagSetSynth.has(t)),
+        }),
+      );
+      if (themeOnly.length > 0) synthPool = themeOnly;
+    }
+    if (subjectFired) {
+      const subjectOnly = synthPool.filter((p) =>
+        isSubjectRelevant({
+          sharedSubjects: (p.subjects ?? []).filter((s) =>
+            mySubjectSetSynth.has(s),
+          ),
+          sharedShapes: (p.shapes ?? []).filter((s) => myShapeSetSynth.has(s)),
+        }),
+      );
+      if (subjectOnly.length > 0) synthPool = subjectOnly;
+    }
+    const pick = synthPool[Math.floor(Math.random() * synthPool.length)];
     return {
       photo: pick,
       matchedTheme: pick.theme,
-      sharedTags: pick.tags.filter((t) => myTags.includes(t)),
+      sharedTags: pick.tags.filter((t) => myTagSetSynth.has(t)),
     };
   }
-  // Relevance gate — see data/matchTuning.ts for the full rationale.
-  // We roll two INDEPENDENT Bernoulli trials at the configured targets
-  // (default 0.6 / 0.6). Each "fired" gate restricts the ranked pool to
-  // the matching subset before the top-tier window picks. If either
-  // restriction empties the pool we drop that gate gracefully (subject,
-  // then theme, then unrestricted) so we always return a pick when one
-  // exists — preserves the no-regression promise on "all caught up".
-  const themeFired = rollRelevance(THEME_RELEVANCE_TARGET);
-  const subjectFired = rollRelevance(SUBJECT_RELEVANCE_TARGET);
+  // Each "fired" gate restricts the ranked pool to the matching subset
+  // before the top-tier window picks. If either restriction empties the
+  // pool we drop that gate gracefully (subject, then theme, then
+  // unrestricted) so we always return a pick when one exists —
+  // preserves the no-regression promise on "all caught up".
   let pool = ranked;
   if (themeFired) {
     const themeOnly = pool.filter((c) =>
@@ -300,7 +333,6 @@ function getTheirPhoto(
         candidateTheme: c.photo.theme,
         preferredTheme,
         sharedTags: c.sharedTags,
-        inChain: c.inChain,
       }),
     );
     if (themeOnly.length > 0) pool = themeOnly;
