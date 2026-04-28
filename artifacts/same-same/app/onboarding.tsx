@@ -190,20 +190,11 @@ export default function OnboardingScreen() {
             Swipe Ripple{" "}
             <Icon name="ripple" size={18} color={colors.teal} />
             {" "}for photos that match your moment. If the other person reciprocates, it&apos;s a Wave{" "}
-            {/* WaveIcon multiplies its `size` by 2 internally (see
-                components/WaveIcon.tsx WAVE_SCALE). Size={33.75} renders
-                at 67.5px — 1.5× the previous 45px so the brand glyph +
-                wordmark reads as a strong inline anchor for the word
-                "Wave". The translateY nudge drops the glyph slightly
-                below the text baseline so it sits visually centred on
-                the cap-height of the surrounding sentence rather than
-                hanging off the top of the line. */}
-            <Icon
-              name="wave-glyph"
-              size={56}
-              color={colors.gold}
-              style={{ transform: [{ translateY: 8 }] }}
-            />.
+            {/* Wave icon (the standalone wave glyph, no wordmark) sits
+                inline with the text just like the ripple icon above —
+                no transform needed; the icon's natural baseline aligns
+                with the surrounding sentence. */}
+            <Icon name="wave-glyph" size={56} color={colors.gold} />.
           </Text>
         ) : (
           <Text
