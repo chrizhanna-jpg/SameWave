@@ -346,25 +346,59 @@ export default function RevealScreen() {
             <Icon name="ripple" size={20} color={colors.foreground} />
           </View>
 
-          <View style={styles.shareChipsRow}>
-            {sameChips.map((chip) => (
-              <View
-                key={chip.label}
-                style={[
-                  styles.shareChip,
-                  {
-                    backgroundColor: colors.teal + "1a",
-                    borderColor: colors.teal + "55",
-                  },
-                ]}
-              >
-                <Text style={styles.shareChipEmoji}>{chip.emoji}</Text>
-                <Text style={[styles.shareChipText, { color: colors.teal }]}>
-                  {chip.label}
-                </Text>
-              </View>
-            ))}
-          </View>
+          {/* Two-row chip layout: the topic (first chip) sits alone on
+              its own centered line, then the time + geo "same X" tokens
+              share a second line below. Previously all chips lived in a
+              single flex-wrap row, which caused the topic and time chip
+              to land together while "same world" wrapped onto its own
+              line — visually orphaning the geo token. Splitting into
+              two explicit rows reads more deliberate and pairs the two
+              "same X" badges that belong together. */}
+          {(() => {
+            const [topicChip, ...metaChips] = sameChips;
+            return (
+              <>
+                <View style={styles.shareChipsRow}>
+                  <View
+                    key={topicChip.label}
+                    style={[
+                      styles.shareChip,
+                      {
+                        backgroundColor: colors.teal + "1a",
+                        borderColor: colors.teal + "55",
+                      },
+                    ]}
+                  >
+                    <Text style={styles.shareChipEmoji}>{topicChip.emoji}</Text>
+                    <Text style={[styles.shareChipText, { color: colors.teal }]}>
+                      {topicChip.label}
+                    </Text>
+                  </View>
+                </View>
+                {metaChips.length > 0 && (
+                  <View style={styles.shareChipsRow}>
+                    {metaChips.map((chip) => (
+                      <View
+                        key={chip.label}
+                        style={[
+                          styles.shareChip,
+                          {
+                            backgroundColor: colors.teal + "1a",
+                            borderColor: colors.teal + "55",
+                          },
+                        ]}
+                      >
+                        <Text style={styles.shareChipEmoji}>{chip.emoji}</Text>
+                        <Text style={[styles.shareChipText, { color: colors.teal }]}>
+                          {chip.label}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </>
+            );
+          })()}
 
           {/* The photo pair now breaks out of the share-card's horizontal
               padding (via negative margin) so the two images run almost
