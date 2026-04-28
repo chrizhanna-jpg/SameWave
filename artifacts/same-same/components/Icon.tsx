@@ -1,5 +1,5 @@
 import React from "react";
-import { WaveIcon } from "@/components/WaveIcon";
+import { WaveIcon, WaveGlyphIcon } from "@/components/WaveIcon";
 import {
   AlertCircle,
   ArrowLeft,
@@ -79,6 +79,7 @@ const ICONS: Record<string, IconComponent | LucideIcon> = {
   volume2: Volume2,
   volumeX: VolumeX,
   wave: WaveIcon,
+  "wave-glyph": WaveGlyphIcon,
   ripple: Waves,
   x: X,
   zap: Zap,

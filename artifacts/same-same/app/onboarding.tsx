@@ -199,8 +199,8 @@ export default function OnboardingScreen() {
                 the cap-height of the surrounding sentence rather than
                 hanging off the top of the line. */}
             <Icon
-              name="wave"
-              size={33.75}
+              name="wave-glyph"
+              size={28}
               color={colors.gold}
               style={{ transform: [{ translateY: 8 }] }}
             />.

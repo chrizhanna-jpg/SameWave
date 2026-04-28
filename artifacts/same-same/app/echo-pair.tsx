@@ -281,11 +281,11 @@ export default function EchoPairScreen() {
                 but with the wave glyph and teal accent color so the
                 two share cards remain visually distinct. */}
             <View style={styles.shareTitleRow}>
-              <Icon name="wave" size={26} color={colors.teal} />
+              <Icon name="wave-glyph" size={22} color={colors.teal} />
               <Text style={[styles.shareTitle, { color: colors.teal }]}>
                 Wave
               </Text>
-              <Icon name="wave" size={26} color={colors.teal} />
+              <Icon name="wave-glyph" size={22} color={colors.teal} />
             </View>
 
             {/* Two-row chip layout: the topic (first chip) sits alone
