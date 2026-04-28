@@ -968,10 +968,15 @@ const styles = StyleSheet.create({
   },
   sharePhotoFrameStacked: {
     alignSelf: "stretch",
-    // Same 4:5 portrait aspect as the side-by-side mode, just at the
-    // full card width — so each stacked photo is roughly twice as
-    // tall as before, dominating the share image as the user asked.
-    aspectRatio: 4 / 5,
+    // Landscape 4:3 at full card width. Earlier this was 4:5 (portrait)
+    // to mirror the side-by-side mode at double width, but at full card
+    // width that made each photo ~450 px tall — two stacked + the
+    // header / chips / flags couldn't fit in a single viewport, so the
+    // user could only see one photo on screen at a time. 4:3 keeps the
+    // photos substantially bigger than free's side-by-side framing
+    // while letting the whole card fit in a phone viewport for preview
+    // and a typical social-share crop.
+    aspectRatio: 4 / 3,
     borderRadius: 16,
     overflow: "hidden",
     position: "relative",

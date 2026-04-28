@@ -691,7 +691,14 @@ const styles = StyleSheet.create({
   },
   sharePhotoFrameStacked: {
     alignSelf: "stretch",
-    aspectRatio: 4 / 5,
+    // Landscape 4:3 (matches reveal.tsx). Earlier this was 4:5 portrait
+    // at full card width which made each photo ~450 px tall — two
+    // stacked + the header / chips / flags couldn't fit in a single
+    // viewport, so the user could only see one photo on screen at a
+    // time. 4:3 keeps the photos clearly bigger than free's
+    // side-by-side framing while letting the whole share card fit in
+    // a phone viewport for preview and a typical social-share crop.
+    aspectRatio: 4 / 3,
     borderRadius: 16,
     overflow: "hidden",
     position: "relative",
