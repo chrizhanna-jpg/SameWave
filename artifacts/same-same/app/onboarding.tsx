@@ -200,7 +200,7 @@ export default function OnboardingScreen() {
                 hanging off the top of the line. */}
             <Icon
               name="wave-glyph"
-              size={28}
+              size={56}
               color={colors.gold}
               style={{ transform: [{ translateY: 8 }] }}
             />.
