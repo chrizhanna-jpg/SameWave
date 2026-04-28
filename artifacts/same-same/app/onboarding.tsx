@@ -433,7 +433,7 @@ const styles = StyleSheet.create({
   // affecting titles on other steps (which sit above the body and
   // don't need the offset).
   titleAfterBody: {
-    marginTop: 18,
+    marginTop: 40,
   },
   footer: {
     paddingHorizontal: 24,
