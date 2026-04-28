@@ -618,6 +618,13 @@ const TAG_TO_BUCKET: Record<string, keyof typeof SYNTH_PHOTO_BANK> = {
   dog: "pets", cat: "pets", animal: "pets", wildlife: "pets",
   bird: "birds",
   hobby: "hobbies",
+  // New lifestyle tags map to the closest existing bucket so synth dev
+  // generation still produces something coherent. No new SYNTH buckets
+  // — sample-photo IDs for these themes are deliberately skipped per
+  // product call (unverified Unsplash IDs would render blank).
+  selfie: "joy", mirror: "joy",
+  shopping: "travel", grocery: "food", parcel: "home",
+  chores: "home", cleaning: "home", laundry: "home",
 };
 
 function pickFromTheme(theme: string): keyof typeof SYNTH_PHOTO_BANK {
@@ -787,6 +794,20 @@ export const TAG_LIBRARY: { id: string; emoji: string; label: string }[] = [
   { id: "hobby", emoji: "🧶", label: "Hobby" },
   { id: "play", emoji: "🎲", label: "Play" },
   { id: "bird", emoji: "🐦", label: "Bird" },
+  // Self / shopping / chores vocabulary — added alongside the new
+  // selfie / shopping / cafe / objects / chores daily-challenge themes.
+  // Keep these IDs in lockstep with the server's ALLOWED_TAGS in
+  // artifacts/api-server/src/routes/analyze.ts — the AI tagger only
+  // emits tags from that list, so any new tag here must also exist
+  // there or the AI will never auto-pick it.
+  { id: "selfie", emoji: "🤳", label: "Selfie" },
+  { id: "mirror", emoji: "🪞", label: "Mirror" },
+  { id: "shopping", emoji: "🛍️", label: "Shopping" },
+  { id: "grocery", emoji: "🛒", label: "Grocery" },
+  { id: "parcel", emoji: "📦", label: "Parcel" },
+  { id: "chores", emoji: "🧹", label: "Chores" },
+  { id: "cleaning", emoji: "🧼", label: "Cleaning" },
+  { id: "laundry", emoji: "👕", label: "Laundry" },
 ];
 
 // Suggested tag IDs surfaced first per theme on the camera screen.
@@ -811,6 +832,14 @@ export const SUGGESTED_TAGS_BY_THEME: Record<string, string[]> = {
   plants: ["plants", "flowers", "garden", "trees"],
   music: ["music", "vintage", "hobby", "cozy", "party"],
   passions: ["music", "fitness", "sports", "dancing", "running", "cycling", "party"],
+  // ── New lifestyle themes — sample photos intentionally skipped, but
+  // tag suggestions still seeded so the camera screen has a sensible
+  // first row when these challenges run.
+  selfie: ["selfie", "mirror", "smile", "people", "fashion"],
+  shopping: ["shopping", "grocery", "fashion", "parcel", "city"],
+  cafe: ["cafe", "coffee", "drink", "meal", "cozy"],
+  objects: ["vintage", "art", "home", "crafts", "cozy"],
+  chores: ["chores", "cleaning", "laundry", "home", "cozy"],
 };
 
 // The daily challenge pool. One theme is shown to the entire world each
@@ -862,6 +891,15 @@ export const DAILY_CHALLENGES = [
   // (rocks challenge removed — see SAMPLE_PHOTOS rocks comment.)
   { id: "plants", title: "A plant you noticed", description: "House plant, tree, weed, flower — close-up", emoji: "🪴" },
   { id: "music", title: "Your music", description: "What's playing — vinyl, speaker, headphones, anything", emoji: "🎵" },
+  // ── Lifestyle round — selfie / shopping / cafe / objects / chores.
+  // Sample photos deliberately skipped (unverified Unsplash IDs render
+  // blank); production users still get tagged candidates from real
+  // uploads via the matcher.
+  { id: "selfie", title: "A selfie", description: "Today's you, however you feel", emoji: "🤳" },
+  { id: "shopping", title: "What you bought", description: "Today's haul, big or small", emoji: "🛍️" },
+  { id: "cafe", title: "Your café", description: "Where you go for a coffee, a drink, a bite", emoji: "☕" },
+  { id: "objects", title: "An object you love", description: "On your shelf, in your pocket, your everyday", emoji: "💎" },
+  { id: "chores", title: "Today's chore", description: "Dishes, laundry, the thing you just did", emoji: "🧹" },
 ];
 
 // Themes that "feel" related — used as fallback when the active theme
@@ -887,6 +925,14 @@ export const THEME_ADJACENCY: Record<string, string[]> = {
   // quiet days. Music sits closest (concert / festival energy);
   // hobbies and joy widen the net without diluting the vibe.
   passions: ["music", "hobbies", "joy", "made"],
+  // Lifestyle round adjacency. Each chain leans on themes that share
+  // the same vibe register (selfie ↔ wearing ↔ joy; cafe ↔ coffee ↔
+  // food) so a quiet day still finds a wave nearby.
+  selfie: ["wearing", "joy", "hands"],
+  shopping: ["groceries", "made", "wearing"],
+  cafe: ["coffee", "morning", "food"],
+  objects: ["made", "wall", "smallthing"],
+  chores: ["ritual", "made", "home"],
 };
 
 export function getThemeChain(theme: string): string[] {

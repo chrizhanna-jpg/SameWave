@@ -598,6 +598,20 @@ const THEME_HINTS: Record<string, MusicGenre> = {
   homemade: "gratitude",
   window: "longing",
   moon: "longing",
+  // Lifestyle round vibes — cafés feel calm, shopping/objects lean
+  // playful (joy/fascinated), chores get a low-key motivational
+  // pickup (passion is too hot, calm too flat — "stress" matches the
+  // existing work/commute register and the music library has chore-
+  // friendly tracks under it).
+  cafe: "calm",
+  shopping: "joy",
+  selfie: "joy",
+  mirror: "joy",
+  objects: "fascinated",
+  object: "fascinated",
+  chores: "stress",
+  laundry: "stress",
+  cleaning: "stress",
 };
 
 /**

@@ -22,6 +22,14 @@ const ALLOWED_TAGS = [
   // Lifestyle & places
   "travel", "home", "vintage", "cozy", "work", "study",
   "city", "transit", "desk", "laptop",
+  // Self / shopping / chores — added alongside the new selfie /
+  // shopping / cafe / objects / chores daily-challenge themes. Keep
+  // these IDs in lockstep with TAG_LIBRARY in the mobile app
+  // (artifacts/same-same/data/samplePhotos.ts) — anything missing
+  // here will never be auto-picked by the AI.
+  "selfie", "mirror",
+  "shopping", "grocery", "parcel",
+  "chores", "cleaning", "laundry",
 ];
 
 // Visual-form / composition vocabulary. Mirrors SHAPE_TAGS in
