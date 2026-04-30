@@ -142,8 +142,8 @@ export default function OnboardingScreen() {
           <Image
             source={require("@/assets/images/samewave-logo.png")}
             style={{
-              width: isHeroStep ? 280 : step === 1 ? 128 : 160,
-              height: isHeroStep ? 280 : step === 1 ? 128 : 160,
+              width: isHeroStep ? 280 : 160,
+              height: isHeroStep ? 280 : 160,
             }}
             resizeMode="contain"
             accessibilityRole="image"
@@ -200,7 +200,7 @@ export default function OnboardingScreen() {
                 inline with the text just like the ripple icon above —
                 no transform needed; the icon's natural baseline aligns
                 with the surrounding sentence. */}
-            <Icon name="wave-glyph" size={28} color={colors.gold} />.
+            <Icon name="wave-glyph" size={22} color={colors.gold} />.
           </Text>
         ) : (
           <Text
