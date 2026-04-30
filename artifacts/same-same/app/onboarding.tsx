@@ -142,8 +142,8 @@ export default function OnboardingScreen() {
           <Image
             source={require("@/assets/images/samewave-logo.png")}
             style={{
-              width: isHeroStep ? 224 : 128,
-              height: isHeroStep ? 224 : 128,
+              width: isHeroStep ? 280 : step === 1 ? 128 : 160,
+              height: isHeroStep ? 280 : step === 1 ? 128 : 160,
             }}
             resizeMode="contain"
             accessibilityRole="image"
