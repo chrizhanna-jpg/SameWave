@@ -14,7 +14,7 @@ import {
 import { tokenCache } from "@clerk/expo/token-cache";
 import { Redirect, Stack, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -33,6 +33,41 @@ import {
 } from "@/lib/revenuecat";
 
 SplashScreen.preventAutoHideAsync();
+
+// --- Production safety net -------------------------------------------------
+// v1.2.1 / v1.2.2 shipped to Play Store and got stuck on the splash screen
+// for users on cold start. We never got a clear stack trace because any
+// uncaught JS error during boot died silently behind the splash. These two
+// nets exist to:
+//   (1) Surface ANY uncaught JS error or unhandled promise rejection to the
+//       user via Alert, so production crashes are diagnosable instead of
+//       invisible ("the app just sits there").
+//   (2) Guarantee the splash hides after a hard cap (4 s) regardless of
+//       what the bootstrap chain is doing — so a hung font load, a hung
+//       Clerk init, or a hung native module can never again leave the user
+//       parked on the splash forever. They'll at least see the React tree.
+// Both are no-ops in dev (LogBox already shows JS errors) but invaluable
+// for diagnosing production-only failures via field reports + screenshots.
+type GlobalErrorHandler = (error: Error, isFatal?: boolean) => void;
+type ErrorUtilsLike = {
+  getGlobalHandler?: () => GlobalErrorHandler | undefined;
+  setGlobalHandler?: (handler: GlobalErrorHandler) => void;
+};
+const errorUtils: ErrorUtilsLike | undefined = (globalThis as unknown as {
+  ErrorUtils?: ErrorUtilsLike;
+}).ErrorUtils;
+if (errorUtils?.setGlobalHandler && errorUtils?.getGlobalHandler) {
+  const previous = errorUtils.getGlobalHandler();
+  errorUtils.setGlobalHandler((error, isFatal) => {
+    try {
+      Alert.alert(
+        isFatal ? "SameWave hit an error" : "Something went wrong",
+        `${error?.name ?? "Error"}: ${error?.message ?? "Unknown"}\n\n${(error?.stack ?? "").split("\n").slice(0, 5).join("\n")}`,
+      );
+    } catch {}
+    if (typeof previous === "function") previous(error, isFatal);
+  });
+}
 
 // Configure the RevenueCat SDK exactly once at module load. Wrapped in
 // try/catch so a missing public key (e.g. a misconfigured EAS profile)
@@ -211,26 +246,57 @@ export default function RootLayout() {
     Inter_700Bold,
   });
 
+  // Safety net: even if useFonts never resolves (we've seen this happen
+  // on certain Android builds where the native font loader hangs without
+  // throwing), proceed with system fonts after a hard cap so we never
+  // sit on the splash forever. 3s is comfortably longer than the
+  // observed normal-path font load (~150 ms) and short enough that a
+  // user doesn't perceive it as a hang.
+  const [fontTimedOut, setFontTimedOut] = useState(false);
   useEffect(() => {
-    if (fontsLoaded || fontError) {
-      SplashScreen.hideAsync();
+    const t = setTimeout(() => setFontTimedOut(true), 3000);
+    return () => clearTimeout(t);
+  }, []);
+  const fontsReady = fontsLoaded || fontError != null || fontTimedOut;
+
+  useEffect(() => {
+    if (fontsReady) {
+      SplashScreen.hideAsync().catch(() => {});
     }
-  }, [fontsLoaded, fontError]);
+  }, [fontsReady]);
 
-  if (!fontsLoaded && !fontError) return null;
+  // Defence in depth: a *second* hard cap (4 s) on hideAsync that fires
+  // regardless of where the rest of the bootstrap is. If anything above
+  // useFonts has thrown / hung at module load, this still tears down
+  // the splash so the user sees the React tree (which can then surface
+  // an error via the global handler installed at the top of this file).
+  useEffect(() => {
+    const t = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => {});
+    }, 4000);
+    return () => clearTimeout(t);
+  }, []);
 
+  if (!fontsReady) return null;
+
+  // Outermost ErrorBoundary catches errors thrown during ClerkProvider
+  // init or anywhere in the tree (the previous placement, inside
+  // ClerkProvider > ClerkLoaded, missed any failure in Clerk itself —
+  // a likely culprit for the v1.2.1 stuck-on-splash, since ClerkLoaded
+  // suspends rendering until Clerk resolves and offers no fallback if
+  // it never does).
   return (
-    <ClerkProvider
-      publishableKey={CLERK_PUBLISHABLE_KEY}
-      tokenCache={tokenCache}
-    >
-      <ClerkLoaded>
-        {/* Wire the bearer-token getter BEFORE AppProvider mounts, so
-            AppProvider's first authed effects already see a valid token.
-            ClerkTokenBridge renders nothing — it's pure side-effect glue. */}
-        <ClerkTokenBridge />
-        <SafeAreaProvider>
-          <ErrorBoundary>
+    <ErrorBoundary>
+      <ClerkProvider
+        publishableKey={CLERK_PUBLISHABLE_KEY}
+        tokenCache={tokenCache}
+      >
+        <ClerkLoaded>
+          {/* Wire the bearer-token getter BEFORE AppProvider mounts, so
+              AppProvider's first authed effects already see a valid token.
+              ClerkTokenBridge renders nothing — it's pure side-effect glue. */}
+          <ClerkTokenBridge />
+          <SafeAreaProvider>
             <QueryClientProvider client={queryClient}>
               <SubscriptionProvider>
                 <AppProvider>
@@ -247,9 +313,9 @@ export default function RootLayout() {
                 </AppProvider>
               </SubscriptionProvider>
             </QueryClientProvider>
-          </ErrorBoundary>
-        </SafeAreaProvider>
-      </ClerkLoaded>
-    </ClerkProvider>
+          </SafeAreaProvider>
+        </ClerkLoaded>
+      </ClerkProvider>
+    </ErrorBoundary>
   );
 }

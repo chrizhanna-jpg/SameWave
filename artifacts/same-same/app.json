@@ -2,7 +2,7 @@
   "expo": {
     "name": "SameWave",
     "slug": "same-same",
-    "version": "1.2.2",
+    "version": "1.2.3",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "same-same",
@@ -26,7 +26,7 @@
     },
     "android": {
       "package": "app.echo.samesame",
-      "versionCode": 11,
+      "versionCode": 12,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#166FFC"
@@ -103,7 +103,9 @@
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/435d5953-8fbe-48a4-9b0c-85096db24c53"
+      "url": "https://u.expo.dev/435d5953-8fbe-48a4-9b0c-85096db24c53",
+      "checkAutomatically": "ON_ERROR_RECOVERY",
+      "fallbackToCacheTimeout": 0
     }
   }
 }
