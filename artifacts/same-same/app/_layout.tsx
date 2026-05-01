@@ -7,7 +7,6 @@ import {
 } from "@expo-google-fonts/inter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
-  ClerkLoaded,
   ClerkProvider,
   useAuth,
 } from "@clerk/expo";
@@ -19,7 +18,14 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { router } from "expo-router";
-import { Alert } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { EchoFlash } from "@/components/EchoFlash";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ToastHost } from "@/components/ToastHost";
@@ -122,6 +128,154 @@ const CLERK_PUBLISHABLE_KEY_FALLBACK = __DEV__ ? CLERK_PK_TEST : CLERK_PK_LIVE;
 const CLERK_PUBLISHABLE_KEY: string =
   process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ||
   CLERK_PUBLISHABLE_KEY_FALLBACK;
+
+// --- Clerk proxyUrl (production black-screen fix, v1.2.6) ----------------
+// v1.2.5 shipped with the correct `pk_live_*` key but bricked at the splash
+// for every Play Store user: the Clerk Frontend API host the live key
+// points at (`clerk.<your-app>.replit.app`) is a TWO-LEVEL subdomain under
+// `replit.app`, and Replit's wildcard TLS cert only covers ONE level
+// (`*.replit.app`). Android's TLS stack rejected the cert, the SDK's
+// environment fetch hung forever, and `<ClerkLoaded>` suspended the entire
+// tree behind the splash → black screen.
+//
+// Fix: route every Clerk SDK call through `<api-domain>/api/__clerk` — a
+// single-level path on the main app domain, which IS covered by the
+// wildcard cert. The api-server (clerkProxyMiddleware) forwards those
+// requests to Clerk's Frontend API and stamps a `Clerk-Proxy-Url` header
+// so Clerk's backend builds OAuth redirect URLs that come back through
+// the same proxy. End result: the SDK, the OAuth handshake, and token
+// refresh all flow through one valid-cert host.
+//
+// Dev (Expo Go, `__DEV__ === true`) talks to the test Clerk instance on
+// Clerk's own infra (`*.clerk.accounts.dev`), which has its own valid
+// cert — no proxy needed there, and Clerk's docs explicitly note that
+// `proxyUrl` doesn't work with dev instances anyway. Leaving it
+// undefined in dev keeps the local flow exactly as before.
+const PRODUCTION_API_DOMAIN_FALLBACK = "global-unity-match.replit.app";
+function resolveClerkProxyUrl(): string | undefined {
+  if (__DEV__) return undefined;
+  const domain = (
+    process.env.EXPO_PUBLIC_DOMAIN || PRODUCTION_API_DOMAIN_FALLBACK
+  )
+    .replace(/^https?:\/\//, "")
+    .replace(/\/$/, "");
+  return `https://${domain}/api/__clerk`;
+}
+const CLERK_PROXY_URL = resolveClerkProxyUrl();
+
+// --- Clerk boot gate (replaces <ClerkLoaded>) ----------------------------
+// `<ClerkLoaded>` from @clerk/expo simply returns null until isLoaded is
+// true — with no fallback for the case where it NEVER becomes true. That
+// is exactly the failure mode that bricked v1.2.5 (TLS handshake hung,
+// SDK never resolved, tree never rendered, user saw an indefinite black
+// screen). This gate keeps the same "wait for Clerk" semantics on the
+// happy path, but if auth bootstrap hasn't completed within a hard
+// budget (8 s — generous on cellular cold start, short enough that a
+// user won't write the app off as dead) it surfaces a real error screen
+// the user can act on, instead of a blank canvas.
+//
+// 8 s was picked empirically: v1.2.4's normal cold-start Clerk init was
+// well under 2 s on mid-tier Android over LTE, so 8 s is ~4× headroom.
+// Tune if real-world telemetry shows otherwise.
+const CLERK_BOOT_TIMEOUT_MS = 8000;
+function ClerkBootGate({
+  children,
+  onRetry,
+}: {
+  children: React.ReactNode;
+  onRetry: () => void;
+}) {
+  const { isLoaded } = useAuth();
+  const [timedOut, setTimedOut] = useState(false);
+  // Re-arm whenever Clerk's load state changes OR the retry button
+  // resets us back to the loading state. Without `timedOut` in the dep
+  // array the timer would only ever fire once, so a Try-Again press
+  // would leave the user staring at the spinner forever.
+  useEffect(() => {
+    if (isLoaded || timedOut) return;
+    const t = setTimeout(() => setTimedOut(true), CLERK_BOOT_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, [isLoaded, timedOut]);
+  if (isLoaded) return <>{children}</>;
+  if (!timedOut) {
+    // Splash hides at 4 s regardless of Clerk state; if we returned null
+    // here the user would stare at a black void from second 4 to second
+    // 8. Render a branded "still working" view in the same blue as the
+    // splash so the visual transition reads as continuous loading
+    // instead of a crash.
+    return (
+      <View style={bootGateStyles.loadingRoot}>
+        <ActivityIndicator size="large" color="#E8F4F8" />
+      </View>
+    );
+  }
+  return (
+    <View style={bootGateStyles.root}>
+      <Text style={bootGateStyles.title}>Can&apos;t reach SameWave</Text>
+      <Text style={bootGateStyles.body}>
+        We couldn&apos;t connect to the sign-in service. This usually means
+        your phone is offline or on a network that&apos;s blocking us.
+      </Text>
+      <Text style={bootGateStyles.body}>
+        Check your Wi-Fi or mobile data, then tap below to try again.
+      </Text>
+      <TouchableOpacity
+        style={bootGateStyles.button}
+        onPress={() => {
+          // Real retry: bump the ClerkProvider key (via parent) so the
+          // SDK fully remounts and re-attempts its environment fetch
+          // from scratch. Locally we also flip back to the spinner so
+          // the user sees immediate feedback while the new attempt runs.
+          setTimedOut(false);
+          onRetry();
+        }}
+      >
+        <Text style={bootGateStyles.buttonLabel}>Try again</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+const bootGateStyles = StyleSheet.create({
+  loadingRoot: {
+    flex: 1,
+    backgroundColor: "#166FFC",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  root: {
+    flex: 1,
+    backgroundColor: "#071828",
+    paddingHorizontal: 32,
+    justifyContent: "center",
+    alignItems: "stretch",
+  },
+  title: {
+    color: "#E8F4F8",
+    fontSize: 22,
+    fontWeight: "700",
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  body: {
+    color: "#7ba7c2",
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 12,
+    textAlign: "center",
+  },
+  button: {
+    marginTop: 20,
+    backgroundColor: "#00BFA5",
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  buttonLabel: {
+    color: "#071828",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+});
 
 // Wires the API client's bearer-token getter to Clerk's session token.
 // This component MUST mount above AppProvider so the getter is in place
@@ -308,19 +462,33 @@ export default function RootLayout() {
 
   if (!fontsReady) return null;
 
-  // Outermost ErrorBoundary catches errors thrown during ClerkProvider
-  // init or anywhere in the tree (the previous placement, inside
-  // ClerkProvider > ClerkLoaded, missed any failure in Clerk itself —
-  // a likely culprit for the v1.2.1 stuck-on-splash, since ClerkLoaded
-  // suspends rendering until Clerk resolves and offers no fallback if
-  // it never does).
+  return <RootLayoutWithClerk />;
+}
+
+// `clerkBootNonce` lets the boot gate's "Try again" button fully
+// remount <ClerkProvider> — bumping the nonce changes the React key,
+// which tears down the SDK and re-runs initialization from scratch
+// (not just a UI reset). Important on flaky networks: a single
+// failed cold-start fetch is no longer a death sentence.
+//
+// Outermost ErrorBoundary catches errors thrown during ClerkProvider
+// init or anywhere in the tree (the previous placement, inside
+// ClerkProvider > ClerkLoaded, missed any failure in Clerk itself —
+// a likely culprit for the v1.2.1 stuck-on-splash, since ClerkLoaded
+// suspends rendering until Clerk resolves and offers no fallback if
+// it never does).
+function RootLayoutWithClerk() {
+  const [clerkBootNonce, setClerkBootNonce] = useState(0);
+  const retryClerk = () => setClerkBootNonce((n) => n + 1);
   return (
     <ErrorBoundary>
       <ClerkProvider
+        key={clerkBootNonce}
         publishableKey={CLERK_PUBLISHABLE_KEY}
         tokenCache={tokenCache}
+        proxyUrl={CLERK_PROXY_URL}
       >
-        <ClerkLoaded>
+        <ClerkBootGate onRetry={retryClerk}>
           {/* Wire the bearer-token getter BEFORE AppProvider mounts, so
               AppProvider's first authed effects already see a valid token.
               ClerkTokenBridge renders nothing — it's pure side-effect glue. */}
@@ -343,7 +511,7 @@ export default function RootLayout() {
               </SubscriptionProvider>
             </QueryClientProvider>
           </SafeAreaProvider>
-        </ClerkLoaded>
+        </ClerkBootGate>
       </ClerkProvider>
     </ErrorBoundary>
   );
