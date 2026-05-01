@@ -56,18 +56,21 @@ export default function SignInScreen() {
     try {
       const { createdSessionId, setActive } = await startSSOFlow({
         strategy: "oauth_google",
-        // Explicit scheme + path. Without `scheme`, makeRedirectUri()
-        // falls back to the dev-server URL inside Expo Go (which is the
-        // Replit-hosted dev domain), so Google's OAuth callback lands
-        // on a web page on that domain instead of bouncing back into
-        // the app — the user sees the Replit page flash up and gets
-        // ejected from Expo Go. Passing the app scheme makes the
-        // redirect resolve to `same-same://sign-in` in production
-        // builds, and Expo Go remaps that to its own proxy URL
-        // automatically so the same code works in both environments.
+        // Pass `scheme` only — DO NOT add a `path`. Resolves to
+        // `same-same://` in production builds, which matches Clerk's
+        // official Expo example (Replit-managed Clerk auto-allows the
+        // app's root scheme as a redirect URL for native apps; sub-paths
+        // like `same-same://sign-in` are NOT auto-allowed and Clerk
+        // rejects them once the Frontend API is reached through the
+        // production proxy with "redirect URL does not match an
+        // authorized redirect URI for this instance"). Without `scheme`,
+        // makeRedirectUri() falls back to the dev-server URL inside
+        // Expo Go and the OAuth callback lands on a web page instead
+        // of bouncing back into the app, so we keep the scheme arg for
+        // dev parity. In Expo Go, makeRedirectUri auto-rewrites this
+        // to the Expo proxy URL.
         redirectUrl: AuthSession.makeRedirectUri({
           scheme: "same-same",
-          path: "sign-in",
         }),
       });
       if (createdSessionId && setActive) {
