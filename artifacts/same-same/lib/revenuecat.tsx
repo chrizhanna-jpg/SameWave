@@ -26,11 +26,27 @@ import Purchases, {
   type PurchasesPackage,
 } from "react-native-purchases";
 
+// Hardcoded fallbacks — see the long note in app/_layout.tsx about why
+// we don't trust EXPO_PUBLIC_* env vars to actually be inlined into the
+// production AAB. RevenueCat's "public SDK" API keys (the ones below)
+// are designed to ship in client code — they're scoped per-platform and
+// per-environment and only authorise read-only entitlement / offering
+// lookups + the user's own purchase flow. They are NOT the secret API
+// key (`sk_*` style) that lives on the server. Hardcoding ensures Pro
+// keeps working even when the env var pipeline silently breaks.
+const REVENUECAT_TEST_API_KEY_FALLBACK = "test_cUggGykanFuLTpLqzJsmpGncACI";
+const REVENUECAT_IOS_API_KEY_FALLBACK = "appl_rRpAIpAQrWjypIKKBTZruIMmSnX";
+const REVENUECAT_ANDROID_API_KEY_FALLBACK = "goog_ddicVmfPWohqAMYOtDOesLFAgyD";
+
 const REVENUECAT_TEST_API_KEY =
-  process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY;
-const REVENUECAT_IOS_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY;
+  process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY ||
+  REVENUECAT_TEST_API_KEY_FALLBACK;
+const REVENUECAT_IOS_API_KEY =
+  process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY ||
+  REVENUECAT_IOS_API_KEY_FALLBACK;
 const REVENUECAT_ANDROID_API_KEY =
-  process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY;
+  process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY ||
+  REVENUECAT_ANDROID_API_KEY_FALLBACK;
 
 // Single source of truth for the entitlement we check against. Matches
 // the lookup_key seeded in RevenueCat (scripts/src/seedRevenueCat.ts).

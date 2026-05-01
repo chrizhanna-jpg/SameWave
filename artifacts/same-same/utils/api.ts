@@ -4,13 +4,19 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 // it doesn't share a host with the api-server — we need an absolute URL.
 // In development, EXPO_PUBLIC_DOMAIN is set by the dev script and points at
 // the workspace's REPLIT_DEV_DOMAIN, which proxies /api → the api-server.
+//
+// Production fallback: see the long note in app/_layout.tsx — EAS does
+// not reliably inline EXPO_PUBLIC_* env vars from eas.json into the
+// production AAB (they can be silently shadowed by dashboard-managed
+// env vars). The published api-server lives at this domain regardless,
+// so hardcoding it as a fallback means a missing env var degrades to
+// "the app still works" instead of "every API call goes nowhere".
+const PRODUCTION_API_DOMAIN_FALLBACK = "global-unity-match.replit.app";
 function getApiBase(): string {
-  const domain = process.env.EXPO_PUBLIC_DOMAIN;
-  if (domain) {
-    const stripped = domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
-    return `https://${stripped}`;
-  }
-  return "";
+  const domain =
+    process.env.EXPO_PUBLIC_DOMAIN || PRODUCTION_API_DOMAIN_FALLBACK;
+  const stripped = domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  return `https://${stripped}`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────

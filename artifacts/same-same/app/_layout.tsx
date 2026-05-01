@@ -80,19 +80,32 @@ try {
 
 const queryClient = new QueryClient();
 
-// Resolve the Clerk publishable key once at module load. We assert it here
-// (vs inline) so the rest of the module sees a non-nullable string and the
-// app fails loudly instead of silently mounting Clerk with `undefined`.
-function requireEnv(name: string): string {
-  const v = process.env[name];
-  if (!v) {
-    throw new Error(`Missing ${name} — check the dev script and eas.json`);
-  }
-  return v;
-}
-const CLERK_PUBLISHABLE_KEY: string = requireEnv(
-  "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY",
-);
+// Resolve the Clerk publishable key once at module load.
+//
+// IMPORTANT — why this is hardcoded as a fallback (not just env-driven):
+// v1.2.3 shipped to Play Store and crashed on cold start with
+// "Missing EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY" — the AAB was built with
+// the env var missing from the bundle, even though eas.json's production
+// profile clearly defines it. EAS has two env-var systems (eas.json `env`
+// field vs. dashboard-managed env vars) and the dashboard ones silently
+// take precedence; if the dashboard doesn't have an entry for a given
+// var, it can shadow eas.json with `undefined` and the bundle ships with
+// no value inlined. Failing on missing env was the correct *dev*
+// behavior, but in production it bricks the app for every user — and
+// because it threw at module load, the splash never hid (the bug we
+// spent v1.2.2 chasing).
+//
+// The Clerk *publishable* key is, by Clerk's design, safe to ship in
+// client code (that's what "publishable" means — distinct from the
+// secret key, which never leaves the server). So we hardcode the known
+// value as a fallback. Env wins when present (so dev / staging can
+// point at a different Clerk app), hardcode wins when absent (so
+// production never crashes again because of a missing env var).
+const CLERK_PUBLISHABLE_KEY_FALLBACK =
+  "pk_test_YXB0LXdvbWJhdC03MS5jbGVyay5hY2NvdW50cy5kZXYk";
+const CLERK_PUBLISHABLE_KEY: string =
+  process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ||
+  CLERK_PUBLISHABLE_KEY_FALLBACK;
 
 // Wires the API client's bearer-token getter to Clerk's session token.
 // This component MUST mount above AppProvider so the getter is in place
