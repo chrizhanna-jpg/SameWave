@@ -161,6 +161,91 @@ const TERMS_HTML = layout(
   `,
 );
 
+// Child Sexual Abuse and Exploitation (CSAE) Standards.
+// Required by Google Play's Child Safety Standards policy for any app
+// that hosts user-generated content. The published URL of this page
+// (`https://<api-domain>/api/csae`) is what gets pasted into the Play
+// Console "Link to your app's externally published standards against
+// child sexual abuse and exploitation (CSAE)" field. Keep the URL
+// stable — once the listing is approved, changing the path silently
+// would invalidate the declaration and risk a takedown.
+const CSAE_HTML = layout(
+  "Child Safety Standards",
+  `
+  <h1>Child Safety Standards</h1>
+  <p class="meta">SameWave (the "App"). Last updated: May 2026.</p>
+
+  <p>SameWave has zero tolerance for child sexual abuse and exploitation (CSAE)
+  and child sexual abuse material (CSAM). This page sets out the standards we
+  follow to keep children safe on the App, how to report content that may
+  violate these standards, and how we respond to those reports. It is published
+  here so that users, regulators, and platform partners can review our
+  commitments at a stable URL.</p>
+
+  <h2>Our standards</h2>
+  <ul>
+    <li>The App is not directed at children. Our Terms of Service prohibit use
+      by anyone under 13, or under the minimum age in their country if that age
+      is higher.</li>
+    <li>It is strictly forbidden to upload, share, request, or solicit any
+      content that sexualises, endangers, or exploits a child, including
+      computer-generated or animated depictions of minors in a sexual
+      context.</li>
+    <li>It is strictly forbidden to use the App to contact, groom, lure, or
+      attempt to sexually exploit a minor in any form.</li>
+    <li>Any account or device found to upload such content, or to attempt
+      contact with a minor for any of the above purposes, is permanently
+      blocked from the service without warning, and the content is preserved
+      where required by law for handover to the appropriate authority.</li>
+  </ul>
+
+  <h2>Reporting CSAE content or behaviour</h2>
+  <p>You do not need an account to report. There are two ways to report
+  suspected CSAE on SameWave:</p>
+  <ul>
+    <li><strong>In the App:</strong> every photo has a "Report" action in its
+      detail view. Selecting it sends an immediate signal to our moderation
+      pipeline. Three independent reports against the same photo automatically
+      hide it from circulation pending review. You do not need to be the
+      subject of the photo, or even a registered user, to report.</li>
+    <li><strong>By email:</strong> anyone — user or non-user — can email
+      <a href="mailto:twin2win.support@gmail.com">twin2win.support@gmail.com</a>
+      with details of the content and, if possible, a screenshot or photo
+      identifier. Please put "CSAE" in the subject line so it reaches us
+      quickly. Reports are accepted in any language.</li>
+  </ul>
+
+  <h2>How we respond to reports</h2>
+  <ul>
+    <li>Reports flagged as CSAE are reviewed on a priority basis, ahead of
+      other moderation queues.</li>
+    <li>Where content appears to depict CSAM, it is removed from public view
+      immediately and the uploading account/device is blocked.</li>
+    <li>Apparent CSAM is reported to the National Center for Missing &amp;
+      Exploited Children (NCMEC) via the CyberTipline, and to law-enforcement
+      authorities in any other jurisdiction where reporting is required.
+      Account and content metadata are preserved as evidence in line with
+      applicable law.</li>
+    <li>Where the report concerns a minor in physical danger, we escalate to
+      local law enforcement directly.</li>
+  </ul>
+
+  <h2>Compliance with applicable laws</h2>
+  <p>SameWave complies with all applicable child-protection laws in the
+  jurisdictions where the App is distributed, including but not limited to the
+  US 18 U.S.C. § 2258A reporting obligations, the EU Digital Services Act, the
+  UK Online Safety Act, and equivalent national legislation.</p>
+
+  <h2>Compliance contact</h2>
+  <p>For questions about these standards, requests from law enforcement, or
+  press enquiries related to child safety, contact:
+  <a href="mailto:twin2win.support@gmail.com">twin2win.support@gmail.com</a></p>
+
+  <hr />
+  <p class="meta"><a href="/api/privacy">Privacy Policy</a> · <a href="/api/terms">Terms of Service</a></p>
+  `,
+);
+
 router.get("/privacy", (_req, res) => {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(PRIVACY_HTML);
@@ -169,6 +254,11 @@ router.get("/privacy", (_req, res) => {
 router.get("/terms", (_req, res) => {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(TERMS_HTML);
+});
+
+router.get("/csae", (_req, res) => {
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(CSAE_HTML);
 });
 
 export default router;
