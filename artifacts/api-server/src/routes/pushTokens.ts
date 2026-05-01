@@ -20,7 +20,7 @@ router.post("/push-tokens", async (req, res) => {
   try {
     const user = await resolveUserFromRequest(req);
     if (!user) {
-      res.status(401).json({ error: "missing or invalid X-Device-Id" });
+      res.status(401).json({ error: "authentication required" });
       return;
     }
     const body = (req.body ?? {}) as { token?: unknown; platform?: unknown };

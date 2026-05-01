@@ -66,7 +66,7 @@ router.post("/photos", async (req, res) => {
 
     const user = await resolveUserFromRequest(req, { countryCode });
     if (!user) {
-      res.status(401).json({ error: "missing or invalid X-Device-Id" });
+      res.status(401).json({ error: "authentication required" });
       return;
     }
 
@@ -236,7 +236,7 @@ router.get("/photos/candidates", async (req, res) => {
   try {
     const user = await resolveUserFromRequest(req);
     if (!user) {
-      res.status(401).json({ error: "missing or invalid X-Device-Id" });
+      res.status(401).json({ error: "authentication required" });
       return;
     }
 
@@ -554,7 +554,7 @@ router.post("/photos/match-by-object", async (req, res) => {
   try {
     const user = await resolveUserFromRequest(req);
     if (!user) {
-      res.status(401).json({ error: "missing or invalid X-Device-Id" });
+      res.status(401).json({ error: "authentication required" });
       return;
     }
     const photoId =
@@ -621,7 +621,7 @@ router.post("/photos/backfill-shapes", async (req, res) => {
     }
     const user = await resolveUserFromRequest(req);
     if (!user) {
-      res.status(401).json({ error: "missing or invalid X-Device-Id" });
+      res.status(401).json({ error: "authentication required" });
       return;
     }
     const body = (req.body ?? {}) as { limit?: unknown };
@@ -730,7 +730,7 @@ router.post("/photos/backfill-subjects", async (req, res) => {
     }
     const user = await resolveUserFromRequest(req);
     if (!user) {
-      res.status(401).json({ error: "missing or invalid X-Device-Id" });
+      res.status(401).json({ error: "authentication required" });
       return;
     }
     const body = (req.body ?? {}) as { limit?: unknown };
@@ -823,7 +823,7 @@ router.post("/photos/seen", async (req, res) => {
   try {
     const user = await resolveUserFromRequest(req);
     if (!user) {
-      res.status(401).json({ error: "missing or invalid X-Device-Id" });
+      res.status(401).json({ error: "authentication required" });
       return;
     }
     const body = (req.body ?? {}) as { photoIds?: unknown };
@@ -887,7 +887,7 @@ router.get("/photos/seen", async (req, res) => {
   try {
     const user = await resolveUserFromRequest(req);
     if (!user) {
-      res.status(401).json({ error: "missing or invalid X-Device-Id" });
+      res.status(401).json({ error: "authentication required" });
       return;
     }
     const rows = await db.execute(sql`
@@ -915,7 +915,7 @@ router.post("/photos/:id/vote", async (req, res) => {
   try {
     const user = await resolveUserFromRequest(req);
     if (!user) {
-      res.status(401).json({ error: "missing or invalid X-Device-Id" });
+      res.status(401).json({ error: "authentication required" });
       return;
     }
     const body = (req.body ?? {}) as { verdict?: unknown; voterPhotoId?: unknown };
@@ -975,7 +975,7 @@ router.post("/photos/:id/unvote", async (req, res) => {
   try {
     const user = await resolveUserFromRequest(req);
     if (!user) {
-      res.status(401).json({ error: "missing or invalid X-Device-Id" });
+      res.status(401).json({ error: "authentication required" });
       return;
     }
     const photoId = req.params.id;
@@ -1075,7 +1075,7 @@ router.post("/photos/:id/report", async (req, res) => {
   try {
     const user = await resolveUserFromRequest(req);
     if (!user) {
-      res.status(401).json({ error: "missing or invalid X-Device-Id" });
+      res.status(401).json({ error: "authentication required" });
       return;
     }
     const photoId = req.params.id;

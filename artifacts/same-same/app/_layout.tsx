@@ -95,14 +95,30 @@ const queryClient = new QueryClient();
 // because it threw at module load, the splash never hid (the bug we
 // spent v1.2.2 chasing).
 //
+// IMPORTANT — why dev vs prod fallbacks differ:
+// v1.2.4 shipped with a single hardcoded `pk_test_*` fallback. The app
+// launched (good — splash bug is dead), but every authenticated request
+// returned 401 because the deployed API server uses a `sk_live_*` secret
+// key (Replit auto-swaps test→live secrets on publish), and a token
+// signed by the test Clerk instance can't validate against a live
+// instance's secret key. The fix: pick the publishable key matching the
+// Clerk instance the deployed server is talking to. `__DEV__` is true in
+// Expo dev/local builds and false in EAS release builds, which lines up
+// exactly with which Clerk instance Replit's auto-swap is wired to.
+//
 // The Clerk *publishable* key is, by Clerk's design, safe to ship in
 // client code (that's what "publishable" means — distinct from the
-// secret key, which never leaves the server). So we hardcode the known
-// value as a fallback. Env wins when present (so dev / staging can
-// point at a different Clerk app), hardcode wins when absent (so
-// production never crashes again because of a missing env var).
-const CLERK_PUBLISHABLE_KEY_FALLBACK =
+// secret key, which never leaves the server). Env wins when present (so
+// dev / staging can override), hardcode wins when absent.
+const CLERK_PK_TEST =
   "pk_test_YXB0LXdvbWJhdC03MS5jbGVyay5hY2NvdW50cy5kZXYk";
+// Derived from the deployed Clerk Frontend API host
+// (`clerk.global-unity-match.replit.app`), which is the production
+// instance Replit's auto-swap routes the deployed `sk_live_*` to.
+// Encoding rule: pk_live_<base64(fapi_host + "$")>.
+const CLERK_PK_LIVE =
+  "pk_live_Y2xlcmsuZ2xvYmFsLXVuaXR5LW1hdGNoLnJlcGxpdC5hcHAk";
+const CLERK_PUBLISHABLE_KEY_FALLBACK = __DEV__ ? CLERK_PK_TEST : CLERK_PK_LIVE;
 const CLERK_PUBLISHABLE_KEY: string =
   process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ||
   CLERK_PUBLISHABLE_KEY_FALLBACK;

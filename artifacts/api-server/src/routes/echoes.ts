@@ -348,7 +348,7 @@ router.get("/echoes/inbox", async (req, res) => {
   try {
     const user = await resolveUserFromRequest(req);
     if (!user) {
-      res.status(401).json({ error: "missing or invalid X-Device-Id" });
+      res.status(401).json({ error: "authentication required" });
       return;
     }
     const rows = await db.execute(sql`
@@ -393,7 +393,7 @@ router.get("/echoes/mine", async (req, res) => {
   try {
     const user = await resolveUserFromRequest(req);
     if (!user) {
-      res.status(401).json({ error: "missing or invalid X-Device-Id" });
+      res.status(401).json({ error: "authentication required" });
       return;
     }
     const rows = await db.execute(sql`
@@ -440,7 +440,7 @@ router.post("/echoes/:id/respond", async (req, res) => {
   try {
     const user = await resolveUserFromRequest(req);
     if (!user) {
-      res.status(401).json({ error: "missing or invalid X-Device-Id" });
+      res.status(401).json({ error: "authentication required" });
       return;
     }
     const verdict = (req.body ?? {}).verdict;

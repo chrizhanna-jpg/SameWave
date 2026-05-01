@@ -79,7 +79,13 @@ function normalizeTheme(s: string): string {
 export default function CameraScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { addMyPhoto, setMyPhotoBackendId, myPhotos, myCountryCode } = useApp();
+  const {
+    addMyPhoto,
+    setMyPhotoBackendId,
+    setMyPhotoUploadState,
+    myPhotos,
+    myCountryCode,
+  } = useApp();
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   // Keep the raw base64 + mime alongside the URI so submit() can ship the
   // bytes to the backend (the local URI isn't reachable from the server).
@@ -738,10 +744,33 @@ export default function CameraScreen() {
           // failed upload-time analysis doesn't wipe usable local
           // subjects we already had.
           if (res?.id && localUri) {
+            // Success path: setMyPhotoBackendId also flips uploadState
+            // to "ok" — no separate setMyPhotoUploadState call needed.
             setMyPhotoBackendId(localUri, res.id, res.subjects);
+          } else if (localUri) {
+            // uploadPhoto resolved but the body was malformed / missing
+            // an id — treat as failed so the match screen surfaces a
+            // real "upload failed, retry" instead of pretending we're
+            // still uploading. Until v1.2.5 this was silently swallowed
+            // and left users stuck at the "still uploading" footer.
+            setMyPhotoUploadState(localUri, "failed");
           }
         })
-        .catch(() => {});
+        .catch(() => {
+          // Network / fetch threw — same surfacing as the malformed-body
+          // case above. The user can re-tap "Post a photo" or use the
+          // retry path on the match screen.
+          if (localUri) setMyPhotoUploadState(localUri, "failed");
+        });
+    } else if (!isAi && selectedPhoto) {
+      // Non-AI photo without base64 — image picker / camera failed to
+      // include the encoded body, so the upload was never attempted.
+      // Without this branch the photo would sit at uploadState=
+      // "pending" forever, even though no request is in flight. Mark
+      // it failed so the match screen surfaces "didn't reach the
+      // server, post again" instead of an indefinite "still
+      // uploading" footer.
+      setMyPhotoUploadState(selectedPhoto, "failed");
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setTimeout(() => {

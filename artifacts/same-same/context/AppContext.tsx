@@ -52,6 +52,20 @@ export interface MyPhoto {
    */
   backendId?: string;
   /**
+   * Tracks the upload to the server so the match screen can distinguish
+   * "still uploading" from "upload failed" — before this field, both
+   * looked identical (no backendId), and a silent failure left the user
+   * stuck with a perpetual "still uploading" message and no way to know
+   * the post never reached the server. Only set for real (non-AI) user
+   * uploads:
+   *   • "pending" — POST /photos in flight, no response yet
+   *   • "ok"      — POST /photos returned an id (also implies backendId)
+   *   • "failed"  — POST /photos errored or returned a malformed body
+   * Optional for backwards-compat with photos persisted by older builds
+   * before this field existed.
+   */
+  uploadState?: "pending" | "ok" | "failed";
+  /**
    * Music vibe for this photo (e.g. "classic", "rock"). Picked at upload
    * time — AI suggests, the user can swap. Lives on the photo so the
    * matching client knows which clip to play when this photo is in the
@@ -284,6 +298,16 @@ interface AppContextValue extends AppState {
     uri: string,
     backendId: string,
     subjects?: string[],
+  ) => void;
+  /**
+   * Update the in-flight upload state of a local photo. Called by the
+   * camera screen when POST /photos errors or returns a malformed body
+   * so the match screen can surface an actionable "upload failed" state
+   * instead of pretending the upload is still in flight forever.
+   */
+  setMyPhotoUploadState: (
+    uri: string,
+    state: NonNullable<MyPhoto["uploadState"]>,
   ) => void;
   completeOnboarding: () => void;
   resetOnboarding: () => void;
@@ -540,6 +564,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                 typeof p.backendId === "string" && p.backendId.length > 0
                   ? p.backendId
                   : undefined,
+              // Faithfully restore uploadState: a persisted backendId
+              // means the upload succeeded in a prior session, so the
+              // match screen should treat it as "ok" (not "still
+              // uploading"). Without this rehydration step, a cold
+              // start would leave a successfully-uploaded photo with
+              // uploadState=undefined, falling back to the "pending"
+              // copy on the match screen even though there's a
+              // backendId attached. AI photos and legacy rows missing
+              // both fields stay undefined.
+              uploadState:
+                typeof p.backendId === "string" && p.backendId.length > 0
+                  ? ("ok" as const)
+                  : p.uploadState === "pending" ||
+                      p.uploadState === "ok" ||
+                      p.uploadState === "failed"
+                    ? p.uploadState
+                    : undefined,
             };
           }
         );
@@ -957,6 +998,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       isAI: isAI ?? false,
       musicGenre: musicGenre,
       customAudioUrl,
+      // Real (non-AI) photos start as "pending" — the camera screen
+      // fires the POST /photos call and will patch this to "ok" or
+      // "failed" once the network round-trip resolves. AI photos are
+      // never uploaded, so leave the field undefined for them.
+      uploadState: isAI ? undefined : "pending",
     };
     setState((prev) => {
       // Adding a new photo is a "fresh chance" moment: this new
@@ -996,11 +1042,51 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           // pre-upload subjects we already had.
           const nextSubjects =
             subjects && subjects.length > 0 ? subjects : p.subjects;
-          if (p.backendId === backendId && nextSubjects === p.subjects) {
+          if (
+            p.backendId === backendId &&
+            nextSubjects === p.subjects &&
+            p.uploadState === "ok"
+          ) {
             return p;
           }
           changed = true;
-          return { ...p, backendId, subjects: nextSubjects };
+          // Backend returned an id → upload succeeded. Stamp uploadState
+          // alongside the id so the match screen's "still uploading"
+          // gate flips off without waiting for any other signal. The
+          // `as const` keeps TS from widening the literal back to
+          // `string`, which would break the MyPhoto["uploadState"]
+          // union and fail the AppState type check.
+          return {
+            ...p,
+            backendId,
+            subjects: nextSubjects,
+            uploadState: "ok" as const,
+          };
+        });
+        if (!changed) return prev;
+        const newState = { ...prev, myPhotos: newPhotos };
+        saveState(newState);
+        return newState;
+      });
+    },
+    [],
+  );
+
+  const setMyPhotoUploadState = useCallback(
+    (uri: string, uploadState: NonNullable<MyPhoto["uploadState"]>) => {
+      setState((prev) => {
+        let changed = false;
+        const newPhotos = prev.myPhotos.map((p) => {
+          if (p.uri !== uri) return p;
+          if (p.uploadState === uploadState) return p;
+          // Don't downgrade from a terminal "ok" — once the server has
+          // ack'd the photo, a subsequent stale "failed" callback (e.g.
+          // a retry path crossing wires) shouldn't strip the backendId
+          // path. "failed" → "pending" is fine (user re-tried) and
+          // "pending" → terminal is the normal forward path.
+          if (p.uploadState === "ok" && uploadState !== "ok") return p;
+          changed = true;
+          return { ...p, uploadState };
         });
         if (!changed) return prev;
         const newState = { ...prev, myPhotos: newPhotos };
@@ -1390,6 +1476,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setMyCountry,
         addMyPhoto,
         setMyPhotoBackendId,
+        setMyPhotoUploadState,
         completeOnboarding,
         resetOnboarding,
         unlockPro,

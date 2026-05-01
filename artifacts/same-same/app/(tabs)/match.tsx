@@ -1325,12 +1325,20 @@ export default function SwipeScreen() {
                   // when the strict pool is exhausted.
                   const photoId = todaysPhoto?.backendId;
                   if (!photoId) {
-                    // Photo upload hasn't completed yet (or failed).
-                    // Surface that explicitly so the user knows the
-                    // tap registered and what to do about it.
-                    setObjectMatchError(
-                      "Your photo is still uploading — try again in a few seconds.",
-                    );
+                    // No backendId means the upload hasn't returned an id
+                    // yet. Distinguish in-flight from failed so the user
+                    // gets an actionable message instead of "still
+                    // uploading" forever — the failure mode that left
+                    // v1.2.4 testers stuck.
+                    if (todaysPhoto?.uploadState === "failed") {
+                      setObjectMatchError(
+                        "Your photo didn't reach the server. Post it again from the camera tab to retry.",
+                      );
+                    } else {
+                      setObjectMatchError(
+                        "Your photo is still uploading — try again in a few seconds.",
+                      );
+                    }
                     return;
                   }
                   setObjectMatchLoading(true);
