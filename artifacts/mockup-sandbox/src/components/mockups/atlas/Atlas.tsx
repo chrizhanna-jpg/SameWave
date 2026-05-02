@@ -1,4 +1,11 @@
 import { useState } from "react";
+import {
+  ComposableMap,
+  Geographies,
+  Geography,
+  Marker,
+  Line,
+} from "react-simple-maps";
 
 const NAVY = "#0A2552";
 const NAVY_DEEP = "#06173A";
@@ -10,6 +17,8 @@ const GOLD = "#FFD166";
 const TEXT = "#E8F4F8";
 const TEXT_MUTED = "#92BCE0";
 
+const GEO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
+
 type TimeFilter = "today" | "week" | "all";
 type TypeFilter = "all" | "ripples" | "waves";
 
@@ -17,8 +26,8 @@ type Country = {
   code: string;
   name: string;
   flag: string;
-  x: number;
-  y: number;
+  // [longitude, latitude]
+  coords: [number, number];
   count: number;
   ripple?: "fresh" | "recent";
   inWave?: boolean;
@@ -31,28 +40,28 @@ type WaveArc = {
 };
 
 const COUNTRIES: Country[] = [
-  { code: "US", name: "United States", flag: "🇺🇸", x: 175, y: 130, count: 18, thumbSeeds: ["us-1", "us-2", "us-3"] },
-  { code: "MX", name: "Mexico", flag: "🇲🇽", x: 155, y: 180, count: 6, ripple: "recent", inWave: true, thumbSeeds: ["mx-1", "mx-2", "mx-3"] },
-  { code: "BR", name: "Brazil", flag: "🇧🇷", x: 250, y: 270, count: 12, inWave: true, thumbSeeds: ["br-1", "br-2", "br-3"] },
-  { code: "AR", name: "Argentina", flag: "🇦🇷", x: 245, y: 330, count: 4, ripple: "fresh", thumbSeeds: ["ar-1", "ar-2"] },
-  { code: "GB", name: "United Kingdom", flag: "🇬🇧", x: 378, y: 110, count: 22, thumbSeeds: ["gb-1", "gb-2", "gb-3"] },
-  { code: "FR", name: "France", flag: "🇫🇷", x: 402, y: 132, count: 9, thumbSeeds: ["fr-1", "fr-2", "fr-3"] },
-  { code: "DE", name: "Germany", flag: "🇩🇪", x: 418, y: 118, count: 7, thumbSeeds: ["de-1", "de-2"] },
-  { code: "ES", name: "Spain", flag: "🇪🇸", x: 384, y: 152, count: 5, inWave: true, thumbSeeds: ["es-1", "es-2", "es-3"] },
-  { code: "IT", name: "Italy", flag: "🇮🇹", x: 425, y: 148, count: 8, ripple: "fresh", thumbSeeds: ["it-1", "it-2", "it-3"] },
-  { code: "NO", name: "Norway", flag: "🇳🇴", x: 412, y: 78, count: 3, inWave: true, thumbSeeds: ["no-1", "no-2"] },
-  { code: "EG", name: "Egypt", flag: "🇪🇬", x: 450, y: 175, count: 4, thumbSeeds: ["eg-1", "eg-2"] },
-  { code: "KE", name: "Kenya", flag: "🇰🇪", x: 480, y: 232, count: 6, inWave: true, thumbSeeds: ["ke-1", "ke-2", "ke-3"] },
-  { code: "ZA", name: "South Africa", flag: "🇿🇦", x: 472, y: 305, count: 5, ripple: "recent", thumbSeeds: ["za-1", "za-2"] },
-  { code: "IN", name: "India", flag: "🇮🇳", x: 552, y: 178, count: 14, inWave: true, thumbSeeds: ["in-1", "in-2", "in-3"] },
-  { code: "CN", name: "China", flag: "🇨🇳", x: 612, y: 142, count: 11, inWave: true, thumbSeeds: ["cn-1", "cn-2", "cn-3"] },
-  { code: "JP", name: "Japan", flag: "🇯🇵", x: 680, y: 148, count: 17, inWave: true, thumbSeeds: ["jp-1", "jp-2", "jp-3"] },
-  { code: "TH", name: "Thailand", flag: "🇹🇭", x: 590, y: 202, count: 6, ripple: "fresh", thumbSeeds: ["th-1", "th-2"] },
-  { code: "ID", name: "Indonesia", flag: "🇮🇩", x: 625, y: 240, count: 8, thumbSeeds: ["id-1", "id-2", "id-3"] },
-  { code: "AU", name: "Australia", flag: "🇦🇺", x: 660, y: 298, count: 9, inWave: true, thumbSeeds: ["au-1", "au-2", "au-3"] },
-  { code: "RU", name: "Russia", flag: "🇷🇺", x: 555, y: 80, count: 7, ripple: "recent", thumbSeeds: ["ru-1", "ru-2"] },
-  { code: "TR", name: "Turkey", flag: "🇹🇷", x: 452, y: 142, count: 4, thumbSeeds: ["tr-1", "tr-2"] },
-  { code: "CA", name: "Canada", flag: "🇨🇦", x: 175, y: 75, count: 5, thumbSeeds: ["ca-1", "ca-2"] },
+  { code: "US", name: "United States", flag: "🇺🇸", coords: [-96, 38], count: 18, thumbSeeds: ["us-1", "us-2", "us-3"] },
+  { code: "MX", name: "Mexico", flag: "🇲🇽", coords: [-102, 23], count: 6, ripple: "recent", inWave: true, thumbSeeds: ["mx-1", "mx-2", "mx-3"] },
+  { code: "CA", name: "Canada", flag: "🇨🇦", coords: [-106, 56], count: 5, thumbSeeds: ["ca-1", "ca-2"] },
+  { code: "BR", name: "Brazil", flag: "🇧🇷", coords: [-52, -10], count: 12, inWave: true, thumbSeeds: ["br-1", "br-2", "br-3"] },
+  { code: "AR", name: "Argentina", flag: "🇦🇷", coords: [-65, -35], count: 4, ripple: "fresh", thumbSeeds: ["ar-1", "ar-2"] },
+  { code: "GB", name: "United Kingdom", flag: "🇬🇧", coords: [-2, 54], count: 22, thumbSeeds: ["gb-1", "gb-2", "gb-3"] },
+  { code: "FR", name: "France", flag: "🇫🇷", coords: [2, 46], count: 9, thumbSeeds: ["fr-1", "fr-2", "fr-3"] },
+  { code: "DE", name: "Germany", flag: "🇩🇪", coords: [10, 51], count: 7, thumbSeeds: ["de-1", "de-2"] },
+  { code: "ES", name: "Spain", flag: "🇪🇸", coords: [-4, 40], count: 5, inWave: true, thumbSeeds: ["es-1", "es-2", "es-3"] },
+  { code: "IT", name: "Italy", flag: "🇮🇹", coords: [12, 42], count: 8, ripple: "fresh", thumbSeeds: ["it-1", "it-2", "it-3"] },
+  { code: "NO", name: "Norway", flag: "🇳🇴", coords: [10, 62], count: 3, inWave: true, thumbSeeds: ["no-1", "no-2"] },
+  { code: "EG", name: "Egypt", flag: "🇪🇬", coords: [30, 27], count: 4, thumbSeeds: ["eg-1", "eg-2"] },
+  { code: "KE", name: "Kenya", flag: "🇰🇪", coords: [38, 0], count: 6, inWave: true, thumbSeeds: ["ke-1", "ke-2", "ke-3"] },
+  { code: "ZA", name: "South Africa", flag: "🇿🇦", coords: [25, -29], count: 5, ripple: "recent", thumbSeeds: ["za-1", "za-2"] },
+  { code: "IN", name: "India", flag: "🇮🇳", coords: [78, 21], count: 14, inWave: true, thumbSeeds: ["in-1", "in-2", "in-3"] },
+  { code: "CN", name: "China", flag: "🇨🇳", coords: [105, 35], count: 11, inWave: true, thumbSeeds: ["cn-1", "cn-2", "cn-3"] },
+  { code: "JP", name: "Japan", flag: "🇯🇵", coords: [138, 36], count: 17, inWave: true, thumbSeeds: ["jp-1", "jp-2", "jp-3"] },
+  { code: "TH", name: "Thailand", flag: "🇹🇭", coords: [101, 15], count: 6, ripple: "fresh", thumbSeeds: ["th-1", "th-2"] },
+  { code: "ID", name: "Indonesia", flag: "🇮🇩", coords: [118, -3], count: 8, thumbSeeds: ["id-1", "id-2", "id-3"] },
+  { code: "AU", name: "Australia", flag: "🇦🇺", coords: [134, -27], count: 9, inWave: true, thumbSeeds: ["au-1", "au-2", "au-3"] },
+  { code: "RU", name: "Russia", flag: "🇷🇺", coords: [90, 62], count: 7, ripple: "recent", thumbSeeds: ["ru-1", "ru-2"] },
+  { code: "TR", name: "Turkey", flag: "🇹🇷", coords: [35, 39], count: 4, thumbSeeds: ["tr-1", "tr-2"] },
 ];
 
 const WAVES: WaveArc[] = [
@@ -75,7 +84,6 @@ export function Atlas() {
 
   const visibleWaves = typeFilter === "ripples" ? [] : WAVES;
   const showRipples = typeFilter !== "waves";
-
   const byCode = (code: string) => COUNTRIES.find((c) => c.code === code);
 
   return (
@@ -88,7 +96,6 @@ export function Atlas() {
         fontFamily: "Inter, system-ui, -apple-system, sans-serif",
         display: "flex",
         justifyContent: "center",
-        padding: 0,
       }}
     >
       <style>{atlasCss}</style>
@@ -114,7 +121,6 @@ export function Atlas() {
             padding: "0 22px",
             fontSize: 13,
             fontWeight: 600,
-            color: TEXT,
             opacity: 0.85,
           }}
         >
@@ -161,7 +167,6 @@ export function Atlas() {
                   fontSize: 26,
                   fontWeight: 800,
                   letterSpacing: -0.5,
-                  color: TEXT,
                   display: "flex",
                   alignItems: "center",
                   gap: 8,
@@ -251,32 +256,32 @@ export function Atlas() {
             background: `radial-gradient(ellipse at 50% 35%, ${CARD} 0%, ${NAVY_DEEP} 80%)`,
             border: `1px solid ${CARD_ELEVATED}`,
             overflow: "hidden",
-            minHeight: 420,
+            minHeight: 440,
           }}
         >
-          {/* Subtle grid lines (latitude/longitude) */}
-          <svg
-            viewBox="0 0 800 400"
-            preserveAspectRatio="xMidYMid meet"
-            style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
+          <ComposableMap
+            projection="geoEqualEarth"
+            projectionConfig={{ scale: 175, center: [15, 8] }}
+            width={800}
+            height={520}
+            style={{
+              width: "100%",
+              height: "100%",
+              display: "block",
+            }}
           >
             <defs>
               <radialGradient id="oceanGlow" cx="50%" cy="40%" r="60%">
-                <stop offset="0%" stopColor={PRIMARY} stopOpacity="0.06" />
+                <stop offset="0%" stopColor={PRIMARY} stopOpacity="0.08" />
                 <stop offset="100%" stopColor={NAVY} stopOpacity="0" />
               </radialGradient>
-              <linearGradient id="waveGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor={GOLD} stopOpacity="0.2" />
-                <stop offset="50%" stopColor={GOLD} stopOpacity="1" />
-                <stop offset="100%" stopColor={GOLD} stopOpacity="0.2" />
-              </linearGradient>
             </defs>
-            <rect width="800" height="400" fill="url(#oceanGlow)" />
+            <rect x="0" y="0" width="800" height="520" fill="url(#oceanGlow)" />
 
-            {/* Latitude lines */}
-            {[80, 160, 240, 320].map((y) => (
+            {/* Latitude/longitude grid */}
+            {[130, 260, 390].map((y) => (
               <line
-                key={y}
+                key={`lat-${y}`}
                 x1="0"
                 y1={y}
                 x2="800"
@@ -284,144 +289,131 @@ export function Atlas() {
                 stroke={CARD_ELEVATED}
                 strokeWidth="0.4"
                 strokeDasharray="3,5"
-                opacity="0.45"
+                opacity="0.2"
               />
             ))}
-            {/* Longitude lines */}
             {[200, 400, 600].map((x) => (
               <line
-                key={x}
+                key={`lon-${x}`}
                 x1={x}
                 y1="0"
                 x2={x}
-                y2="400"
+                y2="520"
                 stroke={CARD_ELEVATED}
                 strokeWidth="0.4"
                 strokeDasharray="3,5"
-                opacity="0.45"
+                opacity="0.2"
               />
             ))}
 
-            {/* Continent silhouettes (low-poly approximations) */}
-            <g fill={CARD} stroke={CARD_ELEVATED} strokeWidth="1" strokeLinejoin="round">
-              {/* North America */}
-              <path d="M 60 70 L 110 50 L 165 55 L 210 75 L 230 110 L 215 150 L 180 175 L 145 195 L 130 175 L 110 145 L 95 120 L 75 100 Z" />
-              {/* Greenland */}
-              <path d="M 285 55 L 320 45 L 340 70 L 320 95 L 295 90 Z" />
-              {/* South America */}
-              <path d="M 200 200 L 240 195 L 270 215 L 285 250 L 280 295 L 260 335 L 240 355 L 220 340 L 215 310 L 210 270 L 205 235 Z" />
-              {/* Europe */}
-              <path d="M 360 95 L 395 85 L 425 90 L 445 105 L 440 135 L 420 150 L 395 155 L 375 145 L 365 125 Z" />
-              {/* Africa */}
-              <path d="M 410 165 L 460 155 L 495 175 L 510 215 L 505 260 L 490 305 L 470 325 L 450 320 L 435 290 L 425 250 L 415 215 Z" />
-              {/* Asia */}
-              <path d="M 445 70 L 510 55 L 580 60 L 645 75 L 695 95 L 720 125 L 715 165 L 685 185 L 645 195 L 610 200 L 575 205 L 545 195 L 510 180 L 480 165 L 455 145 L 445 115 Z" />
-              {/* SE Asia / Indonesia */}
-              <path d="M 590 215 L 625 215 L 655 225 L 660 250 L 630 255 L 600 245 Z" />
-              {/* Australia */}
-              <path d="M 625 285 L 670 280 L 700 295 L 705 320 L 680 335 L 645 330 L 625 315 Z" />
-              {/* New Zealand */}
-              <path d="M 720 335 L 735 330 L 740 350 L 725 355 Z" />
-              {/* Antarctica suggestion */}
-              <path d="M 100 380 L 700 380 L 700 400 L 100 400 Z" opacity="0.35" />
-            </g>
-
-            {/* Wave arcs */}
-            {showRipples === false ? null : null}
-            {visibleWaves.map((w, i) => {
-              const a = byCode(w.from);
-              const b = byCode(w.to);
-              if (!a || !b) return null;
-              const mx = (a.x + b.x) / 2;
-              const dy = Math.abs(b.x - a.x) * 0.35;
-              const my = Math.min(a.y, b.y) - dy;
-              const path = `M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}`;
-              return (
-                <g key={`${w.from}-${w.to}`}>
-                  <path
-                    d={path}
-                    fill="none"
-                    stroke={GOLD}
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                    opacity="0.85"
+            {/* Real country shapes */}
+            <Geographies geography={GEO_URL}>
+              {({ geographies }) =>
+                geographies.map((geo) => (
+                  <Geography
+                    key={geo.rsmKey}
+                    geography={geo}
+                    fill={CARD}
+                    stroke={CARD_ELEVATED}
+                    strokeWidth={0.5}
                     style={{
-                      filter: `drop-shadow(0 0 4px ${GOLD})`,
+                      default: { outline: "none" },
+                      hover: { outline: "none", fill: CARD_ELEVATED },
+                      pressed: { outline: "none" },
                     }}
                   />
-                  <circle r="3" fill={GOLD}>
-                    <animateMotion dur={`${3.5 + i * 0.4}s`} repeatCount="indefinite" path={path} />
-                  </circle>
-                </g>
-              );
-            })}
+                ))
+              }
+            </Geographies>
 
-            {/* Ripple pulses on fresh-ripple countries */}
-            {showRipples &&
-              visibleCountries
-                .filter((c) => c.ripple === "fresh")
-                .map((c, i) => (
-                  <g key={`pulse-${c.code}`}>
-                    <circle
-                      cx={c.x}
-                      cy={c.y}
-                      r="4"
-                      fill="none"
-                      stroke={ACCENT}
-                      strokeWidth="1.5"
-                      style={{
-                        transformOrigin: `${c.x}px ${c.y}px`,
-                        animation: `atlas-ripple 2.6s ease-out ${i * 0.4}s infinite`,
-                      }}
-                    />
-                    <circle
-                      cx={c.x}
-                      cy={c.y}
-                      r="4"
-                      fill="none"
-                      stroke={ACCENT}
-                      strokeWidth="1.2"
-                      style={{
-                        transformOrigin: `${c.x}px ${c.y}px`,
-                        animation: `atlas-ripple 2.6s ease-out ${i * 0.4 + 1.3}s infinite`,
-                      }}
-                    />
-                  </g>
-                ))}
-
-            {/* Wave-end glows */}
+            {/* Wave arcs (great-circle lines) */}
             {visibleWaves.map((w) => {
               const a = byCode(w.from);
               const b = byCode(w.to);
               if (!a || !b) return null;
               return (
-                <g key={`glow-${w.from}-${w.to}`}>
-                  <circle cx={a.x} cy={a.y} r="14" fill={GOLD} opacity="0.18" />
-                  <circle cx={b.x} cy={b.y} r="14" fill={GOLD} opacity="0.18" />
+                <Line
+                  key={`wave-${w.from}-${w.to}`}
+                  from={a.coords}
+                  to={b.coords}
+                  stroke={GOLD}
+                  strokeWidth={1.4}
+                  strokeLinecap="round"
+                  fill="none"
+                  style={{
+                    filter: `drop-shadow(0 0 4px ${GOLD})`,
+                  }}
+                />
+              );
+            })}
+
+            {/* Wave endpoint glows */}
+            {visibleWaves.map((w) => {
+              const a = byCode(w.from);
+              const b = byCode(w.to);
+              if (!a || !b) return null;
+              return (
+                <g key={`wave-glow-${w.from}-${w.to}`}>
+                  <Marker coordinates={a.coords}>
+                    <circle r={11} fill={GOLD} opacity="0.22" />
+                    <circle
+                      r={6}
+                      fill="none"
+                      stroke={GOLD}
+                      strokeWidth="1"
+                      style={{ animation: "atlas-wave-pulse 2.4s ease-out infinite" }}
+                    />
+                  </Marker>
+                  <Marker coordinates={b.coords}>
+                    <circle r={11} fill={GOLD} opacity="0.22" />
+                    <circle
+                      r={6}
+                      fill="none"
+                      stroke={GOLD}
+                      strokeWidth="1"
+                      style={{ animation: "atlas-wave-pulse 2.4s ease-out 1.2s infinite" }}
+                    />
+                  </Marker>
                 </g>
               );
             })}
 
-            {/* Sparkles */}
-            {SPARKLES.map((s, i) => (
-              <circle
-                key={i}
-                cx={s.x}
-                cy={s.y}
-                r={s.r}
-                fill={GOLD}
-                opacity="0.55"
-                style={{ animation: `atlas-sparkle ${s.dur}s ease-in-out ${s.delay}s infinite` }}
-              />
-            ))}
-          </svg>
+            {/* Ripple pulses */}
+            {showRipples &&
+              visibleCountries
+                .filter((c) => c.ripple === "fresh")
+                .map((c, i) => (
+                  <Marker key={`ripple-${c.code}`} coordinates={c.coords}>
+                    <circle
+                      r={4}
+                      fill="none"
+                      stroke={ACCENT}
+                      strokeWidth="1.4"
+                      style={{
+                        transformOrigin: "0 0",
+                        animation: `atlas-ripple 2.6s ease-out ${i * 0.4}s infinite`,
+                      }}
+                    />
+                    <circle
+                      r={4}
+                      fill="none"
+                      stroke={ACCENT}
+                      strokeWidth="1.1"
+                      style={{
+                        transformOrigin: "0 0",
+                        animation: `atlas-ripple 2.6s ease-out ${i * 0.4 + 1.3}s infinite`,
+                      }}
+                    />
+                  </Marker>
+                ))}
 
-          {/* Country clusters as absolute-positioned divs over the SVG */}
-          <div style={{ position: "absolute", inset: 0 }}>
+            {/* Country clusters */}
             {visibleCountries.map((c) => (
-              <CountryCluster key={c.code} country={c} />
+              <Marker key={c.code} coordinates={c.coords}>
+                <ClusterGlyph country={c} />
+              </Marker>
             ))}
-          </div>
+          </ComposableMap>
 
           {/* Floating live counters */}
           <div
@@ -435,15 +427,11 @@ export function Atlas() {
             }}
           >
             <Stat label="Countries" value={visibleCountries.length} color={PRIMARY} />
-            <Stat
-              label="Ripples"
-              value={visibleCountries.filter((c) => c.ripple).length}
-              color={ACCENT}
-            />
+            <Stat label="Ripples" value={visibleCountries.filter((c) => c.ripple).length} color={ACCENT} />
             <Stat label="Waves" value={visibleWaves.length} color={GOLD} />
           </div>
 
-          {/* Bottom legend hint */}
+          {/* Bottom legend */}
           <div
             style={{
               position: "absolute",
@@ -487,95 +475,89 @@ export function Atlas() {
   );
 }
 
-function CountryCluster({ country }: { country: Country }) {
-  // Convert SVG viewBox coords (800x400) to percentage
-  const leftPct = (country.x / 800) * 100;
-  const topPct = (country.y / 400) * 100;
+function ClusterGlyph({ country }: { country: Country }) {
   const thumbs = country.thumbSeeds.slice(0, 3);
   const overflow = country.count - thumbs.length;
-  const rotations = [-7, 4, -2];
+  const ringColor = country.inWave ? GOLD : country.ripple ? ACCENT : "#FFFFFF";
+  const glow = country.inWave
+    ? `0 0 8px ${GOLD}aa`
+    : country.ripple
+      ? `0 0 6px ${ACCENT}aa`
+      : "0 1px 3px rgba(0,0,0,0.5)";
 
+  // Render as SVG <g> since we're inside a Marker (already translated to country position).
   return (
-    <div
-      style={{
-        position: "absolute",
-        left: `${leftPct}%`,
-        top: `${topPct}%`,
-        transform: "translate(-50%, -100%)",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: 2,
-        cursor: "pointer",
-      }}
-    >
-      <div
-        style={{
-          position: "relative",
-          width: 36,
-          height: 36,
-        }}
-      >
-        {thumbs.map((seed, i) => (
-          <div
-            key={seed}
-            style={{
-              position: "absolute",
-              left: i * 4 - 4,
-              top: i * 2 - 2,
-              width: 24,
-              height: 24,
-              borderRadius: 6,
-              background: gradientFor(seed),
-              border: `1.5px solid ${
-                country.inWave ? GOLD : country.ripple ? ACCENT : "#FFFFFF"
-              }`,
-              transform: `rotate(${rotations[i] ?? 0}deg)`,
-              boxShadow: country.inWave
-                ? `0 0 8px ${GOLD}88`
-                : country.ripple
-                  ? `0 0 6px ${ACCENT}88`
-                  : "0 2px 4px rgba(0,0,0,0.4)",
-              zIndex: i,
-            }}
+    <g style={{ pointerEvents: "none" }}>
+      {/* stacked photo tiles */}
+      {thumbs.map((seed, i) => {
+        const offsetX = i * 3 - 3;
+        const offsetY = i * 1.5 - 1.5;
+        const rot = [-7, 4, -2][i] ?? 0;
+        const grad = gradientStopsFor(seed);
+        const gradId = `g-${country.code}-${i}`;
+        return (
+          <g key={seed} transform={`translate(${offsetX - 9} ${offsetY - 9}) rotate(${rot} 9 9)`}>
+            <defs>
+              <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor={grad[0]} />
+                <stop offset="100%" stopColor={grad[1]} />
+              </linearGradient>
+            </defs>
+            <rect
+              width="18"
+              height="18"
+              rx="3"
+              ry="3"
+              fill={`url(#${gradId})`}
+              stroke={ringColor}
+              strokeWidth="1.2"
+              style={{ filter: `drop-shadow(${glow})` }}
+            />
+          </g>
+        );
+      })}
+      {/* +N badge */}
+      {overflow > 0 && (
+        <g transform="translate(7 7)">
+          <rect
+            x="-2"
+            y="-5"
+            width={overflow >= 10 ? 18 : 14}
+            height="10"
+            rx="5"
+            ry="5"
+            fill={PRIMARY}
+            stroke={NAVY}
+            strokeWidth="0.8"
           />
-        ))}
-        {overflow > 0 && (
-          <div
-            style={{
-              position: "absolute",
-              right: -6,
-              bottom: -6,
-              minWidth: 18,
-              height: 16,
-              padding: "0 4px",
-              borderRadius: 999,
-              background: PRIMARY,
-              color: "#fff",
-              fontSize: 9,
-              fontWeight: 800,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              border: `1.5px solid ${NAVY}`,
-              zIndex: 10,
-            }}
+          <text
+            x={overflow >= 10 ? 7 : 5}
+            y="2.5"
+            fontSize="6.5"
+            fontWeight="800"
+            fill="#FFFFFF"
+            textAnchor="middle"
+            fontFamily="Inter, system-ui, sans-serif"
           >
             +{overflow}
-          </div>
-        )}
-      </div>
-      <div
+          </text>
+        </g>
+      )}
+      {/* flag emoji below */}
+      <text
+        y="20"
+        fontSize="9"
+        textAnchor="middle"
         style={{
-          fontSize: 11,
-          lineHeight: 1,
-          textShadow: `0 1px 3px ${NAVY_DEEP}`,
-          marginTop: 2,
+          paintOrder: "stroke",
+          stroke: NAVY_DEEP,
+          strokeWidth: 2,
+          strokeLinejoin: "round",
         }}
       >
         {country.flag}
-      </div>
-    </div>
+      </text>
+    </g>
   );
 }
 
@@ -642,7 +624,7 @@ function Stat({ label, value, color }: { label: string; value: number; color: st
           boxShadow: `0 0 6px ${color}`,
         }}
       />
-      <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: 13, fontWeight: 800, lineHeight: 1 }}>{value}</div>
       <div
         style={{
           fontSize: 9,
@@ -695,9 +677,8 @@ function pill(active: boolean, tone: "primary" | "accent" | "gold") {
   } as React.CSSProperties;
 }
 
-// Deterministic gradient for each photo "thumbnail" (mockup placeholders).
-function gradientFor(seed: string): string {
-  const palettes = [
+function gradientStopsFor(seed: string): [string, string] {
+  const palettes: [string, string][] = [
     ["#FF9F6A", "#FFD166"],
     ["#4FD89C", "#1FA9F0"],
     ["#FFD166", "#FF6B9D"],
@@ -713,25 +694,8 @@ function gradientFor(seed: string): string {
   for (let i = 0; i < seed.length; i++) {
     hash = (hash * 31 + seed.charCodeAt(i)) | 0;
   }
-  const p = palettes[Math.abs(hash) % palettes.length];
-  const angle = (Math.abs(hash) % 360);
-  return `linear-gradient(${angle}deg, ${p[0]}, ${p[1]})`;
+  return palettes[Math.abs(hash) % palettes.length];
 }
-
-const SPARKLES = [
-  { x: 120, y: 50, r: 1.2, dur: 4.5, delay: 0 },
-  { x: 320, y: 35, r: 0.9, dur: 5.2, delay: 1.1 },
-  { x: 540, y: 60, r: 1.4, dur: 3.9, delay: 2.3 },
-  { x: 700, y: 80, r: 1, dur: 4.8, delay: 0.7 },
-  { x: 80, y: 250, r: 1.1, dur: 5.5, delay: 1.8 },
-  { x: 290, y: 380, r: 0.8, dur: 4.2, delay: 0.4 },
-  { x: 580, y: 365, r: 1.3, dur: 5.0, delay: 2.7 },
-  { x: 720, y: 200, r: 1, dur: 4.6, delay: 1.5 },
-  { x: 410, y: 30, r: 1, dur: 6.0, delay: 3.2 },
-  { x: 200, y: 360, r: 0.9, dur: 5.4, delay: 0.9 },
-  { x: 480, y: 380, r: 1.2, dur: 4.4, delay: 2.0 },
-  { x: 640, y: 25, r: 1, dur: 5.8, delay: 0.3 },
-];
 
 const atlasCss = `
   @keyframes atlas-ripple {
@@ -739,13 +703,13 @@ const atlasCss = `
     70%  { opacity: 0.25; }
     100% { transform: scale(7); opacity: 0; }
   }
+  @keyframes atlas-wave-pulse {
+    0%   { transform: scale(0.6); opacity: 0.9; }
+    100% { transform: scale(2.6); opacity: 0; }
+  }
   @keyframes atlas-blink {
     0%, 100% { opacity: 0.4; transform: scale(0.9); }
     50% { opacity: 1; transform: scale(1.15); }
-  }
-  @keyframes atlas-sparkle {
-    0%, 100% { opacity: 0.15; transform: translateY(0); }
-    50% { opacity: 0.85; transform: translateY(-3px); }
   }
 `;
 
@@ -767,11 +731,7 @@ function DiscoverIcon() {
   return (
     <svg width={22} height={22} viewBox="0 0 24 24" fill="none">
       <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
-      <path
-        d="M15.5 8.5L13.5 13.5L8.5 15.5L10.5 10.5Z"
-        fill="currentColor"
-        opacity="0.4"
-      />
+      <path d="M15.5 8.5L13.5 13.5L8.5 15.5L10.5 10.5Z" fill="currentColor" opacity="0.4" />
     </svg>
   );
 }
