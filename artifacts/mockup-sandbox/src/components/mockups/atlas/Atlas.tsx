@@ -5,19 +5,36 @@ import {
   Geography,
   Marker,
 } from "react-simple-maps";
-import { geoEqualEarth, geoPath } from "d3-geo";
+import { geoEqualEarth } from "d3-geo";
 
-// Mirror ComposableMap's defaults (width 800, height 600) so paths we render
-// ourselves line up perfectly with markers placed via <Marker>. If you change
-// projection settings on <ComposableMap>, mirror them here.
+// Mirror ComposableMap's defaults (width 800, height 600) so endpoints we
+// project here line up perfectly with markers placed via <Marker>. If you
+// change projection settings on <ComposableMap>, mirror them here.
 const PROJECTION = geoEqualEarth()
   .scale(175)
   .center([15, 8])
   .translate([400, 300]);
-const PATH_GEN = geoPath(PROJECTION);
 
 function arcPath(from: [number, number], to: [number, number]): string {
-  return PATH_GEN({ type: "LineString", coordinates: [from, to] }) ?? "";
+  // Project endpoints into screen space, then draw a quadratic Bezier that
+  // always bows upward in screen space. This avoids great-circle paths
+  // wrapping over the Arctic (e.g. UK->Japan) and reads as a clean two-point
+  // arc, never as if it has a third "kink" point in the middle.
+  const a = PROJECTION(from);
+  const b = PROJECTION(to);
+  if (!a || !b) return "";
+  const [x1, y1] = a;
+  const [x2, y2] = b;
+  const mx = (x1 + x2) / 2;
+  const my = (y1 + y2) / 2;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  // Bow proportional to span, capped so transcontinental arcs don't fly off-screen.
+  const bow = Math.min(len * 0.22, 70);
+  const cx = mx;
+  const cy = my - bow;
+  return `M${x1},${y1} Q${cx},${cy} ${x2},${y2}`;
 }
 
 const SPLASH = "#166FFC";
