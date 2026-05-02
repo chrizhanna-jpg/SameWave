@@ -99,6 +99,14 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **What is NOT protectable** and never will be: the *concept* of an anonymous photo-matching app, generic UI patterns (swipe, infinite scroll), or descriptive phrases like "find your photo twin". A competitor building a clone under a different name is legal — the trademark only stops them using the SameWave name or a confusingly similar one.
 - **Software patents**: not worth pursuing for this app. Hard to obtain in the UK/EU, expensive in the US, and the underlying matching concept isn't novel enough to be patentable.
 - **Action trigger**: do the trademark search + filing within the first month of being live, before any press coverage or organic growth makes the name a target.
+- **Migrate off Replit-managed Clerk to a self-owned Clerk account once the app is stable.** Currently the Clerk instance is owned by Replit, which means any backend config change (e.g. adding a redirect URL to the allow-list, configuring a new OAuth provider, customising the OAuth consent screen) requires raising a support ticket and waiting 1–3 business days for Replit to action it. This caused a multi-day launch delay during initial Play Store submission. Migrating gives full self-service control. Plan:
+  1. Sign up at clerk.com (free tier covers 10k MAU with all OAuth providers — no cost until well past launch traction).
+  2. Create a new Clerk application named "SameWave" and configure Google OAuth credentials in Google Cloud Console (the genuinely tedious part — budget half a day for first-time Google OAuth consent screen setup; reuse the live privacy/terms/CSAE URLs at `global-unity-match.replit.app/api/{privacy,terms,csae}`).
+  3. Add native scheme entries to the Clerk redirect allow-list: `same-same://` and `same-same://oauth-native-callback`.
+  4. Swap the `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` in `eas.json` (and the matching `CLERK_SECRET_KEY` in Replit Secrets) for the self-owned values.
+  5. **Remove the proxy workaround** in `artifacts/same-same/app/_layout.tsx` and the `clerkProxyMiddleware` mount in `artifacts/api-server/src/app.ts` — the self-owned Clerk instance lives on Clerk's own domain (e.g. `your-app.clerk.accounts.dev`) which has a valid TLS cert, so the two-level subdomain TLS quirk that necessitated the proxy goes away.
+  6. New EAS production build + Play Console submission (1 build credit). Existing v1.2.7 users would re-authenticate on next launch — fine for early-stage app, would need a migration plan if there's a meaningful user base.
+- **Action trigger for the Clerk migration**: once the app has been live and stable for 1–2 months with no urgent fires, OR earlier if you hit a second instance of needing a Clerk backend change that Replit has to action. Not urgent if everything is working.
 
 ## Key Commands
 
