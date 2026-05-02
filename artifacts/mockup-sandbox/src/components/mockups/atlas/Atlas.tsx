@@ -69,6 +69,8 @@ const CARD_ELEVATED = "rgba(255, 255, 255, 0.14)";
 const PRIMARY = "#1FA9F0";
 const ACCENT = "#4FD89C";
 const GOLD = "#FFD166";
+const EMBER = "#FF8A3D";
+const EMBER_DEEP = "#D44A1A";
 const TEXT = "#FFFFFF";
 const TEXT_MUTED = "#92BCE0";
 
@@ -140,6 +142,17 @@ const RIPPLES: RippleArc[] = [
   { from: "ZA", to: "FR" },
 ];
 
+// Fire Circles — ephemeral group moments. When several Ripples or Waves cluster
+// around the same theme on the same day, the system forms a temporary group
+// of those participants. Lasts a day, then dissolves. No chat, just a shared
+// visual moment. Renders as a soft ember ring enclosing the member countries
+// with a theme label. See mosaic-tab.md for the full spec.
+type FireCircle = { id: string; theme: string; members: string[] };
+const FIRE_CIRCLES: FireCircle[] = [
+  { id: "fc-golden-hour", theme: "Golden hour", members: ["IT", "FR", "ES"] },
+  { id: "fc-monsoon", theme: "Monsoon rain", members: ["IN", "TH", "ID"] },
+];
+
 export function Atlas() {
   const [timeFilter, setTimeFilter] = useState<TimeFilter>("all");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
@@ -155,6 +168,8 @@ export function Atlas() {
 
   const visibleWaves = typeFilter === "ripples" ? [] : WAVES;
   const visibleRipples = typeFilter === "waves" ? [] : RIPPLES;
+  // Fire Circles only show in the "All" view to keep filtered views uncluttered.
+  const visibleCircles = typeFilter === "all" ? FIRE_CIRCLES : [];
   const showRipples = typeFilter !== "waves";
   const byCode = (code: string) => COUNTRIES.find((c) => c.code === code);
 
@@ -426,6 +441,76 @@ export function Atlas() {
               }
             </Geographies>
 
+            {/* Fire Circles — ephemeral group moments, themed clusters of
+                3+ countries sharing a moment today. Soft ember ring with a
+                slow breathing pulse + theme label. Renders BENEATH arcs so
+                ripples and waves stay legible on top. */}
+            {visibleCircles.map((fc) => {
+              const points = fc.members
+                .map((code) => {
+                  const c = byCode(code);
+                  return c ? PROJECTION(c.coords) : null;
+                })
+                .filter((p): p is [number, number] => p !== null);
+              if (points.length < 2) return null;
+              const xs = points.map((p) => p[0]);
+              const ys = points.map((p) => p[1]);
+              const minX = Math.min(...xs);
+              const maxX = Math.max(...xs);
+              const minY = Math.min(...ys);
+              const maxY = Math.max(...ys);
+              const cx = (minX + maxX) / 2;
+              const cy = (minY + maxY) / 2;
+              const padding = 26;
+              const rx = (maxX - minX) / 2 + padding;
+              const ry = (maxY - minY) / 2 + padding;
+              return (
+                <g
+                  key={fc.id}
+                  style={{
+                    transformOrigin: `${cx}px ${cy}px`,
+                    animation: "atlas-ember-breathe 4.5s ease-in-out infinite",
+                  }}
+                >
+                  <ellipse
+                    cx={cx}
+                    cy={cy}
+                    rx={rx}
+                    ry={ry}
+                    fill={EMBER}
+                    opacity={0.07}
+                  />
+                  <ellipse
+                    cx={cx}
+                    cy={cy}
+                    rx={rx}
+                    ry={ry}
+                    fill="none"
+                    stroke={EMBER}
+                    strokeWidth={1.3}
+                    strokeDasharray="5 4"
+                    opacity={0.85}
+                    style={{ filter: `drop-shadow(0 0 5px ${EMBER_DEEP})` }}
+                  />
+                  <text
+                    x={cx}
+                    y={cy - ry - 5}
+                    fill={EMBER}
+                    fontSize={9}
+                    fontWeight={700}
+                    textAnchor="middle"
+                    style={{
+                      letterSpacing: 0.4,
+                      textTransform: "uppercase",
+                      filter: `drop-shadow(0 1px 2px rgba(0,0,0,0.6))`,
+                    }}
+                  >
+                    {fc.theme}
+                  </text>
+                </g>
+              );
+            })}
+
             {/* Ripple threads — one-sided matches in flight. The line is
                 a faint green dashed thread; a single small green dot drifts
                 slowly from the sender to the recipient (their photo travelling
@@ -597,6 +682,7 @@ export function Atlas() {
             <Stat label="Countries" value={visibleCountries.length} color={PRIMARY} />
             <Stat label="Ripples" value={visibleRipples.length} color={ACCENT} />
             <Stat label="Waves" value={visibleWaves.length} color={GOLD} />
+            <Stat label="Circles" value={visibleCircles.length} color={EMBER} />
           </div>
 
           {/* Bottom legend */}
@@ -618,6 +704,7 @@ export function Atlas() {
           >
             <LegendDot color={ACCENT} label="Ripple" />
             <LegendDot color={GOLD} label="Wave" />
+            <LegendDot color={EMBER} label="Circle" />
             <LegendDot color={PRIMARY} label="Active" />
           </div>
         </div>
@@ -857,6 +944,10 @@ const atlasCss = `
   @keyframes atlas-blink {
     0%, 100% { opacity: 0.4; transform: scale(0.9); }
     50% { opacity: 1; transform: scale(1.15); }
+  }
+  @keyframes atlas-ember-breathe {
+    0%, 100% { transform: scale(1); opacity: 0.85; }
+    50%      { transform: scale(1.04); opacity: 1; }
   }
 `;
 
