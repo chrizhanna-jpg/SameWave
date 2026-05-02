@@ -77,17 +77,34 @@ const WAVES: WaveArc[] = [
   { from: "KE", to: "CN" },
 ];
 
+// Ripples are also pairs (someone matched their photo to another's photo) but
+// the partner hasn't reciprocated yet. Visually they get a thin dashed green
+// thread instead of the bold gold arc a Wave gets, so reciprocity reads at
+// a glance. The `from` side is the country that pinged first (gets the pulse).
+type RippleArc = { from: string; to: string; fresh?: boolean };
+const RIPPLES: RippleArc[] = [
+  { from: "IT", to: "CA", fresh: true },
+  { from: "TH", to: "EG", fresh: true },
+  { from: "AR", to: "ID", fresh: true },
+  { from: "RU", to: "TR" },
+  { from: "ZA", to: "FR" },
+];
+
 export function Atlas() {
   const [timeFilter, setTimeFilter] = useState<TimeFilter>("all");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
 
+  const ripplePairCodes = new Set(RIPPLES.flatMap((r) => [r.from, r.to]));
+  const wavePairCodes = new Set(WAVES.flatMap((w) => [w.from, w.to]));
+
   const visibleCountries = COUNTRIES.filter((c) => {
-    if (typeFilter === "ripples") return Boolean(c.ripple);
-    if (typeFilter === "waves") return Boolean(c.inWave);
+    if (typeFilter === "ripples") return ripplePairCodes.has(c.code);
+    if (typeFilter === "waves") return wavePairCodes.has(c.code);
     return true;
   });
 
   const visibleWaves = typeFilter === "ripples" ? [] : WAVES;
+  const visibleRipples = typeFilter === "waves" ? [] : RIPPLES;
   const showRipples = typeFilter !== "waves";
   const byCode = (code: string) => COUNTRIES.find((c) => c.code === code);
 
@@ -359,6 +376,27 @@ export function Atlas() {
               }
             </Geographies>
 
+            {/* Ripple threads — thin dashed green, sit BENEATH gold waves
+                so reciprocity (the gold) always reads on top. */}
+            {visibleRipples.map((r) => {
+              const a = byCode(r.from);
+              const b = byCode(r.to);
+              if (!a || !b) return null;
+              return (
+                <Line
+                  key={`ripple-line-${r.from}-${r.to}`}
+                  from={a.coords}
+                  to={b.coords}
+                  stroke={ACCENT}
+                  strokeWidth={0.7}
+                  strokeLinecap="round"
+                  strokeDasharray="2 3"
+                  fill="none"
+                  opacity={r.fresh ? 0.7 : 0.45}
+                />
+              );
+            })}
+
             {/* Wave arcs (great-circle lines) */}
             {visibleWaves.map((w) => {
               const a = byCode(w.from);
@@ -460,7 +498,7 @@ export function Atlas() {
             }}
           >
             <Stat label="Countries" value={visibleCountries.length} color={PRIMARY} />
-            <Stat label="Ripples" value={visibleCountries.filter((c) => c.ripple).length} color={ACCENT} />
+            <Stat label="Ripples" value={visibleRipples.length} color={ACCENT} />
             <Stat label="Waves" value={visibleWaves.length} color={GOLD} />
           </div>
 
