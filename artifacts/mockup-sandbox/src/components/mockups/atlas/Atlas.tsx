@@ -4,8 +4,21 @@ import {
   Geographies,
   Geography,
   Marker,
-  Line,
 } from "react-simple-maps";
+import { geoEqualEarth, geoPath } from "d3-geo";
+
+// Mirror ComposableMap's defaults (width 800, height 600) so paths we render
+// ourselves line up perfectly with markers placed via <Marker>. If you change
+// projection settings on <ComposableMap>, mirror them here.
+const PROJECTION = geoEqualEarth()
+  .scale(175)
+  .center([15, 8])
+  .translate([400, 300]);
+const PATH_GEN = geoPath(PROJECTION);
+
+function arcPath(from: [number, number], to: [number, number]): string {
+  return PATH_GEN({ type: "LineString", coordinates: [from, to] }) ?? "";
+}
 
 const SPLASH = "#166FFC";
 const SPLASH_DEEP = "#0B4FC8";
@@ -376,45 +389,92 @@ export function Atlas() {
               }
             </Geographies>
 
-            {/* Ripple threads — thin dashed green, sit BENEATH gold waves
-                so reciprocity (the gold) always reads on top. */}
+            {/* Ripple threads — one-sided matches in flight. The line is
+                a faint green dashed thread; a single small green dot drifts
+                slowly from the sender to the recipient (their photo travelling
+                across the world, hoping for reciprocation). */}
             {visibleRipples.map((r) => {
               const a = byCode(r.from);
               const b = byCode(r.to);
               if (!a || !b) return null;
+              const d = arcPath(a.coords, b.coords);
               return (
-                <Line
-                  key={`ripple-line-${r.from}-${r.to}`}
-                  from={a.coords}
-                  to={b.coords}
-                  stroke={ACCENT}
-                  strokeWidth={0.7}
-                  strokeLinecap="round"
-                  strokeDasharray="2 3"
-                  fill="none"
-                  opacity={r.fresh ? 0.7 : 0.45}
-                />
+                <g key={`ripple-arc-${r.from}-${r.to}`}>
+                  <path
+                    d={d}
+                    fill="none"
+                    stroke={ACCENT}
+                    strokeWidth={1}
+                    strokeLinecap="round"
+                    strokeDasharray="3 4"
+                    opacity={r.fresh ? 0.85 : 0.6}
+                  />
+                  <circle r={2.5} fill={ACCENT} opacity={0.95}>
+                    <animateMotion
+                      dur="4.5s"
+                      repeatCount="indefinite"
+                      path={d}
+                      rotate="auto"
+                    />
+                    <animate
+                      attributeName="opacity"
+                      values="0;0.95;0.95;0"
+                      keyTimes="0;0.15;0.85;1"
+                      dur="4.5s"
+                      repeatCount="indefinite"
+                    />
+                  </circle>
+                </g>
               );
             })}
 
-            {/* Wave arcs (great-circle lines) */}
+            {/* Wave arcs — mutual matches. Bold gold line with glow, plus
+                TWO bright dots travelling in OPPOSITE directions: their two
+                photos crossing each other in flight, the visual signature of
+                reciprocity. Faster than ripples — these are alive. */}
             {visibleWaves.map((w) => {
               const a = byCode(w.from);
               const b = byCode(w.to);
               if (!a || !b) return null;
+              const d = arcPath(a.coords, b.coords);
+              const dReverse = arcPath(b.coords, a.coords);
               return (
-                <Line
-                  key={`wave-${w.from}-${w.to}`}
-                  from={a.coords}
-                  to={b.coords}
-                  stroke={GOLD}
-                  strokeWidth={1.4}
-                  strokeLinecap="round"
-                  fill="none"
-                  style={{
-                    filter: `drop-shadow(0 0 4px ${GOLD})`,
-                  }}
-                />
+                <g key={`wave-${w.from}-${w.to}`}>
+                  <path
+                    d={d}
+                    fill="none"
+                    stroke={GOLD}
+                    strokeWidth={1.6}
+                    strokeLinecap="round"
+                    style={{ filter: `drop-shadow(0 0 4px ${GOLD})` }}
+                  />
+                  <circle
+                    r={3}
+                    fill="#FFFFFF"
+                    stroke={GOLD}
+                    strokeWidth={1}
+                    style={{ filter: `drop-shadow(0 0 3px ${GOLD})` }}
+                  >
+                    <animateMotion
+                      dur="2.6s"
+                      repeatCount="indefinite"
+                      path={d}
+                    />
+                  </circle>
+                  <circle
+                    r={3}
+                    fill="#FFFFFF"
+                    stroke={GOLD}
+                    strokeWidth={1}
+                    style={{ filter: `drop-shadow(0 0 3px ${GOLD})` }}
+                  >
+                    <animateMotion
+                      dur="2.6s"
+                      repeatCount="indefinite"
+                      path={dReverse}
+                    />
+                  </circle>
+                </g>
               );
             })}
 
