@@ -15,26 +15,46 @@ const PROJECTION = geoEqualEarth()
   .center([15, 8])
   .translate([400, 300]);
 
+// Approximate visual radius of a cluster glyph in viewBox units. Tiles are
+// 20x20 with stagger offsets, so the glyph spans roughly 11-13 units from
+// centre. We inset arc endpoints by this amount so lines visibly attach AT
+// the cluster edge instead of disappearing under it.
+const CLUSTER_INSET = 12;
+
 function arcPath(from: [number, number], to: [number, number]): string {
   // Project endpoints into screen space, then draw a quadratic Bezier that
   // always bows upward in screen space. This avoids great-circle paths
   // wrapping over the Arctic (e.g. UK->Japan) and reads as a clean two-point
-  // arc, never as if it has a third "kink" point in the middle.
+  // arc, never as if it has a third "kink" point in the middle. We inset
+  // both endpoints by CLUSTER_INSET along the straight-line direction so the
+  // line terminates at the cluster's edge — both static arcs and the
+  // travelling animation dots therefore attach cleanly to the photo glyphs.
   const a = PROJECTION(from);
   const b = PROJECTION(to);
   if (!a || !b) return "";
   const [x1, y1] = a;
   const [x2, y2] = b;
-  const mx = (x1 + x2) / 2;
-  const my = (y1 + y2) / 2;
   const dx = x2 - x1;
   const dy = y2 - y1;
   const len = Math.sqrt(dx * dx + dy * dy);
+  if (len <= CLUSTER_INSET * 2) {
+    // Endpoints are too close to inset meaningfully; render the raw line.
+    return `M${x1},${y1} L${x2},${y2}`;
+  }
+  const ux = dx / len;
+  const uy = dy / len;
+  const sx = x1 + ux * CLUSTER_INSET;
+  const sy = y1 + uy * CLUSTER_INSET;
+  const ex = x2 - ux * CLUSTER_INSET;
+  const ey = y2 - uy * CLUSTER_INSET;
+  const mx = (sx + ex) / 2;
+  const my = (sy + ey) / 2;
+  const newLen = len - CLUSTER_INSET * 2;
   // Bow proportional to span, capped so transcontinental arcs don't fly off-screen.
-  const bow = Math.min(len * 0.22, 70);
+  const bow = Math.min(newLen * 0.22, 70);
   const cx = mx;
   const cy = my - bow;
-  return `M${x1},${y1} Q${cx},${cy} ${x2},${y2}`;
+  return `M${sx},${sy} Q${cx},${cy} ${ex},${ey}`;
 }
 
 const SPLASH = "#166FFC";
