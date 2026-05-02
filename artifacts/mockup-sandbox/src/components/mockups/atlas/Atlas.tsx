@@ -7,15 +7,20 @@ import {
   Line,
 } from "react-simple-maps";
 
+const SPLASH = "#166FFC";
+const SPLASH_DEEP = "#0B4FC8";
+const SPLASH_DEEPER = "#093BA0";
 const NAVY = "#0A2552";
 const NAVY_DEEP = "#06173A";
-const CARD = "#133370";
-const CARD_ELEVATED = "#1A4585";
+const CARD = "rgba(10, 37, 82, 0.55)";
+const CARD_ELEVATED = "rgba(255, 255, 255, 0.18)";
 const PRIMARY = "#1FA9F0";
 const ACCENT = "#4FD89C";
+const ACCENT_LIGHT = "#A8F0CE";
+const ACCENT_DEEP = "#2FAE7A";
 const GOLD = "#FFD166";
-const TEXT = "#E8F4F8";
-const TEXT_MUTED = "#92BCE0";
+const TEXT = "#FFFFFF";
+const TEXT_MUTED = "#CFE3FF";
 
 const GEO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 
@@ -91,7 +96,7 @@ export function Atlas() {
       style={{
         minHeight: "100vh",
         width: "100%",
-        background: NAVY,
+        background: SPLASH,
         color: TEXT,
         fontFamily: "Inter, system-ui, -apple-system, sans-serif",
         display: "flex",
@@ -104,7 +109,7 @@ export function Atlas() {
           width: "100%",
           maxWidth: 390,
           minHeight: "100vh",
-          background: NAVY,
+          background: `linear-gradient(180deg, ${SPLASH} 0%, ${SPLASH_DEEP} 100%)`,
           position: "relative",
           display: "flex",
           flexDirection: "column",
@@ -188,16 +193,17 @@ export function Atlas() {
             </div>
             <div
               style={{
-                background: CARD,
-                border: `1px solid ${CARD_ELEVATED}`,
+                background: "rgba(255, 255, 255, 0.18)",
+                border: "1px solid rgba(255, 255, 255, 0.3)",
                 borderRadius: 999,
                 padding: "6px 12px",
                 fontSize: 11,
-                fontWeight: 600,
-                color: ACCENT,
+                fontWeight: 700,
+                color: "#FFFFFF",
                 display: "flex",
                 alignItems: "center",
                 gap: 6,
+                backdropFilter: "blur(6px)",
               }}
             >
               <span
@@ -206,6 +212,7 @@ export function Atlas() {
                   height: 6,
                   borderRadius: 999,
                   background: ACCENT,
+                  boxShadow: `0 0 6px ${ACCENT}`,
                   animation: "atlas-blink 1.6s ease-in-out infinite",
                 }}
               />
@@ -253,10 +260,11 @@ export function Atlas() {
             position: "relative",
             margin: "0 14px",
             borderRadius: 22,
-            background: `radial-gradient(ellipse at 50% 35%, ${CARD} 0%, ${NAVY_DEEP} 80%)`,
-            border: `1px solid ${CARD_ELEVATED}`,
+            background: `radial-gradient(ellipse at 50% 40%, #3789FF 0%, ${SPLASH} 55%, ${SPLASH_DEEPER} 100%)`,
+            border: "1px solid rgba(255, 255, 255, 0.18)",
             overflow: "hidden",
             minHeight: 440,
+            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.15)",
           }}
         >
           <ComposableMap
@@ -272,9 +280,23 @@ export function Atlas() {
           >
             <defs>
               <radialGradient id="oceanGlow" cx="50%" cy="40%" r="60%">
-                <stop offset="0%" stopColor={PRIMARY} stopOpacity="0.08" />
-                <stop offset="100%" stopColor={NAVY} stopOpacity="0" />
+                <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.10" />
+                <stop offset="100%" stopColor={SPLASH_DEEPER} stopOpacity="0" />
               </radialGradient>
+              <linearGradient id="landGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stopColor={ACCENT_LIGHT} />
+                <stop offset="55%" stopColor={ACCENT} />
+                <stop offset="100%" stopColor={ACCENT_DEEP} />
+              </linearGradient>
+              <filter id="landGlow" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="2.5" result="blur" />
+                <feFlood floodColor={ACCENT_LIGHT} floodOpacity="0.55" />
+                <feComposite in2="blur" operator="in" result="glow" />
+                <feMerge>
+                  <feMergeNode in="glow" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
             </defs>
             <rect x="0" y="0" width="800" height="520" fill="url(#oceanGlow)" />
 
@@ -306,24 +328,27 @@ export function Atlas() {
               />
             ))}
 
-            {/* Real country shapes */}
+            {/* Real country shapes — green land masses with glow */}
             <Geographies geography={GEO_URL}>
-              {({ geographies }) =>
-                geographies.map((geo) => (
-                  <Geography
-                    key={geo.rsmKey}
-                    geography={geo}
-                    fill={CARD}
-                    stroke={CARD_ELEVATED}
-                    strokeWidth={0.5}
-                    style={{
-                      default: { outline: "none" },
-                      hover: { outline: "none", fill: CARD_ELEVATED },
-                      pressed: { outline: "none" },
-                    }}
-                  />
-                ))
-              }
+              {({ geographies }) => (
+                <g filter="url(#landGlow)">
+                  {geographies.map((geo) => (
+                    <Geography
+                      key={geo.rsmKey}
+                      geography={geo}
+                      fill="url(#landGradient)"
+                      stroke={ACCENT_LIGHT}
+                      strokeWidth={0.4}
+                      strokeOpacity={0.7}
+                      style={{
+                        default: { outline: "none" },
+                        hover: { outline: "none", fill: ACCENT_LIGHT },
+                        pressed: { outline: "none" },
+                      }}
+                    />
+                  ))}
+                </g>
+              )}
             </Geographies>
 
             {/* Wave arcs (great-circle lines) */}
@@ -457,8 +482,8 @@ export function Atlas() {
         {/* Bottom Tab Bar */}
         <div
           style={{
-            background: NAVY_DEEP,
-            borderTop: `1px solid ${CARD_ELEVATED}`,
+            background: SPLASH_DEEPER,
+            borderTop: "1px solid rgba(255, 255, 255, 0.18)",
             padding: "8px 6px 22px",
             display: "flex",
             justifyContent: "space-around",
@@ -605,14 +630,14 @@ function Stat({ label, value, color }: { label: string; value: number; color: st
   return (
     <div
       style={{
-        background: "rgba(6, 23, 58, 0.78)",
-        border: `1px solid ${CARD_ELEVATED}`,
+        background: "rgba(255, 255, 255, 0.18)",
+        border: "1px solid rgba(255, 255, 255, 0.3)",
         borderRadius: 10,
         padding: "5px 9px",
         display: "flex",
         alignItems: "center",
         gap: 6,
-        backdropFilter: "blur(4px)",
+        backdropFilter: "blur(8px)",
       }}
     >
       <div
