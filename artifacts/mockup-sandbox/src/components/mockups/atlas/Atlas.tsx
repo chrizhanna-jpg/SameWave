@@ -9,18 +9,18 @@ import {
 
 const SPLASH = "#166FFC";
 const SPLASH_DEEP = "#0B4FC8";
-const SPLASH_DEEPER = "#093BA0";
+const SPLASH_LIGHT = "#3F8AFF";
 const NAVY = "#0A2552";
 const NAVY_DEEP = "#06173A";
-const CARD = "rgba(10, 37, 82, 0.55)";
-const CARD_ELEVATED = "rgba(255, 255, 255, 0.18)";
+const LAND = "#04102A";
+const LAND_HIGHLIGHT = "#0E2860";
+const CARD = "rgba(255, 255, 255, 0.06)";
+const CARD_ELEVATED = "rgba(255, 255, 255, 0.14)";
 const PRIMARY = "#1FA9F0";
 const ACCENT = "#4FD89C";
-const ACCENT_LIGHT = "#A8F0CE";
-const ACCENT_DEEP = "#2FAE7A";
 const GOLD = "#FFD166";
 const TEXT = "#FFFFFF";
-const TEXT_MUTED = "#CFE3FF";
+const TEXT_MUTED = "#92BCE0";
 
 const GEO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 
@@ -96,7 +96,7 @@ export function Atlas() {
       style={{
         minHeight: "100vh",
         width: "100%",
-        background: SPLASH,
+        background: NAVY,
         color: TEXT,
         fontFamily: "Inter, system-ui, -apple-system, sans-serif",
         display: "flex",
@@ -109,7 +109,7 @@ export function Atlas() {
           width: "100%",
           maxWidth: 390,
           minHeight: "100vh",
-          background: `linear-gradient(180deg, ${SPLASH} 0%, ${SPLASH_DEEP} 100%)`,
+          background: `linear-gradient(180deg, ${NAVY} 0%, ${NAVY_DEEP} 100%)`,
           position: "relative",
           display: "flex",
           flexDirection: "column",
@@ -193,13 +193,13 @@ export function Atlas() {
             </div>
             <div
               style={{
-                background: "rgba(255, 255, 255, 0.18)",
-                border: "1px solid rgba(255, 255, 255, 0.3)",
+                background: CARD,
+                border: `1px solid ${CARD_ELEVATED}`,
                 borderRadius: 999,
                 padding: "6px 12px",
                 fontSize: 11,
                 fontWeight: 700,
-                color: "#FFFFFF",
+                color: ACCENT,
                 display: "flex",
                 alignItems: "center",
                 gap: 6,
@@ -260,11 +260,11 @@ export function Atlas() {
             position: "relative",
             margin: "0 14px",
             borderRadius: 22,
-            background: `radial-gradient(ellipse at 50% 40%, #3789FF 0%, ${SPLASH} 55%, ${SPLASH_DEEPER} 100%)`,
-            border: "1px solid rgba(255, 255, 255, 0.18)",
+            background: `radial-gradient(ellipse at 50% 40%, ${SPLASH_LIGHT} 0%, ${SPLASH} 55%, ${SPLASH_DEEP} 100%)`,
+            border: "1px solid rgba(255, 255, 255, 0.12)",
             overflow: "hidden",
             minHeight: 440,
-            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.15)",
+            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.18), 0 8px 24px rgba(0,0,0,0.35)",
           }}
         >
           <ComposableMap
@@ -281,22 +281,32 @@ export function Atlas() {
             <defs>
               <radialGradient id="oceanGlow" cx="50%" cy="40%" r="60%">
                 <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.10" />
-                <stop offset="100%" stopColor={SPLASH_DEEPER} stopOpacity="0" />
+                <stop offset="100%" stopColor={SPLASH_DEEP} stopOpacity="0" />
               </radialGradient>
               <linearGradient id="landGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor={ACCENT_LIGHT} />
-                <stop offset="55%" stopColor={ACCENT} />
-                <stop offset="100%" stopColor={ACCENT_DEEP} />
+                <stop offset="0%" stopColor={LAND_HIGHLIGHT} />
+                <stop offset="100%" stopColor={LAND} />
               </linearGradient>
-              <filter id="landGlow" x="-20%" y="-20%" width="140%" height="140%">
-                <feGaussianBlur stdDeviation="2.5" result="blur" />
-                <feFlood floodColor={ACCENT_LIGHT} floodOpacity="0.55" />
-                <feComposite in2="blur" operator="in" result="glow" />
-                <feMerge>
-                  <feMergeNode in="glow" />
-                  <feMergeNode in="SourceGraphic" />
-                </feMerge>
-              </filter>
+              {COUNTRIES.flatMap((c) =>
+                c.thumbSeeds.map((seed) => (
+                  <pattern
+                    key={`pat-${seed}`}
+                    id={`thumb-${seed}`}
+                    patternUnits="objectBoundingBox"
+                    width="1"
+                    height="1"
+                  >
+                    <image
+                      href={photoFor(seed)}
+                      x="0"
+                      y="0"
+                      width="20"
+                      height="20"
+                      preserveAspectRatio="xMidYMid slice"
+                    />
+                  </pattern>
+                ))
+              )}
             </defs>
             <rect x="0" y="0" width="800" height="520" fill="url(#oceanGlow)" />
 
@@ -328,27 +338,25 @@ export function Atlas() {
               />
             ))}
 
-            {/* Real country shapes — green land masses with glow */}
+            {/* Real country shapes — dark land with green coastline accent */}
             <Geographies geography={GEO_URL}>
-              {({ geographies }) => (
-                <g filter="url(#landGlow)">
-                  {geographies.map((geo) => (
-                    <Geography
-                      key={geo.rsmKey}
-                      geography={geo}
-                      fill="url(#landGradient)"
-                      stroke={ACCENT_LIGHT}
-                      strokeWidth={0.4}
-                      strokeOpacity={0.7}
-                      style={{
-                        default: { outline: "none" },
-                        hover: { outline: "none", fill: ACCENT_LIGHT },
-                        pressed: { outline: "none" },
-                      }}
-                    />
-                  ))}
-                </g>
-              )}
+              {({ geographies }) =>
+                geographies.map((geo) => (
+                  <Geography
+                    key={geo.rsmKey}
+                    geography={geo}
+                    fill="url(#landGradient)"
+                    stroke={ACCENT}
+                    strokeWidth={0.45}
+                    strokeOpacity={0.55}
+                    style={{
+                      default: { outline: "none" },
+                      hover: { outline: "none", fill: LAND_HIGHLIGHT },
+                      pressed: { outline: "none" },
+                    }}
+                  />
+                ))
+              }
             </Geographies>
 
             {/* Wave arcs (great-circle lines) */}
@@ -482,8 +490,8 @@ export function Atlas() {
         {/* Bottom Tab Bar */}
         <div
           style={{
-            background: SPLASH_DEEPER,
-            borderTop: "1px solid rgba(255, 255, 255, 0.18)",
+            background: NAVY_DEEP,
+            borderTop: "1px solid rgba(255, 255, 255, 0.08)",
             padding: "8px 6px 22px",
             display: "flex",
             justifyContent: "space-around",
@@ -518,22 +526,14 @@ function ClusterGlyph({ country }: { country: Country }) {
         const offsetX = i * 3 - 3;
         const offsetY = i * 1.5 - 1.5;
         const rot = [-7, 4, -2][i] ?? 0;
-        const grad = gradientStopsFor(seed);
-        const gradId = `g-${country.code}-${i}`;
         return (
-          <g key={seed} transform={`translate(${offsetX - 9} ${offsetY - 9}) rotate(${rot} 9 9)`}>
-            <defs>
-              <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor={grad[0]} />
-                <stop offset="100%" stopColor={grad[1]} />
-              </linearGradient>
-            </defs>
+          <g key={seed} transform={`translate(${offsetX - 10} ${offsetY - 10}) rotate(${rot} 10 10)`}>
             <rect
-              width="18"
-              height="18"
+              width="20"
+              height="20"
               rx="3"
               ry="3"
-              fill={`url(#${gradId})`}
+              fill={`url(#thumb-${seed})`}
               stroke={ringColor}
               strokeWidth="1.2"
               style={{ filter: `drop-shadow(${glow})` }}
@@ -630,8 +630,8 @@ function Stat({ label, value, color }: { label: string; value: number; color: st
   return (
     <div
       style={{
-        background: "rgba(255, 255, 255, 0.18)",
-        border: "1px solid rgba(255, 255, 255, 0.3)",
+        background: "rgba(6, 23, 58, 0.65)",
+        border: "1px solid rgba(255, 255, 255, 0.18)",
         borderRadius: 10,
         padding: "5px 9px",
         display: "flex",
@@ -702,24 +702,11 @@ function pill(active: boolean, tone: "primary" | "accent" | "gold") {
   } as React.CSSProperties;
 }
 
-function gradientStopsFor(seed: string): [string, string] {
-  const palettes: [string, string][] = [
-    ["#FF9F6A", "#FFD166"],
-    ["#4FD89C", "#1FA9F0"],
-    ["#FFD166", "#FF6B9D"],
-    ["#A78BFA", "#1FA9F0"],
-    ["#FF6B9D", "#A78BFA"],
-    ["#1FA9F0", "#163C7E"],
-    ["#4FD89C", "#FFD166"],
-    ["#FF9F6A", "#FF6B9D"],
-    ["#92BCE0", "#4FD89C"],
-    ["#FFD166", "#1FA9F0"],
-  ];
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    hash = (hash * 31 + seed.charCodeAt(i)) | 0;
-  }
-  return palettes[Math.abs(hash) % palettes.length];
+// Picsum gives us reliable, seed-deterministic stock photos. Pinning a few
+// hand-picked picsum IDs per seed produces visually pleasing, varied tiles
+// without going through Unsplash's CORS hoops.
+function photoFor(seed: string): string {
+  return `https://picsum.photos/seed/sw-${seed}/80/80`;
 }
 
 const atlasCss = `
