@@ -89,6 +89,17 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 
 - **User-recorded vibe audio**: when uploading a photo, let users optionally record their own audio clip (matching the same length as the existing music clips) instead of picking from the music library. Could be them talking, singing, ambient sound, or live music. Plays back on the card the same way the music clips do. Adds a "moment" feel that pre-recorded music can't match. (Captured during Play Store submission; ship after first internal-test cycle.)
 
+## Post-Launch Admin / Legal Reminders
+
+- **Register the "SameWave" trademark in the UK once the app is live and being used.** The brand name is the single most valuable thing to protect — copyright on code is automatic, but the name needs an active registration to stop competitors. Cost is around £170 for a self-filed application (no solicitor needed). Steps:
+  1. Search the existing register first at https://www.gov.uk/search-for-trademark — confirm "SameWave" is free in the relevant classes.
+  2. File at https://www.gov.uk/how-to-register-a-trade-mark in **Class 9** (downloadable mobile applications / software) and **Class 42** (software-as-a-service / SaaS). Both classes together typically cost ~£200.
+  3. Optional: file the **logo** as a separate figurative trademark if you want the artwork itself protected.
+  4. EU and US filings are separate and significantly more expensive (£600+ each); only worth doing once there's traction in those markets.
+- **What is NOT protectable** and never will be: the *concept* of an anonymous photo-matching app, generic UI patterns (swipe, infinite scroll), or descriptive phrases like "find your photo twin". A competitor building a clone under a different name is legal — the trademark only stops them using the SameWave name or a confusingly similar one.
+- **Software patents**: not worth pursuing for this app. Hard to obtain in the UK/EU, expensive in the US, and the underlying matching concept isn't novel enough to be patentable.
+- **Action trigger**: do the trademark search + filing within the first month of being live, before any press coverage or organic growth makes the name a target.
+
 ## Key Commands
 
 - `pnpm run typecheck` — full typecheck across all packages
