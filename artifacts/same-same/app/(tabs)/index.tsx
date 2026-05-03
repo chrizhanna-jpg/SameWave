@@ -125,9 +125,11 @@ export default function HomeScreen() {
           </GradientCard>
         </PressableScale>
 
-        {/* Main CTA — primary gradient + glow shadow */}
+        {/* Main CTA — jumps straight to the camera viewfinder so the
+            Open → Snap → Match loop starts in one tap. Label intentionally
+            stays "Start Rippling" — the ripple begins with the snap. */}
         <PressableScale
-          onPress={() => router.push("/(tabs)/match")}
+          onPress={() => router.push("/in-camera")}
           haptic="medium"
           style={styles.fullWidth}
         >
