@@ -91,6 +91,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 
 ## Post-Launch Admin / Legal Reminders
 
+- **Apply Ripple-tab music leak fix (queued for v1.2.8).** Once v1.2.7 is confirmed stable in production, apply the small one-line fix documented in `.local/tasks/bug-ripple-music-leak.md`. Symptom: leaving Discover and tapping Ripple changes the track and music keeps playing on subsequent tabs. Root cause: `match.tsx` focus-effect cleanup pauses the mic-preview lease but not the background-music lease. When ready, ask the agent to "apply the Ripple-tab music fix" — it'll re-create the project task and ship the change.
 - **Register the "SameWave" trademark in the UK once the app is live and being used.** The brand name is the single most valuable thing to protect — copyright on code is automatic, but the name needs an active registration to stop competitors. Cost is around £170 for a self-filed application (no solicitor needed). Steps:
   1. Search the existing register first at https://www.gov.uk/search-for-trademark — confirm "SameWave" is free in the relevant classes.
   2. File at https://www.gov.uk/how-to-register-a-trade-mark in **Class 9** (downloadable mobile applications / software) and **Class 42** (software-as-a-service / SaaS). Both classes together typically cost ~£200.
