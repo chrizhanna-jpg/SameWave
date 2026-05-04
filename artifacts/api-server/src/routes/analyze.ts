@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { GoogleGenAI } from "@google/genai";
+import OpenAI from "openai";
 
 const router: IRouter = Router();
 
@@ -94,12 +94,9 @@ const ALLOWED_HOSTS = new Set([
   "unsplash.com",
 ]);
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY ?? "",
-  httpOptions: {
-    apiVersion: "",
-    baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
-  },
+const ai = new OpenAI({
+  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "",
+  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
 });
 
 type AnalyzeBody = {
@@ -175,18 +172,24 @@ router.post("/analyze-photo", async (req, res) => {
       inlineData = await fetchImageAsBase64(body.imageUrl as string);
     }
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [
+    const response = await ai.chat.completions.create({
+      model: "gpt-4o",
+      max_tokens: 8192,
+      response_format: { type: "json_object" },
+      messages: [
         {
           role: "user",
-          parts: [{ text: PROMPT }, { inlineData }],
+          content: [
+            { type: "text", text: PROMPT },
+            {
+              type: "image_url",
+              image_url: {
+                url: `data:${inlineData.mimeType};base64,${inlineData.data}`,
+              },
+            },
+          ],
         },
       ],
-      config: {
-        responseMimeType: "application/json",
-        maxOutputTokens: 8192,
-      },
     });
 
     let parsed: {
@@ -196,7 +199,7 @@ router.post("/analyze-photo", async (req, res) => {
       subjects?: unknown;
     } = {};
     try {
-      parsed = JSON.parse(response.text ?? "{}");
+      parsed = JSON.parse(response.choices[0]?.message?.content ?? "{}");
     } catch {
       parsed = {};
     }

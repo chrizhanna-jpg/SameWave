@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import OpenAI from "openai";
 
 // Photo analysis (theme + tags + shapes + subjects) was previously inline
 // in routes/analyze.ts. We extract it here so the upload endpoint can
@@ -97,12 +97,9 @@ Return FOUR things:
 Return ONLY this JSON, no prose, no markdown:
 {"theme": "...", "tags": ["..."], "shapes": ["..."], "subjects": ["..."]}`;
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY ?? "",
-  httpOptions: {
-    apiVersion: "",
-    baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
-  },
+const ai = new OpenAI({
+  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "",
+  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
 });
 
 export async function analyzePhoto(args: {
@@ -114,18 +111,24 @@ export async function analyzePhoto(args: {
   shapes: string[];
   subjects: string[];
 }> {
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: [
+  const response = await ai.chat.completions.create({
+    model: "gpt-4o",
+    max_tokens: 8192,
+    response_format: { type: "json_object" },
+    messages: [
       {
         role: "user",
-        parts: [
-          { text: PROMPT },
-          { inlineData: { data: args.base64, mimeType: args.mimeType } },
+        content: [
+          { type: "text", text: PROMPT },
+          {
+            type: "image_url",
+            image_url: {
+              url: `data:${args.mimeType};base64,${args.base64}`,
+            },
+          },
         ],
       },
     ],
-    config: { responseMimeType: "application/json", maxOutputTokens: 8192 },
   });
   let parsed: {
     tags?: unknown;
@@ -134,7 +137,7 @@ export async function analyzePhoto(args: {
     subjects?: unknown;
   } = {};
   try {
-    parsed = JSON.parse(response.text ?? "{}");
+    parsed = JSON.parse(response.choices[0]?.message?.content ?? "{}");
   } catch {
     parsed = {};
   }
@@ -196,22 +199,28 @@ export async function extractObjectTags(args: {
   base64: string;
   mimeType: string;
 }): Promise<{ objects: string[]; shapes: string[] }> {
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: [
+  const response = await ai.chat.completions.create({
+    model: "gpt-4o",
+    max_tokens: 4096,
+    response_format: { type: "json_object" },
+    messages: [
       {
         role: "user",
-        parts: [
-          { text: OBJECT_PROMPT },
-          { inlineData: { data: args.base64, mimeType: args.mimeType } },
+        content: [
+          { type: "text", text: OBJECT_PROMPT },
+          {
+            type: "image_url",
+            image_url: {
+              url: `data:${args.mimeType};base64,${args.base64}`,
+            },
+          },
         ],
       },
     ],
-    config: { responseMimeType: "application/json", maxOutputTokens: 4096 },
   });
   let parsed: { objects?: unknown; shapes?: unknown } = {};
   try {
-    parsed = JSON.parse(response.text ?? "{}");
+    parsed = JSON.parse(response.choices[0]?.message?.content ?? "{}");
   } catch {
     parsed = {};
   }
