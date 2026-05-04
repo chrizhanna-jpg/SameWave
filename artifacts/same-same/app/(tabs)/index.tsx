@@ -129,7 +129,7 @@ export default function HomeScreen() {
             Open → Snap → Match loop starts in one tap. Label intentionally
             stays "Start Rippling" — the ripple begins with the snap. */}
         <PressableScale
-          onPress={() => router.push("/in-camera")}
+          onPress={() => router.push("/in-camera?from=home")}
           haptic="medium"
           style={styles.fullWidth}
         >

@@ -29,7 +29,7 @@ import {
   State as GHState,
   type PinchGestureHandlerGestureEvent,
 } from "react-native-gesture-handler";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import {
   CameraView,
   useCameraPermissions,
@@ -51,6 +51,7 @@ const PINCH_SCALE_FACTOR = 0.25;
 export default function InCameraScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { from } = useLocalSearchParams<{ from?: string }>();
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<CameraType>("back");
   const [zoom, setZoom] = useState(0); // 0..1
@@ -143,7 +144,15 @@ export default function InCameraScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
         () => {},
       );
-      router.back();
+      // When opened directly from the home screen, go to the camera/upload
+      // screen so it can pick up the capture and start the matching flow.
+      // When opened from camera.tsx (the normal in-app path), go back so
+      // camera.tsx regains focus and its useFocusEffect drains the bus.
+      if (from === "home") {
+        router.replace("/camera");
+      } else {
+        router.back();
+      }
     } catch {
       Alert.alert("Couldn't capture photo", "Please try again.");
     } finally {
