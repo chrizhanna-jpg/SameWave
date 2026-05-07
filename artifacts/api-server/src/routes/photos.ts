@@ -3,6 +3,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   db,
   photosTable,
+  usersTable,
   votesTable,
   reportsTable,
   seenPhotosTable,
@@ -68,6 +69,19 @@ router.post("/photos", async (req, res) => {
     if (!user) {
       res.status(401).json({ error: "authentication required" });
       return;
+    }
+
+    // If the client didn't send a country code (GPS not yet resolved,
+    // or the user skipped the country step), fall back to whatever is
+    // already stored on the user's row so atlas queries can find it.
+    let effectiveCountryCode = countryCode;
+    if (!effectiveCountryCode) {
+      const userRows = await db
+        .select({ countryCode: usersTable.countryCode })
+        .from(usersTable)
+        .where(eq(usersTable.id, user.id))
+        .limit(1);
+      effectiveCountryCode = userRows[0]?.countryCode ?? null;
     }
 
     const stripped = b64.replace(/^data:[^;]+;base64,/, "");
@@ -148,7 +162,7 @@ router.post("/photos", async (req, res) => {
         tags,
         shapeTags: shapes,
         subjects,
-        countryCode,
+        countryCode: effectiveCountryCode,
         musicGenre,
         customAudioBase64,
         customAudioMime,
