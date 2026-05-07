@@ -799,3 +799,55 @@ export async function reportPhoto(photoId: string, reason?: string): Promise<boo
     return false;
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Atlas — world map of photos by country.
+// ─────────────────────────────────────────────────────────────────────────
+
+export interface AtlasCountry {
+  code: string;
+  count: number;
+}
+
+/** Returns how many active photos exist per country (lightweight summary). */
+export async function fetchAtlasSummary(): Promise<AtlasCountry[]> {
+  try {
+    const base = getApiBase();
+    const res = await fetch(`${base}/api/photos/atlas`, {
+      headers: await authedHeaders(),
+    });
+    if (!res.ok) return [];
+    const json = (await res.json()) as { countries?: AtlasCountry[] };
+    return Array.isArray(json.countries) ? json.countries : [];
+  } catch {
+    return [];
+  }
+}
+
+export interface AtlasPhoto {
+  id: string;
+  uri: string;
+  theme: string;
+  tags: string[];
+  musicGenre: string | null;
+  customAudioUrl: string | null;
+  createdAt: string;
+}
+
+/** Returns up to 30 recent photos for a given country code. */
+export async function fetchAtlasCountryPhotos(
+  countryCode: string,
+): Promise<AtlasPhoto[]> {
+  try {
+    const base = getApiBase();
+    const res = await fetch(
+      `${base}/api/photos/atlas/${encodeURIComponent(countryCode)}`,
+      { headers: await authedHeaders() },
+    );
+    if (!res.ok) return [];
+    const json = (await res.json()) as { photos?: AtlasPhoto[] };
+    return Array.isArray(json.photos) ? json.photos : [];
+  } catch {
+    return [];
+  }
+}

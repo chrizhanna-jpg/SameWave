@@ -909,6 +909,98 @@ router.get("/photos/seen", async (req, res) => {
   }
 });
 
+// ---- GET /api/photos/atlas ------------------------------------------------
+// Returns a count of active photos per country — no per-photo data, so
+// this is a lightweight "what's on the map" summary for the Atlas tab.
+// Expired / removed / over-reported photos are excluded.
+router.get("/photos/atlas", async (req, res) => {
+  try {
+    const user = await resolveUserFromRequest(req);
+    if (!user) {
+      res.status(401).json({ error: "authentication required" });
+      return;
+    }
+    const rows = await db.execute(sql`
+      SELECT
+        upper(country_code) AS code,
+        COUNT(*)::int        AS count
+      FROM photos
+      WHERE status       = 'active'
+        AND report_count < ${REPORT_HIDE_THRESHOLD}
+        AND (expires_at IS NULL OR expires_at > now())
+        AND country_code IS NOT NULL
+        AND country_code <> ''
+      GROUP BY country_code
+      ORDER BY count DESC
+    `);
+    const countries = (rows.rows as Array<{ code: string; count: number }>).map(
+      (r) => ({ code: String(r.code), count: Number(r.count) }),
+    );
+    res.json({ countries });
+  } catch (err) {
+    req.log.error({ err }, "atlas summary failed");
+    res.status(500).json({ error: "atlas summary failed" });
+  }
+});
+
+// ---- GET /api/photos/atlas/:countryCode -----------------------------------
+// Returns up to 30 recent active photos from a given country.
+// Used by the Atlas tab to populate the inline photo grid when the user
+// taps a country chip. Includes music / audio fields so the photo-viewer
+// can play the right clip on open.
+router.get("/photos/atlas/:countryCode", async (req, res) => {
+  try {
+    const user = await resolveUserFromRequest(req);
+    if (!user) {
+      res.status(401).json({ error: "authentication required" });
+      return;
+    }
+    const code = (req.params.countryCode ?? "").toUpperCase();
+    if (!/^[A-Z]{2}$/.test(code)) {
+      res.status(400).json({ error: "invalid country code" });
+      return;
+    }
+    const rows = await db.execute(sql`
+      SELECT
+        id,
+        bytes_base64,
+        mime_type,
+        theme,
+        tags,
+        music_genre,
+        custom_audio_base64,
+        custom_audio_mime,
+        created_at
+      FROM photos
+      WHERE status       = 'active'
+        AND report_count < ${REPORT_HIDE_THRESHOLD}
+        AND (expires_at IS NULL OR expires_at > now())
+        AND upper(country_code) = ${code}
+      ORDER BY created_at DESC
+      LIMIT 30
+    `);
+    const photos = (rows.rows as Array<Record<string, unknown>>).map((r) => {
+      const audioBase64 = (r.custom_audio_base64 as string | null) ?? null;
+      const audioMime   = (r.custom_audio_mime   as string | null) ?? null;
+      return {
+        id:             String(r.id),
+        uri:            `data:${String(r.mime_type)};base64,${String(r.bytes_base64)}`,
+        theme:          String(r.theme ?? ""),
+        tags:           Array.isArray(r.tags) ? (r.tags as string[]) : [],
+        musicGenre:     (r.music_genre as string | null) ?? null,
+        customAudioUrl: audioBase64 && audioMime
+          ? `data:${audioMime};base64,${audioBase64}`
+          : null,
+        createdAt:      String(r.created_at),
+      };
+    });
+    res.json({ photos });
+  } catch (err) {
+    req.log.error({ err }, "atlas country photos failed");
+    res.status(500).json({ error: "atlas country photos failed" });
+  }
+});
+
 // ---- POST /api/photos/:id/vote --------------------------------------------
 // Body: { verdict: "same" | "different" }
 router.post("/photos/:id/vote", async (req, res) => {

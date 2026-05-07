@@ -9,7 +9,7 @@
 // every JS reload (cold start), which is the right cadence for a
 // "first run after install" check.
 
-const REQUIRED = ["home", "match", "discover", "profile"] as const;
+const REQUIRED = ["home", "match", "discover", "atlas", "profile"] as const;
 export type TabName = (typeof REQUIRED)[number];
 
 const visited = new Set<TabName>();
