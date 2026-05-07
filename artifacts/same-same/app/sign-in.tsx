@@ -74,19 +74,16 @@ export default function SignInScreen() {
         }),
       });
       if (createdSessionId && setActive) {
-        await setActive({
-          session: createdSessionId,
-          navigate: async ({ session }) => {
-            if (session?.currentTask) return;
-            // Route through "/" (index.tsx) NOT directly to "/(tabs)".
-            // The tutorial gate lives in index.tsx — it checks
-            // appOpenCount and redirects first-time users to
-            // /onboarding. Jumping straight to /(tabs) here would
-            // silently skip the tutorial on every fresh sign-in,
-            // which is the bug we're fixing.
-            router.replace("/");
-          },
-        });
+        // Call setActive with only the session param — the `navigate`
+        // callback form is a Next.js/web pattern that @clerk/expo does
+        // not support in React Native. Navigating via that callback
+        // caused an unhandled JS exception after OAuth that triggered
+        // Expo's ON_ERROR_RECOVERY update check (and the misleading
+        // "Failed to download remote update" error the user sees).
+        // Route through "/" (index.tsx) NOT directly to "/(tabs)" so
+        // the tutorial gate still runs for first-time sign-ins.
+        await setActive({ session: createdSessionId });
+        router.replace("/");
       } else {
         setError("Sign-in didn't complete. Please try again.");
       }
