@@ -71,6 +71,16 @@ router.post("/photos", async (req, res) => {
       return;
     }
 
+    // If the client sent a country code, persist it onto the user row so
+    // future uploads without a code (e.g. GPS not yet resolved) can fall
+    // back to it. This is a no-op when the row already has the same code.
+    if (countryCode) {
+      await db
+        .update(usersTable)
+        .set({ countryCode })
+        .where(eq(usersTable.id, user.id));
+    }
+
     // If the client didn't send a country code (GPS not yet resolved,
     // or the user skipped the country step), fall back to whatever is
     // already stored on the user's row so atlas queries can find it.
@@ -85,10 +95,24 @@ router.post("/photos", async (req, res) => {
     }
 
     const stripped = b64.replace(/^data:[^;]+;base64,/, "");
-    const { theme, tags, shapes, subjects } = await analyzePhoto({
-      base64: stripped,
-      mimeType,
-    });
+    // Gemini analysis is best-effort — a quota error, safety rejection, or
+    // transient network hiccup must never block the upload itself. The photo
+    // still reaches the pool with empty metadata; the candidate scorer
+    // handles missing tags gracefully and the user isn't left with a
+    // silently-failed upload just because AI analysis was unavailable.
+    let theme = "";
+    let tags: string[] = [];
+    let shapes: string[] = [];
+    let subjects: string[] = [];
+    try {
+      const analysis = await analyzePhoto({ base64: stripped, mimeType });
+      theme = analysis.theme;
+      tags = analysis.tags;
+      shapes = analysis.shapes;
+      subjects = analysis.subjects;
+    } catch (analyzeErr) {
+      req.log.warn({ err: analyzeErr }, "photo analysis failed — uploading without AI tags");
+    }
 
     // Music-vibe id chosen on the client. Whitelisted to the canonical
     // emotional set defined in artifacts/same-same/data/musicLibrary.ts
