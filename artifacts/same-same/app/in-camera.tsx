@@ -149,7 +149,7 @@ export default function InCameraScreen() {
       // When opened from camera.tsx (the normal in-app path), go back so
       // camera.tsx regains focus and its useFocusEffect drains the bus.
       if (from === "home") {
-        router.replace("/camera");
+        router.replace("/camera?from=home");
       } else {
         router.back();
       }

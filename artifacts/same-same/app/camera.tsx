@@ -10,7 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { consumePendingCapture } from "@/utils/captureBus";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -79,6 +79,7 @@ function normalizeTheme(s: string): string {
 export default function CameraScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { from } = useLocalSearchParams<{ from?: string }>();
   const {
     addMyPhoto,
     setMyPhotoBackendId,
@@ -774,7 +775,11 @@ export default function CameraScreen() {
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setTimeout(() => {
-      router.back();
+      if (from === "home") {
+        router.replace("/(tabs)/match");
+      } else {
+        router.back();
+      }
     }, 1500);
   };
 
