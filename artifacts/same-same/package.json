@@ -4,7 +4,7 @@
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
-    "dev": "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=$CLERK_PUBLISHABLE_KEY EXPO_PUBLIC_CLERK_PROXY_PATH=/api/__clerk EXPO_PUBLIC_REVENUECAT_TEST_API_KEY=$EXPO_PUBLIC_REVENUECAT_TEST_API_KEY EXPO_PUBLIC_REVENUECAT_IOS_API_KEY=$EXPO_PUBLIC_REVENUECAT_IOS_API_KEY EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY=$EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY EXPO_OFFLINE=1 EXPO_PACKAGER_PROXY_URL=https://$REPLIT_EXPO_DEV_DOMAIN EXPO_PUBLIC_DOMAIN=global-unity-match.replit.app EXPO_PUBLIC_REPL_ID=$REPL_ID REACT_NATIVE_PACKAGER_HOSTNAME=$REPLIT_DEV_DOMAIN pnpm exec expo start --localhost --port $PORT",
+    "dev": "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=$CLERK_PUBLISHABLE_KEY EXPO_PUBLIC_REVENUECAT_TEST_API_KEY=$EXPO_PUBLIC_REVENUECAT_TEST_API_KEY EXPO_PUBLIC_REVENUECAT_IOS_API_KEY=$EXPO_PUBLIC_REVENUECAT_IOS_API_KEY EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY=$EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY EXPO_OFFLINE=1 EXPO_PACKAGER_PROXY_URL=https://$REPLIT_EXPO_DEV_DOMAIN EXPO_PUBLIC_DOMAIN=global-unity-match.replit.app EXPO_PUBLIC_REPL_ID=$REPL_ID REACT_NATIVE_PACKAGER_HOSTNAME=$REPLIT_DEV_DOMAIN pnpm exec expo start --localhost --port $PORT",
     "build": "node scripts/build.js",
     "serve": "node server/serve.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
@@ -55,7 +55,7 @@
     "zod-validation-error": "^3.4.0"
   },
   "dependencies": {
-    "@clerk/expo": "^3.2.4",
+    "@clerk/expo": "^3.2.8",
     "expo-auth-session": "~7.0.11",
     "expo-av": "^16.0.8",
     "expo-build-properties": "~1.0.10",

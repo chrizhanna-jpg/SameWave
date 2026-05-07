@@ -24,10 +24,9 @@ import type { RequestHandler } from "express";
 import type { IncomingHttpHeaders } from "http";
 
 const CLERK_FAPI = "https://frontend-api.clerk.dev";
-// IMPORTANT — if you change this path, update it in three other places:
-//   1. artifacts/same-same/app/_layout.tsx  — CLERK_PROXY_PATH_FALLBACK constant
-//   2. artifacts/same-same/package.json     — EXPO_PUBLIC_CLERK_PROXY_PATH in the dev script
-//   3. artifacts/same-same/eas.json         — EXPO_PUBLIC_CLERK_PROXY_PATH in all build profiles
+// IMPORTANT — if you change this path, update it in two other places:
+//   1. artifacts/same-same/app/_layout.tsx  — CLERK_PROXY_URL_FALLBACK constant
+//   2. artifacts/same-same/eas.json         — EXPO_PUBLIC_CLERK_PROXY_URL in preview/production profiles
 export const CLERK_PROXY_PATH = "/api/__clerk";
 
 /**

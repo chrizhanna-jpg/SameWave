@@ -152,26 +152,14 @@ const CLERK_PUBLISHABLE_KEY: string =
 // `proxyUrl` doesn't work with dev instances anyway. Leaving it
 // undefined in dev keeps the local flow exactly as before.
 //
-// IMPORTANT — proxy path must match CLERK_PROXY_PATH exported from
-// artifacts/api-server/src/middlewares/clerkProxyMiddleware.ts.
-// The value is injected via EXPO_PUBLIC_CLERK_PROXY_PATH in both the
-// dev script (package.json) and all eas.json build profiles. The
-// fallback below exists only as a last-resort for misconfigured EAS
-// builds and must be kept in sync if the server-side path ever changes.
-const CLERK_PROXY_PATH_FALLBACK = "/api/__clerk";
-const PRODUCTION_API_DOMAIN_FALLBACK = "global-unity-match.replit.app";
-function resolveClerkProxyUrl(): string | undefined {
-  if (__DEV__) return undefined;
-  const domain = (
-    process.env.EXPO_PUBLIC_DOMAIN || PRODUCTION_API_DOMAIN_FALLBACK
-  )
-    .replace(/^https?:\/\//, "")
-    .replace(/\/$/, "");
-  const proxyPath =
-    process.env.EXPO_PUBLIC_CLERK_PROXY_PATH || CLERK_PROXY_PATH_FALLBACK;
-  return `https://${domain}${proxyPath}`;
-}
-const CLERK_PROXY_URL = resolveClerkProxyUrl();
+// EXPO_PUBLIC_CLERK_PROXY_URL is injected as the full proxy URL in all
+// production EAS build profiles (eas.json). The fallback below exists
+// only as a last-resort for misconfigured EAS builds — it must be kept
+// in sync with the CLERK_PROXY_PATH in clerkProxyMiddleware.ts.
+const CLERK_PROXY_URL_FALLBACK = "https://global-unity-match.replit.app/api/__clerk";
+const CLERK_PROXY_URL: string | undefined = __DEV__
+  ? undefined
+  : (process.env.EXPO_PUBLIC_CLERK_PROXY_URL || CLERK_PROXY_URL_FALLBACK);
 
 // --- Clerk boot gate (replaces <ClerkLoaded>) ----------------------------
 // `<ClerkLoaded>` from @clerk/expo simply returns null until isLoaded is
