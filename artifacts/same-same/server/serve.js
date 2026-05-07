@@ -115,6 +115,19 @@ const server = http.createServer((req, res) => {
     pathname = pathname.slice(basePath.length) || "/";
   }
 
+  // Direct platform paths — e.g. GET /android — are hit by the native
+  // runtime after an OAuth redirect completes, WITHOUT the expo-platform
+  // header. Must be checked before the header-based route below so the
+  // request never falls through to serveStaticFile (which returns 404
+  // for directories, causing Expo to report "failed to download remote
+  // update" and crash the app).
+  if (pathname === "/android") {
+    return serveManifest("android", res);
+  }
+  if (pathname === "/ios") {
+    return serveManifest("ios", res);
+  }
+
   if (pathname === "/" || pathname === "/manifest") {
     const platform = req.headers["expo-platform"];
     if (platform === "ios" || platform === "android") {
