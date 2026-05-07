@@ -138,7 +138,7 @@ const CLERK_PUBLISHABLE_KEY: string =
 // environment fetch hung forever, and `<ClerkLoaded>` suspended the entire
 // tree behind the splash → black screen.
 //
-// Fix: route every Clerk SDK call through `<api-domain>/api/__clerk` — a
+// Fix: route every Clerk SDK call through `<api-domain>/<proxyPath>` — a
 // single-level path on the main app domain, which IS covered by the
 // wildcard cert. The api-server (clerkProxyMiddleware) forwards those
 // requests to Clerk's Frontend API and stamps a `Clerk-Proxy-Url` header
@@ -151,6 +151,14 @@ const CLERK_PUBLISHABLE_KEY: string =
 // cert — no proxy needed there, and Clerk's docs explicitly note that
 // `proxyUrl` doesn't work with dev instances anyway. Leaving it
 // undefined in dev keeps the local flow exactly as before.
+//
+// IMPORTANT — proxy path must match CLERK_PROXY_PATH exported from
+// artifacts/api-server/src/middlewares/clerkProxyMiddleware.ts.
+// The value is injected via EXPO_PUBLIC_CLERK_PROXY_PATH in both the
+// dev script (package.json) and all eas.json build profiles. The
+// fallback below exists only as a last-resort for misconfigured EAS
+// builds and must be kept in sync if the server-side path ever changes.
+const CLERK_PROXY_PATH_FALLBACK = "/api/__clerk";
 const PRODUCTION_API_DOMAIN_FALLBACK = "global-unity-match.replit.app";
 function resolveClerkProxyUrl(): string | undefined {
   if (__DEV__) return undefined;
@@ -159,7 +167,9 @@ function resolveClerkProxyUrl(): string | undefined {
   )
     .replace(/^https?:\/\//, "")
     .replace(/\/$/, "");
-  return `https://${domain}/api/__clerk`;
+  const proxyPath =
+    process.env.EXPO_PUBLIC_CLERK_PROXY_PATH || CLERK_PROXY_PATH_FALLBACK;
+  return `https://${domain}${proxyPath}`;
 }
 const CLERK_PROXY_URL = resolveClerkProxyUrl();
 
