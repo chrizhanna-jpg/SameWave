@@ -46,6 +46,7 @@ channel = "stable-25_05"
 [userenv]
 
 [userenv.shared]
+# VITE_CLERK_PUBLISHABLE_KEY = "pk_test_YXB0LXdvbWJhdC03MS5jbGVyay5hY2NvdW50cy5kZXYk"
 EXPO_PUBLIC_REVENUECAT_TEST_API_KEY = "test_cUggGykanFuLTpLqzJsmpGncACI"
 EXPO_PUBLIC_REVENUECAT_IOS_API_KEY = "appl_rRpAIpAQrWjypIKKBTZruIMmSnX"
 EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY = "goog_ddicVmfPWohqAMYOtDOesLFAgyD"
