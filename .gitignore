@@ -44,6 +44,11 @@ Thumbs.db
 .cursor/rules/nx-rules.mdc
 .github/instructions/nx.instructions.md
 
+# Secrets — do not commit (GitHub will block the push)
+.env
+**/.env
+artifacts/api-server/.env
+
 # Replit
 .cache/
 .local/
