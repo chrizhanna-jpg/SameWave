@@ -147,6 +147,17 @@ function validateBase64(b64: string): boolean {
 
 router.post("/analyze-photo", async (req, res) => {
   try {
+    if (!openaiEnv.apiKey) {
+      res.status(503).json({
+        error:
+          "Photo AI is not configured on the server (set OPENAI_API_KEY).",
+        tags: [],
+        theme: "",
+        shapes: [],
+        subjects: [],
+      });
+      return;
+    }
     const body = (req.body ?? {}) as AnalyzeBody;
     const hasBase64 = typeof body.imageBase64 === "string" && body.imageBase64.length > 0;
     const hasUrl = typeof body.imageUrl === "string" && body.imageUrl.length > 0;

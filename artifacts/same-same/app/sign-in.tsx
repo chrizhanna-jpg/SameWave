@@ -6,6 +6,7 @@
 // request so the server can link any pre-sign-in photos onto this account.
 import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
+import Constants from "expo-constants";
 import { useSSO } from "@clerk/expo";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
@@ -56,22 +57,27 @@ export default function SignInScreen() {
     try {
       const { createdSessionId, setActive } = await startSSOFlow({
         strategy: "oauth_google",
-        // Pass `scheme` only — DO NOT add a `path`. Resolves to
-        // `same-same://` in production builds, which matches Clerk's
-        // official Expo example; many Clerk setups auto-allow the app’s
-        // root scheme as a redirect URL for native apps. Sub-paths
-        // like `same-same://sign-in` are NOT auto-allowed and Clerk
-        // rejects them once the Frontend API is reached through the
-        // production proxy with "redirect URL does not match an
-        // authorized redirect URI for this instance"). Without `scheme`,
-        // makeRedirectUri() falls back to the dev-server URL inside
-        // Expo Go and the OAuth callback lands on a web page instead
-        // of bouncing back into the app, so we keep the scheme arg for
-        // dev parity. In Expo Go, makeRedirectUri auto-rewrites this
-        // to the Expo proxy URL.
-        redirectUrl: AuthSession.makeRedirectUri({
-          scheme: "same-same",
-        }),
+        // Clerk's native SSO allowlist defaults to `{bundleId}://callback`.
+        // Using only `same-same://` often fails review / allowlists; the
+        // Android package id as scheme matches Clerk + Expo docs.
+        // `app.json` lists both schemes so deep links keep working.
+        // Expo Go still rewrites makeRedirectUri for dev tunnels.
+        redirectUrl: AuthSession.makeRedirectUri(
+          Platform.OS === "android"
+            ? {
+                scheme:
+                  Constants.expoConfig?.android?.package ?? "app.echo.samesame",
+                path: "callback",
+              }
+            : Platform.OS === "ios"
+              ? {
+                  scheme:
+                    Constants.expoConfig?.ios?.bundleIdentifier ??
+                    "app.echo.samesame",
+                  path: "callback",
+                }
+              : { scheme: "same-same" },
+        ),
       });
       if (createdSessionId && setActive) {
         // Call setActive with only the session param — the `navigate`

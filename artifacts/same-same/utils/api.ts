@@ -327,13 +327,18 @@ export async function matchByObject(
     },
     body: JSON.stringify({ photoId }),
   });
-  if (!res.ok) {
-    throw new Error(`match-by-object failed: ${res.status}`);
-  }
-  const json = (await res.json()) as {
+  const json = (await res.json().catch(() => ({}))) as {
+    error?: string;
     objects?: string[];
     shapes?: string[];
   };
+  if (!res.ok) {
+    const hint =
+      typeof json.error === "string" && json.error.length > 0
+        ? json.error
+        : res.statusText;
+    throw new Error(`match-by-object failed (${res.status}): ${hint}`);
+  }
   return {
     objects: Array.isArray(json.objects) ? json.objects : [],
     shapes: Array.isArray(json.shapes) ? json.shapes : [],
@@ -798,18 +803,58 @@ export interface AtlasCountry {
   count: number;
 }
 
-/** Returns how many active photos exist per country (lightweight summary). */
-export async function fetchAtlasSummary(): Promise<AtlasCountry[]> {
+/** Pending echo (ripple) or mutual echo (wave) for Atlas arc overlay. */
+export interface AtlasConnection {
+  id: string;
+  kind: "ripple" | "wave";
+  from: string;
+  to: string;
+  /** Ripple created in the last 48h (slightly brighter arc). */
+  fresh?: boolean;
+}
+
+export interface AtlasSummaryPayload {
+  countries: AtlasCountry[];
+  connections: AtlasConnection[];
+}
+
+/** Country counts plus live ripple / wave pairs for the Atlas map. */
+export async function fetchAtlasSummary(): Promise<AtlasSummaryPayload> {
   try {
     const base = getApiBase();
     const res = await fetch(`${base}/api/photos/atlas`, {
       headers: await authedHeaders(),
     });
-    if (!res.ok) return [];
-    const json = (await res.json()) as { countries?: AtlasCountry[] };
-    return Array.isArray(json.countries) ? json.countries : [];
+    if (!res.ok) return { countries: [], connections: [] };
+    const json = (await res.json()) as {
+      countries?: AtlasCountry[];
+      connections?: AtlasConnection[];
+    };
+    const countries = Array.isArray(json.countries) ? json.countries : [];
+    const connectionsRaw = Array.isArray(json.connections)
+      ? json.connections
+      : [];
+    const connections: AtlasConnection[] = connectionsRaw
+      .filter(
+        (c): c is AtlasConnection =>
+          typeof c === "object" &&
+          c !== null &&
+          typeof (c as AtlasConnection).id === "string" &&
+          ((c as AtlasConnection).kind === "ripple" ||
+            (c as AtlasConnection).kind === "wave") &&
+          typeof (c as AtlasConnection).from === "string" &&
+          typeof (c as AtlasConnection).to === "string",
+      )
+      .map((c) => ({
+        id: c.id,
+        kind: c.kind,
+        from: c.from,
+        to: c.to,
+        fresh: c.fresh === true,
+      }));
+    return { countries, connections };
   } catch {
-    return [];
+    return { countries: [], connections: [] };
   }
 }
 

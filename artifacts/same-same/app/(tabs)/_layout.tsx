@@ -197,12 +197,12 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="discover"
+        name="atlas"
         options={{
-          title: "Discover",
+          title: "Atlas",
           tabBarIcon: ({ color, focused }) => (
             <TabIcon
-              name="compass"
+              name="map"
               color={color}
               focused={focused}
               activeColor={colors.primary}
@@ -211,12 +211,12 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="atlas"
+        name="discover"
         options={{
-          title: "Atlas",
+          title: "Discover",
           tabBarIcon: ({ color, focused }) => (
             <TabIcon
-              name="map"
+              name="compass"
               color={color}
               focused={focused}
               activeColor={colors.primary}

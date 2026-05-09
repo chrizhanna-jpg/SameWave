@@ -8,6 +8,7 @@ import {
   reportsTable,
   seenPhotosTable,
 } from "@workspace/db";
+import { getOpenAIEnv } from "../lib/openaiEnv";
 import { resolveUserFromRequest } from "../lib/users";
 import { analyzePhoto, extractObjectTags } from "../lib/photoAnalysis";
 import { recordEchoOffer, revokeEchoForUnvote } from "./echoes";
@@ -590,6 +591,13 @@ router.get("/photos/candidates", async (req, res) => {
 // can't trigger AI work on someone else's image.
 router.post("/photos/match-by-object", async (req, res) => {
   try {
+    if (!getOpenAIEnv().apiKey) {
+      res.status(503).json({
+        error:
+          "Photo AI is not configured on the server (set OPENAI_API_KEY on Render).",
+      });
+      return;
+    }
     const user = await resolveUserFromRequest(req);
     if (!user) {
       res.status(401).json({ error: "authentication required" });
@@ -974,7 +982,81 @@ router.get("/photos/atlas", async (req, res) => {
     const countries = (rows.rows as Array<{ code: string; count: number }>).map(
       (r) => ({ code: String(r.code), count: Number(r.count) }),
     );
-    res.json({ countries });
+
+    // Live ripples (pending echo, one side tapped) and waves (mutual) for
+    // Atlas map arcs — same rows as My Waves, keyed by photo countries.
+    const echoRows = await db.execute(sql`
+      SELECT
+        e.id::text AS id,
+        e.state AS state,
+        e.created_at AS "createdAt",
+        upper(trim(both from pl.country_code)) AS lc,
+        upper(trim(both from ph.country_code)) AS hc,
+        e.pending_from_user_id AS pf,
+        e.user_low_id AS ul,
+        e.user_high_id AS uh
+      FROM echoes e
+      JOIN photos pl ON pl.id = e.photo_low_id
+      JOIN photos ph ON ph.id = e.photo_high_id
+      WHERE (e.state = 'pending' OR e.state = 'mutual')
+        AND pl.status = 'active'
+        AND ph.status = 'active'
+        AND pl.report_count < ${REPORT_HIDE_THRESHOLD}
+        AND ph.report_count < ${REPORT_HIDE_THRESHOLD}
+        AND (pl.expires_at IS NULL OR pl.expires_at > now())
+        AND (ph.expires_at IS NULL OR ph.expires_at > now())
+        AND pl.country_code IS NOT NULL
+        AND ph.country_code IS NOT NULL
+        AND trim(both from pl.country_code) <> ''
+        AND trim(both from ph.country_code) <> ''
+      ORDER BY COALESCE(e.mutual_at, e.created_at) DESC
+      LIMIT 120
+    `);
+
+    const iso2 = (s: unknown) => {
+      const u = String(s ?? "").toUpperCase();
+      return /^[A-Z]{2}$/.test(u) ? u : null;
+    };
+
+    const connections: Array<{
+      id: string;
+      kind: "ripple" | "wave";
+      from: string;
+      to: string;
+      fresh: boolean;
+    }> = [];
+
+    const now = Date.now();
+    const freshMs = 48 * 60 * 60 * 1000;
+
+    for (const raw of echoRows.rows as Array<Record<string, unknown>>) {
+      const lc = iso2(raw.lc);
+      const hc = iso2(raw.hc);
+      if (!lc || !hc || lc === hc) continue;
+      const state = String(raw.state ?? "");
+      const id = String(raw.id ?? "");
+      if (!id) continue;
+
+      if (state === "mutual") {
+        const from = lc < hc ? lc : hc;
+        const to = lc < hc ? hc : lc;
+        connections.push({ id, kind: "wave", from, to, fresh: false });
+        continue;
+      }
+
+      if (state !== "pending") continue;
+      const pf = raw.pf != null ? String(raw.pf) : "";
+      const ul = String(raw.ul ?? "");
+      const uh = String(raw.uh ?? "");
+      if (!pf || pf !== ul && pf !== uh) continue;
+      const from = pf === ul ? lc : hc;
+      const to = pf === ul ? hc : lc;
+      const created = raw.createdAt ? new Date(String(raw.createdAt)).getTime() : 0;
+      const fresh = Number.isFinite(created) && now - created < freshMs;
+      connections.push({ id, kind: "ripple", from, to, fresh });
+    }
+
+    res.json({ countries, connections });
   } catch (err) {
     req.log.error({ err }, "atlas summary failed");
     res.status(500).json({ error: "atlas summary failed" });

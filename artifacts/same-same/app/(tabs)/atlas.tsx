@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -14,6 +14,7 @@ import {
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { AtlasLiveConnections } from "@/components/AtlasLiveConnections";
 import { Icon } from "@/components/Icon";
 import { OceanShimmer } from "@/components/OceanShimmer";
 import { PressableScale } from "@/components/PressableScale";
@@ -23,6 +24,7 @@ import { flagFor, nameFor } from "@/data/countries";
 import {
   fetchAtlasSummary,
   fetchAtlasCountryPhotos,
+  type AtlasConnection,
   type AtlasCountry,
   type AtlasPhoto,
 } from "@/utils/api";
@@ -86,15 +88,11 @@ export default function AtlasScreen() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
 
-  useFocusEffect(
-    useCallback(() => {
-      markTabVisited("atlas");
-    }, []),
-  );
-
   const [summary, setSummary] = useState<AtlasCountry[]>([]);
+  const [connections, setConnections] = useState<AtlasConnection[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const atlasHasLoadedOnceRef = useRef(false);
 
   const [expandedCode, setExpandedCode] = useState<string | null>(null);
   const [photoCache, setPhotoCache] = useState<Record<string, AtlasPhoto[]>>({});
@@ -115,9 +113,11 @@ export default function AtlasScreen() {
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
-    else setLoading(true);
+    else if (!atlasHasLoadedOnceRef.current) setLoading(true);
     const data = await fetchAtlasSummary();
-    setSummary(data);
+    setSummary(data.countries);
+    setConnections(data.connections);
+    atlasHasLoadedOnceRef.current = true;
     setLoading(false);
     setRefreshing(false);
     if (isRefresh) {
@@ -126,9 +126,12 @@ export default function AtlasScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    void load(false);
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      markTabVisited("atlas");
+      void load(false);
+    }, [load]),
+  );
 
   const handleCountryPress = useCallback(
     async (code: string) => {
@@ -168,9 +171,11 @@ export default function AtlasScreen() {
         </Text>
         {!loading && (
           <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
-            {totalCountries === 0
+            {totalCountries === 0 && connections.length === 0
               ? "No photos yet"
-              : `${totalCountries} ${totalCountries === 1 ? "country" : "countries"} · ${totalPhotos} ${totalPhotos === 1 ? "photo" : "photos"}`}
+              : totalCountries === 0
+                ? `${connections.length} live ${connections.length === 1 ? "connection" : "connections"}`
+                : `${totalCountries} ${totalCountries === 1 ? "country" : "countries"} · ${totalPhotos} ${totalPhotos === 1 ? "photo" : "photos"}`}
           </Text>
         )}
       </View>
@@ -190,6 +195,12 @@ export default function AtlasScreen() {
           />
         }
       >
+        {!loading && connections.length > 0 ? (
+          <AtlasLiveConnections
+            width={width - outerPad * 2}
+            connections={connections}
+          />
+        ) : null}
         {loading ? (
           <View style={styles.centreBlock}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -197,7 +208,7 @@ export default function AtlasScreen() {
               Finding photos from around the world…
             </Text>
           </View>
-        ) : totalCountries === 0 ? (
+        ) : totalCountries === 0 && connections.length === 0 ? (
           <View style={styles.centreBlock}>
             <Icon name="globe" size={48} color={colors.mutedForeground} />
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
@@ -206,6 +217,13 @@ export default function AtlasScreen() {
             <Text style={[styles.centreText, { color: colors.mutedForeground }]}>
               The Atlas fills in as people around the world share moments. Be the
               first to post from your country.
+            </Text>
+          </View>
+        ) : totalCountries === 0 ? (
+          <View style={[styles.centreBlock, { paddingTop: 12 }]}>
+            <Text style={[styles.centreText, { color: colors.mutedForeground }]}>
+              Country photo counts will show here once there are active posts
+              with a location. Your ripples and waves still appear above.
             </Text>
           </View>
         ) : (

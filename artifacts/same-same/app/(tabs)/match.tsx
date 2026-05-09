@@ -1348,9 +1348,13 @@ export default function SwipeScreen() {
                     const result = await matchByObject(photoId);
                     objects = result.objects;
                     shapes = result.shapes;
-                  } catch {
+                  } catch (e) {
+                    const msg =
+                      e instanceof Error ? e.message : "Unknown error";
                     setObjectMatchError(
-                      "Couldn't reach the matcher. Try again in a moment.",
+                      msg.includes("match-by-object failed")
+                        ? msg
+                        : "Couldn't reach the matcher. Try again in a moment.",
                     );
                     setObjectMatchLoading(false);
                     return;

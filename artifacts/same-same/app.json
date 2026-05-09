@@ -5,7 +5,7 @@
     "version": "1.2.7",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "same-same",
+    "scheme": ["same-same", "app.echo.samesame"],
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
@@ -26,7 +26,7 @@
     },
     "android": {
       "package": "app.echo.samesame",
-      "versionCode": 17,
+      "versionCode": 18,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#166FFC"
