@@ -23,6 +23,14 @@ const sendHealthOk = (_req: Request, res: Response) => {
 app.get("/healthz", sendHealthOk);
 app.get("/api/healthz", sendHealthOk);
 
+// Public read-only config — must run before clerkMiddleware so it still works
+// when Clerk env is missing or misconfigured (middleware can return 500 otherwise).
+app.get("/api/public/clerk-config", (_req, res) => {
+  res.json({
+    publishableKey: process.env.CLERK_PUBLISHABLE_KEY ?? null,
+  });
+});
+
 app.use(
   pinoHttp({
     logger,
