@@ -73,12 +73,22 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
           Something went wrong
         </Text>
 
-        {__DEV__ && (
-          <Text style={[styles.errorSummary, { color: "#ef4444", backgroundColor: colors.card }]}
-            selectable>
-            {error.message}
-          </Text>
-        )}
+        {/* Always show details — Expo Go can run with __DEV__ false; without this
+            the screen looks "empty" under the title and Metro may still stay quiet. */}
+        <Text
+          style={[
+            styles.errorSummary,
+            {
+              color: "#ef4444",
+              backgroundColor: colors.card,
+              fontSize: 16,
+              lineHeight: 22,
+            },
+          ]}
+          selectable
+        >
+          {error?.name ?? "Error"}: {error?.message ?? "Unknown error"}
+        </Text>
 
         <Text style={[styles.message, { color: colors.mutedForeground }]}>
           Please reload the app to continue.

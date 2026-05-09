@@ -27,10 +27,7 @@
       "env": {
         "EXPO_PUBLIC_DOMAIN": "samewave.onrender.com",
         "EXPO_PUBLIC_CLERK_PROXY_URL": "https://samewave.onrender.com/api/__clerk",
-        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_or_test_from_your_clerk_dashboard",
-        "EXPO_PUBLIC_REVENUECAT_TEST_API_KEY": "test_from_revenuecat",
-        "EXPO_PUBLIC_REVENUECAT_IOS_API_KEY": "appl_from_revenuecat",
-        "EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY": "goog_from_revenuecat"
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_a25vd2luZy1qYXdmaXNoLTQ1LmNsZXJrLmFjY291bnRzLmRldiQ"
       }
     },
     "production": {
@@ -40,10 +37,7 @@
       "env": {
         "EXPO_PUBLIC_DOMAIN": "samewave.onrender.com",
         "EXPO_PUBLIC_CLERK_PROXY_URL": "https://samewave.onrender.com/api/__clerk",
-        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_or_test_from_your_clerk_dashboard",
-        "EXPO_PUBLIC_REVENUECAT_TEST_API_KEY": "test_from_revenuecat",
-        "EXPO_PUBLIC_REVENUECAT_IOS_API_KEY": "appl_from_revenuecat",
-        "EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY": "goog_from_revenuecat"
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_a25vd2luZy1qYXdmaXNoLTQ1LmNsZXJrLmFjY291bnRzLmRldiQ"
       }
     }
   },

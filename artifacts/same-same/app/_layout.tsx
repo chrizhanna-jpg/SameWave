@@ -66,6 +66,13 @@ const errorUtils: ErrorUtilsLike | undefined = (globalThis as unknown as {
 if (errorUtils?.setGlobalHandler && errorUtils?.getGlobalHandler) {
   const previous = errorUtils.getGlobalHandler();
   errorUtils.setGlobalHandler((error, isFatal) => {
+    console.error(
+      "[SameWave uncaught]",
+      isFatal ? "(fatal)" : "(non-fatal)",
+      error?.message ?? error,
+      "\n",
+      error?.stack ?? "",
+    );
     try {
       Alert.alert(
         isFatal ? "SameWave hit an error" : "Something went wrong",

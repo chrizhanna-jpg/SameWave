@@ -1,3 +1,4 @@
+import type { Response } from "express";
 import { Router, type IRouter } from "express";
 
 const router: IRouter = Router();
@@ -233,7 +234,7 @@ const CSAE_HTML = layout(
   <h2>Compliance with applicable laws</h2>
   <p>SameWave complies with all applicable child-protection laws in the
   jurisdictions where the App is distributed, including but not limited to the
-  US 18 U.S.C. § 2258A reporting obligations, the EU Digital Services Act, the
+  US 18 U.S.C. Section 2258A reporting obligations, the EU Digital Services Act, the
   UK Online Safety Act, and equivalent national legislation.</p>
 
   <h2>Compliance contact</h2>
@@ -246,19 +247,77 @@ const CSAE_HTML = layout(
   `,
 );
 
-router.get("/privacy", (_req, res) => {
+// Play Console "Data safety" → account / data deletion URL must return 200 HTML.
+// SameWave: deletion is email-led + in-app photo deletion (see Privacy Policy).
+const DATA_DELETION_HTML = layout(
+  "Account & data deletion",
+  `
+  <h1>Account &amp; data deletion</h1>
+  <p class="meta">SameWave (the "App"). Last updated: May 2026.</p>
+
+  <p>This page explains how to request deletion of your account data. It is
+  published at a stable URL for Google Play and other store listings.</p>
+
+  <h2>Delete your photos inside the App</h2>
+  <p>Signed-in users can remove individual photos from <strong>My photos</strong>
+  in the App. Removing a photo deletes it from our servers according to the
+  retention rules in our <a href="/api/privacy">Privacy Policy</a>.</p>
+
+  <h2>Request full account deletion</h2>
+  <p>To delete <strong>all</strong> data associated with your account (photos,
+  matches, votes, device linkage, and notification tokens), email us from the
+  address you use with the App (if applicable) or describe your account so we
+  can locate it:</p>
+  <p><a href="mailto:twin2win.support@gmail.com?subject=SameWave%20data%20deletion%20request">twin2win.support@gmail.com</a>
+  — please use subject line <code>SameWave data deletion request</code>.</p>
+  <p>We will confirm receipt and process verifiable requests within a reasonable
+  time, usually within <strong>30 days</strong>, unless a longer period is
+  required by law. We may ask for a brief verification step to prevent
+  fraudulent deletion requests.</p>
+
+  <h2>After deletion</h2>
+  <p>Once deletion is complete, your data will not be restored. Some
+  aggregated or de-identified analytics may be retained where permitted by law.</p>
+
+  <hr />
+  <p class="meta"><a href="/api/privacy">Privacy Policy</a> · <a href="/api/terms">Terms of Service</a></p>
+  `,
+);
+
+export function sendPrivacyPage(res: Response): void {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(PRIVACY_HTML);
+}
+
+export function sendDataDeletionPage(res: Response): void {
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(DATA_DELETION_HTML);
+}
+
+export function sendTermsPage(res: Response): void {
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(TERMS_HTML);
+}
+
+export function sendCsaePage(res: Response): void {
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(CSAE_HTML);
+}
+
+router.get("/privacy", (_req, res) => {
+  sendPrivacyPage(res);
 });
 
 router.get("/terms", (_req, res) => {
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.send(TERMS_HTML);
+  sendTermsPage(res);
 });
 
 router.get("/csae", (_req, res) => {
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.send(CSAE_HTML);
+  sendCsaePage(res);
+});
+
+router.get("/data-deletion", (_req, res) => {
+  sendDataDeletionPage(res);
 });
 
 export default router;

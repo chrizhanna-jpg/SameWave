@@ -30,6 +30,16 @@ export class ErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, info: { componentStack: string }): void {
+    // Logs show up in the Metro / Expo terminal on your PC even when the
+    // device UI only says "Something went wrong".
+    console.error(
+      "[SameWave crash]",
+      error?.message ?? error,
+      "\n--- stack ---\n",
+      error?.stack ?? "(no stack)",
+      "\n--- component stack ---\n",
+      info.componentStack,
+    );
     if (typeof this.props.onError === "function") {
       this.props.onError(error, info.componentStack);
     }

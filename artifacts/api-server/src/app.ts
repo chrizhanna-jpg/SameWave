@@ -5,7 +5,12 @@ import { clerkMiddleware } from "@clerk/express";
 import { publishableKeyFromHost } from "@clerk/shared/keys";
 import { HealthCheckResponse } from "@workspace/api-zod";
 import router from "./routes";
-import legalRouter from "./routes/legal";
+import legalRouter, {
+  sendCsaePage,
+  sendDataDeletionPage,
+  sendPrivacyPage,
+  sendTermsPage,
+} from "./routes/legal";
 import { logger } from "./lib/logger";
 import {
   CLERK_PROXY_PATH,
@@ -29,6 +34,21 @@ app.get("/api/public/clerk-config", (_req, res) => {
   res.json({
     publishableKey: process.env.CLERK_PUBLISHABLE_KEY ?? null,
   });
+});
+
+// Play / store crawlers often use paths without the /api prefix — serve the same
+// HTML here so declared URLs never 404 (fixes "privacy policy page not found").
+app.get("/privacy", (_req, res) => {
+  sendPrivacyPage(res);
+});
+app.get("/data-deletion", (_req, res) => {
+  sendDataDeletionPage(res);
+});
+app.get("/terms", (_req, res) => {
+  sendTermsPage(res);
+});
+app.get("/csae", (_req, res) => {
+  sendCsaePage(res);
 });
 
 app.use(
