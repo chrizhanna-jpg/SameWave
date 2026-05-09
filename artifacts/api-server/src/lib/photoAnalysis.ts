@@ -1,5 +1,7 @@
 import OpenAI from "openai";
 
+import { getOpenAIEnv } from "./openaiEnv";
+
 // Photo analysis (theme + tags + shapes + subjects) was previously inline
 // in routes/analyze.ts. We extract it here so the upload endpoint can
 // reuse it and stay DRY.
@@ -97,9 +99,10 @@ Return FOUR things:
 Return ONLY this JSON, no prose, no markdown:
 {"theme": "...", "tags": ["..."], "shapes": ["..."], "subjects": ["..."]}`;
 
+const openaiEnv = getOpenAIEnv();
 const ai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "",
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  apiKey: openaiEnv.apiKey,
+  ...(openaiEnv.baseURL ? { baseURL: openaiEnv.baseURL } : {}),
 });
 
 export async function analyzePhoto(args: {

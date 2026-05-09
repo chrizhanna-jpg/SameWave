@@ -37,6 +37,7 @@ import {
   SubscriptionProvider,
   useSubscription,
 } from "@/lib/revenuecat";
+import { getPublicApiOrigin } from "@/utils/publicEnv";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -86,80 +87,25 @@ try {
 
 const queryClient = new QueryClient();
 
-// Resolve the Clerk publishable key once at module load.
-//
-// IMPORTANT — why this is hardcoded as a fallback (not just env-driven):
-// v1.2.3 shipped to Play Store and crashed on cold start with
-// "Missing EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY" — the AAB was built with
-// the env var missing from the bundle, even though eas.json's production
-// profile clearly defines it. EAS has two env-var systems (eas.json `env`
-// field vs. dashboard-managed env vars) and the dashboard ones silently
-// take precedence; if the dashboard doesn't have an entry for a given
-// var, it can shadow eas.json with `undefined` and the bundle ships with
-// no value inlined. Failing on missing env was the correct *dev*
-// behavior, but in production it bricks the app for every user — and
-// because it threw at module load, the splash never hid (the bug we
-// spent v1.2.2 chasing).
-//
-// IMPORTANT — why dev vs prod fallbacks differ:
-// v1.2.4 shipped with a single hardcoded `pk_test_*` fallback. The app
-// launched (good — splash bug is dead), but every authenticated request
-// returned 401 because the deployed API server uses a `sk_live_*` secret
-// key (Replit auto-swaps test→live secrets on publish), and a token
-// signed by the test Clerk instance can't validate against a live
-// instance's secret key. The fix: pick the publishable key matching the
-// Clerk instance the deployed server is talking to. `__DEV__` is true in
-// Expo dev/local builds and false in EAS release builds, which lines up
-// exactly with which Clerk instance Replit's auto-swap is wired to.
-//
-// The Clerk *publishable* key is, by Clerk's design, safe to ship in
-// client code (that's what "publishable" means — distinct from the
-// secret key, which never leaves the server). Env wins when present (so
-// dev / staging can override), hardcode wins when absent.
-const CLERK_PK_TEST =
-  "pk_test_YXB0LXdvbWJhdC03MS5jbGVyay5hY2NvdW50cy5kZXYk";
-// Derived from the deployed Clerk Frontend API host
-// (`clerk.global-unity-match.replit.app`), which is the production
-// instance Replit's auto-swap routes the deployed `sk_live_*` to.
-// Encoding rule: pk_live_<base64(fapi_host + "$")>.
-const CLERK_PK_LIVE =
-  "pk_live_Y2xlcmsuZ2xvYmFsLXVuaXR5LW1hdGNoLnJlcGxpdC5hcHAk";
-const CLERK_PUBLISHABLE_KEY_FALLBACK = __DEV__ ? CLERK_PK_TEST : CLERK_PK_LIVE;
+// Clerk publishable key — must pair with `CLERK_SECRET_KEY` / `CLERK_PUBLISHABLE_KEY` on the api-server.
+// Set `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` in `.env` (dev) or EAS env (releases). Prefer your own Clerk project when off managed hosting.
 const CLERK_PUBLISHABLE_KEY: string =
-  process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ||
-  CLERK_PUBLISHABLE_KEY_FALLBACK;
+  process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim() ?? "";
+if (!CLERK_PUBLISHABLE_KEY && __DEV__) {
+  console.warn(
+    "[SameWave] EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY is empty — Clerk sign-in will not work until you set it.",
+  );
+}
 
-// --- Clerk proxyUrl (production black-screen fix, v1.2.6) ----------------
-// v1.2.5 shipped with the correct `pk_live_*` key but bricked at the splash
-// for every Play Store user: the Clerk Frontend API host the live key
-// points at (`clerk.<your-app>.replit.app`) is a TWO-LEVEL subdomain under
-// `replit.app`, and Replit's wildcard TLS cert only covers ONE level
-// (`*.replit.app`). Android's TLS stack rejected the cert, the SDK's
-// environment fetch hung forever, and `<ClerkLoaded>` suspended the entire
-// tree behind the splash → black screen.
-//
-// Fix: route every Clerk SDK call through `<api-domain>/<proxyPath>` — a
-// single-level path on the main app domain, which IS covered by the
-// wildcard cert. The api-server (clerkProxyMiddleware) forwards those
-// requests to Clerk's Frontend API and stamps a `Clerk-Proxy-Url` header
-// so Clerk's backend builds OAuth redirect URLs that come back through
-// the same proxy. End result: the SDK, the OAuth handshake, and token
-// refresh all flow through one valid-cert host.
-//
-// Dev (Expo Go, `__DEV__ === true`) talks to the test Clerk instance on
-// Clerk's own infra (`*.clerk.accounts.dev`), which has its own valid
-// cert — no proxy needed there, and Clerk's docs explicitly note that
-// `proxyUrl` doesn't work with dev instances anyway. Leaving it
-// undefined in dev keeps the local flow exactly as before.
-//
-// EXPO_PUBLIC_CLERK_PROXY_URL is injected as the full proxy URL in all
-// production EAS build profiles (eas.json). The fallback below exists
-// only as a last-resort for misconfigured EAS builds — it must be kept
-// in sync with the CLERK_PROXY_PATH in clerkProxyMiddleware.ts.
-const CLERK_PROXY_URL_FALLBACK = "https://global-unity-match.replit.app/api/__clerk";
+// Production: if your Clerk frontend API hostname has TLS quirks on Android, proxy via the api-server (`/api/__clerk`).
+// Dev (`__DEV__`): leave proxy undefined (Clerk `*.accounts.dev` cert is fine).
+// Fallback uses the same public API origin as `utils/publicEnv.ts` + `eas.json` / `.env`.
 const CLERK_PROXY_URL: string | undefined = __DEV__
   ? undefined
-  : (process.env.EXPO_PUBLIC_CLERK_PROXY_URL || CLERK_PROXY_URL_FALLBACK);
+  : (
+      process.env.EXPO_PUBLIC_CLERK_PROXY_URL?.trim() ||
+      `${getPublicApiOrigin()}/api/__clerk`
+    );
 
 // --- Clerk boot gate (replaces <ClerkLoaded>) ----------------------------
 // `<ClerkLoaded>` from @clerk/expo simply returns null until isLoaded is

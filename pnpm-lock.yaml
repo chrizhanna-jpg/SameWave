@@ -6,12 +6,6 @@ settings:
 
 catalogs:
   default:
-    '@replit/vite-plugin-cartographer':
-      specifier: ^0.5.1
-      version: 0.5.1
-    '@replit/vite-plugin-runtime-error-modal':
-      specifier: ^0.0.6
-      version: 0.0.6
     '@tailwindcss/vite':
       specifier: ^4.1.14
       version: 4.2.1
@@ -153,10 +147,6 @@ overrides:
 importers:
 
   .:
-    dependencies:
-      '@replit/revenuecat-sdk':
-        specifier: 4.0.0
-        version: 4.0.0(typescript@5.9.3)
     devDependencies:
       prettier:
         specifier: ^3.8.1
@@ -188,6 +178,9 @@ importers:
       cors:
         specifier: ^2
         version: 2.8.6
+      dotenv:
+        specifier: ^16.4.7
+        version: 16.4.7
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.2(@types/pg@8.18.0)(pg@8.20.0)
@@ -318,12 +311,6 @@ importers:
       '@radix-ui/react-tooltip':
         specifier: ^1.2.8
         version: 1.2.8(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@replit/vite-plugin-cartographer':
-        specifier: 'catalog:'
-        version: 0.5.1
-      '@replit/vite-plugin-runtime-error-modal':
-        specifier: 'catalog:'
-        version: 0.0.6
       '@tailwindcss/vite':
         specifier: 'catalog:'
         version: 4.2.1(vite@7.3.2(@types/node@25.3.5)(jiti@2.6.1)(lightningcss@1.31.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.2))
@@ -655,6 +642,10 @@ importers:
         version: 0.31.9
 
   scripts:
+    dependencies:
+      '@replit/revenuecat-sdk':
+        specifier: 4.0.0
+        version: 4.0.0(typescript@5.9.3)
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -2419,12 +2410,6 @@ packages:
     resolution: {integrity: sha512-G0uySlMtSe6uhkPPaXSeuiYQqTAI7b+/Qr2xGUpnskQEl5/QbSffKBUBu+n8HsXQUcIHg7oJI9bKGsTx3leIVA==}
     peerDependencies:
       typescript: ^5
-
-  '@replit/vite-plugin-cartographer@0.5.1':
-    resolution: {integrity: sha512-KiaQMx4ssTM8hSjMFscyIV1PN1bRVCWCFqN3fXOfXa39uFFCKUaeL3VvH/sxuy7S7ET+MCFOt+J7lLtL56bRrA==}
-
-  '@replit/vite-plugin-runtime-error-modal@0.0.6':
-    resolution: {integrity: sha512-53iuzLsrvcUnWxAo0fvNrUhOf7LYJ+3at61dZeTIrkaZD4vGNjTbvE0j50TFcjjTC9UM74uprlnQ4+L2A//Cjg==}
 
   '@revenuecat/purchases-js-hybrid-mappings@17.29.0':
     resolution: {integrity: sha512-5EaggRPgF2GkhEtpH02RxlrRgfKCR6cX51Ocnv8PB96cdYxLzDBOyfAGJEyI+8JG8x45BP1KZ08OCbo7DC+bcw==}
@@ -5111,9 +5096,6 @@ packages:
     resolution: {integrity: sha512-vVqVZQyf3WLx2Shd0qJ9xuvqgAyKPLAiqITEtqW0oIUjzo3PePDd6fW9iFz30ef7Ysp/oiWqbhszeGWW2T6Gzw==}
     engines: {node: '>=10'}
     hasBin: true
-
-  modern-screenshot@4.6.8:
-    resolution: {integrity: sha512-GJkv/yWPOJTlxj1LZDU2k474cDyOWL+LVaqTdDWQwQ5d8zIuTz1892+1cV9V0ZpK6HYZFo/+BNLBbierO9d2TA==}
 
   motion-dom@12.35.1:
     resolution: {integrity: sha512-7n6r7TtNOsH2UFSAXzTkfzOeO5616v9B178qBIjmu/WgEyJK0uqwytCEhwKBTuM/HJA40ptAw7hLFpxtPAMRZQ==}
@@ -9289,20 +9271,6 @@ snapshots:
     dependencies:
       typescript: 5.9.3
 
-  '@replit/vite-plugin-cartographer@0.5.1':
-    dependencies:
-      '@babel/parser': 7.29.0
-      '@babel/traverse': 7.29.0
-      '@babel/types': 7.29.0
-      magic-string: 0.30.21
-      modern-screenshot: 4.6.8
-    transitivePeerDependencies:
-      - supports-color
-
-  '@replit/vite-plugin-runtime-error-modal@0.0.6':
-    dependencies:
-      '@jridgewell/trace-mapping': 0.3.31
-
   '@revenuecat/purchases-js-hybrid-mappings@17.29.0':
     dependencies:
       '@revenuecat/purchases-js': 1.24.3
@@ -12320,8 +12288,6 @@ snapshots:
       minipass: 7.1.3
 
   mkdirp@1.0.4: {}
-
-  modern-screenshot@4.6.8: {}
 
   motion-dom@12.35.1:
     dependencies:

@@ -1,5 +1,7 @@
 # Workspace
 
+> **Self-hosting / local dev:** The app and API are configured with environment variables only (no Replit runtime). See [`artifacts/same-same/ANDROID_STUDIO_AND_CLOSED_TESTING.md`](artifacts/same-same/ANDROID_STUDIO_AND_CLOSED_TESTING.md) for device builds and backend setup. Remaining Replit-specific notes below are historical reference.
+
 ## Overview
 
 pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.

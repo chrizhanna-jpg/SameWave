@@ -55,20 +55,17 @@ function stripProtocol(domain) {
 }
 
 function getDeploymentDomain() {
-  if (process.env.REPLIT_INTERNAL_APP_DOMAIN) {
-    return stripProtocol(process.env.REPLIT_INTERNAL_APP_DOMAIN);
-  }
+  const fromEnv =
+    process.env.DEPLOY_PUBLIC_DOMAIN ||
+    process.env.EXPO_PUBLIC_DOMAIN ||
+    process.env.EXPO_PUBLIC_API_URL;
 
-  if (process.env.REPLIT_DEV_DOMAIN) {
-    return stripProtocol(process.env.REPLIT_DEV_DOMAIN);
-  }
-
-  if (process.env.EXPO_PUBLIC_DOMAIN) {
-    return stripProtocol(process.env.EXPO_PUBLIC_DOMAIN);
+  if (fromEnv) {
+    return stripProtocol(fromEnv);
   }
 
   console.error(
-    "ERROR: No deployment domain found. Set REPLIT_INTERNAL_APP_DOMAIN, REPLIT_DEV_DOMAIN, or EXPO_PUBLIC_DOMAIN",
+    "ERROR: Set EXPO_PUBLIC_DOMAIN, EXPO_PUBLIC_API_URL, or DEPLOY_PUBLIC_DOMAIN for the static Expo build.",
   );
   process.exit(1);
 }
@@ -124,7 +121,7 @@ async function checkMetroHealth() {
 }
 
 function getExpoPublicReplId() {
-  return process.env.REPL_ID || process.env.EXPO_PUBLIC_REPL_ID;
+  return process.env.EXPO_PUBLIC_BUILD_ID || "";
 }
 
 async function startMetro(expoPublicDomain, expoPublicReplId) {

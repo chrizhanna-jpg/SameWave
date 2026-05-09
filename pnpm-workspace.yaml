@@ -16,7 +16,7 @@
 # passed (e.g. an urgent security bugfix), you can add it to the
 # `minimumReleaseAgeExclude` allowlist below. Only consider doing this for
 # packages released by trusted organizations with an impeccable security
-# posture (e.g. Replit packsges, react from Meta, typescript from Microsoft). Even then,
+# posture (e.g. scoped packages like @replit npm packages, react from Meta). Even then,
 # remove the exclusion once the 1-day window has passed.
 #
 # Example:
@@ -25,9 +25,13 @@
 #     - typescript
 #
 # ============================================================================
-minimumReleaseAge: 1440
+# Set to 0 when `pnpm install` fails with ERR_PNPM_MISSING_TIME (registry metadata missing "time").
+# See https://pnpm.io/npmrc#minimum-release-age — `.npmrc` minimum-release-age=0 should align.
+minimumReleaseAge: 0
 
 minimumReleaseAgeExclude:
+  # Some registries omit "time" in packument; pnpm can still throw ERR_PNPM_MISSING_TIME.
+  - semver
   # Exclude @replit scoped packages from the minimum release age check.
   # These are published by Replit and trusted — the supply-chain attack vector
   # this setting guards against does not apply to our own packages.
@@ -41,9 +45,6 @@ packages:
   - scripts
 
 catalog:
-  '@replit/vite-plugin-cartographer': ^0.5.1
-  '@replit/vite-plugin-dev-banner': ^0.1.1
-  '@replit/vite-plugin-runtime-error-modal': ^0.0.6
   '@tailwindcss/vite': ^4.1.14
   '@tanstack/react-query': ^5.90.21
   '@types/node': ^25.3.3
@@ -68,13 +69,17 @@ catalog:
 autoInstallPeers: false
 
 onlyBuiltDependencies:
+  - '@clerk/shared'
   - '@swc/core'
+  - browser-tabs-lock
+  - core-js
   - esbuild
   - msw
+  - protobufjs
   - unrs-resolver
 
 overrides:
-  # replit uses linux-x64 only, we can exclude all other platforms
+  # Prefer linux-x64 esbuild/lightningcss/rollup natives in linux CI images; exclude unused platforms.
   "esbuild>@esbuild/darwin-arm64": "-"
   "esbuild>@esbuild/darwin-x64": "-"
   "esbuild>@esbuild/freebsd-arm64": "-"
@@ -157,3 +162,10 @@ overrides:
   # drizzle-kit uses esbuild internally on an older version that's vulnerable, this overrides it
   "@esbuild-kit/esm-loader": "npm:tsx@^4.21.0"
   esbuild: "0.27.3"
+
+allowBuilds:
+  '@clerk/shared': true
+  browser-tabs-lock: true
+  core-js: true
+  esbuild: true
+  protobufjs: true

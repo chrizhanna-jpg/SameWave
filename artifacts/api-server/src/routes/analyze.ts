@@ -1,6 +1,8 @@
 import { Router, type IRouter } from "express";
 import OpenAI from "openai";
 
+import { getOpenAIEnv } from "../lib/openaiEnv";
+
 const router: IRouter = Router();
 
 // Vocabulary the model is allowed to choose from. Keep this list in sync with
@@ -94,9 +96,10 @@ const ALLOWED_HOSTS = new Set([
   "unsplash.com",
 ]);
 
+const openaiEnv = getOpenAIEnv();
 const ai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "",
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  apiKey: openaiEnv.apiKey,
+  ...(openaiEnv.baseURL ? { baseURL: openaiEnv.baseURL } : {}),
 });
 
 type AnalyzeBody = {

@@ -8,6 +8,9 @@
     "seed:revenuecat": "tsx ./src/seedRevenueCat.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
+  "dependencies": {
+    "@replit/revenuecat-sdk": "4.0.0"
+  },
   "devDependencies": {
     "@types/node": "catalog:",
     "tsx": "catalog:"

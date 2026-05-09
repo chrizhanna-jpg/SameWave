@@ -1,8 +1,9 @@
-import express, { type Express } from "express";
+import express, { type Express, type Request, type Response } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import { clerkMiddleware } from "@clerk/express";
 import { publishableKeyFromHost } from "@clerk/shared/keys";
+import { HealthCheckResponse } from "@workspace/api-zod";
 import router from "./routes";
 import legalRouter from "./routes/legal";
 import { logger } from "./lib/logger";
@@ -13,6 +14,14 @@ import {
 } from "./middlewares/clerkProxyMiddleware";
 
 const app: Express = express();
+
+// Liveness only — registered before Clerk, logging, or DB so /api/healthz works
+// on hosts (e.g. Render) even when CLERK_* is not set yet.
+const sendHealthOk = (_req: Request, res: Response) => {
+  res.json(HealthCheckResponse.parse({ status: "ok" }));
+};
+app.get("/healthz", sendHealthOk);
+app.get("/api/healthz", sendHealthOk);
 
 app.use(
   pinoHttp({

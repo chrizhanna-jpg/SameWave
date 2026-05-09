@@ -58,8 +58,8 @@ export default function SignInScreen() {
         strategy: "oauth_google",
         // Pass `scheme` only — DO NOT add a `path`. Resolves to
         // `same-same://` in production builds, which matches Clerk's
-        // official Expo example (Replit-managed Clerk auto-allows the
-        // app's root scheme as a redirect URL for native apps; sub-paths
+        // official Expo example; many Clerk setups auto-allow the app’s
+        // root scheme as a redirect URL for native apps. Sub-paths
         // like `same-same://sign-in` are NOT auto-allowed and Clerk
         // rejects them once the Frontend API is reached through the
         // production proxy with "redirect URL does not match an
