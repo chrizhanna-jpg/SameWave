@@ -1,6 +1,4 @@
-import OpenAI from "openai";
-
-import { getOpenAIEnv } from "./openaiEnv";
+import { createOpenAIClient } from "./openaiEnv";
 
 // Photo analysis (theme + tags + shapes + subjects) was previously inline
 // in routes/analyze.ts. We extract it here so the upload endpoint can
@@ -99,12 +97,6 @@ Return FOUR things:
 Return ONLY this JSON, no prose, no markdown:
 {"theme": "...", "tags": ["..."], "shapes": ["..."], "subjects": ["..."]}`;
 
-const openaiEnv = getOpenAIEnv();
-const ai = new OpenAI({
-  apiKey: openaiEnv.apiKey,
-  ...(openaiEnv.baseURL ? { baseURL: openaiEnv.baseURL } : {}),
-});
-
 export async function analyzePhoto(args: {
   base64: string;
   mimeType: string;
@@ -114,6 +106,10 @@ export async function analyzePhoto(args: {
   shapes: string[];
   subjects: string[];
 }> {
+  const ai = createOpenAIClient();
+  if (!ai) {
+    return { theme: "", tags: [], shapes: [], subjects: [] };
+  }
   const response = await ai.chat.completions.create({
     model: "gpt-4o",
     max_tokens: 8192,
@@ -202,6 +198,10 @@ export async function extractObjectTags(args: {
   base64: string;
   mimeType: string;
 }): Promise<{ objects: string[]; shapes: string[] }> {
+  const ai = createOpenAIClient();
+  if (!ai) {
+    return { objects: [], shapes: [] };
+  }
   const response = await ai.chat.completions.create({
     model: "gpt-4o",
     max_tokens: 4096,

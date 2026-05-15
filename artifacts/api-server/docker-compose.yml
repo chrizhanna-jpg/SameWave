@@ -1,0 +1,23 @@
+# Local Postgres for SameWave api-server (dev). From this directory:
+#   docker compose up -d
+# DATABASE_URL in .env must match POSTGRES_* below.
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: samesame-postgres
+    environment:
+      POSTGRES_USER: samesame
+      POSTGRES_PASSWORD: samesame_dev
+      POSTGRES_DB: samesame
+    ports:
+      - "5432:5432"
+    volumes:
+      - samesame_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U samesame -d samesame"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  samesame_pgdata:

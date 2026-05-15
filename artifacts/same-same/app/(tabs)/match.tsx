@@ -45,6 +45,7 @@ import {
   markPhotosSeen,
   matchByObject,
 } from "@/utils/api";
+import { requestAtlasRefresh } from "@/utils/atlasHub";
 import { resolveMusicUrl } from "@/data/musicLibrary";
 import {
   THEME_RELEVANCE_TARGET,
@@ -427,6 +428,14 @@ export default function SwipeScreen() {
     return uploadedUtcDay === todayUtcDay ? p : undefined;
   }, [myPhotos]);
 
+  /** Latest today's-photo backend id for async vote callbacks (echo retry). */
+  const todayBackendIdRef = useRef<string | undefined>(undefined);
+  const echoRetryPhotoIdsRef = useRef<Set<string>>(new Set());
+  todayBackendIdRef.current =
+    typeof todaysPhoto?.backendId === "string" && todaysPhoto.backendId.length > 0
+      ? todaysPhoto.backendId
+      : undefined;
+
   // User's photo is LOCKED for the session — only changes when they upload a new one
   const myPhotoData = React.useMemo<{
     uri: string;
@@ -588,6 +597,29 @@ export default function SwipeScreen() {
   // row. Populated when realPool is loaded; missing entries (e.g. curated
   // SAMPLE_PHOTOS, synthetic candidates) skip the API call cleanly.
   const realPhotoIdsRef = useRef<Map<string, string>>(new Map());
+
+  const runEchoVoteRetry = useCallback((targetPhotoId: string, bid: string) => {
+    void votePhoto(targetPhotoId, "same", bid).then((retry) => {
+      if (retry.ok) requestAtlasRefresh();
+      if (retry.echo === "pending" || retry.echo === "mutual") {
+        refreshEchoes();
+      }
+    });
+  }, [refreshEchoes]);
+
+  // If the user swiped "same" before POST /photos returned an id, the first
+  // vote could not attach a voter photo and the echo stayed skipped. Replay
+  // once today's photo has a backendId so Atlas / inbox see the ripple.
+  useEffect(() => {
+    const bid = todayBackendIdRef.current;
+    if (typeof bid !== "string" || bid.length === 0) return;
+    const targets = [...echoRetryPhotoIdsRef.current];
+    if (targets.length === 0) return;
+    echoRetryPhotoIdsRef.current.clear();
+    for (const id of targets) {
+      runEchoVoteRetry(id, bid);
+    }
+  }, [todaysPhoto?.backendId, runEchoVoteRetry]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1038,6 +1070,9 @@ export default function SwipeScreen() {
           }) ?? undefined,
         };
         const liveId = realPhotoIdsRef.current.get(snapshotPhoto.uri);
+        const hadNoVoterPhotoId =
+          typeof todaysPhoto?.backendId !== "string" ||
+          todaysPhoto.backendId.length === 0;
         // For "same" verdicts attach a stats payload so the reveal screen
         // can show "X others matched on this in the last hour". We seed it
         // immediately with deterministic sample numbers so the UI never
@@ -1067,6 +1102,20 @@ export default function SwipeScreen() {
             voterPhotoId,
           )
             .then((result) => {
+              if (result.ok) requestAtlasRefresh();
+              if (
+                hadNoVoterPhotoId &&
+                result.ok &&
+                dir === "right" &&
+                result.echo === "skipped"
+              ) {
+                const bidNow = todayBackendIdRef.current;
+                if (typeof bidNow === "string" && bidNow.length > 0) {
+                  runEchoVoteRetry(liveId, bidNow);
+                } else {
+                  echoRetryPhotoIdsRef.current.add(liveId);
+                }
+              }
               if (result.echo === "pending" || result.echo === "mutual") {
                 // Refresh local echo lists so the inbox + bell catch up.
                 refreshEchoes();
@@ -1100,7 +1149,17 @@ export default function SwipeScreen() {
         }
       });
     },
-    [sharedTags, myPhotoData.uploadedAt, pan.x, cardScale, loadNextCandidate, addMatch, myCountryName]
+    [
+      sharedTags,
+      myPhotoData.uploadedAt,
+      pan.x,
+      cardScale,
+      loadNextCandidate,
+      addMatch,
+      myCountryName,
+      todaysPhoto?.backendId,
+      runEchoVoteRetry,
+    ]
   );
 
   // Keep the ref pointing at the latest loadNextCandidate so the focus
@@ -1157,13 +1216,18 @@ export default function SwipeScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <OceanShimmer />
       <View style={[styles.header, { paddingTop: topPadding + 8 }]}>
-        <View>
+        <View style={{ flex: 1, marginRight: 12, minWidth: 0 }}>
           <EchoLogo
             size="sm"
             color={colors.foreground}
             taglineColor={colors.mutedForeground}
           />
-          <Text style={[styles.subtitle, { color: colors.mutedForeground, marginTop: 4 }]}>
+          <Text
+            style={[
+              styles.subtitle,
+              { color: colors.mutedForeground, marginTop: 4 },
+            ]}
+          >
             {streakCount > 0 ? `${streakCount} matches` : "Find your similar"}
           </Text>
         </View>
@@ -1203,25 +1267,17 @@ export default function SwipeScreen() {
         </View>
       </View>
 
-      <View style={[styles.challengeBar, { borderColor: colors.border }]}>
-        <Text style={styles.challengeEmoji}>
-          {hasUploadedPhoto ? themeEmoji : todaysChallenge.emoji}
-        </Text>
-        <Text style={[styles.challengeText, { color: colors.mutedForeground }]}>
-          {hasUploadedPhoto ? "Matching: " : "Today's prompt: "}
-          <Text style={{ color: colors.foreground, fontFamily: "Inter_600SemiBold" }}>
-            {hasUploadedPhoto ? themeTitle : todaysChallenge.title}
-          </Text>
-        </Text>
-        {hasUploadedPhoto && (
-          <View style={[styles.uploadedBadge, { backgroundColor: colors.teal + "22" }]}>
-            <Icon name="check" size={10} color={colors.teal} />
-            <Text style={[styles.uploadedText, { color: colors.teal }]}>
-              Your photo
+      {!hasUploadedPhoto ? (
+        <View style={[styles.challengeBar, { borderColor: colors.border }]}>
+          <Text style={styles.challengeEmoji}>{todaysChallenge.emoji}</Text>
+          <Text style={[styles.challengeText, { color: colors.mutedForeground }]}>
+            {"Today's prompt: "}
+            <Text style={{ color: colors.foreground, fontFamily: "Inter_600SemiBold" }}>
+              {todaysChallenge.title}
             </Text>
-          </View>
-        )}
-      </View>
+          </Text>
+        </View>
+      ) : null}
 
       {hasUploadedPhoto && matchedTheme !== activeTheme && (() => {
         const nearby = DAILY_CHALLENGES.find((c) => c.id === matchedTheme);
@@ -1907,6 +1963,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "Inter_400Regular",
     marginTop: 2,
+    textAlign: "left",
   },
   cameraBtn: {
     width: 44,
@@ -1928,18 +1985,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "Inter_400Regular",
     flex: 1,
-  },
-  uploadedBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
-  },
-  uploadedText: {
-    fontSize: 10,
-    fontFamily: "Inter_600SemiBold",
   },
   nearbyBar: {
     flexDirection: "row",

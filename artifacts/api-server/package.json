@@ -4,7 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "seed:atlas-global": "node ./scripts/seed-atlas-global-demo.mjs",
     "dev": "node ./scripts/dev.mjs",
+    "sync:clerk-publishable": "node ./scripts/sync-clerk-publishable.mjs",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
@@ -26,6 +30,7 @@
     "pino-http": "^10"
   },
   "devDependencies": {
+    "pg": "^8.20.0",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",

@@ -15,6 +15,7 @@ import {
   unvotePhoto,
   type ServerEcho,
 } from "@/utils/api";
+import { requestAtlasRefresh } from "@/utils/atlasHub";
 import { photoKey } from "@/utils/photoKey";
 
 export interface MatchedCountry {
@@ -80,6 +81,15 @@ export interface MyPhoto {
    * a round-trip to the server.
    */
   customAudioUrl?: string;
+}
+
+/** Fields returned from `POST /photos` to merge onto the local `MyPhoto`. */
+export interface MyPhotoUploadAck {
+  backendId: string;
+  subjects?: string[];
+  theme?: string;
+  tags?: string[];
+  musicGenre?: string | null;
 }
 
 // Module-scoped registry of URIs flagged as AI. Kept in sync with the
@@ -288,17 +298,12 @@ interface AppContextValue extends AppState {
    * trip completes; safe to call before or after the photo is consumed
    * by the swipe deck.
    *
-   * Optional `subjects` arg patches the local photo's free-form subjects
-   * with the upload-time analysis result (the authoritative one — it's
-   * what got persisted on the row /candidates ranks against). Empty /
-   * missing arrays no-op so a transient upload-time analyze failure
-   * doesn't wipe out the pre-upload subjects we already had locally.
+   * Merges the upload API response onto the local photo: `subjects`,
+   * `theme`, `tags`, and `musicGenre` come from the server's upload-time
+   * analysis (and persisted row). Empty server fields no-op so we do not
+   * wipe good pre-upload client state when the server analysis failed.
    */
-  setMyPhotoBackendId: (
-    uri: string,
-    backendId: string,
-    subjects?: string[],
-  ) => void;
+  setMyPhotoBackendId: (uri: string, ack: MyPhotoUploadAck) => void;
   /**
    * Update the in-flight upload state of a local photo. Called by the
    * camera screen when POST /photos errors or returns a malformed body
@@ -889,7 +894,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (target && target.verdict === "same" && target.theirPhotoId) {
       const { theirPhotoId } = target;
       void unvotePhoto(theirPhotoId).then((ok) => {
-        if (ok) refreshEchoesRef.current?.();
+        if (ok) {
+          refreshEchoesRef.current?.();
+          requestAtlasRefresh();
+        }
       });
     }
   }, []);
@@ -953,7 +961,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       ) {
         const { theirPhotoId } = previous;
         void unvotePhoto(theirPhotoId).then((ok) => {
-          if (ok) refreshEchoesRef.current?.();
+          if (ok) {
+            refreshEchoesRef.current?.();
+            requestAtlasRefresh();
+          }
         });
       }
       return flipped;
@@ -1024,53 +1035,61 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const setMyPhotoBackendId = useCallback(
-    (uri: string, backendId: string, subjects?: string[]) => {
-      setState((prev) => {
-        let changed = false;
-        const newPhotos = prev.myPhotos.map((p) => {
-          if (p.uri !== uri) return p;
-          // Patch backendId, and (when the upload response surfaces a
-          // non-empty subjects array) also patch subjects. The pre-
-          // upload analyze pass and the upload-time analysis run the
-          // same Gemini prompt, but they are two independent calls and
-          // the upload's pass is authoritative — it is what was
-          // actually persisted to the row that /candidates ranks
-          // against. Only overwrite when we have something to overwrite
-          // with so a transient upload-time analysis failure (sentinel
-          // [], or [_failed] swapped to []) doesn't wipe the local
-          // pre-upload subjects we already had.
-          const nextSubjects =
-            subjects && subjects.length > 0 ? subjects : p.subjects;
-          if (
-            p.backendId === backendId &&
-            nextSubjects === p.subjects &&
-            p.uploadState === "ok"
-          ) {
-            return p;
-          }
-          changed = true;
-          // Backend returned an id → upload succeeded. Stamp uploadState
-          // alongside the id so the match screen's "still uploading"
-          // gate flips off without waiting for any other signal. The
-          // `as const` keeps TS from widening the literal back to
-          // `string`, which would break the MyPhoto["uploadState"]
-          // union and fail the AppState type check.
-          return {
-            ...p,
-            backendId,
-            subjects: nextSubjects,
-            uploadState: "ok" as const,
-          };
-        });
-        if (!changed) return prev;
-        const newState = { ...prev, myPhotos: newPhotos };
-        saveState(newState);
-        return newState;
+  const setMyPhotoBackendId = useCallback((uri: string, ack: MyPhotoUploadAck) => {
+    setState((prev) => {
+      let changed = false;
+      const tagsEqual = (a: string[] | undefined, b: string[] | undefined) => {
+        const aa = a ?? [];
+        const bb = b ?? [];
+        if (aa.length !== bb.length) return false;
+        return aa.every((t, i) => t === bb[i]);
+      };
+      const newPhotos = prev.myPhotos.map((p) => {
+        if (p.uri !== uri) return p;
+        const nextSubjects =
+          ack.subjects && ack.subjects.length > 0
+            ? ack.subjects
+            : (p.subjects ?? []);
+        const nextTheme =
+          typeof ack.theme === "string" && ack.theme.trim().length > 0
+            ? ack.theme.trim()
+            : p.theme;
+        const nextTags =
+          Array.isArray(ack.tags) && ack.tags.length > 0 ? ack.tags : p.tags ?? [];
+        const nextMusic =
+          typeof ack.musicGenre === "string" && ack.musicGenre.length > 0
+            ? ack.musicGenre
+            : p.musicGenre;
+        const sameSubjects =
+          (nextSubjects ?? []).length === (p.subjects ?? []).length &&
+          (nextSubjects ?? []).every((s, i) => s === (p.subjects ?? [])[i]);
+        if (
+          p.backendId === ack.backendId &&
+          sameSubjects &&
+          nextTheme === p.theme &&
+          tagsEqual(nextTags, p.tags) &&
+          nextMusic === p.musicGenre &&
+          p.uploadState === "ok"
+        ) {
+          return p;
+        }
+        changed = true;
+        return {
+          ...p,
+          backendId: ack.backendId,
+          subjects: nextSubjects,
+          theme: nextTheme,
+          tags: nextTags,
+          musicGenre: nextMusic,
+          uploadState: "ok" as const,
+        };
       });
-    },
-    [],
-  );
+      if (!changed) return prev;
+      const newState = { ...prev, myPhotos: newPhotos };
+      saveState(newState);
+      return newState;
+    });
+  }, []);
 
   const setMyPhotoUploadState = useCallback(
     (uri: string, uploadState: NonNullable<MyPhoto["uploadState"]>) => {
@@ -1412,6 +1431,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           await refreshEchoes();
           return "error" as const;
         }
+        requestAtlasRefresh();
         if (result.state === "mutual") {
           // Celebrate immediately on the responder's side. enqueueFlashEcho
           // also marks the id so the next polling refresh doesn't

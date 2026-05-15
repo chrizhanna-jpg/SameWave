@@ -28,6 +28,12 @@ export async function resolveUserFromRequest(
   req: Request,
   opts?: { countryCode?: string | null },
 ): Promise<{ id: string; authId: string } | null> {
+  // app.ts only mounts clerkMiddleware when CLERK_SECRET_KEY is set; getAuth()
+  // throws if called without it (e.g. public /api/photos/atlas with optional "mine").
+  if (!process.env.CLERK_SECRET_KEY?.trim()) {
+    return null;
+  }
+
   const auth = getAuth(req);
   const authId = auth?.userId;
   if (!authId) return null;

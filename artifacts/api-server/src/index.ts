@@ -16,11 +16,14 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-app.listen(port, (err) => {
-  if (err) {
-    logger.error({ err }, "Error listening on port");
-    process.exit(1);
-  }
+/** Default IPv4-any so phones on `http://192.168.x.x:PORT` reach this host on Windows. */
+const listenHost = process.env["LISTEN_HOST"]?.trim() || "0.0.0.0";
 
-  logger.info({ port }, "Server listening");
+const server = app.listen(port, listenHost, () => {
+  logger.info({ port, listenHost }, "Server listening");
+});
+
+server.on("error", (err) => {
+  logger.error({ err }, "Error listening on port");
+  process.exit(1);
 });

@@ -6,6 +6,8 @@ type Props = {
   color?: string;
   showTagline?: boolean;
   taglineColor?: string;
+  /** Default: left (Ripple tab header). Use `center` for centered lockups. */
+  align?: "left" | "center";
 };
 
 const SIZE_MAP = {
@@ -22,13 +24,21 @@ export function EchoLogo({
   color = "#0F172A",
   showTagline = true,
   taglineColor = "#64748B",
+  align = "left",
 }: Props) {
   const s = SIZE_MAP[size];
+  const centered = align === "center";
   return (
-    <View style={styles.wrap}>
+    <View
+      style={[
+        styles.wrap,
+        centered ? styles.wrapCentered : styles.wrapStretch,
+      ]}
+    >
       <Text
         style={[
           styles.word,
+          centered ? styles.wordCentered : styles.wordLeft,
           { color, fontSize: s.word, letterSpacing: s.letterSpacing },
         ]}
       >
@@ -38,6 +48,7 @@ export function EchoLogo({
         <Text
           style={[
             styles.tagline,
+            centered ? styles.taglineCentered : styles.taglineLeft,
             { color: taglineColor, fontSize: s.tagline, marginTop: s.gap },
           ]}
         >
@@ -50,16 +61,35 @@ export function EchoLogo({
 
 const styles = StyleSheet.create({
   wrap: {
+    alignItems: "flex-start",
+  },
+  wrapStretch: {
+    alignSelf: "stretch",
+  },
+  wrapCentered: {
     alignItems: "center",
+    alignSelf: "center",
   },
   word: {
     fontFamily: "Inter_700Bold",
+  },
+  wordLeft: {
+    textAlign: "left",
+    alignSelf: "stretch",
+  },
+  wordCentered: {
     textAlign: "center",
   },
   tagline: {
     fontFamily: "Inter_500Medium",
     letterSpacing: 1,
     textTransform: "lowercase",
+  },
+  taglineLeft: {
+    textAlign: "left",
+    alignSelf: "stretch",
+  },
+  taglineCentered: {
     textAlign: "center",
   },
 });

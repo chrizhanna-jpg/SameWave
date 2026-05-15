@@ -1,0 +1,40 @@
+{
+  "feature": "firecircle",
+  "version": 1,
+  "tileCount": 7,
+  "runtime": {
+    "layout": "Even spacing along closed Wavefire country ring (great-circle screen segments).",
+    "component": "components/FirecircleOrbit.tsx",
+    "atlasHook": "components/AtlasGlobeExperience.tsx"
+  },
+  "imageExport": {
+    "directory": "assets/firecircle/",
+    "naming": "firecircle_<userId>_64.webp (1x) and firecircle_<userId>_128.webp (2x)",
+    "privacy": "Process only on-device or in your CI from trusted API downloads. Never send user photos to third-party vision APIs.",
+    "suggestedCommands": [
+      "magick input.jpg -resize 64x64^ -gravity center -extent 64x64 -quality 82 assets/firecircle/firecircle_<userId>_64.webp",
+      "magick input.jpg -resize 128x128^ -gravity center -extent 128x128 -quality 82 assets/firecircle/firecircle_<userId>_128.webp"
+    ]
+  },
+  "audio": {
+    "directory": "assets/audio/firecircle/",
+    "stems": ["wave_loop.wav", "fire_loop.wav", "chatter_loop.wav"],
+    "baseDb": { "wave": -12, "fire": -18, "chatter": -20 },
+    "activityDuckDb": { "wave": -8, "fire": -8, "chatter": -12 },
+    "activityDuckMs": 1200,
+    "zoomOut": {
+      "thresholdScale": 0.92,
+      "gainMultiplier": 0.55,
+      "note": "Expo AV has no per-channel low-pass; zoom-out darkening approximates muffled distance."
+    },
+    "stereoPan": {
+      "mode": "focusSlot",
+      "intervalMs": 4200,
+      "implementation": "utils/firecircleAudio.ts setVolumeAsync(volume, audioPan) — pan strongest on Android MediaPlayer; iOS may ignore pan."
+    }
+  },
+  "apiFields": {
+    "atlasConnectionOptional": ["userId", "thumbnailUrl"],
+    "thumbnailRule": "Same host as getPublicApiOrigin(); relative /paths allowed."
+  }
+}

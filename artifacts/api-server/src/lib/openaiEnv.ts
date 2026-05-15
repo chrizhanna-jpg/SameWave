@@ -1,5 +1,7 @@
+import OpenAI from "openai";
+
 /**
- * Prefer standard OpenAI env names; fall back to legacy AI_INTEGRATIONS_* (Replit) names.
+ * Prefer standard OpenAI env names; fall back to legacy AI_INTEGRATIONS_* names.
  */
 
 export function getOpenAIEnv(): {
@@ -17,4 +19,14 @@ export function getOpenAIEnv(): {
     undefined;
 
   return { apiKey, baseURL };
+}
+
+/** Build a client from current `process.env` (not cached at module load). */
+export function createOpenAIClient(): OpenAI | null {
+  const { apiKey, baseURL } = getOpenAIEnv();
+  if (!apiKey) return null;
+  return new OpenAI({
+    apiKey,
+    ...(baseURL ? { baseURL } : {}),
+  });
 }

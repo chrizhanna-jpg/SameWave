@@ -2,7 +2,6 @@ import React, { useCallback } from "react";
 import {
   Image,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -19,11 +18,13 @@ import { GradientCard } from "@/components/GradientCard";
 import { PressableScale } from "@/components/PressableScale";
 import { useCountUp } from "@/hooks/useCountUp";
 import { getTodaysChallenge } from "@/data/samplePhotos";
+import { tagLabel } from "@/utils/interests";
 
 export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { matches, matchedCountries, resetOnboarding } = useApp();
+  const { matches, matchedCountries, mutualEchoes, resetOnboarding, myVibe } =
+    useApp();
   const challenge = getTodaysChallenge();
 
   useFocusEffect(
@@ -35,25 +36,34 @@ export default function HomeScreen() {
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
 
-  // Only confirmed ("same") swipes count as matches. Previously this used
+  // Only confirmed ("same") swipes count as ripples. Previously this used
   // matches.length, which inflated the number with every "different"
-  // verdict — making the home screen disagree with My Journey.
+  // verdict — making the home screen disagree with My Journey. Waves use
+  // server-backed mutual echoes (`mutualEchoes`), same as match-history.
   const totalMatches = React.useMemo(
     () => matches.filter((m) => m.verdict === "same").length,
     [matches],
   );
 
+  const totalWaves = React.useMemo(
+    () => mutualEchoes.length,
+    [mutualEchoes],
+  );
+
   const matchesAnim = useCountUp(totalMatches);
+  const wavesAnim = useCountUp(totalWaves);
   const countriesAnim = useCountUp(matchedCountries.length);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <OceanShimmer />
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={[
-          styles.scroll,
-          { paddingTop: topPadding + 16, paddingBottom: bottomPadding + 110 },
+      <View
+        style={[
+          styles.content,
+          {
+            paddingTop: topPadding + 16,
+            paddingBottom: bottomPadding + 110,
+          },
         ]}
       >
         {/* Hero — static brand lockup (matches the app icon exactly).
@@ -87,6 +97,18 @@ export default function HomeScreen() {
           <View style={[styles.statDivider, { backgroundColor: colors.borderSubtle }]} />
           <View style={styles.statItem}>
             <Text style={[styles.statNum, { color: colors.foreground }]}>
+              {wavesAnim}
+            </Text>
+            <View style={styles.statLabelRow}>
+              <Icon name="wave-glyph" size={12} color={colors.teal} />
+              <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
+                Waves
+              </Text>
+            </View>
+          </View>
+          <View style={[styles.statDivider, { backgroundColor: colors.borderSubtle }]} />
+          <View style={styles.statItem}>
+            <Text style={[styles.statNum, { color: colors.foreground }]}>
               {countriesAnim}
             </Text>
             <View style={styles.statLabelRow}>
@@ -114,6 +136,37 @@ export default function HomeScreen() {
                   </Text>
                   <Text style={[styles.challengeTitle, { color: colors.foreground }]}>
                     {challenge.title}
+                  </Text>
+                </View>
+              </View>
+              <View style={[styles.playChip, { backgroundColor: colors.primary }]}>
+                <Icon name="play" size={12} color="#fff" />
+                <Text style={styles.playChipText}>Play</Text>
+              </View>
+            </View>
+          </GradientCard>
+        </PressableScale>
+
+        <PressableScale
+          onPress={() => router.push("/(tabs)/profile")}
+          haptic="light"
+          style={styles.fullWidth}
+        >
+          <GradientCard gradient="challenge" radius="xl" elevation="md">
+            <View style={styles.challengeInner}>
+              <View style={styles.challengeLeft}>
+                <Icon name="sparkles" size={28} color={colors.foreground} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.challengeLabel, { color: colors.mutedForeground }]}>
+                    Your interests
+                  </Text>
+                  <Text style={[styles.challengeTitle, { color: colors.foreground }]}>
+                    {myVibe.length > 0
+                      ? myVibe
+                          .slice(0, 3)
+                          .map((t) => tagLabel(t))
+                          .join(" · ")
+                      : "Tap to vibe your passion"}
                   </Text>
                 </View>
               </View>
@@ -162,55 +215,15 @@ export default function HomeScreen() {
           </View>
         </PressableScale>
 
-        {/* Recent matches */}
-        {matches.length > 0 && (
-          <View style={styles.recentSection}>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-                Recent
-              </Text>
-              <PressableScale onPress={() => router.push("/(tabs)/profile")}>
-                <Text style={[styles.seeAll, { color: colors.primary }]}>
-                  See all
-                </Text>
-              </PressableScale>
-            </View>
-            {matches.slice(0, 3).map((m) => {
-              const myAgeMin = m.myPhotoUploadedAt
-                ? (Date.now() - new Date(m.myPhotoUploadedAt).getTime()) / 60000
-                : 9999;
-              const sameDay =
-                myAgeMin < 1440 && (m.theirPhotoMinutesAgo ?? 9999) < 1440;
-              return (
-                <Surface
-                  key={m.id}
-                  elevation="sm"
-                  radius="lg"
-                  style={styles.recentRow}
-                >
-                  <Text style={styles.recentFlag}>{m.theirCountryFlag}</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.recentCountry, { color: colors.foreground }]}>
-                      {m.theirCountry}
-                    </Text>
-                    <Text style={[styles.recentVerdict, { color: colors.teal }]}>
-                      Same wave{sameDay ? " · same day" : ""}
-                    </Text>
-                  </View>
-                  <Icon name="heart" size={14} color={colors.teal} />
-                </Surface>
-              );
-            })}
-          </View>
-        )}
-      </ScrollView>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scroll: {
+  content: {
+    flex: 1,
     alignItems: "center",
     paddingHorizontal: 20,
     gap: 16,
@@ -316,25 +329,6 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     letterSpacing: -0.2,
   },
-  recentSection: {
-    width: "100%",
-    gap: 8,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 2,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: -0.3,
-  },
-  seeAll: {
-    fontSize: 13,
-    fontFamily: "Inter_600SemiBold",
-  },
   tutorialBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -348,23 +342,5 @@ const styles = StyleSheet.create({
   tutorialText: {
     fontSize: 13,
     fontFamily: "Inter_500Medium",
-  },
-  recentRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    width: "100%",
-  },
-  recentFlag: { fontSize: 24 },
-  recentCountry: {
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
-  },
-  recentVerdict: {
-    fontSize: 12,
-    fontFamily: "Inter_400Regular",
-    marginTop: 1,
   },
 });

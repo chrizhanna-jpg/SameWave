@@ -6,7 +6,7 @@
 // request so the server can link any pre-sign-in photos onto this account.
 import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
-import Constants from "expo-constants";
+import Constants, { ExecutionEnvironment } from "expo-constants";
 import { useSSO } from "@clerk/expo";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
@@ -20,8 +20,54 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { postDebugSessionLog } from "@/utils/debugSessionLog";
 
 WebBrowser.maybeCompleteAuthSession();
+
+function isStandaloneOrBareApp(): boolean {
+  return (
+    Constants.executionEnvironment === ExecutionEnvironment.Standalone ||
+    Constants.executionEnvironment === ExecutionEnvironment.Bare
+  );
+}
+
+/**
+ * Must match Clerk Dashboard → Native applications → “Allowlist for mobile SSO redirect”.
+ *
+ * Clerk expects `{android.package|ios.bundleIdentifier}://callback` (two slashes after the scheme).
+ * `AuthSession.makeRedirectUri` delegates to `Linking.createURL`, which without `isTripleSlashed`
+ * produces `scheme:/callback` (single slash) — that string does **not** match the allowlist and
+ * breaks Google SSO on release builds from the Play Store while dev/Expo Go paths still look fine.
+ */
+function getGoogleSsoRedirectUrl(): string {
+  if (isStandaloneOrBareApp()) {
+    if (Platform.OS === "android") {
+      const pkg = Constants.expoConfig?.android?.package ?? "app.echo.samesame";
+      return `${pkg}://callback`;
+    }
+    if (Platform.OS === "ios") {
+      const bid =
+        Constants.expoConfig?.ios?.bundleIdentifier ?? "app.echo.samesame";
+      return `${bid}://callback`;
+    }
+  }
+  return AuthSession.makeRedirectUri(
+    Platform.OS === "android"
+      ? {
+          scheme:
+            Constants.expoConfig?.android?.package ?? "app.echo.samesame",
+          path: "callback",
+        }
+      : Platform.OS === "ios"
+        ? {
+            scheme:
+              Constants.expoConfig?.ios?.bundleIdentifier ??
+              "app.echo.samesame",
+            path: "callback",
+          }
+        : { scheme: "same-same" },
+  );
+}
 
 const COLORS = {
   background: "#071828",
@@ -55,6 +101,18 @@ export default function SignInScreen() {
     setBusy(true);
     setError(null);
     try {
+      const redirectUrl = getGoogleSsoRedirectUrl();
+      // #region agent log
+      postDebugSessionLog({
+        hypothesisId: "H-G1",
+        location: "sign-in.tsx:onPressGoogle",
+        message: "google sso start",
+        data: {
+          platform: Platform.OS,
+          redirectHost: redirectUrl.split("://")[0] ?? "",
+        },
+      });
+      // #endregion
       const { createdSessionId, setActive } = await startSSOFlow({
         strategy: "oauth_google",
         // Clerk's native SSO allowlist defaults to `{bundleId}://callback`.
@@ -62,22 +120,7 @@ export default function SignInScreen() {
         // Android package id as scheme matches Clerk + Expo docs.
         // `app.json` lists both schemes so deep links keep working.
         // Expo Go still rewrites makeRedirectUri for dev tunnels.
-        redirectUrl: AuthSession.makeRedirectUri(
-          Platform.OS === "android"
-            ? {
-                scheme:
-                  Constants.expoConfig?.android?.package ?? "app.echo.samesame",
-                path: "callback",
-              }
-            : Platform.OS === "ios"
-              ? {
-                  scheme:
-                    Constants.expoConfig?.ios?.bundleIdentifier ??
-                    "app.echo.samesame",
-                  path: "callback",
-                }
-              : { scheme: "same-same" },
-        ),
+        redirectUrl,
       });
       if (createdSessionId && setActive) {
         // Call setActive with only the session param — the `navigate`
@@ -89,15 +132,42 @@ export default function SignInScreen() {
         // Route through "/" (index.tsx) NOT directly to "/(tabs)" so
         // the tutorial gate still runs for first-time sign-ins.
         await setActive({ session: createdSessionId });
+        // #region agent log
+        postDebugSessionLog({
+          hypothesisId: "H-Gok",
+          location: "sign-in.tsx:onPressGoogle",
+          message: "google sso setActive ok",
+          data: {},
+        });
+        // #endregion
         router.replace("/");
       } else {
         setError("Sign-in didn't complete. Please try again.");
       }
     } catch (e) {
-      setError(
+      const base =
         e instanceof Error
           ? e.message
-          : "Couldn't sign in. Check your connection and try again.",
+          : "Couldn't sign in. Check your connection and try again.";
+      // #region agent log
+      postDebugSessionLog({
+        hypothesisId: "H-Gerr",
+        location: "sign-in.tsx:onPressGoogle",
+        message: "google sso caught",
+        data: {
+          errKind: e instanceof Error ? e.name : "non-Error",
+          msgLen: base.length,
+          msgPreview: base.slice(0, 280),
+        },
+      });
+      // #endregion
+      const isRedirectMismatch =
+        /authorized redirect uri/i.test(base) ||
+        /redirect url.*does not match/i.test(base);
+      setError(
+        isRedirectMismatch
+          ? `${base}\n\nAdd this exact URL in Clerk → Native applications → Allowlist for mobile SSO redirect:\n${getGoogleSsoRedirectUrl()}`
+          : base,
       );
     } finally {
       setBusy(false);

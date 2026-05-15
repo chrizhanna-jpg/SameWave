@@ -74,8 +74,9 @@ Run on at least one Android physical device and one iOS device/simulator.
   - Data deletion: `https://<host>/api/data-deletion` or `https://<host>/data-deletion` (both work).
   - Terms: `https://<host>/api/terms` or `https://<host>/terms`.
   - CSAE: `https://<host>/api/csae` or `https://<host>/csae`.
-  Paste the **exact** URL into Play Console **Policy** / **Data safety** fields — old hosts (e.g. Replit) will fail review if still listed.
-- [ ] `GET /api/health` returns healthy status in deployed environment.
+  Paste the **exact** URL into Play Console **Policy** / **Data safety** fields — old or wrong hosts will fail review if still listed.
+- [ ] `GET /api/health` or `GET /api/healthz` returns healthy status in deployed environment.
+- [ ] `pnpm preflight:closed-test` passes (checks `eas.json`, `versionCode`, and Render `/api/public/backend-status`).
 - [ ] Candidate API excludes own/voted/reported/expired photos.
 - [ ] Large image uploads stay within current payload limits.
 - [ ] Clerk proxy path responds in production: `/api/__clerk/*`.
@@ -93,6 +94,14 @@ Run on at least one Android physical device and one iOS device/simulator.
 - [ ] Keep previous production artifact/release note handy.
 - [ ] Define rollback trigger (for example auth failure rate or crash spike).
 - [ ] Confirm who executes rollback and where it is documented.
+
+## Only you can fix (not in this repo)
+
+- [ ] **Render** environment: `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY` (same `pk_test` / `sk_test` pair as `eas.json`), `DATABASE_URL`, `OPENAI_API_KEY` if using analyze — see `artifacts/api-server/.env.render.example`.
+- [ ] **Google Play** closed track: publish release, add testers.
+- [ ] **Google Sign-In**: Play **App signing** SHA-1 + SHA-256 in Google Cloud Android OAuth client (`app.echo.samesame`); Clerk allowlist `app.echo.samesame://callback`.
+- [ ] **RevenueCat** (optional for core app; needed for £1 Pro): Google Play service account + product linked to entitlement `pro`.
+- [ ] **EAS build**: `eas build --platform android --profile production` after bumping `versionCode`.
 
 ## 8) Sign-off
 

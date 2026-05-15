@@ -1,6 +1,7 @@
 /**
  * Windows-friendly dev entry: sets NODE_ENV without cross-env, preserves cwd=api-server.
  */
+import { config as loadDotenv } from "dotenv";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +9,7 @@ import { fileURLToPath } from "node:url";
 process.env.NODE_ENV = "development";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+loadDotenv({ path: path.join(root, ".env") });
 
 // Never use shell: true with paths under "C:\Program Files\..." — cmd splits on the space
 // and you get `'C:\Program' is not recognized`.

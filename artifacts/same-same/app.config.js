@@ -1,5 +1,5 @@
 /**
- * Dynamic Expo config: derives expo-router `origin` from your API env (no Replit host).
+ * Dynamic Expo config: derives expo-router `origin` from your API env.
  * Static fields stay in app.json.
  */
 const appJson = require("./app.json");

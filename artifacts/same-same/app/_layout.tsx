@@ -11,13 +11,11 @@ import {
   useAuth,
 } from "@clerk/expo";
 import { tokenCache } from "@clerk/expo/token-cache";
-import { Redirect, Stack, useSegments } from "expo-router";
+import { Redirect, router, Stack, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-
-import { router } from "expo-router";
 import {
   ActivityIndicator,
   Alert,
@@ -32,6 +30,7 @@ import { ToastHost } from "@/components/ToastHost";
 import { AppProvider, useApp } from "@/context/AppContext";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { setAuthTokenGetter } from "@/utils/api";
+import { postDebugSessionLog } from "@/utils/debugSessionLog";
 import {
   initializeRevenueCat,
   SubscriptionProvider,
@@ -227,6 +226,21 @@ const bootGateStyles = StyleSheet.create({
     fontWeight: "700",
   },
 });
+
+/** Headless/native Clerk resolves post-auth redirects via `routerReplace`/`routerPush`. */
+function normalizeClerkRouterTarget(to: string): string {
+  const t = to.trim();
+  if (!t) return "/";
+  try {
+    if (/^https?:\/\//i.test(t)) {
+      const u = new URL(t);
+      return `${u.pathname || "/"}${u.search}`;
+    }
+  } catch {
+    /* ignore */
+  }
+  return t.startsWith("/") ? t : `/${t}`;
+}
 
 // Wires the API client's bearer-token getter to Clerk's session token.
 // This component MUST mount above AppProvider so the getter is in place
@@ -438,6 +452,32 @@ function RootLayoutWithClerk() {
         publishableKey={CLERK_PUBLISHABLE_KEY}
         tokenCache={tokenCache}
         proxyUrl={CLERK_PROXY_URL}
+        signInFallbackRedirectUrl="/"
+        signUpFallbackRedirectUrl="/"
+        routerReplace={(to) => {
+          const path = normalizeClerkRouterTarget(to);
+          // #region agent log
+          postDebugSessionLog({
+            hypothesisId: "H-G-router",
+            location: "_layout.tsx:ClerkProvider.routerReplace",
+            message: "clerk routerReplace",
+            data: { rawLen: to.length, pathLen: path.length },
+          });
+          // #endregion
+          router.replace(path as never);
+        }}
+        routerPush={(to) => {
+          const path = normalizeClerkRouterTarget(to);
+          // #region agent log
+          postDebugSessionLog({
+            hypothesisId: "H-G-router",
+            location: "_layout.tsx:ClerkProvider.routerPush",
+            message: "clerk routerPush",
+            data: { rawLen: to.length, pathLen: path.length },
+          });
+          // #endregion
+          router.push(path as never);
+        }}
       >
         <ClerkBootGate onRetry={retryClerk}>
           {/* Wire the bearer-token getter BEFORE AppProvider mounts, so

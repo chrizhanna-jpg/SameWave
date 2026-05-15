@@ -73,12 +73,32 @@ function getRevenueCatApiKey(): string | undefined {
   return REVENUECAT_TEST_API_KEY;
 }
 
-// Module-scoped flag so initializeRevenueCat is safe to call more than
-// once (Fast Refresh in dev re-runs the root layout's useEffect).
+type RcBootstrapResult = {
+  offerings: Awaited<ReturnType<typeof Purchases.getOfferings>>;
+  info: CustomerInfo;
+};
+type RcBootstrapPromise = Promise<RcBootstrapResult>;
+
+// `globalThis` survives Fast Refresh; module `let` does not — without this,
+// `initializeRevenueCat` calls `Purchases.configure()` again and overlaps
+// bootstrap requests (Metro log: "configure() called more than once", 7638).
+const G = globalThis as typeof globalThis & {
+  __sameWaveRcConfigured?: boolean;
+  __sameWaveRcBootstrap?: RcBootstrapPromise | null;
+};
+
+// Module-scoped flag so initializeRevenueCat is safe within one JS load.
 let configured = false;
 
+async function fetchOfferingsAndCustomerInfoSequential() {
+  // Must be sequential — the native SDK rejects overlapping customer-info work.
+  const offerings = await Purchases.getOfferings();
+  const info = await Purchases.getCustomerInfo();
+  return { offerings, info };
+}
+
 export function initializeRevenueCat(): void {
-  if (configured) return;
+  if (configured || G.__sameWaveRcConfigured) return;
   const apiKey = getRevenueCatApiKey();
   if (!apiKey) {
     throw new Error(
@@ -90,6 +110,7 @@ export function initializeRevenueCat(): void {
   );
   Purchases.configure({ apiKey });
   configured = true;
+  G.__sameWaveRcConfigured = true;
 }
 
 type SubscriptionContextValue = {
@@ -149,10 +170,15 @@ export function SubscriptionProvider({
 
     (async () => {
       try {
-        const [offerings, info] = await Promise.all([
-          Purchases.getOfferings(),
-          Purchases.getCustomerInfo(),
-        ]);
+        if (!G.__sameWaveRcBootstrap) {
+          G.__sameWaveRcBootstrap = fetchOfferingsAndCustomerInfoSequential().catch(
+            (err) => {
+              G.__sameWaveRcBootstrap = null;
+              throw err;
+            },
+          );
+        }
+        const { offerings, info } = await G.__sameWaveRcBootstrap;
         if (cancelled) return;
         setOffering(offerings.current ?? null);
         setCustomerInfo(info);

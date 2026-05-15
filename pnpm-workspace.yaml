@@ -16,7 +16,7 @@
 # passed (e.g. an urgent security bugfix), you can add it to the
 # `minimumReleaseAgeExclude` allowlist below. Only consider doing this for
 # packages released by trusted organizations with an impeccable security
-# posture (e.g. scoped packages like @replit npm packages, react from Meta). Even then,
+# posture (e.g. scoped registry packages, react from Meta). Even then,
 # remove the exclusion once the 1-day window has passed.
 #
 # Example:
@@ -32,10 +32,9 @@ minimumReleaseAge: 0
 minimumReleaseAgeExclude:
   # Some registries omit "time" in packument; pnpm can still throw ERR_PNPM_MISSING_TIME.
   - semver
-  # Exclude @replit scoped packages from the minimum release age check.
-  # These are published by Replit and trusted — the supply-chain attack vector
-  # this setting guards against does not apply to our own packages.
+  # Scoped RevenueCat helper used by workspace scripts; allow fresh publishes.
   - '@replit/*'
+  # Legacy sync package name (allowlist only; not required at install if unused).
   - stripe-replit-sync
 
 packages:

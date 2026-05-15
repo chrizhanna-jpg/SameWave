@@ -1,4 +1,4 @@
-# Android Studio / device builds (no Replit)
+# Android Studio / device builds
 
 ## 1) Backend locally or on your VPS
 
@@ -47,4 +47,4 @@ Use `production` for Play internal/closed track AABs when ready.
 
 ## 5) RevenueCat seed script (optional)
 
-`pnpm --filter @workspace/scripts run seed:revenuecat` needs **`REVENUECAT_SECRET_API_KEY`** (project secret key from the RevenueCat dashboard). The helper package name is scoped `@replit/*` but it only talks to **RevenueCat’s** API, not Replit.
+`pnpm --filter @workspace/scripts run seed:revenuecat` needs **`REVENUECAT_SECRET_API_KEY`** (project secret key from the RevenueCat dashboard). The workspace seed script uses a small RevenueCat API client dependency; it only talks to **RevenueCat’s** API.
