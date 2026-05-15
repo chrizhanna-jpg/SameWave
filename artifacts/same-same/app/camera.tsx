@@ -866,25 +866,6 @@ export default function CameraScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <TouchableOpacity
-          style={[styles.challengeCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-          activeOpacity={0.85}
-          onPress={() => useQuickTheme(challenge.title.toLowerCase())}
-        >
-          <Text style={styles.challengeEmoji}>{challenge.emoji}</Text>
-          <View style={styles.challengeText}>
-            <Text style={[styles.challengeTitle, { color: colors.foreground }]}>
-              Today's idea
-            </Text>
-            <Text style={[styles.challengeName, { color: colors.primary }]}>
-              {challenge.title}
-            </Text>
-            <Text style={[styles.challengeDesc, { color: colors.mutedForeground }]}>
-              {challenge.description}
-            </Text>
-          </View>
-        </TouchableOpacity>
-
         {submitted ? (
           <View style={styles.successContainer}>
             <View style={[styles.successIcon, { backgroundColor: colors.teal + "22" }]}>
@@ -1499,35 +1480,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 8,
     gap: 20,
-  },
-  challengeCard: {
-    flexDirection: "row",
-    gap: 16,
-    padding: 16,
-    borderRadius: 20,
-    borderWidth: 1,
-    alignItems: "center",
-  },
-  challengeEmoji: {
-    fontSize: 36,
-  },
-  challengeText: {
-    flex: 1,
-    gap: 2,
-  },
-  challengeTitle: {
-    fontSize: 11,
-    fontFamily: "Inter_500Medium",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  challengeName: {
-    fontSize: 18,
-    fontFamily: "Inter_700Bold",
-  },
-  challengeDesc: {
-    fontSize: 13,
-    fontFamily: "Inter_400Regular",
   },
   pickOptions: {
     gap: 12,

@@ -220,7 +220,9 @@ export async function analyzePhoto(input: {
             base !== primaryBase
               ? ` (retried after ${primaryBase})`
               : isLocalDevApiOrigin(base)
-                ? "\nTip: add OPENAI_API_KEY to artifacts/api-server/.env on your PC, or set EXPO_PUBLIC_API_URL to your Render host."
+                ? getStagedProductionApiOrigin()
+                  ? ""
+                  : "\nTip: set EXPO_PUBLIC_API_URL=https://samewave.onrender.com (or EXPO_PUBLIC_HOSTED_API_URL) while keeping EXPO_PUBLIC_DEV_API_URL on your LAN IP, then restart Expo (`pnpm dev`). Or add OPENAI_API_KEY to artifacts/api-server/.env."
                 : ""
           }`
         : "";

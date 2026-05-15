@@ -176,7 +176,9 @@ if (clerkSecretKey) {
 // Populate req.auth from the Bearer token sent by the Expo client.
 // Routes use resolveUserFromRequest() to translate auth.userId → users row.
 
-app.use("/api", router);
+// Play / store policy pages — no auth; must stay before clerkMiddleware so a
+// misconfigured Clerk secret does not turn /api/privacy into 500 for crawlers.
 app.use("/api", legalRouter);
+app.use("/api", router);
 
 export default app;

@@ -226,8 +226,15 @@ export function isLocalDevApiOrigin(origin: string): boolean {
 /**
  * Hosted API from env (Render, etc.) — used in dev when LAN api-server lacks OPENAI_API_KEY.
  * Ignores local http://192.168… URLs in EXPO_PUBLIC_API_URL.
+ * Optional `EXPO_PUBLIC_HOSTED_API_URL` when both DEV and API_URL point at LAN.
  */
 export function getStagedProductionApiOrigin(): string | null {
+  const hostedOnly = process.env.EXPO_PUBLIC_HOSTED_API_URL?.trim();
+  if (hostedOnly) {
+    const normalized = stripTrailingSlashes(hostedOnly);
+    if (!isLocalDevApiOrigin(normalized)) return normalized;
+  }
+
   const apiUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
   if (apiUrl) {
     const normalized = stripTrailingSlashes(apiUrl);

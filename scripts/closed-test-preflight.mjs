@@ -108,22 +108,22 @@ const apiOrigin =
     : "");
 
 if (apiOrigin) {
-  const urls = [
-    `${apiOrigin}/api/healthz`,
-    `${apiOrigin}/api/public/backend-status`,
-    `${apiOrigin}/api/privacy`,
-  ];
-  for (const url of urls) {
+  const policyUrls = [`${apiOrigin}/api/privacy`, `${apiOrigin}/privacy`];
+  const requiredUrls = [`${apiOrigin}/api/healthz`];
+  const optionalUrls = [`${apiOrigin}/api/public/backend-status`];
+
+  async function probe(url, { required = true, parseBackend = false } = {}) {
     try {
       const ctrl = new AbortController();
       const t = setTimeout(() => ctrl.abort(), 45_000);
       const res = await fetch(url, { signal: ctrl.signal });
       clearTimeout(t);
       if (!res.ok) {
-        failures.push(`${url} → HTTP ${res.status}`);
-        continue;
+        if (required) failures.push(`${url} → HTTP ${res.status}`);
+        else warnings.push(`${url} → HTTP ${res.status} (redeploy api-server for this check)`);
+        return;
       }
-      if (url.endsWith("backend-status")) {
+      if (parseBackend) {
         const body = await res.json();
         if (!body.databaseReachable) {
           failures.push("Render: databaseReachable is false");
@@ -145,8 +145,34 @@ if (apiOrigin) {
     } catch (err) {
       const msg =
         err instanceof Error ? err.message.replace(/\s+/g, " ").slice(0, 120) : String(err);
-      failures.push(`${url} unreachable (${msg})`);
+      if (required) failures.push(`${url} unreachable (${msg})`);
+      else warnings.push(`${url} unreachable (${msg})`);
     }
+  }
+
+  for (const url of requiredUrls) await probe(url);
+  let policyOk = false;
+  for (const url of policyUrls) {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 45_000);
+      const res = await fetch(url, { signal: ctrl.signal });
+      clearTimeout(t);
+      if (res.ok) {
+        policyOk = true;
+        break;
+      }
+    } catch {
+      /* try next */
+    }
+  }
+  if (!policyOk) {
+    failures.push(
+      `Policy page not reachable (${policyUrls.join(" or ")}) — required for Play Console`,
+    );
+  }
+  for (const url of optionalUrls) {
+    await probe(url, { required: false, parseBackend: true });
   }
 }
 

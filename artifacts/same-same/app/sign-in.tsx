@@ -4,9 +4,7 @@
 // is only used as a stable account anchor so photos and country survive
 // reinstalls. The legacy device-id is still sent on the first authenticated
 // request so the server can link any pre-sign-in photos onto this account.
-import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
-import Constants, { ExecutionEnvironment } from "expo-constants";
 import { useSSO } from "@clerk/expo";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
@@ -20,54 +18,13 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  formatClerkRedirectAllowlistHint,
+  getGoogleSsoRedirectUrl,
+} from "@/utils/googleSsoRedirect";
 import { postDebugSessionLog } from "@/utils/debugSessionLog";
 
 WebBrowser.maybeCompleteAuthSession();
-
-function isStandaloneOrBareApp(): boolean {
-  return (
-    Constants.executionEnvironment === ExecutionEnvironment.Standalone ||
-    Constants.executionEnvironment === ExecutionEnvironment.Bare
-  );
-}
-
-/**
- * Must match Clerk Dashboard → Native applications → “Allowlist for mobile SSO redirect”.
- *
- * Clerk expects `{android.package|ios.bundleIdentifier}://callback` (two slashes after the scheme).
- * `AuthSession.makeRedirectUri` delegates to `Linking.createURL`, which without `isTripleSlashed`
- * produces `scheme:/callback` (single slash) — that string does **not** match the allowlist and
- * breaks Google SSO on release builds from the Play Store while dev/Expo Go paths still look fine.
- */
-function getGoogleSsoRedirectUrl(): string {
-  if (isStandaloneOrBareApp()) {
-    if (Platform.OS === "android") {
-      const pkg = Constants.expoConfig?.android?.package ?? "app.echo.samesame";
-      return `${pkg}://callback`;
-    }
-    if (Platform.OS === "ios") {
-      const bid =
-        Constants.expoConfig?.ios?.bundleIdentifier ?? "app.echo.samesame";
-      return `${bid}://callback`;
-    }
-  }
-  return AuthSession.makeRedirectUri(
-    Platform.OS === "android"
-      ? {
-          scheme:
-            Constants.expoConfig?.android?.package ?? "app.echo.samesame",
-          path: "callback",
-        }
-      : Platform.OS === "ios"
-        ? {
-            scheme:
-              Constants.expoConfig?.ios?.bundleIdentifier ??
-              "app.echo.samesame",
-            path: "callback",
-          }
-        : { scheme: "same-same" },
-  );
-}
 
 const COLORS = {
   background: "#071828",
@@ -166,7 +123,7 @@ export default function SignInScreen() {
         /redirect url.*does not match/i.test(base);
       setError(
         isRedirectMismatch
-          ? `${base}\n\nAdd this exact URL in Clerk → Native applications → Allowlist for mobile SSO redirect:\n${getGoogleSsoRedirectUrl()}`
+          ? `${base}\n\nIn Clerk → Native applications → Allowlist for mobile SSO redirect, add:\n${formatClerkRedirectAllowlistHint()}\n\nThis build uses: ${getGoogleSsoRedirectUrl()}`
           : base,
       );
     } finally {

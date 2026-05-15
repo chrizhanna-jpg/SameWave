@@ -99,7 +99,7 @@ Run on at least one Android physical device and one iOS device/simulator.
 
 - [ ] **Render** environment: `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY` (same `pk_test` / `sk_test` pair as `eas.json`), `DATABASE_URL`, `OPENAI_API_KEY` if using analyze — see `artifacts/api-server/.env.render.example`.
 - [ ] **Google Play** closed track: publish release, add testers.
-- [ ] **Google Sign-In**: Play **App signing** SHA-1 + SHA-256 in Google Cloud Android OAuth client (`app.echo.samesame`); Clerk allowlist `app.echo.samesame://callback`.
+- [ ] **Google Sign-In**: Play **App signing** SHA-1 + SHA-256 in Google Cloud Android OAuth client (`app.echo.samesame`); Clerk allowlist `same-same://callback`, `same-same://`, and `app.echo.samesame://callback` (see `utils/googleSsoRedirect.ts`).
 - [ ] **RevenueCat** (optional for core app; needed for £1 Pro): Google Play service account + product linked to entitlement `pro`.
 - [ ] **EAS build**: `eas build --platform android --profile production` after bumping `versionCode`.
 
