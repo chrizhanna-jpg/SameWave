@@ -1,7 +1,6 @@
 import { Router, type IRouter } from "express";
-import OpenAI from "openai";
 
-import { getOpenAIEnv } from "../lib/openaiEnv";
+import { createOpenAIClient, getOpenAIEnv } from "../lib/openaiEnv";
 
 const router: IRouter = Router();
 
@@ -96,12 +95,6 @@ const ALLOWED_HOSTS = new Set([
   "unsplash.com",
 ]);
 
-const openaiEnv = getOpenAIEnv();
-const ai = new OpenAI({
-  apiKey: openaiEnv.apiKey,
-  ...(openaiEnv.baseURL ? { baseURL: openaiEnv.baseURL } : {}),
-});
-
 type AnalyzeBody = {
   imageBase64?: unknown;
   imageUrl?: unknown;
@@ -145,9 +138,29 @@ function validateBase64(b64: string): boolean {
   return approxBytes <= MAX_IMAGE_BYTES;
 }
 
+function safeOpenAiErrorMessage(err: unknown): string {
+  if (err && typeof err === "object" && "message" in err) {
+    return String((err as { message: unknown }).message).slice(0, 240);
+  }
+  return "analysis failed";
+}
+
 router.post("/analyze-photo", async (req, res) => {
   try {
+    const openaiEnv = getOpenAIEnv();
     if (!openaiEnv.apiKey) {
+      res.status(503).json({
+        error:
+          "Photo AI is not configured on the server (set OPENAI_API_KEY).",
+        tags: [],
+        theme: "",
+        shapes: [],
+        subjects: [],
+      });
+      return;
+    }
+    const ai = createOpenAIClient();
+    if (!ai) {
       res.status(503).json({
         error:
           "Photo AI is not configured on the server (set OPENAI_API_KEY).",
@@ -280,9 +293,46 @@ router.post("/analyze-photo", async (req, res) => {
     res.json({ tags, theme, shapes, subjects });
   } catch (err) {
     req.log.error({ err }, "analyze-photo failed");
-    res
-      .status(500)
-      .json({ error: "analysis failed", tags: [], shapes: [], subjects: [] });
+    const errMsg = safeOpenAiErrorMessage(err);
+    const envSnap = getOpenAIEnv();
+    // #region agent log
+    void fetch(
+      "http://127.0.0.1:7459/ingest/e158d8b6-c760-48c9-b31a-14c8f7f50975",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Debug-Session-Id": "ac992e",
+        },
+        body: JSON.stringify({
+          sessionId: "ac992e",
+          hypothesisId: "H-openai-sdk",
+          location: "analyze.ts:catch",
+          message: "analyze-photo threw",
+          data: {
+            errMsg,
+            hasKey: Boolean(envSnap.apiKey),
+            hasBaseUrl: Boolean(envSnap.baseURL),
+          },
+          timestamp: Date.now(),
+        }),
+      },
+    ).catch(() => {});
+    // #endregion
+    const status =
+      /invalid api key|incorrect api key|authentication/i.test(errMsg)
+        ? 503
+        : 500;
+    res.status(status).json({
+      error:
+        status === 503
+          ? "Photo AI rejected the server API key — check OPENAI_API_KEY on Render."
+          : errMsg,
+      tags: [],
+      theme: "",
+      shapes: [],
+      subjects: [],
+    });
   }
 });
 

@@ -10,7 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { consumePendingCapture } from "@/utils/captureBus";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -24,6 +24,7 @@ import {
   TAG_LIBRARY,
 } from "@/data/samplePhotos";
 import { analyzePhoto, uploadPhoto } from "@/utils/api";
+import { requestAtlasRefresh } from "@/utils/atlasHub";
 import { detectPhotoOrigin, type PhotoSource } from "@/utils/photoOrigin";
 import {
   MUSIC_LIBRARY,
@@ -54,6 +55,10 @@ const MAX_RECORD_MS = 10_000;
 const RECORDING_MIME = "audio/m4a";
 
 const MAX_TAGS = 4;
+/** After this wait we still navigate to Ripple; upload still gets server AI. */
+const SUBMIT_ANALYSIS_WAIT_CAP_MS = 5000;
+/** Short beat so “posted” flashes before switching tabs (~stack transition). */
+const NAV_TO_RIPPLE_MS = 380;
 const QUICK_THEMES = [
   "morning coffee",
   "street food",
@@ -76,10 +81,30 @@ function normalizeTheme(s: string): string {
     .join(" ");
 }
 
+/** Local file / content URIs are not fetchable by the API — always send base64. */
+async function readImageAsBase64ForAnalyze(
+  asset: ImagePicker.ImagePickerAsset,
+): Promise<{ imageBase64: string; mimeType: string } | null> {
+  const mimeType = asset.mimeType ?? "image/jpeg";
+  const fromPicker = asset.base64?.replace(/^data:[^;]+;base64,/, "") ?? "";
+  if (fromPicker.length > 0) {
+    return { imageBase64: fromPicker, mimeType };
+  }
+  if (!asset.uri) return null;
+  try {
+    const imageBase64 = await FileSystem.readAsStringAsync(asset.uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    if (!imageBase64 || imageBase64.length === 0) return null;
+    return { imageBase64, mimeType };
+  } catch {
+    return null;
+  }
+}
+
 export default function CameraScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { from } = useLocalSearchParams<{ from?: string }>();
   const {
     addMyPhoto,
     setMyPhotoBackendId,
@@ -112,6 +137,8 @@ export default function CameraScreen() {
   // ref kept in sync so submit() reads the freshest value after the
   // analyzePhoto await.
   const aiSubjectsRef = useRef<string[]>([]);
+  /** Same-role as aiTagsRef: theme can update on the analyze tick before React re-renders. */
+  const aiThemeRef = useRef("");
   const [analyzing, setAnalyzing] = useState(false);
   const [showAllTags, setShowAllTags] = useState(false);
   const themeEditedRef = useRef(false);
@@ -458,6 +485,7 @@ export default function CameraScreen() {
   const resetForNewPhoto = () => {
     setSelectedTags([]);
     setAiTags([]);
+    aiThemeRef.current = "";
     setAiTheme("");
     setThemeText("");
     setThemeEdited(false);
@@ -632,23 +660,36 @@ export default function CameraScreen() {
         theme: "",
         subjects: [],
       };
+      const payload = await readImageAsBase64ForAnalyze(asset);
+      if (!payload) {
+        if (reqId === analyzeReqIdRef.current) {
+          setAnalyzing(false);
+          Alert.alert(
+            "Couldn't read the photo",
+            "SameWave needs image data to suggest theme and vibe. Try capturing again or re-pick from your library.",
+          );
+        }
+        return;
+      }
       try {
-        const r = await analyzePhoto(
-          asset.base64
-            ? { imageBase64: asset.base64, mimeType: asset.mimeType ?? "image/jpeg" }
-            : { imageUrl: asset.uri }
-        );
+        const r = await analyzePhoto(payload);
         // analyzePhoto returns shapes too — we don't surface them in
         // the camera UI, but subjects are pulled out so submit() can
         // forward them into addMyPhoto.
         result = { tags: r.tags, theme: r.theme, subjects: r.subjects };
-      } catch {
+      } catch (err) {
+        const msg =
+          err instanceof Error ? err.message : "Couldn't analyze this photo.";
+        if (reqId === analyzeReqIdRef.current) {
+          Alert.alert("Photo insights unavailable", msg);
+        }
         result = { tags: [], theme: "", subjects: [] };
       }
       // Drop stale results (user picked a newer photo while we were waiting).
       if (reqId !== analyzeReqIdRef.current) return;
       aiTagsRef.current = result.tags;
       aiSubjectsRef.current = result.subjects;
+      aiThemeRef.current = result.theme;
       setAiTags(result.tags);
       setAiTheme(result.theme);
       // Autofill the theme input only if the user hasn't typed anything yet.
@@ -669,13 +710,20 @@ export default function CameraScreen() {
 
   const submit = async () => {
     if (!selectedPhoto || submitted) return;
-    // If AI is still working, wait for it so we don't drop its tags.
+    // Wait briefly for Gemini so Ripple gets tags/themes; cap wait so slow
+    // networks don't stall the navigation (upload still merges server AI).
     if (inFlightAnalysisRef.current) {
       setSubmitted(true); // visually lock the button immediately
+      let capTimer: ReturnType<typeof setTimeout> | undefined;
+      const cap = new Promise<void>((resolve) => {
+        capTimer = setTimeout(resolve, SUBMIT_ANALYSIS_WAIT_CAP_MS);
+      });
       try {
-        await inFlightAnalysisRef.current;
+        await Promise.race([inFlightAnalysisRef.current, cap]);
       } catch {
         // ignore — we'll just submit without AI tags
+      } finally {
+        if (capTimer) clearTimeout(capTimer);
       }
     } else {
       setSubmitted(true);
@@ -689,7 +737,7 @@ export default function CameraScreen() {
     const typed = normalizeTheme(themeText);
     const finalTheme = themeEdited
       ? typed || normalizeTheme(challenge.title)
-      : normalizeTheme(aiTheme) || normalizeTheme(challenge.title);
+      : normalizeTheme(aiThemeRef.current) || normalizeTheme(challenge.title);
     // Lock in a final genre — user pick wins; otherwise AI suggestion
     // from the just-analysed theme + merged tags. We compute on submit
     // so a brief race (user submits before AI returns) still records
@@ -747,7 +795,18 @@ export default function CameraScreen() {
           if (res?.id && localUri) {
             // Success path: setMyPhotoBackendId also flips uploadState
             // to "ok" — no separate setMyPhotoUploadState call needed.
-            setMyPhotoBackendId(localUri, res.id, res.subjects);
+            // Merge theme/tags/music from the server response so Ripple
+            // (and /candidates) see the upload-time AI result even when
+            // the pre-upload /analyze-photo call failed or the user left
+            // the camera tab before it finished.
+            setMyPhotoBackendId(localUri, {
+              backendId: res.id,
+              subjects: res.subjects,
+              theme: res.theme,
+              tags: res.tags,
+              musicGenre: res.musicGenre,
+            });
+            requestAtlasRefresh();
           } else if (localUri) {
             // uploadPhoto resolved but the body was malformed / missing
             // an id — treat as failed so the match screen surfaces a
@@ -775,12 +834,11 @@ export default function CameraScreen() {
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setTimeout(() => {
-      if (from === "home") {
-        router.replace("/(tabs)/match");
-      } else {
-        router.back();
-      }
-    }, 1500);
+      // Ripple opens `/camera` without `?from=home`. `router.back()` is flaky
+      // on some Android / Expo stacks and can leave users on a stuck modal.
+      // Home flow also wants the swipe tab — always replace explicitly.
+      router.replace("/(tabs)/match");
+    }, NAV_TO_RIPPLE_MS);
   };
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;

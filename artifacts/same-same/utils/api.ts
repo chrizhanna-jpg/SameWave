@@ -1,6 +1,11 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { getPublicApiOrigin } from "@/utils/publicEnv";
+import { postDebugSessionLog } from "@/utils/debugSessionLog";
+import {
+  getPublicApiOrigin,
+  getStagedProductionApiOrigin,
+  isLocalDevApiOrigin,
+} from "@/utils/publicEnv";
 
 // Base URL for the API server (absolute origin, no trailing slash).
 // Configure `EXPO_PUBLIC_API_URL` or `EXPO_PUBLIC_DOMAIN` — see `utils/publicEnv.ts`.
@@ -106,33 +111,174 @@ export interface PhotoAnalysis {
   subjects: string[];
 }
 
+const ANALYZE_PHOTO_TIMEOUT_MS = 22_000;
+
+function isOpenAiNotConfiguredError(
+  status: number,
+  serverError: string | undefined,
+): boolean {
+  if (status !== 503) return false;
+  const s = (serverError ?? "").toLowerCase();
+  return s.includes("openai_api_key") || s.includes("photo ai is not configured");
+}
+
+async function postAnalyzePhoto(
+  base: string,
+  input: {
+    imageUrl?: string;
+    imageBase64?: string;
+    mimeType?: string;
+  },
+  headers: Record<string, string>,
+): Promise<{ res: Response; raw: string }> {
+  const controller = new AbortController();
+  const abortTimer = setTimeout(
+    () => controller.abort(),
+    ANALYZE_PHOTO_TIMEOUT_MS,
+  );
+  try {
+    const res = await fetch(`${base}/api/analyze-photo`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(input),
+      signal: controller.signal,
+    });
+    const raw = await res.text();
+    return { res, raw };
+  } finally {
+    clearTimeout(abortTimer);
+  }
+}
+
 export async function analyzePhoto(input: {
   imageUrl?: string;
   imageBase64?: string;
   mimeType?: string;
 }): Promise<PhotoAnalysis> {
+  const empty: PhotoAnalysis = { tags: [], theme: "", shapes: [], subjects: [] };
   try {
-    const base = getApiBase();
-    const res = await fetch(`${base}/api/analyze-photo`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
+    const primaryBase = getApiBase();
+    const headers = await authedHeaders({
+      "Content-Type": "application/json",
     });
-    if (!res.ok) return { tags: [], theme: "", shapes: [], subjects: [] };
-    const json = (await res.json()) as {
+
+    let base = primaryBase;
+    let { res, raw } = await postAnalyzePhoto(base, input, headers);
+
+    if (
+      !res.ok &&
+      __DEV__ &&
+      isOpenAiNotConfiguredError(
+        res.status,
+        (() => {
+          try {
+            const j = JSON.parse(raw) as { error?: unknown };
+            return typeof j.error === "string" ? j.error : undefined;
+          } catch {
+            return undefined;
+          }
+        })(),
+      )
+    ) {
+      const remote = getStagedProductionApiOrigin();
+      if (
+        remote &&
+        remote !== base &&
+        isLocalDevApiOrigin(base)
+      ) {
+        if (__DEV__) {
+          console.warn(
+            `[analyzePhoto] local API has no OPENAI_API_KEY — retrying ${remote}/api/analyze-photo`,
+          );
+        }
+        base = remote;
+        ({ res, raw } = await postAnalyzePhoto(base, input, headers));
+      }
+    }
+
+    if (!res.ok) {
+      let serverError: string | undefined;
+      try {
+        const j = JSON.parse(raw) as { error?: unknown };
+        if (typeof j.error === "string" && j.error.length > 0) {
+          serverError = j.error;
+        }
+      } catch {
+        if (/internal server error/i.test(raw) && raw.trimStart().startsWith("<")) {
+          serverError =
+            "Server error (often Clerk middleware or a crash before JSON). Redeploy api-server with the latest code, or check Render logs.";
+        }
+      }
+      if (__DEV__) {
+        console.warn(
+          `[analyzePhoto] ${res.status} ${res.statusText} — ${base}/api/analyze-photo`,
+          serverError ?? raw.slice(0, 500),
+        );
+      }
+      const baseHint = __DEV__
+        ? `\n\nAPI used: ${base}${
+            base !== primaryBase
+              ? ` (retried after ${primaryBase})`
+              : isLocalDevApiOrigin(base)
+                ? "\nTip: add OPENAI_API_KEY to artifacts/api-server/.env on your PC, or set EXPO_PUBLIC_API_URL to your Render host."
+                : ""
+          }`
+        : "";
+      throw new Error(
+        (serverError?.trim() ||
+          (res.status === 503
+            ? "Photo AI is not available (server is missing OPENAI_API_KEY)."
+            : `Photo analysis failed (${res.status}).`)) + baseHint,
+      );
+    }
+    let json: {
       tags?: string[];
       theme?: string;
       shapes?: string[];
       subjects?: string[];
     };
+    try {
+      json = JSON.parse(raw) as typeof json;
+    } catch {
+      if (__DEV__) {
+        console.warn("[analyzePhoto] invalid JSON body:", raw.slice(0, 300));
+      }
+      return empty;
+    }
     return {
       tags: Array.isArray(json.tags) ? json.tags : [],
       theme: typeof json.theme === "string" ? json.theme : "",
       shapes: Array.isArray(json.shapes) ? json.shapes : [],
       subjects: Array.isArray(json.subjects) ? json.subjects : [],
     };
-  } catch {
-    return { tags: [], theme: "", shapes: [], subjects: [] };
+  } catch (e) {
+    const timedOut =
+      e instanceof Error &&
+      (e.name === "AbortError" || /aborted|AbortError/i.test(e.message));
+    // #region agent log
+    postDebugSessionLog({
+      hypothesisId: timedOut ? "H-analyze-timeout" : "H-analyze-net",
+      location: "api.ts:analyzePhoto",
+      message: timedOut ? "analyze-photo aborted (timeout)" : "analyze-photo fetch error",
+      data: { timedOut },
+    });
+    // #endregion
+    if (__DEV__) {
+      console.warn("[analyzePhoto] network or fetch error:", getApiBase(), e);
+    }
+    if (
+      e instanceof Error &&
+      /Photo AI is not available|Photo analysis failed|OPENAI_API_KEY|Photo AI is not configured|image too large|invalid mime|provide exactly one of/i.test(
+        e.message,
+      )
+    ) {
+      throw e;
+    }
+    throw new Error(
+      timedOut
+        ? "Photo analysis timed out — try again or use a smaller image."
+        : "Couldn't reach the photo server. Check your connection and API URL.",
+    );
   }
 }
 
@@ -811,6 +957,24 @@ export interface AtlasConnection {
   to: string;
   /** Ripple created in the last 48h (slightly brighter arc). */
   fresh?: boolean;
+  /** ISO 8601 from server (echo created / mutual time). */
+  createdAt: string;
+  /** Echo theme string (Wavefire clustering + palette input). */
+  theme: string;
+  /** Merged lifestyle tags from both photos in the echo (Wavefire vibe links). */
+  tags: string[];
+  /** Merged free-form subjects from both photos (Wavefire subject links). */
+  subjects: string[];
+  /** Line colour from server (HSL / hex). */
+  color: string;
+  /**
+   * When the request is authenticated, true if the viewer initiated this
+   * ripple or participates in this wave.
+   */
+  mine?: boolean;
+  /** Optional — same-origin thumbnail for Wavefire Firecircle tiles. */
+  userId?: string;
+  thumbnailUrl?: string;
 }
 
 export interface AtlasSummaryPayload {
@@ -818,14 +982,123 @@ export interface AtlasSummaryPayload {
   connections: AtlasConnection[];
 }
 
-/** Country counts plus live ripple / wave pairs for the Atlas map. */
-export async function fetchAtlasSummary(): Promise<AtlasSummaryPayload> {
+/** Set when the Atlas summary request failed (distinct from an empty world). */
+export type AtlasSummaryLoadError = "unauthorized" | "server" | "network";
+
+/** Safe on-screen / log details (no tokens). */
+export type AtlasSummaryLoadFailure = {
+  category: "network" | "http";
+  status?: number;
+  /** Short server message or thrown Error.message. */
+  detail?: string;
+  /** Host portion of the API origin we called (sanity-check wrong env). */
+  apiHost: string;
+};
+
+export type AtlasSummaryResult = AtlasSummaryPayload & {
+  loadError?: AtlasSummaryLoadError;
+  loadFailure?: AtlasSummaryLoadFailure;
+};
+
+function atlasApiHostForDisplay(base: string): string {
   try {
-    const base = getApiBase();
+    return new URL(base).host;
+  } catch {
+    return base.replace(/\s+/g, " ").slice(0, 56);
+  }
+}
+
+function atlasSanitizeDetail(s: string, max = 200): string {
+  return s.replace(/[^\x20-\x7E]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+/** Atlas aggregates can be slow over LAN / cold Postgres; generous but not indefinite. */
+const ATLAS_FETCH_TIMEOUT_MS = 30_000;
+
+function atlasTimeoutResult(apiHost: string): AtlasSummaryResult {
+  return {
+    countries: [],
+    connections: [],
+    loadError: "network",
+    loadFailure: {
+      category: "network",
+      apiHost,
+      detail:
+        "Request timed out (30s). Check DATABASE_URL / Postgres, LAN, EXPO_PUBLIC_DEV_API_URL, and that api-server is running.",
+    },
+  };
+}
+
+/** Country counts plus live ripple / wave pairs for the Atlas map. */
+export async function fetchAtlasSummary(): Promise<AtlasSummaryResult> {
+  const base = getApiBase();
+  const apiHost = atlasApiHostForDisplay(base);
+  return Promise.race([
+    fetchAtlasSummaryOnce(base, apiHost),
+    new Promise<AtlasSummaryResult>((resolve) => {
+      setTimeout(() => resolve(atlasTimeoutResult(apiHost)), ATLAS_FETCH_TIMEOUT_MS);
+    }),
+  ]);
+}
+
+async function fetchAtlasSummaryOnce(
+  base: string,
+  apiHost: string,
+): Promise<AtlasSummaryResult> {
+  try {
     const res = await fetch(`${base}/api/photos/atlas`, {
       headers: await authedHeaders(),
+      cache: "no-store",
     });
-    if (!res.ok) return { countries: [], connections: [] };
+    if (!res.ok) {
+      const err: AtlasSummaryLoadError =
+        res.status === 401 ? "unauthorized" : "server";
+      let detail: string | undefined;
+      try {
+        const t = await res.text();
+        try {
+          const j = JSON.parse(t) as { error?: unknown };
+          if (typeof j.error === "string" && j.error.length > 0) {
+            detail = atlasSanitizeDetail(j.error);
+          }
+        } catch {
+          if (t.length > 0) detail = atlasSanitizeDetail(t);
+        }
+      } catch {
+        /* ignore body read errors */
+      }
+      const loadFailure: AtlasSummaryLoadFailure = {
+        category: "http",
+        status: res.status,
+        detail,
+        apiHost,
+      };
+      // #region agent log
+      postDebugSessionLog({
+        hypothesisId: "H-atlas-http",
+        location: "api.ts:fetchAtlasSummary",
+        message: "atlas non-ok",
+        data: {
+          status: res.status,
+          apiHost,
+          detailLen: detail?.length ?? 0,
+        },
+      });
+      // #endregion
+      if (__DEV__) {
+        const hint =
+          res.status === 401
+            ? "Atlas requires a signed-in session (Bearer token)."
+            : `HTTP ${res.status}${detail ? `: ${detail}` : ""}`;
+        console.warn(`[fetchAtlasSummary] ${hint}`, `${base}/api/photos/atlas`);
+      }
+      return {
+        countries: [],
+        connections: [],
+        loadError: err,
+        loadFailure,
+      };
+    }
     const json = (await res.json()) as {
       countries?: AtlasCountry[];
       connections?: AtlasConnection[];
@@ -851,11 +1124,207 @@ export async function fetchAtlasSummary(): Promise<AtlasSummaryPayload> {
         from: c.from,
         to: c.to,
         fresh: c.fresh === true,
+        createdAt:
+          typeof c.createdAt === "string" && c.createdAt.length > 0
+            ? c.createdAt
+            : new Date(0).toISOString(),
+        theme: typeof c.theme === "string" ? c.theme : "",
+        tags: Array.isArray(c.tags)
+          ? c.tags.filter((t): t is string => typeof t === "string")
+          : [],
+        subjects: Array.isArray(c.subjects)
+          ? c.subjects.filter((t): t is string => typeof t === "string")
+          : [],
+        color:
+          typeof c.color === "string" && c.color.length > 0
+            ? c.color
+            : c.kind === "wave"
+              ? "#FFD166"
+              : "#4FD89C",
+        mine: c.mine === true ? true : undefined,
+        userId:
+          typeof c.userId === "string" && c.userId.trim().length > 0
+            ? c.userId.trim()
+            : undefined,
+        thumbnailUrl:
+          typeof c.thumbnailUrl === "string" && c.thumbnailUrl.trim().length > 0
+            ? c.thumbnailUrl.trim()
+            : undefined,
       }));
+    // #region agent log
+    postDebugSessionLog({
+      hypothesisId: "H-atlas-ok",
+      location: "api.ts:fetchAtlasSummary",
+      message: "atlas ok",
+      data: {
+        apiHost,
+        countries: countries.length,
+        connections: connections.length,
+      },
+    });
+    // #endregion
     return { countries, connections };
-  } catch {
-    return { countries: [], connections: [] };
+  } catch (e) {
+    const aborted =
+      e instanceof Error &&
+      (e.name === "AbortError" ||
+        /aborted|AbortError/i.test(String(e.message)) ||
+        String(e.message).includes("cancel"));
+    const detail = aborted
+      ? "Request timed out (30s). Check DATABASE_URL / Postgres, LAN, EXPO_PUBLIC_DEV_API_URL, and api-server."
+      : e instanceof Error
+        ? atlasSanitizeDetail(e.message)
+        : atlasSanitizeDetail(String(e));
+    const loadFailure: AtlasSummaryLoadFailure = {
+      category: "network",
+      detail: detail || undefined,
+      apiHost,
+    };
+    // #region agent log
+    postDebugSessionLog({
+      hypothesisId: "H-atlas-net",
+      location: "api.ts:fetchAtlasSummary",
+      message: "atlas fetch threw",
+      data: { apiHost, detailLen: detail.length },
+    });
+    // #endregion
+    if (__DEV__) {
+      console.warn(
+        "[fetchAtlasSummary] network error — check EXPO_PUBLIC_API_URL / device can reach API",
+        base,
+        e,
+      );
+    }
+    return {
+      countries: [],
+      connections: [],
+      loadError: "network",
+      loadFailure,
+    };
   }
+}
+
+const ATLAS_DIAG_FETCH_TIMEOUT_MS = 12_000;
+
+async function atlasDiagFetch(url: string, timeoutMs: number): Promise<{
+  ms: number;
+  ok: boolean;
+  status: number;
+  text: string;
+  aborted?: boolean;
+}> {
+  const t0 = Date.now();
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    const text = await res.text();
+    return {
+      ms: Date.now() - t0,
+      ok: res.ok,
+      status: res.status,
+      text,
+    };
+  } catch (e) {
+    const aborted =
+      e instanceof Error &&
+      (e.name === "AbortError" || /abort/i.test(String(e.message)));
+    return {
+      ms: Date.now() - t0,
+      ok: false,
+      status: 0,
+      text:
+        e instanceof Error
+          ? atlasSanitizeDetail(e.message)
+          : atlasSanitizeDetail(String(e)),
+      aborted,
+    };
+  } finally {
+    clearTimeout(tid);
+  }
+}
+
+export interface BackendStatusPayload {
+  timestamp: number;
+  databaseReachable: boolean;
+  databaseError?: string | null;
+  clerkSecretConfigured: boolean;
+  clerkPublishableConfigured: boolean;
+  openAiConfigured: boolean;
+}
+
+/**
+ * Lightweight checks Atlas tab can show when loading fails — no tokens/keys echoed.
+ */
+export async function fetchAtlasTabDiagnostics(): Promise<{
+  apiBase: string;
+  health?: { ms: number; ok: boolean; status: number; bodyPreview?: string };
+  backendStatus?: BackendStatusPayload;
+  backendStatusFetch?: {
+    ms: number;
+    ok: boolean;
+    status: number;
+    bodyPreview: string;
+    aborted?: boolean;
+  };
+  atlas?: {
+    ms: number;
+    ok: boolean;
+    status: number;
+    bodyPreview: string;
+    aborted?: boolean;
+  };
+}> {
+  const apiBase = getApiBase();
+
+  const health = await atlasDiagFetch(
+    `${apiBase}/api/healthz`,
+    ATLAS_DIAG_FETCH_TIMEOUT_MS,
+  );
+
+  const statusFetch = await atlasDiagFetch(
+    `${apiBase}/api/public/backend-status`,
+    ATLAS_DIAG_FETCH_TIMEOUT_MS,
+  );
+
+  let backendStatus: BackendStatusPayload | undefined;
+  if (statusFetch.ok && statusFetch.text) {
+    try {
+      backendStatus = JSON.parse(statusFetch.text) as BackendStatusPayload;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const atlas = await atlasDiagFetch(
+    `${apiBase}/api/photos/atlas`,
+    ATLAS_DIAG_FETCH_TIMEOUT_MS,
+  );
+
+  return {
+    apiBase,
+    health: {
+      ms: health.ms,
+      ok: health.ok,
+      status: health.status,
+      bodyPreview: health.text.slice(0, 400),
+    },
+    backendStatus,
+    backendStatusFetch: {
+      ms: statusFetch.ms,
+      ok: statusFetch.ok,
+      status: statusFetch.status,
+      bodyPreview: statusFetch.text.slice(0, 800),
+      aborted: statusFetch.aborted,
+    },
+    atlas: {
+      ms: atlas.ms,
+      ok: atlas.ok,
+      status: atlas.status,
+      bodyPreview: atlas.text.slice(0, 700),
+      aborted: atlas.aborted,
+    },
+  };
 }
 
 export interface AtlasPhoto {
@@ -876,7 +1345,7 @@ export async function fetchAtlasCountryPhotos(
     const base = getApiBase();
     const res = await fetch(
       `${base}/api/photos/atlas/${encodeURIComponent(countryCode)}`,
-      { headers: await authedHeaders() },
+      { headers: await authedHeaders(), cache: "no-store" },
     );
     if (!res.ok) return [];
     const json = (await res.json()) as { photos?: AtlasPhoto[] };

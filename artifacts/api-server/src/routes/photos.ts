@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import {
   db,
   photosTable,
@@ -29,6 +29,139 @@ const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 // Hide any photo flagged by ≥ this many distinct reports — pulled from the
 // candidate pool until a human reviews it (manual moderation phase 2).
 const REPORT_HIDE_THRESHOLD = 3;
+
+/** Flatten nested drizzle/pg/node errors for classification (no PII). */
+function flattenUnknownError(err: unknown): string {
+  const parts: string[] = [];
+  const walk = (e: unknown, depth: number) => {
+    if (depth > 12 || e == null) return;
+    if (typeof e === "string") {
+      parts.push(e);
+      return;
+    }
+    if (typeof AggregateError !== "undefined" && e instanceof AggregateError) {
+      parts.push(e.name, e.message);
+      const ne = e as NodeJS.ErrnoException;
+      if (ne.code) parts.push(String(ne.code));
+      for (const sub of e.errors) walk(sub, depth + 1);
+      walk((e as Error & { cause?: unknown }).cause, depth + 1);
+      return;
+    }
+    if (e instanceof Error) {
+      parts.push(e.name, e.message);
+      const ne = e as NodeJS.ErrnoException;
+      if (ne.code) parts.push(String(ne.code));
+      if (e.stack) parts.push(e.stack);
+      walk((e as Error & { cause?: unknown }).cause, depth + 1);
+      return;
+    }
+    if (typeof e === "object") {
+      const o = e as Record<string, unknown>;
+      if (typeof o.code === "string") parts.push(o.code);
+      if (typeof o.message === "string") parts.push(o.message);
+      if (typeof o.detail === "string") parts.push(o.detail);
+      if (Array.isArray(o.errors)) {
+        for (const sub of o.errors as unknown[]) walk(sub, depth + 1);
+      }
+      walk(o.cause, depth + 1);
+    }
+  };
+  walk(err, 0);
+  return parts.join(" ").toUpperCase();
+}
+
+/**
+ * Public Atlas routes: when Postgres is down or unreachable, return an empty
+ * map instead of HTTP 500 so the app tab loads in dev / before DB is wired.
+ * Missing tables (new Neon DB before `drizzle push`) are handled separately via
+ * {@link isAtlasMissingSchemaError}.
+ */
+function isDegradedAtlasDbFailure(err: unknown): boolean {
+  const s = flattenUnknownError(err);
+  if (
+    /RELATION\s+["']?\w+["']?\s+DOES\s+NOT\s+EXIST|UNDEFINED\s+TABLE|42P01|42703/i.test(
+      s,
+    )
+  ) {
+    return false;
+  }
+  if (
+    /ECONNREFUSED|ENOTFOUND|ETIMEDOUT|EAI_AGAIN|ECONNRESET|EPIPE|SOCKET|CONNECT\s+TIMEOUT/i.test(
+      s,
+    )
+  ) {
+    return true;
+  }
+  if (/PASSWORD\s+AUTHENTICATION\s+FAILED|28P01|NO\s+PG_HBA/i.test(s)) {
+    return true;
+  }
+  if (/DATABASE\s+["'][^"']+["']\s+DOES\s+NOT\s+EXIST|3D000/i.test(s)) {
+    return true;
+  }
+  if (/FAILED\s+QUERY:\s*SELECT\s+1/i.test(s)) {
+    return true;
+  }
+  return false;
+}
+
+/** Neon connected but Drizzle schema not applied yet (empty branch / new DB). */
+function isAtlasMissingSchemaError(err: unknown): boolean {
+  const s = flattenUnknownError(err);
+  return /42P01|42703|UNDEFINED\s+TABLE|RELATION\s+["']?[\w.]+\s+DOES\s+NOT\s+EXIST/i.test(
+    s,
+  );
+}
+
+function atlasDevErrorDetail(err: unknown): string {
+  if (process.env.NODE_ENV !== "development") return "";
+  const s = flattenUnknownError(err);
+  return s.replace(/\s+/g, " ").trim().slice(0, 280);
+}
+
+/** Deterministic line colour from echo theme + kind (Atlas map metadata). */
+function atlasConnectionColor(
+  theme: string,
+  kind: "ripple" | "wave",
+  fresh: boolean,
+): string {
+  if (kind === "wave") return "#FFD166";
+  let h = 0;
+  const t = theme.trim().toLowerCase();
+  for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) >>> 0;
+  const hue = 88 + (h % 56);
+  const sat = fresh ? 70 : 48;
+  const light = fresh ? 56 : 44;
+  return `hsl(${hue} ${sat}% ${light}%)`;
+}
+
+/** Avoid RangeError from `Invalid Date` when echo rows have bad timestamps. */
+function atlasSafeIso(ms: number): string {
+  if (!Number.isFinite(ms)) return new Date(0).toISOString();
+  const d = new Date(ms);
+  return Number.isFinite(d.getTime()) ? d.toISOString() : new Date(0).toISOString();
+}
+
+/**
+ * Merge AI tags / subjects from both photos in an echo pair for Atlas Wavefire
+ * (vibe = lifestyle tag overlap, subject = free-form noun overlap).
+ */
+function atlasMergeConnectionTagsSubjects(
+  plTags: unknown,
+  phTags: unknown,
+  plSubjects: unknown,
+  phSubjects: unknown,
+): { tags: string[]; subjects: string[] } {
+  const norm = (v: unknown): string[] => {
+    if (!Array.isArray(v)) return [];
+    return v
+      .filter((x): x is string => typeof x === "string")
+      .map((s) => s.trim().toLowerCase())
+      .filter((s) => s.length > 0);
+  };
+  const tagSet = new Set<string>([...norm(plTags), ...norm(phTags)]);
+  const subSet = new Set<string>([...norm(plSubjects), ...norm(phSubjects)]);
+  return { tags: [...tagSet], subjects: [...subSet] };
+}
 
 function approxBase64Bytes(b64: string): number {
   const stripped = b64.replace(/^data:[^;]+;base64,/, "");
@@ -959,24 +1092,46 @@ router.get("/photos/seen", async (req, res) => {
 // Returns a count of active photos per country — no per-photo data, so
 // this is a lightweight "what's on the map" summary for the Atlas tab.
 // Expired / removed / over-reported photos are excluded.
+//
+// Public (no Clerk session): aggregate counts + non-identifying echo arcs
+// only reference ISO country pairs. Photo rows may lack `country_code`
+// until GPS resolves — we fall back to each owner's `users.country_code`
+// so new ripples/waves still appear once the echo exists. This avoids Atlas
+// failing in Expo Go before sign-in or when auth headers are not yet attached.
 router.get("/photos/atlas", async (req, res) => {
   try {
-    const user = await resolveUserFromRequest(req);
-    if (!user) {
-      res.status(401).json({ error: "authentication required" });
-      return;
+    let viewerId: string | null = null;
+    try {
+      const viewer = await resolveUserFromRequest(req);
+      viewerId = viewer?.id ?? null;
+    } catch (authErr) {
+      req.log.warn(
+        { err: authErr },
+        "atlas: user resolution failed — returning public aggregate only",
+      );
     }
+
     const rows = await db.execute(sql`
       SELECT
-        upper(country_code) AS code,
-        COUNT(*)::int        AS count
-      FROM photos
-      WHERE status       = 'active'
-        AND report_count < ${REPORT_HIDE_THRESHOLD}
-        AND (expires_at IS NULL OR expires_at > now())
-        AND country_code IS NOT NULL
-        AND country_code <> ''
-      GROUP BY country_code
+        upper(trim(both from coalesce(
+          nullif(trim(both from p.country_code), ''),
+          nullif(trim(both from u.country_code), '')
+        ))) AS code,
+        COUNT(*)::int AS count
+      FROM photos p
+      INNER JOIN users u ON u.id = p.user_id
+      WHERE p.status = 'active'
+        AND p.report_count < ${REPORT_HIDE_THRESHOLD}
+        AND (p.expires_at IS NULL OR p.expires_at > now())
+        AND coalesce(
+          nullif(trim(both from p.country_code), ''),
+          nullif(trim(both from u.country_code), '')
+        ) IS NOT NULL
+        AND trim(both from coalesce(
+          nullif(trim(both from p.country_code), ''),
+          nullif(trim(both from u.country_code), '')
+        )) <> ''
+      GROUP BY 1
       ORDER BY count DESC
     `);
     const countries = (rows.rows as Array<{ code: string; count: number }>).map(
@@ -990,14 +1145,28 @@ router.get("/photos/atlas", async (req, res) => {
         e.id::text AS id,
         e.state AS state,
         e.created_at AS "createdAt",
-        upper(trim(both from pl.country_code)) AS lc,
-        upper(trim(both from ph.country_code)) AS hc,
+        e.mutual_at AS "mutualAt",
+        coalesce(e.theme, '') AS theme,
+        pl.tags AS pl_tags,
+        ph.tags AS ph_tags,
+        pl.subjects AS pl_subjects,
+        ph.subjects AS ph_subjects,
+        upper(trim(both from coalesce(
+          nullif(trim(both from pl.country_code), ''),
+          nullif(trim(both from u_pl.country_code), '')
+        ))) AS lc,
+        upper(trim(both from coalesce(
+          nullif(trim(both from ph.country_code), ''),
+          nullif(trim(both from u_ph.country_code), '')
+        ))) AS hc,
         e.pending_from_user_id AS pf,
         e.user_low_id AS ul,
         e.user_high_id AS uh
       FROM echoes e
-      JOIN photos pl ON pl.id = e.photo_low_id
-      JOIN photos ph ON ph.id = e.photo_high_id
+      INNER JOIN photos pl ON pl.id = e.photo_low_id
+      INNER JOIN photos ph ON ph.id = e.photo_high_id
+      INNER JOIN users u_pl ON u_pl.id = pl.user_id
+      INNER JOIN users u_ph ON u_ph.id = ph.user_id
       WHERE (e.state = 'pending' OR e.state = 'mutual')
         AND pl.status = 'active'
         AND ph.status = 'active'
@@ -1005,12 +1174,10 @@ router.get("/photos/atlas", async (req, res) => {
         AND ph.report_count < ${REPORT_HIDE_THRESHOLD}
         AND (pl.expires_at IS NULL OR pl.expires_at > now())
         AND (ph.expires_at IS NULL OR ph.expires_at > now())
-        AND pl.country_code IS NOT NULL
-        AND ph.country_code IS NOT NULL
-        AND trim(both from pl.country_code) <> ''
-        AND trim(both from ph.country_code) <> ''
-      ORDER BY COALESCE(e.mutual_at, e.created_at) DESC
-      LIMIT 120
+      ORDER BY
+        CASE WHEN e.state = 'pending' THEN 0 ELSE 1 END,
+        COALESCE(e.mutual_at, e.created_at) DESC
+      LIMIT 400
     `);
 
     const iso2 = (s: unknown) => {
@@ -1024,6 +1191,13 @@ router.get("/photos/atlas", async (req, res) => {
       from: string;
       to: string;
       fresh: boolean;
+      createdAt: string;
+      theme: string;
+      tags: string[];
+      subjects: string[];
+      color: string;
+      /** Present when the request is authenticated; true if this row involves the viewer (either side of a ripple or wave). */
+      mine?: boolean;
     }> = [];
 
     const now = Date.now();
@@ -1036,11 +1210,45 @@ router.get("/photos/atlas", async (req, res) => {
       const state = String(raw.state ?? "");
       const id = String(raw.id ?? "");
       if (!id) continue;
+      const themeRaw = String(raw.theme ?? "");
+      const { tags, subjects } = atlasMergeConnectionTagsSubjects(
+        raw.pl_tags,
+        raw.ph_tags,
+        raw.pl_subjects,
+        raw.ph_subjects,
+      );
+      const createdBase = raw.createdAt
+        ? new Date(String(raw.createdAt)).getTime()
+        : 0;
+      const mutualMs = raw.mutualAt
+        ? new Date(String(raw.mutualAt)).getTime()
+        : NaN;
+      const createdIso = atlasSafeIso(
+        state === "mutual" && Number.isFinite(mutualMs)
+          ? mutualMs
+          : createdBase,
+      );
 
       if (state === "mutual") {
         const from = lc < hc ? lc : hc;
         const to = lc < hc ? hc : lc;
-        connections.push({ id, kind: "wave", from, to, fresh: false });
+        const ul = String(raw.ul ?? "");
+        const uh = String(raw.uh ?? "");
+        const mine =
+          viewerId != null && (viewerId === ul || viewerId === uh);
+        connections.push({
+          id,
+          kind: "wave",
+          from,
+          to,
+          fresh: false,
+          createdAt: createdIso,
+          theme: themeRaw,
+          tags,
+          subjects,
+          color: atlasConnectionColor(themeRaw, "wave", false),
+          ...(viewerId != null ? { mine } : {}),
+        });
         continue;
       }
 
@@ -1053,13 +1261,59 @@ router.get("/photos/atlas", async (req, res) => {
       const to = pf === ul ? hc : lc;
       const created = raw.createdAt ? new Date(String(raw.createdAt)).getTime() : 0;
       const fresh = Number.isFinite(created) && now - created < freshMs;
-      connections.push({ id, kind: "ripple", from, to, fresh });
+      const mine =
+        viewerId != null && (viewerId === ul || viewerId === uh);
+      connections.push({
+        id,
+        kind: "ripple",
+        from,
+        to,
+        fresh,
+        createdAt: createdIso,
+        theme: themeRaw,
+        tags,
+        subjects,
+        color: atlasConnectionColor(themeRaw, "ripple", fresh),
+        ...(viewerId != null ? { mine } : {}),
+      });
     }
 
+    res.setHeader("Cache-Control", "private, no-store, max-age=0");
     res.json({ countries, connections });
   } catch (err) {
     req.log.error({ err }, "atlas summary failed");
-    res.status(500).json({ error: "atlas summary failed" });
+    if (isDegradedAtlasDbFailure(err)) {
+      res.status(200).json({
+        countries: [],
+        connections: [],
+        meta: { degraded: true, reason: "database_unavailable" },
+      });
+      return;
+    }
+    if (isAtlasMissingSchemaError(err)) {
+      req.log.warn(
+        { err },
+        "atlas summary empty — schema tables missing; run drizzle push on this DATABASE_URL",
+      );
+      res.status(200).json({
+        countries: [],
+        connections: [],
+        meta: {
+          degraded: true,
+          reason: "schema_not_applied",
+          hint: "From repo root: pnpm --filter @workspace/db run push",
+        },
+      });
+      return;
+    }
+    const detail = atlasDevErrorDetail(err);
+    res
+      .status(500)
+      .json(
+        detail
+          ? { error: "atlas summary failed", detail }
+          : { error: "atlas summary failed" },
+      );
   }
 });
 
@@ -1068,13 +1322,11 @@ router.get("/photos/atlas", async (req, res) => {
 // Used by the Atlas tab to populate the inline photo grid when the user
 // taps a country chip. Includes music / audio fields so the photo-viewer
 // can play the right clip on open.
+//
+// Public (no Clerk session): same visibility as the aggregate Atlas view;
+// only active, non-hidden photos for that country are returned.
 router.get("/photos/atlas/:countryCode", async (req, res) => {
   try {
-    const user = await resolveUserFromRequest(req);
-    if (!user) {
-      res.status(401).json({ error: "authentication required" });
-      return;
-    }
     const code = (req.params.countryCode ?? "").toUpperCase();
     if (!/^[A-Z]{2}$/.test(code)) {
       res.status(400).json({ error: "invalid country code" });
@@ -1114,10 +1366,40 @@ router.get("/photos/atlas/:countryCode", async (req, res) => {
         createdAt:      String(r.created_at),
       };
     });
+    res.setHeader("Cache-Control", "private, no-store, max-age=0");
     res.json({ photos });
   } catch (err) {
     req.log.error({ err }, "atlas country photos failed");
-    res.status(500).json({ error: "atlas country photos failed" });
+    if (isDegradedAtlasDbFailure(err)) {
+      res.status(200).json({
+        photos: [],
+        meta: { degraded: true, reason: "database_unavailable" },
+      });
+      return;
+    }
+    if (isAtlasMissingSchemaError(err)) {
+      req.log.warn(
+        { err },
+        "atlas country empty — schema tables missing; run drizzle push on this DATABASE_URL",
+      );
+      res.status(200).json({
+        photos: [],
+        meta: {
+          degraded: true,
+          reason: "schema_not_applied",
+          hint: "From repo root: pnpm --filter @workspace/db run push",
+        },
+      });
+      return;
+    }
+    const detail = atlasDevErrorDetail(err);
+    res
+      .status(500)
+      .json(
+        detail
+          ? { error: "atlas country photos failed", detail }
+          : { error: "atlas country photos failed" },
+      );
   }
 });
 
@@ -1137,7 +1419,7 @@ router.post("/photos/:id/vote", async (req, res) => {
       return;
     }
     const photoId = req.params.id;
-    const voterPhotoId =
+    let voterPhotoId =
       typeof body.voterPhotoId === "string" && body.voterPhotoId.length > 0
         ? body.voterPhotoId
         : null;
@@ -1154,6 +1436,26 @@ router.post("/photos/:id/vote", async (req, res) => {
     // If a "same" vote was made while the user was representing one of
     // their own photos, also create / promote an echo offer for the pair.
     let echoState: "pending" | "mutual" | "skipped" = "skipped";
+    if (verdict === "same" && !voterPhotoId) {
+      const fallback = await db
+        .select({ id: photosTable.id })
+        .from(photosTable)
+        .where(
+          and(
+            eq(photosTable.userId, user.id),
+            eq(photosTable.status, "active"),
+            ne(photosTable.id, photoId),
+            lt(photosTable.reportCount, REPORT_HIDE_THRESHOLD),
+            or(
+              isNull(photosTable.expiresAt),
+              gt(photosTable.expiresAt, sql`now()`),
+            ),
+          ),
+        )
+        .orderBy(desc(photosTable.createdAt))
+        .limit(1);
+      voterPhotoId = fallback[0]?.id ?? null;
+    }
     if (verdict === "same" && voterPhotoId) {
       try {
         const result = await recordEchoOffer({

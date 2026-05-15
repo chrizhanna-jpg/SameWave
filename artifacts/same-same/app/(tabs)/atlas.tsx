@@ -1,9 +1,8 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Image,
+  AppState,
   Platform,
-  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,96 +13,143 @@ import {
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AtlasLiveConnections } from "@/components/AtlasLiveConnections";
+import { useAuth } from "@clerk/expo";
+
+import { AtlasGlobeExperience } from "@/components/AtlasGlobeExperience";
 import { Icon } from "@/components/Icon";
 import { OceanShimmer } from "@/components/OceanShimmer";
-import { PressableScale } from "@/components/PressableScale";
-import { Surface } from "@/components/Surface";
 import { useColors } from "@/hooks/useColors";
-import { flagFor, nameFor } from "@/data/countries";
+import { useApp } from "@/context/AppContext";
+import type { Match } from "@/context/AppContext";
 import {
   fetchAtlasSummary,
-  fetchAtlasCountryPhotos,
+  fetchAtlasTabDiagnostics,
   type AtlasConnection,
   type AtlasCountry,
-  type AtlasPhoto,
+  type AtlasSummaryLoadError,
+  type AtlasSummaryLoadFailure,
 } from "@/utils/api";
+import { registerAtlasRefreshListener } from "@/utils/atlasHub";
 import { markTabVisited } from "@/utils/tabVisits";
+import { COUNTRIES } from "@/data/countries";
 
-const ATLAS_REGIONS: Array<{ name: string; emoji: string; countries: string[] }> = [
-  {
-    name: "Europe",
-    emoji: "🌍",
-    countries: [
-      "GB","IE","FR","DE","IT","ES","PT","NL","BE","LU","CH","AT",
-      "SE","NO","DK","FI","IS","PL","CZ","SK","HU","RO","BG","GR",
-      "HR","SI","BA","RS","ME","MK","AL","XK","LT","LV","EE","BY",
-      "UA","MD","RU","MT","CY",
-    ],
-  },
-  {
-    name: "Asia & Middle East",
-    emoji: "🌏",
-    countries: [
-      "CN","JP","KR","KP","IN","TH","VN","ID","PH","MY","SG","BD",
-      "PK","NP","LK","MM","KH","LA","MN","TW","HK","BT","MV","TL",
-      "BN","AF","IR","IQ","SY","SA","AE","QA","KW","BH","OM","YE",
-      "JO","LB","IL","PS","TR","AZ","GE","AM","KZ","UZ","TM","TJ","KG",
-    ],
-  },
-  {
-    name: "Africa",
-    emoji: "🌍",
-    countries: [
-      "NG","ZA","KE","ET","GH","TZ","UG","DZ","SD","EG","MA","TN",
-      "LY","CM","CI","SN","ML","BF","NE","MW","ZM","ZW","MZ","AO",
-      "RW","SO","MG","CD","CG","GA","GN","SL","LR","GW","GM","CV",
-      "ST","EH","MR","TG","BJ","GQ","CF","TD","SS","BI","DJ","KM",
-      "ER","SC","MU","NA","BW","LS","SZ",
-    ],
-  },
-  {
-    name: "Americas",
-    emoji: "🌎",
-    countries: [
-      "US","CA","MX","GT","BZ","SV","HN","NI","CR","PA","CU","DO",
-      "HT","JM","BS","BB","TT","LC","VC","GD","AG","DM","KN",
-      "BR","AR","CL","CO","PE","VE","EC","BO","PY","UY","GY","SR",
-    ],
-  },
-  {
-    name: "Oceania",
-    emoji: "🌏",
-    countries: [
-      "AU","NZ","FJ","PG","SB","VU","WS","TO","KI","FM","PW","MH","NR","TV",
-    ],
-  },
-];
+const RIPPLE_FRESH_MS = 48 * 60 * 60 * 1000;
 
-const PHOTO_COLS = 3;
-const PHOTO_GAP = 3;
+/** ISO2 for Atlas arcs: profile `myCountryCode`, else same-swipe match `myCountry` label (not "You"). */
+function resolveViewerIso2(
+  myCountryCode: string | undefined,
+  matches: Match[],
+): string | undefined {
+  const direct = (myCountryCode ?? "").trim().toUpperCase();
+  if (/^[A-Z]{2}$/.test(direct)) return direct;
+  const label = matches.find((m) => m.verdict === "same")?.myCountry?.trim();
+  if (!label || label.toLowerCase() === "you") return undefined;
+  const hit = COUNTRIES.find(
+    (c) => c.name.toLowerCase() === label.toLowerCase(),
+  );
+  return hit?.code.toUpperCase();
+}
+
+/** My Journey "Ripples" live in local `matches`; Atlas uses `/api/photos/atlas` (echoes). Merge same-swipe ripples when no server arc exists for that country pair yet. */
+function mergeLocalSameRippleArcs(
+  api: AtlasConnection[],
+  matches: Match[],
+  myCountryCode: string | undefined,
+  isSignedIn: boolean,
+): AtlasConnection[] {
+  if (!isSignedIn) return api;
+  const mine = resolveViewerIso2(myCountryCode, matches);
+  if (!mine) return api;
+
+  const hasApiRippleBetween = (to: string) =>
+    api.some(
+      (c) =>
+        c.kind === "ripple" &&
+        ((c.from === mine && c.to === to) || (c.from === to && c.to === mine)),
+    );
+
+  const now = Date.now();
+  const added: AtlasConnection[] = [];
+  for (const m of matches) {
+    if (m.verdict !== "same") continue;
+    const to = (m.theirCountryCode ?? "").trim().toUpperCase();
+    if (!/^[A-Z]{2}$/.test(to) || to === mine) continue;
+    if (hasApiRippleBetween(to)) continue;
+    const ts = Date.parse(m.timestamp);
+    const fresh = Number.isFinite(ts) && now - ts < RIPPLE_FRESH_MS;
+    const theme = (m.theme ?? "").trim();
+    added.push({
+      id: `local-ripple-${m.id}`,
+      kind: "ripple",
+      from: mine,
+      to,
+      fresh,
+      createdAt: m.timestamp,
+      theme,
+      tags: [],
+      subjects: [],
+      color: "#4FD89C",
+      mine: true,
+    });
+  }
+  if (added.length === 0) return api;
+
+  return [...api, ...added];
+}
 
 export default function AtlasScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
+  const { isSignedIn } = useAuth();
 
   const [summary, setSummary] = useState<AtlasCountry[]>([]);
   const [connections, setConnections] = useState<AtlasConnection[]>([]);
+  const [loadError, setLoadError] = useState<AtlasSummaryLoadError | null>(null);
+  const [loadFailure, setLoadFailure] = useState<AtlasSummaryLoadFailure | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const atlasHasLoadedOnceRef = useRef(false);
+  const atlasFocusedRef = useRef(false);
 
-  const [expandedCode, setExpandedCode] = useState<string | null>(null);
-  const [photoCache, setPhotoCache] = useState<Record<string, AtlasPhoto[]>>({});
-  const [photoLoading, setPhotoLoading] = useState<string | null>(null);
-  const [collapsedRegions, setCollapsedRegions] = useState<Record<string, boolean>>({});
+  const [diagBusy, setDiagBusy] = useState(false);
+  const [diagJson, setDiagJson] = useState<string | null>(null);
 
-  const countByCode = useMemo(() => {
-    const m: Record<string, number> = {};
-    for (const c of summary) m[c.code] = c.count;
-    return m;
-  }, [summary]);
+  const { matches, myCountryCode } = useApp();
+
+  const globeConnections = useMemo(
+    () =>
+      mergeLocalSameRippleArcs(
+        connections,
+        matches,
+        myCountryCode,
+        !!isSignedIn,
+      ),
+    [connections, matches, myCountryCode, isSignedIn],
+  );
+
+  const runConnectivityDiagnostics = useCallback(async () => {
+    setDiagBusy(true);
+    try {
+      const d = await fetchAtlasTabDiagnostics();
+      setDiagJson(JSON.stringify(d, null, 2));
+      if (__DEV__) {
+        console.warn("[Atlas diagnostics]", d);
+      }
+    } catch (e) {
+      setDiagJson(
+        JSON.stringify(
+          { error: e instanceof Error ? e.message : String(e) },
+          null,
+          2,
+        ),
+      );
+    } finally {
+      setDiagBusy(false);
+    }
+  }, []);
 
   const totalCountries = summary.length;
   const totalPhotos = useMemo(
@@ -114,403 +160,319 @@ export default function AtlasScreen() {
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else if (!atlasHasLoadedOnceRef.current) setLoading(true);
-    const data = await fetchAtlasSummary();
-    setSummary(data.countries);
-    setConnections(data.connections);
-    atlasHasLoadedOnceRef.current = true;
-    setLoading(false);
-    setRefreshing(false);
-    if (isRefresh) {
-      setExpandedCode(null);
-      setPhotoCache({});
+    try {
+      const data = await fetchAtlasSummary();
+      setSummary(data.countries);
+      setConnections(data.connections);
+      setLoadError(data.loadError ?? null);
+      setLoadFailure(data.loadFailure ?? null);
+      atlasHasLoadedOnceRef.current = true;
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
+      atlasFocusedRef.current = true;
       markTabVisited("atlas");
       void load(false);
+      return () => {
+        atlasFocusedRef.current = false;
+      };
     }, [load]),
   );
 
-  const handleCountryPress = useCallback(
-    async (code: string) => {
-      if (expandedCode === code) {
-        setExpandedCode(null);
-        return;
-      }
-      setExpandedCode(code);
-      if (photoCache[code]) return;
-      setPhotoLoading(code);
-      const photos = await fetchAtlasCountryPhotos(code);
-      setPhotoCache((prev) => ({ ...prev, [code]: photos }));
-      setPhotoLoading(null);
-    },
-    [expandedCode, photoCache],
-  );
+  useEffect(() => {
+    return registerAtlasRefreshListener(() => {
+      void load(true);
+    });
+  }, [load]);
 
-  const toggleRegion = useCallback((name: string) => {
-    setCollapsedRegions((prev) => ({ ...prev, [name]: !prev[name] }));
-  }, []);
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (s) => {
+      if (s === "active" && atlasFocusedRef.current) void load(true);
+    });
+    return () => sub.remove();
+  }, [load]);
 
-  const outerPad = 20;
-  const photoSize = Math.floor(
-    (width - outerPad * 2 - PHOTO_GAP * (PHOTO_COLS - 1)) / PHOTO_COLS,
-  );
+  const outerPad = 16;
+  const topPadding = Platform.OS === "web" ? 56 : insets.top;
+  const bottomPad = Platform.OS === "web" ? 28 : insets.bottom;
 
-  const topPadding = Platform.OS === "web" ? 67 : insets.top;
-  const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
+  const headerSub = useMemo(() => {
+    if (loading) return null;
+    if (loadError === "unauthorized" && totalCountries === 0 && connections.length === 0) {
+      return "Sign in to load the map";
+    }
+    if (loadError === "network" || loadError === "server") {
+      return "Atlas unavailable — tap refresh to retry";
+    }
+    if (totalCountries === 0 && globeConnections.length === 0) {
+      return "No live connections yet";
+    }
+    if (totalCountries === 0) {
+      return `${globeConnections.length} live ${globeConnections.length === 1 ? "connection" : "connections"}`;
+    }
+    return `${totalCountries} ${totalCountries === 1 ? "country" : "countries"} · ${totalPhotos} ${totalPhotos === 1 ? "photo" : "photos"}`;
+  }, [
+    loading,
+    loadError,
+    totalCountries,
+    globeConnections.length,
+    totalPhotos,
+  ]);
+
+  const showGlobe = !loading && loadError === null;
+  const showRefresh =
+    !loading &&
+    !(
+      loadError === "unauthorized" &&
+      totalCountries === 0 &&
+      globeConnections.length === 0
+    );
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <OceanShimmer />
-
-      <View style={[styles.header, { paddingTop: topPadding + 8 }]}>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-          Atlas
-        </Text>
-        {!loading && (
-          <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
-            {totalCountries === 0 && connections.length === 0
-              ? "No photos yet"
-              : totalCountries === 0
-                ? `${connections.length} live ${connections.length === 1 ? "connection" : "connections"}`
-                : `${totalCountries} ${totalCountries === 1 ? "country" : "countries"} · ${totalPhotos} ${totalPhotos === 1 ? "photo" : "photos"}`}
-          </Text>
-        )}
+      <View style={styles.shimmerClip} pointerEvents="none">
+        <OceanShimmer />
       </View>
 
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={[
-          styles.content,
-          { paddingHorizontal: outerPad, paddingBottom: bottomPadding + 24 },
-        ]}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => void load(true)}
-            tintColor={colors.primary}
-          />
-        }
-      >
-        {!loading && connections.length > 0 ? (
-          <AtlasLiveConnections
-            width={width - outerPad * 2}
-            connections={connections}
-          />
+      <View style={[styles.headerRow, { paddingTop: topPadding + 2 }]}>
+        <View style={styles.headerTextCol}>
+          <Text style={[styles.headerTitle, { color: colors.foreground }]}>
+            Atlas
+          </Text>
+          {headerSub ? (
+            <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
+              {headerSub}
+            </Text>
+          ) : null}
+        </View>
+        {showRefresh ? (
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Refresh Atlas"
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            disabled={refreshing}
+            onPress={() => void load(true)}
+            style={styles.refreshBtn}
+          >
+            <Icon
+              name="refresh-cw"
+              size={22}
+              color={refreshing ? colors.mutedForeground : colors.primary}
+            />
+          </TouchableOpacity>
         ) : null}
-        {loading ? (
-          <View style={styles.centreBlock}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={[styles.centreText, { color: colors.mutedForeground }]}>
-              Finding photos from around the world…
+      </View>
+
+      {loading ? (
+        <View style={styles.flexCentre}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.centreText, { color: colors.mutedForeground }]}>
+            Loading live ripples and waves…
+          </Text>
+        </View>
+      ) : null}
+
+      {!loading &&
+      loadError === "unauthorized" &&
+      totalCountries === 0 &&
+      connections.length === 0 ? (
+        <View style={styles.flexCentre}>
+          <Icon name="globe" size={48} color={colors.mutedForeground} />
+          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+            Sign in to open the Atlas
+          </Text>
+          <Text style={[styles.centreText, { color: colors.mutedForeground }]}>
+            The map loads after sign-in so we can show your ripples and waves
+            with everyone else’s.
+          </Text>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Go to sign in"
+            activeOpacity={0.85}
+            onPress={() => router.push("/sign-in")}
+            style={[styles.signInBtn, { backgroundColor: colors.primary }]}
+          >
+            <Text style={[styles.signInBtnLabel, { color: "#001018" }]}>
+              Continue with Google
             </Text>
-          </View>
-        ) : totalCountries === 0 && connections.length === 0 ? (
-          <View style={styles.centreBlock}>
-            <Icon name="globe" size={48} color={colors.mutedForeground} />
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      {showGlobe ? (
+        <View
+          style={[
+            styles.mapColumn,
+            {
+              paddingHorizontal: outerPad,
+              paddingBottom: bottomPad + 8,
+            },
+          ]}
+        >
+          <AtlasGlobeExperience
+            style={styles.globeFlex}
+            width={width - outerPad * 2}
+            connections={globeConnections}
+            countries={summary}
+            isSignedIn={!!isSignedIn}
+          />
+        </View>
+      ) : null}
+
+      {!loading && (loadError === "server" || loadError === "network") ? (
+        <ScrollView
+          style={styles.errorScroll}
+          contentContainerStyle={[
+            styles.errorScrollContent,
+            {
+              paddingHorizontal: outerPad,
+              paddingBottom: bottomPad + 16,
+            },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator
+        >
+          <View style={[styles.centreBlock, { paddingTop: 8 }]}>
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-              No photos yet
+              Could not reach the Atlas API
             </Text>
             <Text style={[styles.centreText, { color: colors.mutedForeground }]}>
-              The Atlas fills in as people around the world share moments. Be the
-              first to post from your country.
+              {loadFailure?.category === "network"
+                ? "Check EXPO_PUBLIC_API_URL (LAN IP on a phone) and that the API server is running."
+                : "The API returned an error."}
             </Text>
-          </View>
-        ) : totalCountries === 0 ? (
-          <View style={[styles.centreBlock, { paddingTop: 12 }]}>
-            <Text style={[styles.centreText, { color: colors.mutedForeground }]}>
-              Country photo counts will show here once there are active posts
-              with a location. Your ripples and waves still appear above.
-            </Text>
-          </View>
-        ) : (
-          ATLAS_REGIONS.map((region) => {
-            const activeInRegion = region.countries.filter(
-              (c) => (countByCode[c] ?? 0) > 0,
-            );
-            if (activeInRegion.length === 0) return null;
-
-            const isCollapsed = !!collapsedRegions[region.name];
-            const expandedInRegion =
-              expandedCode && region.countries.includes(expandedCode)
-                ? expandedCode
-                : null;
-
-            return (
-              <View key={region.name} style={styles.regionBlock}>
-                <TouchableOpacity
-                  onPress={() => toggleRegion(region.name)}
-                  activeOpacity={0.75}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${region.name}, ${activeInRegion.length} ${activeInRegion.length === 1 ? "country" : "countries"}, ${isCollapsed ? "expand" : "collapse"}`}
-                  style={styles.regionHeader}
+            {loadFailure ? (
+              <View style={styles.failureFacts}>
+                <Text
+                  style={[styles.failureFactLine, { color: colors.mutedForeground }]}
+                  selectable
                 >
-                  <View style={styles.regionLeft}>
-                    <Text style={styles.regionEmoji}>{region.emoji}</Text>
-                    <Text
-                      style={[styles.regionName, { color: colors.foreground }]}
-                    >
-                      {region.name}
-                    </Text>
-                    <View
-                      style={[
-                        styles.regionBadge,
-                        { backgroundColor: colors.primary + "22" },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.regionBadgeText,
-                          { color: colors.primary },
-                        ]}
-                      >
-                        {activeInRegion.length}
-                      </Text>
-                    </View>
-                  </View>
-                  <Icon
-                    name={isCollapsed ? "chevron-down" : "chevron-up"}
-                    size={16}
-                    color={colors.mutedForeground}
-                  />
-                </TouchableOpacity>
-
-                {!isCollapsed && (
-                  <>
-                    <View style={styles.chipRow}>
-                      {region.countries.map((code) => {
-                        const count = countByCode[code] ?? 0;
-                        if (count === 0) return null;
-                        const isExpanded = expandedCode === code;
-                        return (
-                          <PressableScale
-                            key={code}
-                            haptic="light"
-                            onPress={() => void handleCountryPress(code)}
-                            style={[
-                              styles.chip,
-                              {
-                                backgroundColor: isExpanded
-                                  ? colors.primary + "28"
-                                  : colors.card,
-                                borderColor: isExpanded
-                                  ? colors.primary
-                                  : colors.border,
-                              },
-                            ]}
-                            accessibilityLabel={`${nameFor(code) ?? code}, ${count} ${count === 1 ? "photo" : "photos"}`}
-                          >
-                            <Text style={styles.chipFlag}>{flagFor(code)}</Text>
-                            <Text
-                              style={[
-                                styles.chipName,
-                                {
-                                  color: isExpanded
-                                    ? colors.primary
-                                    : colors.foreground,
-                                },
-                              ]}
-                              numberOfLines={1}
-                            >
-                              {nameFor(code) ?? code}
-                            </Text>
-                            <View
-                              style={[
-                                styles.chipCount,
-                                {
-                                  backgroundColor: isExpanded
-                                    ? colors.primary
-                                    : colors.primary + "33",
-                                },
-                              ]}
-                            >
-                              <Text
-                                style={[
-                                  styles.chipCountText,
-                                  {
-                                    color: isExpanded
-                                      ? "#fff"
-                                      : colors.primary,
-                                  },
-                                ]}
-                              >
-                                {count > 99 ? "99+" : count}
-                              </Text>
-                            </View>
-                          </PressableScale>
-                        );
-                      })}
-                    </View>
-
-                    {expandedInRegion && (
-                      <Surface
-                        elevation="md"
-                        radius="xl"
-                        background={colors.cardElevated}
-                        style={styles.photoPanel}
-                      >
-                        <View style={styles.photoPanelHeader}>
-                          <Text style={styles.photoPanelFlag}>
-                            {flagFor(expandedInRegion)}
-                          </Text>
-                          <View style={{ flex: 1 }}>
-                            <Text
-                              style={[
-                                styles.photoPanelCountry,
-                                { color: colors.foreground },
-                              ]}
-                            >
-                              {nameFor(expandedInRegion) ?? expandedInRegion}
-                            </Text>
-                            <Text
-                              style={[
-                                styles.photoPanelCount,
-                                { color: colors.mutedForeground },
-                              ]}
-                            >
-                              {countByCode[expandedInRegion] ?? 0}{" "}
-                              {(countByCode[expandedInRegion] ?? 0) === 1
-                                ? "photo"
-                                : "photos"}
-                            </Text>
-                          </View>
-                          <TouchableOpacity
-                            onPress={() => setExpandedCode(null)}
-                            hitSlop={10}
-                            accessibilityLabel="Close country grid"
-                          >
-                            <Icon
-                              name="x"
-                              size={18}
-                              color={colors.mutedForeground}
-                            />
-                          </TouchableOpacity>
-                        </View>
-
-                        {photoLoading === expandedInRegion ? (
-                          <View
-                            style={[
-                              styles.photoLoadingBox,
-                              { height: photoSize + 20 },
-                            ]}
-                          >
-                            <ActivityIndicator color={colors.primary} />
-                          </View>
-                        ) : (photoCache[expandedInRegion] ?? []).length ===
-                          0 ? (
-                          <View
-                            style={[
-                              styles.photoLoadingBox,
-                              { height: photoSize + 20 },
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.noPhotosText,
-                                { color: colors.mutedForeground },
-                              ]}
-                            >
-                              No photos available right now
-                            </Text>
-                          </View>
-                        ) : (
-                          <View style={styles.photoGrid}>
-                            {(photoCache[expandedInRegion] ?? []).map(
-                              (photo, idx) => (
-                                <PressableScale
-                                  key={photo.id}
-                                  haptic="light"
-                                  onPress={() =>
-                                    router.push({
-                                      pathname: "/photo-viewer",
-                                      params: {
-                                        uri: photo.uri,
-                                        clipUrl:
-                                          photo.customAudioUrl ?? "",
-                                        country:
-                                          nameFor(expandedInRegion) ??
-                                          expandedInRegion,
-                                        countryFlag: flagFor(expandedInRegion),
-                                        vibeLabel: photo.theme ?? "",
-                                      },
-                                    })
-                                  }
-                                  style={[
-                                    styles.photoCell,
-                                    {
-                                      width: photoSize,
-                                      height: photoSize,
-                                      marginRight:
-                                        (idx + 1) % PHOTO_COLS !== 0
-                                          ? PHOTO_GAP
-                                          : 0,
-                                      marginBottom: PHOTO_GAP,
-                                    },
-                                  ]}
-                                  accessibilityLabel={`Photo from ${nameFor(expandedInRegion) ?? expandedInRegion}`}
-                                >
-                                  <Image
-                                    source={{ uri: photo.uri }}
-                                    style={styles.photoImg}
-                                    resizeMode="cover"
-                                  />
-                                  {photo.theme ? (
-                                    <View style={styles.photoThemeTag}>
-                                      <Text
-                                        style={styles.photoThemeText}
-                                        numberOfLines={1}
-                                      >
-                                        {photo.theme}
-                                      </Text>
-                                    </View>
-                                  ) : null}
-                                </PressableScale>
-                              ),
-                            )}
-                          </View>
-                        )}
-                      </Surface>
-                    )}
-                  </>
-                )}
+                  API host: {loadFailure.apiHost}
+                </Text>
+                {loadFailure.category === "http" &&
+                typeof loadFailure.status === "number" ? (
+                  <Text
+                    style={[styles.failureFactLine, { color: colors.mutedForeground }]}
+                    selectable
+                  >
+                    HTTP {loadFailure.status}
+                  </Text>
+                ) : null}
+                {loadFailure.detail ? (
+                  <Text
+                    style={[styles.failureDetail, { color: colors.foreground }]}
+                    selectable
+                  >
+                    {loadFailure.detail}
+                  </Text>
+                ) : null}
               </View>
-            );
-          })
-        )}
-      </ScrollView>
+            ) : null}
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Run Atlas connectivity diagnostics"
+              activeOpacity={0.85}
+              onPress={() => void runConnectivityDiagnostics()}
+              disabled={diagBusy}
+              style={[
+                styles.diagBtn,
+                {
+                  borderColor: colors.border,
+                  backgroundColor: colors.card,
+                  opacity: diagBusy ? 0.65 : 1,
+                },
+              ]}
+            >
+              <Text style={[styles.diagBtnLabel, { color: colors.foreground }]}>
+                {diagBusy
+                  ? "Running diagnostics…"
+                  : "Run diagnostics (health + DB + Atlas)"}
+              </Text>
+            </TouchableOpacity>
+            {diagJson ? (
+              <Text
+                selectable
+                style={[styles.diagDump, { color: colors.mutedForeground }]}
+              >
+                {diagJson}
+              </Text>
+            ) : null}
+          </View>
+        </ScrollView>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  shimmerClip: {
+    ...StyleSheet.absoluteFillObject,
+    top: "12%",
+    overflow: "hidden",
+  },
 
-  header: {
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
     paddingHorizontal: 20,
-    paddingBottom: 10,
+    paddingBottom: 4,
+  },
+  headerTextCol: { flex: 1, minWidth: 0 },
+  refreshBtn: {
+    marginTop: 2,
+    padding: 4,
   },
   headerTitle: {
     fontFamily: "Inter_700Bold",
-    fontSize: 28,
-    letterSpacing: -0.5,
+    fontSize: 22,
+    letterSpacing: -0.4,
   },
   headerSub: {
     fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    marginTop: 2,
+    fontSize: 12,
+    marginTop: 1,
+    lineHeight: 16,
   },
 
-  scroll: { flex: 1 },
-  content: { gap: 4 },
+  mapColumn: {
+    flex: 1,
+    minHeight: 0,
+  },
+  globeFlex: {
+    flex: 1,
+    minHeight: 0,
+  },
 
-  centreBlock: {
-    paddingTop: 72,
+  flexCentre: {
+    flex: 1,
+    minHeight: 120,
+    justifyContent: "center",
     alignItems: "center",
     gap: 14,
-    paddingHorizontal: 16,
+    paddingHorizontal: 24,
+  },
+
+  errorScroll: {
+    flex: 1,
+    minHeight: 0,
+  },
+  errorScrollContent: {
+    flexGrow: 1,
+  },
+
+  centreBlock: {
+    paddingTop: 24,
+    alignItems: "center",
+    gap: 14,
+    paddingHorizontal: 8,
   },
   centreText: {
     fontFamily: "Inter_400Regular",
@@ -523,131 +485,57 @@ const styles = StyleSheet.create({
     fontSize: 18,
     marginTop: 4,
   },
-
-  regionBlock: {
-    marginBottom: 6,
-  },
-  regionHeader: {
-    flexDirection: "row",
+  signInBtn: {
+    marginTop: 8,
+    borderRadius: 999,
+    paddingVertical: 14,
+    paddingHorizontal: 22,
+    minWidth: 200,
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 10,
   },
-  regionLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  regionEmoji: { fontSize: 18 },
-  regionName: {
+  signInBtnLabel: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 15,
   },
-  regionBadge: {
-    borderRadius: 999,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-  },
-  regionBadgeText: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 11,
-  },
-
-  chipRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
+  failureFacts: {
+    alignSelf: "stretch",
     gap: 6,
-    paddingBottom: 10,
+    marginTop: 4,
+    paddingHorizontal: 8,
   },
-  chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  chipFlag: { fontSize: 15 },
-  chipName: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 12,
-    maxWidth: 90,
-  },
-  chipCount: {
-    borderRadius: 999,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    minWidth: 18,
-    alignItems: "center",
-  },
-  chipCountText: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 10,
-  },
-
-  photoPanel: {
-    marginBottom: 8,
-    overflow: "hidden",
-  },
-  photoPanelHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 10,
-  },
-  photoPanelFlag: { fontSize: 24 },
-  photoPanelCountry: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 15,
-  },
-  photoPanelCount: {
+  failureFactLine: {
     fontFamily: "Inter_400Regular",
     fontSize: 12,
-    marginTop: 1,
-  },
-
-  photoLoadingBox: {
-    justifyContent: "center",
-    alignItems: "center",
-    marginHorizontal: 14,
-    marginBottom: 14,
-  },
-  noPhotosText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-  },
-
-  photoGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    paddingHorizontal: 14,
-    paddingBottom: 14,
-  },
-  photoCell: {
-    borderRadius: 8,
-    overflow: "hidden",
-  },
-  photoImg: {
-    width: "100%",
-    height: "100%",
-  },
-  photoThemeTag: {
-    position: "absolute",
-    bottom: 4,
-    left: 4,
-    right: 4,
-    backgroundColor: "rgba(0,0,0,0.55)",
-    borderRadius: 4,
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-  },
-  photoThemeText: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 9,
-    color: "#E8F4F8",
     textAlign: "center",
+  },
+  failureDetail: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 13,
+    textAlign: "center",
+    lineHeight: 19,
+    marginTop: 4,
+  },
+  diagBtn: {
+    marginTop: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignSelf: "stretch",
+    alignItems: "center",
+  },
+  diagBtnLabel: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 14,
+    textAlign: "center",
+  },
+  diagDump: {
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    fontSize: 10,
+    lineHeight: 13,
+    marginTop: 10,
+    alignSelf: "stretch",
+    paddingHorizontal: 4,
+    textAlign: "left",
   },
 });
