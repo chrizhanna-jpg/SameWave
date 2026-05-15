@@ -20,6 +20,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   formatClerkRedirectAllowlistHint,
+  getBuildFingerprintLabel,
   getGoogleSsoRedirectUrl,
 } from "@/utils/googleSsoRedirect";
 import { postDebugSessionLog } from "@/utils/debugSessionLog";
@@ -66,17 +67,12 @@ export default function SignInScreen() {
         message: "google sso start",
         data: {
           platform: Platform.OS,
-          redirectHost: redirectUrl.split("://")[0] ?? "",
+          redirectUrlLen: redirectUrl.length,
         },
       });
       // #endregion
       const { createdSessionId, setActive } = await startSSOFlow({
         strategy: "oauth_google",
-        // Clerk's native SSO allowlist defaults to `{bundleId}://callback`.
-        // Using only `same-same://` often fails review / allowlists; the
-        // Android package id as scheme matches Clerk + Expo docs.
-        // `app.json` lists both schemes so deep links keep working.
-        // Expo Go still rewrites makeRedirectUri for dev tunnels.
         redirectUrl,
       });
       if (createdSessionId && setActive) {
@@ -178,6 +174,7 @@ export default function SignInScreen() {
           We don't show or store your name, email, or profile photo. Your
           Google account is only used as a private anchor for your data.
         </Text>
+        <Text style={styles.buildLabel}>{getBuildFingerprintLabel()}</Text>
       </View>
     </View>
   );
@@ -265,5 +262,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#FF6B6B",
     textAlign: "center",
+  },
+  buildLabel: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: COLORS.mutedForeground,
+    textAlign: "center",
+    opacity: 0.7,
+    marginTop: 4,
   },
 });
