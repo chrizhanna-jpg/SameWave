@@ -22,6 +22,7 @@
     "setup:android-env": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-android-build-env.ps1",
     "download:android-credentials": "powershell -ExecutionPolicy Bypass -File ./scripts/download-android-credentials.ps1",
     "build:aab:local": "powershell -ExecutionPolicy Bypass -File ./scripts/build-android-aab.ps1",
+    "oauth:fingerprints": "powershell -ExecutionPolicy Bypass -File ./scripts/print-android-oauth-fingerprints.ps1",
     "setup:short-path": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-short-path-build.ps1",
     "ios": "expo run:ios"
   },

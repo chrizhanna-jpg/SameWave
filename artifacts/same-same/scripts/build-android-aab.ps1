@@ -175,6 +175,11 @@ Remove-Item -Recurse -Force (Join-Path $androidDir "app\.cxx") -ErrorAction Sile
 Remove-Item -Recurse -Force (Join-Path $androidDir "app\build") -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force (Join-Path $androidDir "build") -ErrorAction SilentlyContinue
 
+$applyEasEnv = Join-Path $patchDir "apply-eas-production-env.ps1"
+if (Test-Path $applyEasEnv) {
+  & $applyEasEnv -SameSameDir $sameSame
+}
+
 $env:EXPO_NO_METRO_WORKSPACE_ROOT = "1"
 $env:EXPO_USE_METRO_WORKSPACE_ROOT = "0"
 $env:NODE_ENV = "production"

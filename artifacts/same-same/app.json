@@ -27,7 +27,7 @@
     "android": {
       "package": "app.echo.samesame",
       "softwareKeyboardLayoutMode": "resize",
-      "versionCode": 30,
+      "versionCode": 31,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#166FFC"

@@ -19,6 +19,9 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  parseOAuthSessionFailure,
+} from "@/utils/googleOAuthErrors";
 import { getGoogleSsoRedirectUrl } from "@/utils/googleSsoRedirect";
 import { postDebugSessionLog } from "@/utils/debugSessionLog";
 import {
@@ -105,10 +108,12 @@ export default function SignInScreen() {
         },
       });
       // #endregion
-      const { createdSessionId, setActive } = await startSSOFlow({
-        strategy: "oauth_google",
-        redirectUrl,
-      });
+      const { createdSessionId, setActive, authSessionResult } =
+        await startSSOFlow({
+          strategy: "oauth_google",
+          redirectUrl,
+        });
+      const oauthFailure = parseOAuthSessionFailure(authSessionResult);
       if (createdSessionId && setActive) {
         // Call setActive with only the session param — the `navigate`
         // callback form is a Next.js/web pattern that @clerk/expo does
@@ -134,12 +139,14 @@ export default function SignInScreen() {
         setError(
           formatSignInErrorReport({
             err: new Error(
-              "Google OAuth returned without a session (browser dismissed or callback not received).",
+              oauthFailure?.summary ??
+                "Google OAuth returned without a session (browser dismissed or callback not received).",
             ),
             diagnostics,
             redirectUrlAttempted: redirectUrl,
             clerkProbe: probe,
             flowStage: "sso_incomplete",
+            oauthFailure,
           }),
         );
       }

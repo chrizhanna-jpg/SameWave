@@ -6,6 +6,10 @@ import { Platform } from "react-native";
 import { resolveClerkProxyUrl } from "@/utils/clerkConfig";
 import { getPublicApiOrigin } from "@/utils/publicEnv";
 import {
+  formatGoogleOAuthSetupChecklist,
+  type ParsedOAuthSessionFailure,
+} from "@/utils/googleOAuthErrors";
+import {
   getClerkMobileSsoAllowlistHints,
   getGoogleSsoRedirectUrl,
   SAMEWAVE_ANDROID_PACKAGE,
@@ -13,7 +17,7 @@ import {
 } from "@/utils/googleSsoRedirect";
 
 /** Bump when changing sign-in / SSO diagnostics (visible on sign-in screen). */
-export const SIGN_IN_DIAGNOSTICS_BUILD = 30;
+export const SIGN_IN_DIAGNOSTICS_BUILD = 31;
 
 export type SignInDiagnostics = {
   marker: string;
@@ -273,14 +277,21 @@ export type SignInErrorReportInput = {
   redirectUrlAttempted: string;
   clerkProbe: ClerkConfigProbe | null;
   flowStage: "sso_start" | "sso_incomplete" | "set_active";
+  oauthFailure?: ParsedOAuthSessionFailure | null;
 };
 
 /**
  * Full support bundle shown on the sign-in screen after any Google SSO failure.
  */
 export function formatSignInErrorReport(input: SignInErrorReportInput): string {
-  const { err, diagnostics: d, redirectUrlAttempted, clerkProbe, flowStage } =
-    input;
+  const {
+    err,
+    diagnostics: d,
+    redirectUrlAttempted,
+    clerkProbe,
+    flowStage,
+    oauthFailure,
+  } = input;
   const parsed = parseSignInError(err);
   const vc =
     d.versionCodeNative ??
@@ -304,6 +315,16 @@ export function formatSignInErrorReport(input: SignInErrorReportInput): string {
   }
   lines.push(`Error type: ${parsed.name}`);
   lines.push(`Flow stage: ${flowStage}`);
+
+  if (oauthFailure) {
+    lines.push(`OAuth browser: ${oauthFailure.summary}`);
+    if (oauthFailure.errorCode) {
+      lines.push(`Google error code: ${oauthFailure.errorCode}`);
+    }
+    if (oauthFailure.isInvalidClient) {
+      lines.push("", formatGoogleOAuthSetupChecklist(d.androidPackage));
+    }
+  }
 
   lines.push("", "—— This build ——");
   lines.push(`Marker: ${d.marker}`);

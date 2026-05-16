@@ -36,7 +36,6 @@
         "EXPO_PUBLIC_API_URL": "https://samewave.onrender.com",
         "EXPO_PUBLIC_DOMAIN": "samewave.onrender.com",
         "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_a25vd2luZy1qYXdmaXNoLTQ1LmNsZXJrLmFjY291bnRzLmRldiQ",
-        "EXPO_PUBLIC_CLERK_SSO_REDIRECT": "same-same://",
         "EXPO_PUBLIC_MONETIZATION_ENABLED": "false"
       }
     }
