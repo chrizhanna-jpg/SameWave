@@ -20,6 +20,11 @@
 // single vibe the URLs are all different so the deterministic chooser
 // can give two photos in the same vibe two different sounds.
 
+import {
+  bestTokenMatchScore,
+  tokenMatchesAnyQuery,
+} from "@/utils/tokenSearch";
+
 // We keep the type alias name `MusicGenre` because it's already
 // threaded through camera.tsx, match.tsx, AppContext, and the API
 // types — renaming would be churn for no semantic gain. Treat it as
@@ -40,6 +45,8 @@ export type MusicGenre =
   | "fascinated"
   | "calm"
   | "content"
+  | "chilling"
+  | "relaxed"
   | "nostalgia"
   | "longing"
   | "sad"
@@ -47,6 +54,8 @@ export type MusicGenre =
   | "lonely"
   | "grief"
   | "fear"
+  | "scared"
+  | "afraid"
   | "anger"
   | "stress"
   | "passion";
@@ -344,6 +353,30 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
     ],
   },
   {
+    id: "chilling",
+    label: "Chilling",
+    emoji: "🛋️",
+    vibe: "low-key, kicked back, nowhere to be",
+    clips: [
+      { id: "chilling-1", label: "Lazy Afternoon", url: T.achaidh },
+      { id: "chilling-2", label: "Couch Mode", url: T.wallpaper },
+      { id: "chilling-3", label: "Easy Does It", url: T.easyLemon },
+      { id: "chilling-4", label: "Half Awake", url: T.dreamer },
+    ],
+  },
+  {
+    id: "relaxed",
+    label: "Relaxed",
+    emoji: "😮‍💨",
+    vibe: "shoulders down, unhurried, breathing easy",
+    clips: [
+      { id: "relaxed-1", label: "Exhale", url: T.meditation },
+      { id: "relaxed-2", label: "Soft Tide", url: T.localForecast },
+      { id: "relaxed-3", label: "Unwind", url: T.healing },
+      { id: "relaxed-4", label: "Drift", url: T.pamgaea },
+    ],
+  },
+  {
     id: "nostalgia",
     label: "Nostalgic",
     emoji: "📷",
@@ -428,6 +461,30 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
     ],
   },
   {
+    id: "scared",
+    label: "Scared",
+    emoji: "😱",
+    vibe: "startled, frightened, caught off guard",
+    clips: [
+      { id: "scared-1", label: "Jump", url: T.ossuary },
+      { id: "scared-2", label: "Shadow", url: T.lightlessDawn },
+      { id: "scared-3", label: "Gasp", url: T.cipher2 },
+      { id: "scared-4", label: "Freeze", url: T.industrialBox },
+    ],
+  },
+  {
+    id: "afraid",
+    label: "Afraid",
+    emoji: "😰",
+    vibe: "fearful, worried, dread in your chest",
+    clips: [
+      { id: "afraid-1", label: "Dread", url: T.lightlessDawn },
+      { id: "afraid-2", label: "Uneasy", url: T.longNoteFour },
+      { id: "afraid-3", label: "Corner", url: T.ossuary },
+      { id: "afraid-4", label: "Waiting", url: T.cipher2 },
+    ],
+  },
+  {
     id: "anger",
     label: "Anger",
     emoji: "😠",
@@ -501,14 +558,18 @@ const VIBE_KEYWORDS: Record<MusicGenre, string[]> = {
   wonder: ["sunset", "stars", "aurora", "view", "vista", "skyline", "canyon", "ocean", "northern", "magical", "rainbow"],
   fascinated: ["fascinated", "fascinating", "interesting", "curious", "intrigued", "intriguing", "absorbed", "obsessed", "hobby", "hobbies", "collection", "collector", "collecting", "tinker", "tinkering", "craft", "crafting", "project", "workshop", "workbench", "gadget", "gear", "setup", "rig", "mechanism", "movement", "vinyl", "records", "rare", "specimen", "specimens", "study", "studying", "research", "museum", "exhibit", "exhibition", "gallery", "archive", "library", "model", "kit", "lego", "puzzle", "chess", "knit", "knitting", "crochet", "pottery", "ceramics", "woodwork", "woodworking", "soldering", "electronics", "circuit", "telescope", "microscope", "fossil", "mineral", "crystal", "terrarium", "aquarium", "mushroom", "foraging", "birding", "birder", "watch", "watches", "horology", "mechanical", "keyboard", "synthesizer", "synth", "camera gear", "lens", "stamp", "coin", "miniature", "miniatures", "diorama", "tabletop", "rpg", "trading card", "deck"],
   calm: ["coffee", "morning", "rain", "book", "tea", "garden", "quiet", "porch", "sunday", "still", "lake"],
-  content: ["content", "satisfied", "settled", "cozy", "comfy", "couch", "blanket", "fireplace", "full", "happy enough", "peaceful smile", "at ease", "relaxed", "good day", "simple", "homey"],
+  content: ["content", "satisfied", "settled", "cozy", "comfy", "couch", "blanket", "fireplace", "full", "happy enough", "peaceful smile", "at ease", "good day", "simple", "homey"],
+  chilling: ["chill", "chilling", "chilled", "chillout", "unwind", "unwinding", "lazy", "lounging", "lounge", "hangout", "low key", "lowkey", "idle", "slow day", "easy day", "nothing planned"],
+  relaxed: ["relaxed", "relaxing", "relax", "mellow", "laid back", "laidback", "unhurried", "loose", "ease", "at ease", "breathing", "slow down", "wind down", "decompress", "restful"],
   nostalgia: ["old", "vintage", "retro", "polaroid", "childhood", "school", "throwback", "hometown", "grandparent", "attic"],
   longing: ["window", "distant", "far", "missing", "wishing", "absent", "without", "across", "moon", "horizon"],
   sad: ["empty", "rainy", "grey", "ending", "goodbye", "memorial", "tear", "departed"],
   heartbroken: ["really sad", "devastated", "heartbroken", "broken heart", "shattered", "crushed", "broke me", "ruined", "ended us", "breakup", "left me"],
   lonely: ["alone", "solitary", "single", "deserted", "no one", "by myself", "isolated", "abandoned"],
   grief: ["loss", "funeral", "passed", "mourning", "remembrance", "passed away", "rest in peace", "graveyard"],
-  fear: ["dark", "alley", "storm", "shadow", "night", "thunder", "cliff", "creepy", "alarm", "ghost"],
+  fear: ["dark", "alley", "storm", "shadow", "night", "thunder", "cliff", "creepy", "alarm", "ghost", "haunted", "horror"],
+  scared: ["scared", "scare", "frightened", "startled", "spooked", "creeped", "jumpscare", "yikes", "eek"],
+  afraid: ["afraid", "fearful", "terrified", "dread", "panic", "worried", "anxious", "nervous", "uneasy"],
   anger: ["broken", "fight", "argument", "smash", "protest", "angry", "destroyed", "loud", "shouting", "ruined"],
   stress: ["work", "deadline", "office", "traffic", "commute", "screen", "email", "rush", "busy", "city", "noise", "crowd"],
   passion: ["concert", "festival", "race", "extreme", "adventure", "skate", "surf", "intense", "fast", "training", "workout"],
@@ -517,6 +578,11 @@ const VIBE_KEYWORDS: Record<MusicGenre, string[]> = {
 const THEME_HINTS: Record<string, MusicGenre> = {
   morning: "calm",
   coffee: "calm",
+  tea: "calm",
+  breakfast: "calm",
+  lunch: "content",
+  dinner: "content",
+  snack: "joy",
   food: "joy",
   meal: "joy",
   pet: "love",
@@ -532,6 +598,10 @@ const THEME_HINTS: Record<string, MusicGenre> = {
   garden: "calm",
   night: "fear",
   storm: "fear",
+  scared: "scared",
+  afraid: "afraid",
+  frightened: "scared",
+  horror: "fear",
   rain: "sad",
   goodbye: "sad",
   breakup: "heartbroken",
@@ -604,6 +674,13 @@ const THEME_HINTS: Record<string, MusicGenre> = {
   // existing work/commute register and the music library has chore-
   // friendly tracks under it).
   cafe: "calm",
+  chill: "chilling",
+  chilling: "chilling",
+  chilled: "chilling",
+  relaxed: "relaxed",
+  relaxing: "relaxed",
+  unwind: "chilling",
+  lounge: "chilling",
   shopping: "joy",
   selfie: "joy",
   mirror: "joy",
@@ -613,6 +690,40 @@ const THEME_HINTS: Record<string, MusicGenre> = {
   laundry: "stress",
   cleaning: "stress",
 };
+
+/**
+ * Pick a vibe only when theme/tags give a real signal. Returns null when
+ * there is nothing to match (avoids silently defaulting to calm on an
+ * empty post screen).
+ */
+export function suggestGenreIfMatch(
+  theme: string | undefined,
+  tags: string[] | undefined,
+): MusicGenre | null {
+  const t = (theme ?? "").toLowerCase().trim();
+  const tagList = (tags ?? []).map((x) => x.toLowerCase());
+  if (!t && tagList.length === 0) return null;
+
+  for (const [k, g] of Object.entries(THEME_HINTS)) {
+    if (t === k || t.includes(k)) return g;
+  }
+
+  const haystack = new Set([t, ...tagList].flatMap((s) => s.split(/\s+/)));
+  let best: MusicGenre = "calm";
+  let bestScore = 0;
+  for (const vibe of Object.keys(VIBE_KEYWORDS) as MusicGenre[]) {
+    let score = 0;
+    for (const kw of VIBE_KEYWORDS[vibe]) {
+      if (haystack.has(kw)) score += 2;
+      else if ([...haystack].some((h) => h.includes(kw))) score += 1;
+    }
+    if (score > bestScore) {
+      best = vibe;
+      bestScore = score;
+    }
+  }
+  return bestScore > 0 ? best : null;
+}
 
 /**
  * Pick the best-fitting vibe for a photo from its theme + tags. Always
@@ -646,6 +757,47 @@ export function suggestGenre(theme: string | undefined, tags: string[] | undefin
     }
   }
   return best;
+}
+
+/** Terms used when filtering vibe chips while the user types. */
+export function genreSearchTerms(genre: GenreMeta): string[] {
+  const themeHints = Object.entries(THEME_HINTS)
+    .filter(([, g]) => g === genre.id)
+    .map(([key]) => key);
+  return [
+    genre.label,
+    genre.id,
+    genre.vibe,
+    ...(VIBE_KEYWORDS[genre.id] ?? []),
+    ...themeHints,
+  ];
+}
+
+export function genreMatchesSearchQuery(genre: GenreMeta, query: string): boolean {
+  return tokenMatchesAnyQuery(query, genreSearchTerms(genre));
+}
+
+export function genreSearchMatchScore(genre: GenreMeta, query: string): number {
+  return bestTokenMatchScore(query, genreSearchTerms(genre));
+}
+
+/** Resolve a single vibe from typed search text (chip row + submit validation). */
+export function resolveGenreFromSearchQuery(query: string): MusicGenre | null {
+  const q = query.trim().toLowerCase();
+  if (!q) return null;
+  const exact = MUSIC_LIBRARY.find(
+    (g) => g.label.toLowerCase() === q || g.id.toLowerCase() === q,
+  );
+  if (exact) return exact.id;
+  const matches = MUSIC_LIBRARY.filter((g) => genreMatchesSearchQuery(g, q));
+  if (matches.length === 0) return null;
+  if (matches.length === 1) return matches[0].id;
+  const ranked = [...matches].sort(
+    (a, b) => genreSearchMatchScore(b, q) - genreSearchMatchScore(a, q),
+  );
+  const top = genreSearchMatchScore(ranked[0], q);
+  const runner = genreSearchMatchScore(ranked[1], q);
+  return top > runner ? ranked[0].id : null;
 }
 
 /**

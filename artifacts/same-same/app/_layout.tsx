@@ -15,6 +15,7 @@ import { Redirect, router, Stack, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import {
   ActivityIndicator,
@@ -360,24 +361,19 @@ function RootLayoutNav() {
           myPhotoUri={pendingFlashEcho.mine.uri}
           theirPhotoUri={pendingFlashEcho.theirs.uri}
           myCountryFlag={pendingFlashEcho.mine.countryFlag}
+          myCountryCode={pendingFlashEcho.mine.countryCode ?? undefined}
           theirCountry={pendingFlashEcho.theirs.country}
           theirCountryFlag={pendingFlashEcho.theirs.countryFlag}
+          theirCountryCode={pendingFlashEcho.theirs.countryCode ?? undefined}
           themeTitle={pendingFlashEcho.theme}
           onDone={dismissFlashEcho}
           onOpen={() => {
-            const a = pendingFlashEcho.mine.id;
-            const b = pendingFlashEcho.theirs.id;
-            // Push the share-card route FIRST and tear down the flash
-            // overlay only after the screen-push transition has had
-            // time to cover it. If we dismiss synchronously the
-            // overlay disappears immediately, exposing the underlying
-            // match screen for the ~300 ms the navigation animation
-            // takes — which reads as a flicker back to the match
-            // screen before the share card "lands". The timeout
-            // matches React Navigation's default stack/modal push
-            // duration; the overlay then unmounts behind the new
-            // screen, invisible to the user.
-            router.push({ pathname: "/echo-pair", params: { a, b } });
+            const a = String(pendingFlashEcho.mine.id);
+            const b = String(pendingFlashEcho.theirs.id);
+            router.push({
+              pathname: "/echo-pair",
+              params: { a, b },
+            });
             setTimeout(() => dismissFlashEcho(), 400);
           }}
         />
@@ -492,11 +488,13 @@ function RootLayoutWithClerk() {
                       RevenueCat "pro" entitlement. Renders nothing. */}
                   <RevenueCatProBridge />
                   <GestureHandlerRootView style={{ flex: 1 }}>
-                    <ToastHost>
-                      <AuthGate>
-                        <RootLayoutNav />
-                      </AuthGate>
-                    </ToastHost>
+                    <KeyboardProvider>
+                      <ToastHost>
+                        <AuthGate>
+                          <RootLayoutNav />
+                        </AuthGate>
+                      </ToastHost>
+                    </KeyboardProvider>
                   </GestureHandlerRootView>
                 </AppProvider>
               </SubscriptionProvider>

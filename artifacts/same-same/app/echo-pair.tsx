@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Dimensions,
   Image,
   Platform,
   ScrollView,
@@ -10,23 +11,37 @@ import {
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import * as Sharing from "expo-sharing";
-import ViewShot, { captureRef } from "react-native-view-shot";
+import { captureRef } from "react-native-view-shot";
 import { Icon } from "@/components/Icon";
 import { MicBadge } from "@/components/MicBadge";
+import { ConnectionAtlasShareCard } from "@/components/ConnectionAtlasShareCard";
+import { SharePhotoCardPoster } from "@/components/SharePhotoCardPoster";
+import {
+  ShareLayoutModeToggle,
+  type ShareLayoutMode,
+} from "@/components/ShareLayoutModeToggle";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { getTimeTier, getGeoTier } from "@/utils/celebrations";
 import { DAILY_CHALLENGES } from "@/data/samplePhotos";
 import { fetchPair, type PhotoPairResult } from "@/utils/api";
 import { pausePreview } from "@/utils/audio";
+import {
+  shareCaptureOptions,
+  sharePreviewWidth,
+  shareShotFrameStyle,
+} from "@/utils/shareDimensions";
 
 export default function EchoPairScreen() {
   const colors = useColors();
+  const { width: windowWidth } = useWindowDimensions();
+  const shareCardWidth = sharePreviewWidth(windowWidth);
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ a?: string; b?: string }>();
   const { proUnlocked } = useApp();
@@ -46,7 +61,8 @@ export default function EchoPairScreen() {
   const [pair, setPair] = useState<PhotoPairResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState(false);
-  const shotRef = useRef<ViewShot>(null);
+  const [shareLayoutMode, setShareLayoutMode] = useState<ShareLayoutMode>("card");
+  const shotRef = useRef<View>(null);
 
   // Subtle entrance animation so the share card "lands" rather than
   // popping in cold. Mirrors the reveal screen's feel.
@@ -54,13 +70,21 @@ export default function EchoPairScreen() {
   const scaleIn = useRef(new Animated.Value(0.94)).current;
 
   useEffect(() => {
+    if (shareLayoutMode !== "atlas") return;
+    fadeIn.setValue(1);
+    scaleIn.setValue(1);
+  }, [shareLayoutMode, fadeIn, scaleIn]);
+
+  useEffect(() => {
     let alive = true;
     (async () => {
-      if (!params.a || !params.b) {
+      const photoA = Array.isArray(params.a) ? params.a[0] : params.a;
+      const photoB = Array.isArray(params.b) ? params.b[0] : params.b;
+      if (!photoA || !photoB) {
         setLoading(false);
         return;
       }
-      const result = await fetchPair(String(params.a), String(params.b));
+      const result = await fetchPair(String(photoA), String(photoB));
       if (alive) {
         setPair(result);
         setLoading(false);
@@ -91,11 +115,10 @@ export default function EchoPairScreen() {
     if (sharing || !pair || !shotRef.current) return;
     setSharing(true);
     try {
-      const uri = await captureRef(shotRef.current, {
-        format: "jpg",
-        quality: 0.95,
-        result: "tmpfile",
-      });
+      if (shareLayoutMode === "atlas") {
+        await new Promise((resolve) => setTimeout(resolve, 320));
+      }
+      const uri = await captureRef(shotRef.current, shareCaptureOptions());
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       if (Platform.OS === "web") {
         Alert.alert(
@@ -211,25 +234,6 @@ export default function EchoPairScreen() {
     pair.b.countryCode ?? undefined,
   );
 
-  const sameChips: Array<{ label: string; emoji: string }> = [
-    { label: themeTitle, emoji: themeEmoji },
-  ];
-  const timeChipMap: Record<string, { label: string; emoji: string } | null> = {
-    minute: { label: "same minute", emoji: "⚡" },
-    hour: { label: "same hour", emoji: "✨" },
-    day: { label: "same day", emoji: "☀️" },
-    week: { label: "same week", emoji: "🗓️" },
-    distant: null,
-  };
-  const timeChip = timeChipMap[timeTier.kind];
-  if (timeChip) sameChips.push(timeChip);
-  const geoChipMap: Record<string, { label: string; emoji: string }> = {
-    country: { label: "same country", emoji: "📍" },
-    continent: { label: "same continent", emoji: "🌎" },
-    planet: { label: "same world", emoji: "🌍" },
-  };
-  sameChips.push(geoChipMap[geoTier.kind]);
-
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {renderHeader()}
@@ -245,286 +249,72 @@ export default function EchoPairScreen() {
             Same structure as /reveal: "same same" wordmark, "same X"
             chip row with the actual vibe name first, two photos with a
             flag beside each, then the watermark when not Pro. */}
+        <ShareLayoutModeToggle
+          value={shareLayoutMode}
+          onChange={setShareLayoutMode}
+        />
+
+        <Text style={[styles.sharePreviewCaption, { color: colors.mutedForeground }]}>
+          Preview · exports as 1080×1080
+        </Text>
+
         <Animated.View
-          style={{
-            opacity: fadeIn,
-            transform: [{ scale: scaleIn }],
-          }}
+          style={[
+            { opacity: fadeIn },
+            ...(shareLayoutMode !== "atlas"
+              ? [{ transform: [{ scale: scaleIn }] }]
+              : []),
+          ]}
         >
-          <ViewShot
+          <View
             ref={shotRef}
-            options={{ format: "jpg", quality: 0.95 }}
+            collapsable={false}
             style={[
-              styles.shareCard,
-              {
-                backgroundColor: colors.card,
-                // Celebration accent: a soft gold edge frames the
-                // whole shareable so it reads as a milestone moment,
-                // not just a regular pair view.
-                borderColor: colors.gold + "66",
-                borderWidth: 1.5,
-              },
+              shareShotFrameStyle(shareCardWidth),
+              shareLayoutMode === "atlas" && styles.shareAtlasShot,
+              shareLayoutMode === "card" && styles.shareShotClip,
             ]}
           >
-            {/* Decorative sparkle confetti in the corners of the
-                share image — small enough to feel like flourish, not
-                clutter, and burned into the captured image so the
-                shared moment feels celebratory at a glance. */}
-            <Text style={styles.cornerSparkleTL}>✨</Text>
-            <Text style={styles.cornerSparkleTR}>✨</Text>
-            <Text style={styles.cornerSparkleBL}>✨</Text>
-            <Text style={styles.cornerSparkleBR}>✨</Text>
-
-            {/* Hero brand mark — the Wave (mutual) share card title
-                renders as [wave-icon] Wave [wave-icon], mirroring the
-                Ripple card's [ripple-icon] Ripple [ripple-icon] layout
-                but with the wave glyph and teal accent color so the
-                two share cards remain visually distinct. */}
-            <View style={styles.shareTitleRow}>
-              <Icon name="wave-glyph" size={22} color={colors.teal} />
-              <Text style={[styles.shareTitle, { color: colors.teal }]}>
-                Wave
-              </Text>
-              <Icon name="wave-glyph" size={22} color={colors.teal} />
-            </View>
-
-            {/* Two-row chip layout: the topic (first chip) sits alone
-                on its own centered line, then the time + geo "same X"
-                tokens share a second line below. Mirrors the Ripple
-                share card on reveal.tsx so the two share cards stay
-                visually consistent. */}
-            {(() => {
-              const [topicChip, ...metaChips] = sameChips;
-              return (
-                <>
-                  <View style={styles.shareChipsRow}>
-                    <View
-                      key={topicChip.label}
-                      style={[
-                        styles.shareChip,
-                        {
-                          backgroundColor: colors.teal + "1a",
-                          borderColor: colors.teal + "55",
-                        },
-                      ]}
-                    >
-                      <Text style={styles.shareChipEmoji}>{topicChip.emoji}</Text>
-                      <Text style={[styles.shareChipText, { color: colors.teal }]}>
-                        {topicChip.label}
-                      </Text>
-                    </View>
-                  </View>
-                  {metaChips.length > 0 && (
-                    <View style={styles.shareChipsRow}>
-                      {metaChips.map((chip) => (
-                        <View
-                          key={chip.label}
-                          style={[
-                            styles.shareChip,
-                            {
-                              backgroundColor: colors.teal + "1a",
-                              borderColor: colors.teal + "55",
-                            },
-                          ]}
-                        >
-                          <Text style={styles.shareChipEmoji}>{chip.emoji}</Text>
-                          <Text style={[styles.shareChipText, { color: colors.teal }]}>
-                            {chip.label}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </>
-              );
-            })()}
-
-            {/* The photo pair now breaks out of the share-card's horizontal
-                padding (via negative margin) so the two images run almost
-                edge-to-edge of the captured share image. Country flags
-                used to be absolutely-positioned overlays on the top-right
-                of each photo — they now live in a small row directly
-                beneath their photo, centered, same 36px size. The mic-
-                badge audio indicator stays inside the photo frame
-                (Echo-only). */}
-            {/* Photo layout has two modes:
-                  free  → side-by-side (same as before): two photos in
-                          a row sharing the card width, two flags in a
-                          row beneath, plus the "Find it on Google
-                          Play" watermark below the card.
-                  Pro   → stacked: each photo takes the full card-edge-
-                          to-card-edge width with a small flag
-                          centered directly beneath it. With the
-                          watermark removed (Pro perk), there's
-                          nothing competing for vertical space, so
-                          the photos can grow as big as the share
-                          card allows — matching the match-screen
-                          presentation the user asked for. The mic
-                          badge stays inside the photo frame in both
-                          modes (Echo-only audio indicator). */}
-            {proUnlocked ? (
-              <View style={styles.sharePhotoStack}>
-                <View style={styles.sharePhotoStackItem}>
-                  <View style={styles.sharePhotoFrameStacked}>
-                    <Image
-                      source={{ uri: pair.a.uri }}
-                      style={styles.sharePhoto}
-                      resizeMode="cover"
-                    />
-                    {pair.a.customAudioUrl ? (
-                      <View style={styles.micBadgeOverlay}>
-                        <MicBadge audioUrl={pair.a.customAudioUrl} size="sm" />
-                      </View>
-                    ) : null}
-                  </View>
-                  <View
-                    style={[
-                      styles.shareFlagBadge,
-                      { backgroundColor: colors.card, borderColor: colors.border },
-                    ]}
-                  >
-                    <Text style={styles.shareFlagText}>
-                      {pair.a.countryFlag ?? "🌍"}
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.sharePhotoStackItem}>
-                  <View style={styles.sharePhotoFrameStacked}>
-                    <Image
-                      source={{ uri: pair.b.uri }}
-                      style={styles.sharePhoto}
-                      resizeMode="cover"
-                    />
-                    {pair.b.customAudioUrl ? (
-                      <View style={styles.micBadgeOverlay}>
-                        <MicBadge audioUrl={pair.b.customAudioUrl} size="sm" />
-                      </View>
-                    ) : null}
-                  </View>
-                  <View
-                    style={[
-                      styles.shareFlagBadge,
-                      { backgroundColor: colors.card, borderColor: colors.border },
-                    ]}
-                  >
-                    <Text style={styles.shareFlagText}>
-                      {pair.b.countryFlag ?? "🌍"}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            ) : (
-              <View style={styles.sharePhotoPair}>
-                <View style={styles.sharePhotoFramesRow}>
-                  {/* Watermark used to be burned onto the photos here
-                      as a small "✨ same same" pill at the bottom of
-                      the photo row. User feedback: it cluttered the
-                      photos and felt too small to read as an actual
-                      watermark. The watermark now lives only as the
-                      larger pill below the flag row (see
-                      styles.watermark) — clearer, brand-y, and out
-                      of the photo composition. */}
-                  <View style={styles.sharePhotoFrame}>
-                    <Image
-                      source={{ uri: pair.a.uri }}
-                      style={styles.sharePhoto}
-                      resizeMode="cover"
-                    />
-                    {pair.a.customAudioUrl ? (
-                      <View style={styles.micBadgeOverlay}>
-                        <MicBadge audioUrl={pair.a.customAudioUrl} size="sm" />
-                      </View>
-                    ) : null}
-                    <View style={styles.photoOverlayWatermarkContainer}>
-                      <View style={styles.photoOverlayWatermark}>
-                        <Icon name="wave" size={11} color="#FFFFFF" />
-                        <Text style={styles.photoOverlayWatermarkText}>SameWave</Text>
-                      </View>
-                    </View>
-                  </View>
-                  <View style={styles.sharePhotoFrame}>
-                    <Image
-                      source={{ uri: pair.b.uri }}
-                      style={styles.sharePhoto}
-                      resizeMode="cover"
-                    />
-                    {pair.b.customAudioUrl ? (
-                      <View style={styles.micBadgeOverlay}>
-                        <MicBadge audioUrl={pair.b.customAudioUrl} size="sm" />
-                      </View>
-                    ) : null}
-                    <View style={styles.photoOverlayWatermarkContainer}>
-                      <View style={styles.photoOverlayWatermark}>
-                        <Icon name="wave" size={11} color="#FFFFFF" />
-                        <Text style={styles.photoOverlayWatermarkText}>SameWave</Text>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-                <View style={styles.shareFlagRow}>
-                  <View style={styles.shareFlagSlot}>
-                    <View
-                      style={[
-                        styles.shareFlagBadge,
-                        {
-                          backgroundColor: colors.card,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                    >
-                      <Text style={styles.shareFlagText}>
-                        {pair.a.countryFlag ?? "🌍"}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.shareFlagSlot}>
-                    <View
-                      style={[
-                        styles.shareFlagBadge,
-                        {
-                          backgroundColor: colors.card,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                    >
-                      <Text style={styles.shareFlagText}>
-                        {pair.b.countryFlag ?? "🌍"}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              </View>
-            )}
-
-            {!proUnlocked && (
-              <View
-                style={[
-                  styles.watermark,
-                  {
-                    // Two-line attribution callout: app name on top so
-                    // viewers know what app made the image, "Find it
-                    // on Google Play" beneath so they know where to
-                    // get it. Solid black with a teal brand outline
-                    // is legible on any background. Sits inside the
-                    // ViewShot capture region so it's burned into the
-                    // exported share image.
-                    backgroundColor: "#000000",
-                    borderColor: colors.teal,
-                  },
-                ]}
-              >
-                <View style={styles.watermarkRow}>
-                  <Icon name="wave" size={28} color="#FFFFFF" />
-                  <Text style={[styles.watermarkText, { color: "#FFFFFF" }]}>
-                    SameWave
-                  </Text>
-                </View>
-                <Text style={[styles.watermarkSubtext, { color: colors.teal }]}>
-                  Find it on Google Play
-                </Text>
-              </View>
-            )}
-          </ViewShot>
+          {shareLayoutMode === "atlas" ? (
+            <ConnectionAtlasShareCard
+              kind="wave"
+              fromCode={pair.a.countryCode}
+              toCode={pair.b.countryCode}
+              myPhotoUri={pair.a.uri}
+              theirPhotoUri={pair.b.uri}
+              myCountryFlag={pair.a.countryFlag}
+              theirCountryFlag={pair.b.countryFlag}
+              themeTitle={themeTitle}
+              themeEmoji={themeEmoji}
+              timeTier={timeTier}
+              geoTier={geoTier}
+              showWatermark={!proUnlocked}
+              width={shareCardWidth}
+            />
+          ) : (
+            <SharePhotoCardPoster
+              variant="wave"
+              side={shareCardWidth}
+              themeTitle={themeTitle}
+              themeEmoji={themeEmoji}
+              timeTier={timeTier}
+              geoTier={geoTier}
+              myPhotoUri={pair.a.uri}
+              theirPhotoUri={pair.b.uri}
+              myCountryFlag={pair.a.countryFlag}
+              myCountryName={pair.a.country}
+              theirCountry={pair.b.country}
+              theirCountryFlag={pair.b.countryFlag}
+              showWatermark={!proUnlocked}
+              highlightBothCountries
+              renderPhotoOverlay={(slot) => {
+                const photo = slot === "mine" ? pair.a : pair.b;
+                if (!photo.customAudioUrl) return null;
+                return <MicBadge audioUrl={photo.customAudioUrl} size="sm" />;
+              }}
+            />
+          )}
+          </View>
         </Animated.View>
 
         {/* Visual separator between the shareable image above and the
@@ -615,24 +405,52 @@ const styles = StyleSheet.create({
   // tight stack gap, compact title + chips above, and a portrait
   // (4:5) aspect ratio on each photo so the imagery dominates the
   // captured share card.
+  sharePreviewCaption: {
+    alignSelf: "center",
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    letterSpacing: 0.4,
+    marginTop: -6,
+    marginBottom: 2,
+  },
   shareCard: {
-    borderRadius: 24,
+    borderRadius: 18,
     borderWidth: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-    gap: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    gap: 6,
     overflow: "hidden",
     alignItems: "center",
+  },
+  shareCardCompact: {
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    gap: 5,
+  },
+  shareCardSquare: {
+    flex: 1,
+    justifyContent: "space-between",
+    height: "100%",
   },
   shareTitleRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
   },
+  shareAtlasShot: {
+    borderRadius: 24,
+    overflow: "hidden",
+  },
+  shareShotClip: {
+    overflow: "hidden",
+  },
   shareTitle: {
-    fontSize: 24,
+    fontSize: 20,
     fontFamily: "Inter_700Bold",
     letterSpacing: -0.5,
+  },
+  shareTitleCompact: {
+    fontSize: 17,
   },
   // Tiny gold sparkles tucked into the four corners of the share
   // card. Absolute-positioned so they don't disturb the centered
@@ -678,31 +496,6 @@ const styles = StyleSheet.create({
   // visually paired with its own flag, not the next photo). Same
   // edge-to-edge break-out as sharePhotoPair so the photos run
   // flush with the share-card edges.
-  sharePhotoStack: {
-    flexDirection: "column",
-    gap: 14,
-    alignSelf: "stretch",
-    marginHorizontal: -18,
-  },
-  sharePhotoStackItem: {
-    alignSelf: "stretch",
-    alignItems: "center",
-    gap: 6,
-  },
-  sharePhotoFrameStacked: {
-    alignSelf: "stretch",
-    // Landscape 4:3 (matches reveal.tsx). Earlier this was 4:5 portrait
-    // at full card width which made each photo ~450 px tall — two
-    // stacked + the header / chips / flags couldn't fit in a single
-    // viewport, so the user could only see one photo on screen at a
-    // time. 4:3 keeps the photos clearly bigger than free's
-    // side-by-side framing while letting the whole share card fit in
-    // a phone viewport for preview and a typical social-share crop.
-    aspectRatio: 4 / 3,
-    borderRadius: 16,
-    overflow: "hidden",
-    position: "relative",
-  },
   shareChip: {
     flexDirection: "row",
     alignItems: "center",
@@ -724,10 +517,13 @@ const styles = StyleSheet.create({
   // horizontal margin equal to the share card's horizontal padding (18),
   // so the captured share image's photos run almost to the corners.
   sharePhotoPair: {
+    flex: 1,
     flexDirection: "column",
-    gap: 8,
+    gap: 4,
     alignSelf: "stretch",
-    marginHorizontal: -18,
+    justifyContent: "center",
+    marginHorizontal: -10,
+    minHeight: 0,
   },
   sharePhotoFramesRow: {
     flexDirection: "row",
@@ -737,12 +533,8 @@ const styles = StyleSheet.create({
   },
   sharePhotoFrame: {
     flex: 1,
-    // Portrait 4:5. Each photo column is roughly half the card
-    // width, so this gives a tall, magazine-like frame that
-    // dominates the captured image — the title/chips above and the
-    // flags/watermark below collapse into a thin top and bottom
-    // strip around two big photos.
-    aspectRatio: 4 / 5,
+    // Square side-by-side frames — shorter card for social story size.
+    aspectRatio: 1,
     borderRadius: 16,
     overflow: "hidden",
     position: "relative",
@@ -756,24 +548,9 @@ const styles = StyleSheet.create({
   // their column. Same 36px diameter as the old absolute overlay.
   shareFlagRow: {
     flexDirection: "row",
-    gap: 6,
+    gap: 8,
     alignSelf: "stretch",
-  },
-  shareFlagSlot: {
-    flex: 1,
-    alignItems: "center",
-  },
-  shareFlagBadge: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  shareFlagText: {
-    fontSize: 16,
-    lineHeight: 18,
+    marginTop: 2,
   },
   // Two-line attribution callout. The outer container stacks the
   // wordmark row above the "Find it on Google Play" subtitle, with

@@ -1,0 +1,15 @@
+# Local native trees (EAS runs prebuild on the builder; exclude to avoid locks + huge uploads).
+android/
+ios/
+
+# Local build outputs
+dist/
+dist-android-test/
+static-build/
+.expo/
+
+# Secrets (never upload)
+.env
+.env.local
+credentials.json
+**/keystore.jks

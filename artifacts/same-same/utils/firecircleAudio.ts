@@ -4,33 +4,27 @@ import { markUserInteracted } from "@/utils/audio";
 import { dbToLinear } from "@/utils/dbLinear";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const WAVE_LOOP = require("../assets/audio/firecircle/wave_loop.wav");
+const OCEAN_LOOP = require("../assets/audio/firecircle/wave_loop.wav");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const FIRE_LOOP = require("../assets/audio/firecircle/fire_loop.wav");
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const CHATTER_LOOP = require("../assets/audio/firecircle/chatter_loop.wav");
 
 const DB = {
-  wave: -12,
-  fire: -18,
-  chatter: -20,
-  duckWave: -8,
-  duckFire: -8,
-  duckChatter: -12,
+  ocean: -14,
+  fire: -17,
+  duckOcean: -10,
+  duckFire: -11,
 } as const;
 
 const DUCK_MS = 1200;
 const ZOOM_OUT_BREAK = 0.92;
 const ZOOM_OUT_GAIN = 0.55;
 
-let waveSound: Audio.Sound | null = null;
+let oceanSound: Audio.Sound | null = null;
 let fireSound: Audio.Sound | null = null;
-let chatterSound: Audio.Sound | null = null;
 
 let started = false;
 let duckUntil = 0;
 let mapScale = 1;
-let focusSlot = 0;
 
 function zoomMul(): number {
   return mapScale < ZOOM_OUT_BREAK ? ZOOM_OUT_GAIN : 1;
@@ -42,17 +36,9 @@ function effectiveLinear(baseDb: number, duckDb: number): number {
   return dbToLinear(db) * zoomMul();
 }
 
-function panForStem(which: "wave" | "fire" | "chatter"): number {
-  const u = focusSlot / 6 - 0.5;
-  const pan = Math.max(-1, Math.min(1, u * 1.8));
-  if (which === "wave") return Math.max(-1, Math.min(1, pan - 0.2));
-  if (which === "fire") return pan;
-  return Math.max(-1, Math.min(1, pan + 0.18));
-}
-
 async function ensureLoaded() {
-  if (waveSound && fireSound && chatterSound) return;
-  const w = await Audio.Sound.createAsync(WAVE_LOOP, {
+  if (oceanSound && fireSound) return;
+  const o = await Audio.Sound.createAsync(OCEAN_LOOP, {
     isLooping: true,
     volume: 0,
     shouldPlay: false,
@@ -62,25 +48,17 @@ async function ensureLoaded() {
     volume: 0,
     shouldPlay: false,
   });
-  const c = await Audio.Sound.createAsync(CHATTER_LOOP, {
-    isLooping: true,
-    volume: 0,
-    shouldPlay: false,
-  });
-  waveSound = w.sound;
+  oceanSound = o.sound;
   fireSound = f.sound;
-  chatterSound = c.sound;
 }
 
 async function applyVolumes() {
-  if (!waveSound || !fireSound || !chatterSound) return;
-  const vw = effectiveLinear(DB.wave, DB.duckWave);
+  if (!oceanSound || !fireSound) return;
+  const vo = effectiveLinear(DB.ocean, DB.duckOcean);
   const vf = effectiveLinear(DB.fire, DB.duckFire);
-  const vc = effectiveLinear(DB.chatter, DB.duckChatter);
   try {
-    await waveSound.setVolumeAsync(vw, panForStem("wave"));
-    await fireSound.setVolumeAsync(vf, panForStem("fire"));
-    await chatterSound.setVolumeAsync(vc, panForStem("chatter"));
+    await oceanSound.setVolumeAsync(vo);
+    await fireSound.setVolumeAsync(vf);
   } catch {
     /* non-fatal */
   }
@@ -112,9 +90,9 @@ export function setFirecircleMapScale(s: number): void {
   mapScale = s;
 }
 
-/** Advance stereo focus around the seven tile slots (called from UI timer). */
-export function setFirecircleFocusSlot(index: number): void {
-  focusSlot = ((index % 7) + 7) % 7;
+/** @deprecated Stereo orbit focus — kept for FirecircleOrbit API compat. */
+export function setFirecircleFocusSlot(_index: number): void {
+  /* no-op: natural stereo mix, no panning chatter */
 }
 
 export async function startFirecircleAmbience(): Promise<void> {
@@ -143,9 +121,8 @@ export async function startFirecircleAmbience(): Promise<void> {
       /* non-fatal */
     }
   };
-  await play(waveSound);
+  await play(oceanSound);
   await play(fireSound);
-  await play(chatterSound);
   startVolumePump();
 }
 
@@ -161,10 +138,8 @@ export async function stopFirecircleAmbience(): Promise<void> {
       /* non-fatal */
     }
   };
-  await unload(waveSound);
+  await unload(oceanSound);
   await unload(fireSound);
-  await unload(chatterSound);
-  waveSound = null;
+  oceanSound = null;
   fireSound = null;
-  chatterSound = null;
 }

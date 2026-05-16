@@ -13,6 +13,63 @@ const ATLAS_FIT_PAD_PX = 14;
  * canvases keep extra ocean margin for panning; at scale 1 and default pan,
  * the user still sees the whole world.
  */
+const PREVIEW_FIT_PAD_PX = 16;
+
+/**
+ * Equal Earth fitted to the two connection endpoints (or centered on one
+ * country when both sides share a centroid). Used by share-card mini maps.
+ */
+export function createConnectionPreviewProjection(
+  canvasW: number,
+  canvasH: number,
+  fromLonLat: readonly [number, number] | null,
+  toLonLat: readonly [number, number] | null,
+): GeoProjection {
+  const cw = Math.max(1, canvasW);
+  const ch = Math.max(1, canvasH);
+  const pad = PREVIEW_FIT_PAD_PX;
+
+  if (!fromLonLat && !toLonLat) {
+    return createAtlasProjection(cw, ch, cw, ch);
+  }
+
+  const from = fromLonLat ?? toLonLat!;
+  const to = toLonLat ?? fromLonLat!;
+  const samePlace =
+    Math.abs(from[0] - to[0]) < 0.02 && Math.abs(from[1] - to[1]) < 0.02;
+
+  if (samePlace) {
+    return geoEqualEarth()
+      .center([from[0], from[1]])
+      .translate([cw / 2, ch / 2])
+      .scale(Math.min(cw, ch) / 2.4);
+  }
+
+  const collection = {
+    type: "FeatureCollection",
+    features: [
+      {
+        type: "Feature",
+        properties: {},
+        geometry: { type: "Point", coordinates: [from[0], from[1]] },
+      },
+      {
+        type: "Feature",
+        properties: {},
+        geometry: { type: "Point", coordinates: [to[0], to[1]] },
+      },
+    ],
+  };
+
+  return geoEqualEarth().fitExtent(
+    [
+      [pad, pad],
+      [cw - pad, ch - pad],
+    ],
+    collection as Parameters<GeoProjection["fitExtent"]>[1],
+  );
+}
+
 export function createAtlasProjection(
   canvasW: number,
   canvasH: number,

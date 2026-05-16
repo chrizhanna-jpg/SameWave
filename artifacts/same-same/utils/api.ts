@@ -270,7 +270,7 @@ export async function analyzePhoto(input: {
     }
     if (
       e instanceof Error &&
-      /Photo AI is not available|Photo analysis failed|OPENAI_API_KEY|Photo AI is not configured|image too large|invalid mime|provide exactly one of/i.test(
+      /Photo AI is not available|Photo analysis failed|OPENAI_API_KEY|Photo AI is not configured|image too large|invalid mime|provide exactly one of|quota|rate limit|429|exceeded your current/i.test(
         e.message,
       )
     ) {

@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Image,
+  Keyboard,
   Platform,
   ScrollView,
   StyleSheet,
@@ -10,6 +11,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { getRipplePhotoPaneMetrics } from "@/constants/ripplePhotoFrame";
+import { HorizontalTokenScroll } from "@/components/HorizontalTokenScroll";
+import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
+import { ProPaywallModal } from "@/components/ProPaywallModal";
 import { router, useFocusEffect } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { consumePendingCapture } from "@/utils/captureBus";
@@ -28,10 +33,17 @@ import { requestAtlasRefresh } from "@/utils/atlasHub";
 import { detectPhotoOrigin, type PhotoSource } from "@/utils/photoOrigin";
 import {
   MUSIC_LIBRARY,
+  genreMatchesSearchQuery,
+  genreSearchMatchScore,
   pickClipForSeed,
-  suggestGenre,
+  resolveGenreFromSearchQuery,
+  suggestGenreIfMatch,
   type MusicGenre,
 } from "@/data/musicLibrary";
+import {
+  bestTokenMatchScore,
+  tokenMatchesAnyQuery,
+} from "@/utils/tokenSearch";
 import {
   markUserInteracted,
   pausePreview,
@@ -42,6 +54,7 @@ import {
   togglePreview,
 } from "@/utils/audio";
 import { MicBadge } from "@/components/MicBadge";
+import { useSubscription } from "@/lib/revenuecat";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
 
@@ -59,16 +72,52 @@ const MAX_TAGS = 4;
 const SUBMIT_ANALYSIS_WAIT_CAP_MS = 5000;
 /** Short beat so “posted” flashes before switching tabs (~stack transition). */
 const NAV_TO_RIPPLE_MS = 380;
-const QUICK_THEMES = [
-  "morning coffee",
-  "street food",
-  "sunset hike",
-  "extreme sports",
-  "rainy commute",
-  "pet moment",
-  "office lunch",
-  "first steps",
-  "city lights",
+const QUICK_THEMES: { label: string; emoji: string }[] = [
+  { label: "morning coffee", emoji: "☕" },
+  { label: "morning tea", emoji: "🍵" },
+  { label: "breakfast", emoji: "🥐" },
+  { label: "lunch", emoji: "🥪" },
+  { label: "dinner", emoji: "🍝" },
+  { label: "afternoon snack", emoji: "🍪" },
+  { label: "takeaway", emoji: "🥡" },
+  { label: "grocery run", emoji: "🛒" },
+  { label: "street food", emoji: "🍜" },
+  { label: "sunset hike", emoji: "🌅" },
+  { label: "extreme sports", emoji: "🏂" },
+  { label: "rainy commute", emoji: "🌧️" },
+  { label: "pet moment", emoji: "🐾" },
+  { label: "office lunch", emoji: "🥗" },
+  { label: "first steps", emoji: "👶" },
+  { label: "city lights", emoji: "🌃" },
+  { label: "weekend brunch", emoji: "🥞" },
+  { label: "beach day", emoji: "🏖️" },
+  { label: "gym session", emoji: "💪" },
+  { label: "concert night", emoji: "🎤" },
+  { label: "family dinner", emoji: "🍽️" },
+  { label: "road trip", emoji: "🚗" },
+  { label: "cozy night in", emoji: "🛋️" },
+];
+
+type ThemeSuggestion = {
+  key: string;
+  label: string;
+  tagId: string | null;
+  emoji: string;
+};
+
+const THEME_SUGGESTION_POOL: ThemeSuggestion[] = [
+  ...QUICK_THEMES.map(({ label, emoji }) => ({
+    key: `quick-${label}`,
+    label,
+    tagId: null as string | null,
+    emoji,
+  })),
+  ...TAG_LIBRARY.map((t) => ({
+    key: `tag-${t.id}`,
+    label: t.label,
+    tagId: t.id,
+    emoji: t.emoji,
+  })),
 ];
 
 function normalizeTheme(s: string): string {
@@ -79,6 +128,27 @@ function normalizeTheme(s: string): string {
     .split(/\s+/)
     .slice(0, 4)
     .join(" ");
+}
+
+/** User picked a chip or edited the theme field — not AI/challenge autofill alone. */
+function hasExplicitPostTheme(themeEdited: boolean, themeText: string): boolean {
+  return themeEdited && normalizeTheme(themeText).length > 0;
+}
+
+/** User picked a vibe chip, typed a match, or recorded custom audio — not AI autofill alone. */
+function hasExplicitPostVibe(
+  genreEdited: boolean,
+  musicGenre: MusicGenre | null,
+  vibeSearchText: string,
+  customAudioUrl: string | null,
+): boolean {
+  if (customAudioUrl) return true;
+  if (!genreEdited) return false;
+  return musicGenre !== null || resolveGenreFromSearchQuery(vibeSearchText) !== null;
+}
+
+function themeSuggestionTerms(s: ThemeSuggestion): string[] {
+  return [s.label, s.tagId ?? "", s.emoji];
 }
 
 /** Local file / content URIs are not fetchable by the API — always send base64. */
@@ -111,7 +181,10 @@ export default function CameraScreen() {
     setMyPhotoUploadState,
     myPhotos,
     myCountryCode,
+    proUnlocked,
   } = useApp();
+  const { isPro } = useSubscription();
+  const proActive = isPro || proUnlocked;
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   // Keep the raw base64 + mime alongside the URI so submit() can ship the
   // bytes to the backend (the local URI isn't reachable from the server).
@@ -140,8 +213,9 @@ export default function CameraScreen() {
   /** Same-role as aiTagsRef: theme can update on the analyze tick before React re-renders. */
   const aiThemeRef = useRef("");
   const [analyzing, setAnalyzing] = useState(false);
-  const [showAllTags, setShowAllTags] = useState(false);
+  const [aiPaywallOpen, setAiPaywallOpen] = useState(false);
   const themeEditedRef = useRef(false);
+  const pickedAssetRef = useRef<ImagePicker.ImagePickerAsset | null>(null);
   // Tracks the latest analysis call so older in-flight responses don't
   // overwrite tags for a newer photo pick.
   const analyzeReqIdRef = useRef(0);
@@ -158,6 +232,7 @@ export default function CameraScreen() {
   // mirrors the theme-edited flag: once the user taps a chip, we stop
   // auto-overwriting their pick when later analysis comes in.
   const [musicGenre, setMusicGenre] = useState<MusicGenre | null>(null);
+  const [vibeSearchText, setVibeSearchText] = useState("");
   const [genreEdited, setGenreEdited] = useState(false);
   const genreEditedRef = useRef(false);
   const musicGenreRef = useRef<MusicGenre | null>(null);
@@ -166,7 +241,14 @@ export default function CameraScreen() {
   // can auto-scroll the AI's pick into view (centered when possible).
   // Otherwise the AI might pick a vibe that's off-screen and the user
   // wouldn't realize one is selected at all.
+  const themeScrollRef = useRef<ScrollView>(null);
   const musicScrollRef = useRef<ScrollView>(null);
+  const postFormScrollRef = useRef<ScrollView>(null);
+  const themeSectionRef = useRef<View>(null);
+  const photoBlockHeightRef = useRef(0);
+  const themeInControlsYRef = useRef(0);
+  const themeScrollYRef = useRef(0);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
   const chipLayoutsRef = useRef<Record<string, { x: number; width: number }>>({});
   const musicScrollWidthRef = useRef(0);
   // Lease handed back by the audio singleton for the most recent
@@ -412,35 +494,78 @@ export default function CameraScreen() {
     return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
-  const toggleTag = (id: string) => {
-    setSelectedTags((prev) => {
-      if (prev.includes(id)) return prev.filter((t) => t !== id);
-      if (prev.length >= MAX_TAGS) return prev;
-      return [...prev, id];
-    });
-  };
-
   const onThemeChange = (text: string) => {
     setThemeText(text);
     setThemeEdited(true);
     themeEditedRef.current = true;
   };
 
-  const useQuickTheme = (t: string) => {
-    setThemeText(t);
+  const applyThemeSuggestion = (s: ThemeSuggestion) => {
+    setThemeText(s.label);
     setThemeEdited(true);
     themeEditedRef.current = true;
+    if (s.tagId) {
+      setSelectedTags((prev) => {
+        if (prev.includes(s.tagId!)) return prev;
+        if (prev.length >= MAX_TAGS) return prev;
+        return [...prev, s.tagId!];
+      });
+    }
   };
 
-  // Tag picker: show all tags from the fixed library, ordered with AI-spotted
-  // ones first so the user can quickly add or remove any.
-  const orderedTags = [
-    ...TAG_LIBRARY.filter((t) => aiTags.includes(t.id)),
-    ...TAG_LIBRARY.filter((t) => !aiTags.includes(t.id)),
-  ];
-  const INITIAL_TAGS = 8;
-  const visibleTags = showAllTags ? orderedTags : orderedTags.slice(0, INITIAL_TAGS);
-  const hiddenCount = orderedTags.length - INITIAL_TAGS;
+  const filteredThemeSuggestions = useMemo(() => {
+    const q = themeText.trim().toLowerCase();
+    const aiFirst = [
+      ...THEME_SUGGESTION_POOL.filter(
+        (s) => s.tagId && aiTags.includes(s.tagId),
+      ),
+      ...THEME_SUGGESTION_POOL.filter(
+        (s) => !s.tagId || !aiTags.includes(s.tagId),
+      ),
+    ];
+    if (!q) return aiFirst;
+    const matched = aiFirst.filter((s) =>
+      tokenMatchesAnyQuery(q, themeSuggestionTerms(s)),
+    );
+    return matched.sort(
+      (a, b) =>
+        bestTokenMatchScore(q, themeSuggestionTerms(b)) -
+        bestTokenMatchScore(q, themeSuggestionTerms(a)),
+    );
+  }, [themeText, aiTags]);
+
+  const filteredVibeSuggestions = useMemo(() => {
+    const q = vibeSearchText.trim().toLowerCase();
+    const pool = q
+      ? MUSIC_LIBRARY.filter((g) => genreMatchesSearchQuery(g, q)).sort(
+          (a, b) => genreSearchMatchScore(b, q) - genreSearchMatchScore(a, q),
+        )
+      : MUSIC_LIBRARY;
+    if (!musicGenre) return pool;
+    const selected = pool.find((g) => g.id === musicGenre);
+    const rest = pool.filter((g) => g.id !== musicGenre);
+    return selected ? [selected, ...rest] : pool;
+  }, [vibeSearchText, musicGenre]);
+
+  useEffect(() => {
+    themeScrollRef.current?.scrollTo({ x: 0, animated: false });
+  }, [themeText]);
+
+  useEffect(() => {
+    musicScrollRef.current?.scrollTo({ x: 0, animated: false });
+  }, [vibeSearchText]);
+
+  const onVibeSearchChange = (text: string) => {
+    setVibeSearchText(text);
+    setGenreEdited(true);
+    genreEditedRef.current = true;
+    const active = musicGenre
+      ? MUSIC_LIBRARY.find((g) => g.id === musicGenre)
+      : null;
+    if (active && text.trim().toLowerCase() !== active.label.toLowerCase()) {
+      setMusicGenre(null);
+    }
+  };
 
   const acceptPhoto = (
     asset: ImagePicker.ImagePickerAsset,
@@ -455,11 +580,11 @@ export default function CameraScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     }
     setSelectedPhoto(asset.uri);
+    pickedAssetRef.current = asset;
     selectedAssetRef.current = {
       base64: asset.base64 ?? null,
       mimeType: asset.mimeType ?? "image/jpeg",
     };
-    analyzeSelected(asset);
     return true;
   };
 
@@ -482,7 +607,14 @@ export default function CameraScreen() {
     }
   };
 
+  const selectRecentPhoto = (uri: string) => {
+    setSelectedPhoto(uri);
+    pickedAssetRef.current = null;
+    selectedAssetRef.current = null;
+  };
+
   const resetForNewPhoto = () => {
+    pickedAssetRef.current = null;
     setSelectedTags([]);
     setAiTags([]);
     aiThemeRef.current = "";
@@ -492,6 +624,7 @@ export default function CameraScreen() {
     themeEditedRef.current = false;
     // Reset the music vibe so the next photo gets its own AI suggestion.
     setMusicGenre(null);
+    setVibeSearchText("");
     setGenreEdited(false);
     genreEditedRef.current = false;
     void stopAudio();
@@ -505,20 +638,6 @@ export default function CameraScreen() {
     setRecordedDurationMs(0);
     setRecordingProgressMs(0);
   };
-
-  // Once AI analysis lands (or when the user types a theme that changes
-  // the suggestion), pick a genre — but only if the user hasn't already
-  // picked one themselves. This is the "AI suggests first clip" piece.
-  useEffect(() => {
-    if (genreEditedRef.current) return;
-    if (!selectedPhoto) return;
-    const themeForSuggestion = themeEditedRef.current
-      ? normalizeTheme(themeText)
-      : aiTheme;
-    if (!themeForSuggestion && aiTags.length === 0) return;
-    const g = suggestGenre(themeForSuggestion, aiTags);
-    setMusicGenre(g);
-  }, [aiTheme, aiTags, themeText, selectedPhoto]);
 
   // Whenever the AI's pick changes (and the user hasn't manually
   // overridden) auto-scroll the chip ScrollView so the highlighted
@@ -549,6 +668,16 @@ export default function CameraScreen() {
     return () => {
       cancelled = true;
     };
+  }, [musicGenre, genreEdited]);
+
+  useEffect(() => {
+    if (genreEdited) return;
+    if (!musicGenre) {
+      setVibeSearchText("");
+      return;
+    }
+    const meta = MUSIC_LIBRARY.find((g) => g.id === musicGenre);
+    if (meta) setVibeSearchText(meta.label);
   }, [musicGenre, genreEdited]);
 
   // Tear down audio when leaving the screen entirely (back nav, etc).
@@ -586,7 +715,9 @@ export default function CameraScreen() {
     // Tapping a vibe chip is an explicit consent to play audio — open
     // the cold-start gate so the preview clip actually sounds.
     markUserInteracted();
+    const meta = MUSIC_LIBRARY.find((x) => x.id === g);
     setMusicGenre(g);
+    setVibeSearchText(meta?.label ?? g);
     setGenreEdited(true);
     genreEditedRef.current = true;
     Haptics.selectionAsync().catch(() => {});
@@ -648,6 +779,27 @@ export default function CameraScreen() {
     }, []),
   );
 
+  const runAiSuggestions = () => {
+    const asset = pickedAssetRef.current;
+    if (!asset || analyzing) return;
+    analyzeSelected(asset);
+  };
+
+  const handleSuggestPress = () => {
+    if (!pickedAssetRef.current) {
+      Alert.alert(
+        "Photo not ready",
+        "Pick a photo first, then tap AI suggest.",
+      );
+      return;
+    }
+    if (!proActive) {
+      setAiPaywallOpen(true);
+      return;
+    }
+    runAiSuggestions();
+  };
+
   const analyzeSelected = (asset: ImagePicker.ImagePickerAsset) => {
     const reqId = ++analyzeReqIdRef.current;
     aiTagsRef.current = [];
@@ -691,10 +843,29 @@ export default function CameraScreen() {
       aiSubjectsRef.current = result.subjects;
       aiThemeRef.current = result.theme;
       setAiTags(result.tags);
+      if (result.tags.length > 0) {
+        setSelectedTags((prev) =>
+          Array.from(new Set([...prev, ...result.tags])).slice(0, MAX_TAGS),
+        );
+      }
       setAiTheme(result.theme);
       // Autofill the theme input only if the user hasn't typed anything yet.
       if (!themeEditedRef.current && result.theme) {
         setThemeText(result.theme);
+      }
+      if (!genreEditedRef.current) {
+        const merged = Array.from(
+          new Set([...selectedTags, ...result.tags]),
+        ).slice(0, MAX_TAGS);
+        const themeForVibe = themeEditedRef.current
+          ? normalizeTheme(themeText)
+          : result.theme;
+        const g = suggestGenreIfMatch(themeForVibe, merged);
+        if (g) {
+          setMusicGenre(g);
+          const meta = MUSIC_LIBRARY.find((x) => x.id === g);
+          setVibeSearchText(meta?.label ?? g);
+        }
       }
       setAnalyzing(false);
     })();
@@ -710,6 +881,17 @@ export default function CameraScreen() {
 
   const submit = async () => {
     if (!selectedPhoto || submitted) return;
+    if (
+      !hasExplicitPostTheme(themeEditedRef.current, themeText) ||
+      !hasExplicitPostVibe(
+        genreEditedRef.current,
+        musicGenreRef.current,
+        vibeSearchText,
+        customAudioUrl,
+      )
+    ) {
+      return;
+    }
     // Wait briefly for Gemini so Ripple gets tags/themes; cap wait so slow
     // networks don't stall the navigation (upload still merges server AI).
     if (inFlightAnalysisRef.current) {
@@ -731,19 +913,13 @@ export default function CameraScreen() {
     // Use the ref so we read the freshest AI tags (state closure is stale
     // after awaiting an in-flight analysis above).
     const merged = Array.from(new Set([...selectedTags, ...aiTagsRef.current]));
-    // If the user typed something, that wins — even an empty clear (which
-    // means "no theme"). Otherwise use the AI suggestion, falling back to
-    // today's challenge so we always show something meaningful.
-    const typed = normalizeTheme(themeText);
-    const finalTheme = themeEdited
-      ? typed || normalizeTheme(challenge.title)
-      : normalizeTheme(aiThemeRef.current) || normalizeTheme(challenge.title);
-    // Lock in a final genre — user pick wins; otherwise AI suggestion
-    // from the just-analysed theme + merged tags. We compute on submit
-    // so a brief race (user submits before AI returns) still records
-    // a sensible vibe instead of nothing.
-    const finalGenre: MusicGenre =
-      musicGenreRef.current ?? suggestGenre(finalTheme, merged);
+    const finalTheme = normalizeTheme(themeText);
+    if (!finalTheme) return;
+    // User's vibe chip / typed vibe only — no silent calm default on submit.
+    const finalGenre: MusicGenre | undefined =
+      musicGenreRef.current ??
+      resolveGenreFromSearchQuery(vibeSearchText) ??
+      undefined;
     // Snapshot the recorded clip too — addMyPhoto stores the local URL so
     // the user can preview their own vibe from "My photos", and uploadPhoto
     // ships the base64 to the backend so others hear it on match.
@@ -843,6 +1019,66 @@ export default function CameraScreen() {
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
+  const ripplePhotoFrame = useMemo(
+    () => getRipplePhotoPaneMetrics({ top: insets.top, bottom: insets.bottom }),
+    [insets.top, insets.bottom],
+  );
+
+  const syncThemeScrollOffset = useCallback(() => {
+    themeScrollYRef.current =
+      photoBlockHeightRef.current + 6 + themeInControlsYRef.current;
+  }, []);
+
+  const hasExplicitTheme = hasExplicitPostTheme(themeEdited, themeText);
+  const hasExplicitVibe = hasExplicitPostVibe(
+    genreEdited,
+    musicGenre,
+    vibeSearchText,
+    customAudioUrl,
+  );
+  const canSubmitPost = hasExplicitTheme && hasExplicitVibe;
+
+  const submitHint = !canSubmitPost
+    ? !hasExplicitTheme && !hasExplicitVibe
+      ? "Pick a theme and vibe to submit"
+      : !hasExplicitTheme
+        ? "Pick a theme to submit"
+        : "Pick a vibe to submit"
+    : null;
+
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const showSub = Keyboard.addListener(showEvent, () => setKeyboardOpen(true));
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardOpen(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!keyboardOpen) return;
+    const t = setTimeout(() => {
+      syncThemeScrollOffset();
+      postFormScrollRef.current?.scrollTo({
+        y: Math.max(0, themeScrollYRef.current - 12),
+        animated: true,
+      });
+    }, Platform.OS === "ios" ? 80 : 200);
+    return () => clearTimeout(t);
+  }, [keyboardOpen, syncThemeScrollOffset]);
+
+  const scrollPostFormInputIntoView = useCallback(() => {
+    syncThemeScrollOffset();
+    const delay = Platform.OS === "ios" ? 150 : 300;
+    setTimeout(() => {
+      postFormScrollRef.current?.scrollTo({
+        y: Math.max(0, themeScrollYRef.current - 12),
+        animated: true,
+      });
+    }, delay);
+  }, [syncThemeScrollOffset]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -859,148 +1095,184 @@ export default function CameraScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView
-        contentContainerStyle={[
-          styles.content,
-          { paddingBottom: bottomPadding + 24 },
-        ]}
-        showsVerticalScrollIndicator={false}
-      >
-        {submitted ? (
-          <View style={styles.successContainer}>
-            <View style={[styles.successIcon, { backgroundColor: colors.teal + "22" }]}>
-              <Icon name="check" size={40} color={colors.teal} />
-            </View>
-            <Text style={[styles.successTitle, { color: colors.foreground }]}>
-              Photo submitted!
-            </Text>
-            <Text style={[styles.successDesc, { color: colors.mutedForeground }]}>
-              We're finding your match from somewhere in the world...
-            </Text>
+      {submitted ? (
+        <View
+          style={[
+            styles.successContainer,
+            { paddingBottom: bottomPadding + 24, flex: 1 },
+          ]}
+        >
+          <View style={[styles.successIcon, { backgroundColor: colors.teal + "22" }]}>
+            <Icon name="check" size={40} color={colors.teal} />
           </View>
-        ) : selectedPhoto ? (
-          <View style={styles.selectedContainer}>
-            <Image
-              source={{ uri: selectedPhoto }}
-              style={[styles.selectedImage, { borderColor: colors.border }]}
-              resizeMode="cover"
-            />
+          <Text style={[styles.successTitle, { color: colors.foreground }]}>
+            Photo submitted!
+          </Text>
+          <Text style={[styles.successDesc, { color: colors.mutedForeground }]}>
+            We're finding your match from somewhere in the world...
+          </Text>
+        </View>
+      ) : selectedPhoto ? (
+          <KeyboardAwareScrollViewCompat
+            ref={postFormScrollRef}
+            style={styles.postFormScroll}
+            contentContainerStyle={[
+              styles.postFormScrollContent,
+              {
+                paddingHorizontal: 20,
+                paddingBottom: bottomPadding + 24,
+              },
+            ]}
+            bottomOffset={bottomPadding + 12}
+            extraKeyboardSpace={72}
+            keyboardDismissMode="interactive"
+            showsVerticalScrollIndicator={false}
+          >
+            <View
+              style={[
+                styles.photoPreviewShell,
+                keyboardOpen ? styles.photoPreviewShellCompact : null,
+                {
+                  width: ripplePhotoFrame.width,
+                  ...(keyboardOpen
+                    ? { height: 96 }
+                    : { aspectRatio: ripplePhotoFrame.aspectRatio }),
+                  borderColor: colors.border,
+                  backgroundColor: colors.card,
+                },
+              ]}
+              onLayout={(e) => {
+                photoBlockHeightRef.current = e.nativeEvent.layout.height;
+                syncThemeScrollOffset();
+              }}
+            >
+              <Image
+                source={{ uri: selectedPhoto }}
+                style={styles.photoPreviewImage}
+                resizeMode="cover"
+              />
+            </View>
 
-            {isAi && (
-              <View
-                style={[
-                  styles.aiBanner,
-                  {
-                    backgroundColor: colors.card,
-                    borderColor: colors.primary,
-                  },
-                ]}
-              >
-                <View style={styles.aiBannerRow}>
-                  <View
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 14,
-                      backgroundColor: colors.primary,
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Text style={{ color: colors.primaryForeground, fontSize: 11, fontFamily: "Inter_700Bold" }}>
-                      AI
-                    </Text>
-                  </View>
-                  <View style={{ marginLeft: 10, flex: 1 }}>
-                    <Text style={[styles.aiBannerLabel, { color: colors.foreground }]}>
-                      Looks AI-generated
-                    </Text>
-                    <Text style={[styles.aiBannerLabel, { color: colors.mutedForeground, marginTop: 2 }]}>
-                      It'll be marked with an AI badge and won't count as a wave connection.
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            )}
+            <View style={styles.postFormControls}>
+          {isAi && (
+            <Text
+              style={[styles.aiInlineNote, { color: colors.mutedForeground }]}
+              numberOfLines={2}
+            >
+              AI image — badge only, no wave connection
+            </Text>
+          )}
 
-            {(analyzing || aiTags.length > 0) && (
-              <View
-                style={[
-                  styles.aiBanner,
-                  {
-                    backgroundColor: colors.card,
-                    // While analyzing we now use the same teal accent
-                    // as the "spotted" state but a touch more vivid so
-                    // the whole banner reads as actively working,
-                    // not idle. Previously it used colors.border which
-                    // matched the card and made the banner invisible.
-                    borderColor: colors.teal,
-                    borderWidth: analyzing ? 1.5 : 1,
-                  },
-                ]}
-              >
-                {analyzing ? (
-                  <View style={styles.aiBannerRow}>
-                    <LoadingGlobe size={36} />
-                    <Text
+          <View
+            ref={themeSectionRef}
+            collapsable={false}
+            style={styles.themeSection}
+            onLayout={(e) => {
+              themeInControlsYRef.current = e.nativeEvent.layout.y;
+              syncThemeScrollOffset();
+            }}
+          >
+            <View style={styles.tagSectionHeader}>
+              <Text style={[styles.sectionHeading, { color: colors.teal }]}>
+                Theme
+              </Text>
+              {!analyzing && aiTheme && !themeEdited && (
+                <Text style={[styles.tagCount, { color: colors.teal }]}>
+                  AI suggested
+                </Text>
+              )}
+            </View>
+
+            {filteredThemeSuggestions.length > 0 && (
+              <HorizontalTokenScroll ref={themeScrollRef}>
+                {filteredThemeSuggestions.map((s) => {
+                  const active =
+                    themeText.trim().toLowerCase() === s.label.toLowerCase() ||
+                    (s.tagId != null && selectedTags.includes(s.tagId));
+                  return (
+                    <TouchableOpacity
+                      key={s.key}
+                      onPress={() => applyThemeSuggestion(s)}
+                      activeOpacity={0.85}
                       style={[
-                        styles.aiBannerLabel,
-                        { color: colors.foreground, marginLeft: 12 },
+                        styles.tokenChip,
+                        {
+                          backgroundColor: active ? colors.primary : colors.card,
+                          borderColor: active ? colors.primary : colors.border,
+                        },
                       ]}
                     >
-                      Analyzing your photo…
-                    </Text>
-                  </View>
-                ) : (
-                  <>
-                    <Text style={[styles.aiBannerLabel, { color: colors.mutedForeground }]}>
-                      AI spotted
-                    </Text>
-                    <Text style={[styles.aiBannerTags, { color: colors.foreground }]}>
-                      {aiTags
-                        .map((id) => {
-                          const t = TAG_LIBRARY.find((x) => x.id === id);
-                          return t ? `${t.emoji} ${t.label}` : id;
-                        })
-                        .join("  ·  ")}
-                    </Text>
-                  </>
-                )}
-              </View>
+                      <Text style={styles.tokenChipEmoji}>{s.emoji}</Text>
+                      <Text
+                        style={[
+                          styles.tokenChipLabel,
+                          {
+                            color: active
+                              ? colors.primaryForeground
+                              : colors.foreground,
+                          },
+                        ]}
+                      >
+                        {s.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </HorizontalTokenScroll>
             )}
 
-            {/* Music vibe sits right under the photo so it's the first
-                creative choice the user makes — the picker influences
-                what the matched stranger will hear in the celebration,
-                so it deserves prime real estate, not the bottom of the
-                form. */}
-            <View style={styles.themeSection}>
-              <View style={styles.tagSectionHeader}>
-                <Text style={[styles.themeSectionLabel, { color: colors.mutedForeground }]}>
-                  Music vibe
-                </Text>
-                {musicGenre && (
-                  <Text style={[styles.tagCount, { color: colors.mutedForeground }]}>
-                    {genreEdited ? "your pick" : "AI pick · tap to swap"}
-                  </Text>
-                )}
-              </View>
-              <ScrollView
+            <View
+              style={[
+                styles.customInputRow,
+                {
+                  backgroundColor: colors.card,
+                  borderColor:
+                    !themeEdited && aiTheme ? colors.teal : colors.border,
+                },
+              ]}
+            >
+              <TextInput
+                value={themeText}
+                onChangeText={onThemeChange}
+                onFocus={scrollPostFormInputIntoView}
+                placeholder="Type your own theme"
+                placeholderTextColor={colors.mutedForeground}
+                autoCapitalize="none"
+                autoCorrect={false}
+                maxLength={40}
+                style={[styles.customInputText, { color: colors.foreground }]}
+              />
+              {themeText.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setThemeText("");
+                    setThemeEdited(true);
+                    themeEditedRef.current = true;
+                  }}
+                  hitSlop={10}
+                >
+                  <Icon name="x" size={16} color={colors.mutedForeground} />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          <View style={styles.vibeSection}>
+            <Text style={[styles.sectionHeading, { color: colors.teal }]}>
+              Vibe
+            </Text>
+
+            {filteredVibeSuggestions.length > 0 && (
+              <HorizontalTokenScroll
                 ref={musicScrollRef}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.musicChips}
-                onLayout={(e) => {
-                  musicScrollWidthRef.current = e.nativeEvent.layout.width;
+                onViewportLayout={(w) => {
+                  musicScrollWidthRef.current = w;
                 }}
                 style={{
-                  // When the user has recorded their own clip, the chip
-                  // picker no longer drives playback — fade it out so
-                  // the override is visually obvious.
                   opacity: customAudioUrl ? 0.45 : 1,
                 }}
               >
-                {MUSIC_LIBRARY.map((g) => {
+                {filteredVibeSuggestions.map((g) => {
                   const active = musicGenre === g.id;
                   return (
                     <TouchableOpacity
@@ -1013,17 +1285,17 @@ export default function CameraScreen() {
                         chipLayoutsRef.current[g.id] = { x, width };
                       }}
                       style={[
-                        styles.musicChip,
+                        styles.tokenChip,
                         {
                           backgroundColor: active ? colors.primary : colors.card,
                           borderColor: active ? colors.primary : colors.border,
                         },
                       ]}
                     >
-                      <Text style={styles.musicChipEmoji}>{g.emoji}</Text>
+                      <Text style={styles.tokenChipEmoji}>{g.emoji}</Text>
                       <Text
                         style={[
-                          styles.musicChipLabel,
+                          styles.tokenChipLabel,
                           {
                             color: active
                               ? colors.primaryForeground
@@ -1036,337 +1308,265 @@ export default function CameraScreen() {
                     </TouchableOpacity>
                   );
                 })}
-              </ScrollView>
-            </View>
-
-            {/* Voice memo / vibe recording. Sits right under the music
-                vibe chips because conceptually it's "the other source
-                of audio for this photo" — picking a chip OR recording
-                yourself fills the same slot for the matched stranger.
-                Web is excluded because expo-av's recorder is mobile-only. */}
-            {Platform.OS !== "web" && (
-              <View style={styles.themeSection}>
-                <View style={styles.tagSectionHeader}>
-                  <Text
-                    style={[
-                      styles.themeSectionLabel,
-                      { color: colors.mutedForeground },
-                    ]}
-                  >
-                    Your voice (optional)
-                  </Text>
-                  <Text
-                    style={[
-                      styles.tagCount,
-                      { color: colors.mutedForeground },
-                    ]}
-                  >
-                    up to 10s · plays instead of music
-                  </Text>
-                </View>
-
-                {customAudioUrl ? (
-                  <View
-                    style={[
-                      styles.recorderCard,
-                      { backgroundColor: colors.card, borderColor: colors.teal },
-                    ]}
-                  >
-                    <TouchableOpacity
-                      style={[
-                        styles.recorderPlayBtn,
-                        { backgroundColor: colors.teal },
-                      ]}
-                      onPress={togglePreviewRecording}
-                      activeOpacity={0.85}
-                      accessibilityLabel={
-                        isPreviewingRecording
-                          ? "Stop preview"
-                          : "Play your recording"
-                      }
-                    >
-                      <Icon
-                        name={isPreviewingRecording ? "x" : "volume-2"}
-                        size={20}
-                        color="#001018"
-                      />
-                    </TouchableOpacity>
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={[
-                          styles.recorderTitle,
-                          { color: colors.foreground },
-                        ]}
-                      >
-                        Your vibe is set
-                      </Text>
-                      <Text
-                        style={[
-                          styles.recorderSub,
-                          { color: colors.mutedForeground },
-                        ]}
-                      >
-                        {formatMs(recordedDurationMs)} ·{" "}
-                        {isPreviewingRecording ? "Playing…" : "Tap to preview"}
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      onPress={clearRecording}
-                      hitSlop={10}
-                      accessibilityLabel="Remove recording"
-                    >
-                      <Icon name="x" size={18} color={colors.mutedForeground} />
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <View
-                    style={[
-                      styles.recorderCard,
-                      {
-                        backgroundColor: isRecording
-                          ? colors.primary + "1A"
-                          : colors.card,
-                        borderColor: isRecording
-                          ? colors.primary
-                          : colors.border,
-                      },
-                    ]}
-                  >
-                    {/* Only the mic button itself is pressable. The
-                        surrounding card / text is non-interactive so a
-                        thumb scrolling past the row no longer triggers
-                        an accidental recording. */}
-                    <TouchableOpacity
-                      onPressIn={startRecording}
-                      onPressOut={() => {
-                        // Release fires for both finished and cancelled
-                        // touches — finishRecording is idempotent thanks
-                        // to the stop guard, so it's safe in either case.
-                        void finishRecording();
-                      }}
-                      delayPressIn={120}
-                      delayPressOut={150}
-                      activeOpacity={0.9}
-                      accessibilityLabel="Hold to record vibe"
-                      style={[
-                        styles.recorderMicBtn,
-                        {
-                          backgroundColor: isRecording
-                            ? colors.primary
-                            : colors.background,
-                          borderColor: isRecording
-                            ? colors.primary
-                            : colors.border,
-                        },
-                      ]}
-                    >
-                      <Icon
-                        name="mic"
-                        size={20}
-                        color={
-                          isRecording
-                            ? colors.primaryForeground
-                            : colors.foreground
-                        }
-                      />
-                    </TouchableOpacity>
-                    <View style={{ flex: 1 }} pointerEvents="none">
-                      <Text
-                        style={[
-                          styles.recorderTitle,
-                          { color: colors.foreground },
-                        ]}
-                      >
-                        {isRecording ? "Recording…" : "Hold mic to record"}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.recorderSub,
-                          { color: colors.mutedForeground },
-                        ]}
-                      >
-                        {isRecording
-                          ? `${formatMs(recordingProgressMs)} / 0:10 — release to save`
-                          : "Say a word, hum a tune, share the moment"}
-                      </Text>
-                    </View>
-                  </View>
-                )}
-              </View>
+              </HorizontalTokenScroll>
             )}
 
-            <View style={styles.themeSection}>
-              <View style={styles.tagSectionHeader}>
-                <Text style={[styles.themeSectionLabel, { color: colors.mutedForeground }]}>
-                  Theme
-                </Text>
-                {analyzing && (
-                  <Text style={[styles.tagCount, { color: colors.mutedForeground }]}>
-                    suggesting…
-                  </Text>
-                )}
-                {!analyzing && aiTheme && !themeEdited && (
-                  <Text style={[styles.tagCount, { color: colors.teal }]}>
-                    AI suggested
-                  </Text>
-                )}
-              </View>
+            {Platform.OS !== "web" && customAudioUrl ? (
+                <View
+                  style={[
+                    styles.customInputRow,
+                    { backgroundColor: colors.card, borderColor: colors.teal },
+                  ]}
+                >
+                  <TouchableOpacity
+                    onPress={togglePreviewRecording}
+                    activeOpacity={0.85}
+                    accessibilityLabel={
+                      isPreviewingRecording ? "Stop preview" : "Play your recording"
+                    }
+                    hitSlop={8}
+                  >
+                    <Icon
+                      name={isPreviewingRecording ? "x" : "volume-2"}
+                      size={18}
+                      color={colors.teal}
+                    />
+                  </TouchableOpacity>
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[styles.customInputText, { color: colors.foreground }]}
+                      numberOfLines={1}
+                    >
+                      Vibe recorded · {formatMs(recordedDurationMs)}
+                      {isPreviewingRecording ? " · Playing…" : " · Tap to preview"}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={clearRecording}
+                    hitSlop={10}
+                    accessibilityLabel="Remove recording"
+                  >
+                    <Icon name="x" size={16} color={colors.mutedForeground} />
+                  </TouchableOpacity>
+                </View>
+            ) : (
               <View
                 style={[
-                  styles.themeInputWrap,
+                  styles.customInputRow,
                   {
-                    backgroundColor: colors.card,
-                    borderColor:
-                      !themeEdited && aiTheme ? colors.teal : colors.border,
+                    backgroundColor: isRecording
+                      ? colors.primary + "1A"
+                      : colors.card,
+                    borderColor: isRecording ? colors.primary : colors.border,
                   },
                 ]}
               >
-                <Icon
-                  name="sparkles"
-                  size={16}
-                  color={!themeEdited && aiTheme ? colors.teal : colors.mutedForeground}
-                />
+                {Platform.OS !== "web" && (
+                  <TouchableOpacity
+                    onPressIn={startRecording}
+                    onPressOut={() => {
+                      void finishRecording();
+                    }}
+                    delayPressIn={120}
+                    delayPressOut={150}
+                    activeOpacity={0.9}
+                    accessibilityLabel="Hold mic to record"
+                    hitSlop={8}
+                  >
+                    <Icon
+                      name="mic"
+                      size={18}
+                      color={isRecording ? colors.primary : colors.mutedForeground}
+                    />
+                  </TouchableOpacity>
+                )}
                 <TextInput
-                  value={themeText}
-                  onChangeText={onThemeChange}
-                  placeholder={analyzing ? "Looking at your photo…" : "e.g. extreme sports"}
+                  value={
+                    isRecording
+                      ? `Recording… ${formatMs(recordingProgressMs)} / 0:10`
+                      : vibeSearchText
+                  }
+                  onChangeText={onVibeSearchChange}
+                  onFocus={scrollPostFormInputIntoView}
+                  placeholder={
+                    Platform.OS === "web"
+                      ? "Tap to type vibe"
+                      : "Hold mic to record, or tap to type"
+                  }
                   placeholderTextColor={colors.mutedForeground}
                   autoCapitalize="none"
                   autoCorrect={false}
                   maxLength={40}
-                  style={[styles.themeInput, { color: colors.foreground }]}
+                  editable={!isRecording}
+                  style={[styles.customInputText, { color: colors.foreground }]}
                 />
-                {themeText.length > 0 && (
+                {vibeSearchText.length > 0 && !isRecording && (
                   <TouchableOpacity
                     onPress={() => {
-                      setThemeText("");
-                      setThemeEdited(true);
-                      themeEditedRef.current = true;
+                      setVibeSearchText("");
+                      setMusicGenre(null);
+                      setGenreEdited(true);
+                      genreEditedRef.current = true;
                     }}
                     hitSlop={10}
+                    accessibilityLabel="Clear vibe search"
                   >
                     <Icon name="x" size={16} color={colors.mutedForeground} />
                   </TouchableOpacity>
                 )}
               </View>
+            )}
+          </View>
+
+          <View style={styles.aiSuggestSection}>
+            {aiTags.length > 0 && !analyzing && (
+              <Text
+                style={[
+                  styles.aiSpottedLine,
+                  { color: colors.mutedForeground, alignSelf: "stretch" },
+                ]}
+                numberOfLines={1}
+              >
+                Spotted:{" "}
+                {aiTags
+                  .map((id) => TAG_LIBRARY.find((x) => x.id === id)?.label ?? id)
+                  .join(" · ")}
+              </Text>
+            )}
+            <TouchableOpacity
+              style={[
+                styles.aiSuggestBtn,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: analyzing ? colors.teal : colors.border,
+                },
+              ]}
+              onPress={handleSuggestPress}
+              disabled={analyzing}
+              activeOpacity={0.85}
+            >
+              {analyzing ? (
+                <LoadingGlobe size={20} />
+              ) : (
+                <Icon name="sparkles" size={14} color={colors.teal} />
+              )}
+              <Text style={[styles.aiSuggestBtnText, { color: colors.foreground }]}>
+                {analyzing ? "Suggesting…" : "AI suggest"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {submitHint ? (
+            <Text
+              style={[styles.submitHint, { color: colors.mutedForeground }]}
+              accessibilityLiveRegion="polite"
+            >
+              {submitHint}
+            </Text>
+          ) : null}
+
+          <View style={styles.actionButtons}>
+            <TouchableOpacity
+              style={[styles.retakeBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={() => {
+                void stopAudio();
+                pickedAssetRef.current = null;
+                setSelectedPhoto(null);
+              }}
+            >
+              <Icon name="refresh-cw" size={18} color={colors.foreground} />
+              <Text style={[styles.retakeBtnText, { color: colors.foreground }]}>
+                Retake
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.submitBtn,
+                {
+                  backgroundColor: canSubmitPost ? colors.primary : colors.muted,
+                },
+              ]}
+              onPress={submit}
+              disabled={!canSubmitPost}
+              activeOpacity={canSubmitPost ? 0.85 : 1}
+              accessibilityState={{ disabled: !canSubmitPost }}
+              accessibilityHint={submitHint ?? undefined}
+            >
+              <Text
+                style={[
+                  styles.submitBtnText,
+                  {
+                    color: canSubmitPost
+                      ? colors.primaryForeground
+                      : colors.mutedForeground,
+                  },
+                ]}
+              >
+                Submit & Match
+              </Text>
+              <Icon
+                name="globe"
+                size={18}
+                color={
+                  canSubmitPost ? colors.primaryForeground : colors.mutedForeground
+                }
+              />
+            </TouchableOpacity>
+          </View>
+            </View>
+          </KeyboardAwareScrollViewCompat>
+      ) : (
+        <View
+          style={[
+            styles.pickScreen,
+            {
+              paddingHorizontal: 20,
+              paddingBottom: bottomPadding + 16,
+            },
+          ]}
+        >
+          {myPhotos.length > 0 && (
+            <View style={styles.prevSection}>
+              <Text style={[styles.prevTitle, { color: colors.mutedForeground }]}>
+                Your recent photos
+              </Text>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.quickThemes}
+                style={styles.prevScroll}
               >
-                {QUICK_THEMES.map((t) => {
-                  const active = themeText.trim().toLowerCase() === t;
-                  return (
+                {myPhotos.slice(0, 8).map((photo, i) => (
+                  <View key={i} style={styles.prevItem}>
                     <TouchableOpacity
-                      key={t}
-                      onPress={() => useQuickTheme(t)}
+                      onPress={() => {
+                        selectRecentPhoto(photo.uri);
+                        if (photo.customAudioUrl) {
+                          togglePreview(photo.customAudioUrl);
+                        }
+                      }}
                       activeOpacity={0.85}
-                      style={[
-                        styles.themeChip,
-                        {
-                          backgroundColor: active ? colors.primary : "transparent",
-                          borderColor: active ? colors.primary : colors.border,
-                        },
-                      ]}
                     >
-                      <Text
-                        style={[
-                          styles.themeChipLabel,
-                          {
-                            color: active
-                              ? colors.primaryForeground
-                              : colors.mutedForeground,
-                          },
-                        ]}
-                      >
-                        {t}
-                      </Text>
+                      <Image
+                        source={{ uri: photo.uri }}
+                        style={[styles.prevPhoto, { borderColor: colors.border }]}
+                        resizeMode="cover"
+                      />
                     </TouchableOpacity>
-                  );
-                })}
+                    {photo.customAudioUrl ? (
+                      <MicBadge
+                        audioUrl={photo.customAudioUrl}
+                        size="xs"
+                        style={styles.prevMicBadge}
+                      />
+                    ) : null}
+                  </View>
+                ))}
               </ScrollView>
             </View>
+          )}
 
-            <View style={styles.themeSection}>
-              <View style={styles.tagSectionHeader}>
-                <Text style={[styles.themeSectionLabel, { color: colors.mutedForeground }]}>
-                  Add details (optional)
-                </Text>
-                <Text style={[styles.tagCount, { color: colors.mutedForeground }]}>
-                  {selectedTags.length}/{MAX_TAGS}
-                </Text>
-              </View>
-              <View style={styles.themeChips}>
-                {visibleTags.map((t) => {
-                  const active = selectedTags.includes(t.id);
-                  return (
-                    <TouchableOpacity
-                      key={t.id}
-                      onPress={() => toggleTag(t.id)}
-                      activeOpacity={0.85}
-                      style={[
-                        styles.themeChip,
-                        {
-                          backgroundColor: active ? colors.teal : colors.card,
-                          borderColor: active ? colors.teal : colors.border,
-                        },
-                      ]}
-                    >
-                      <Text style={styles.themeChipEmoji}>{t.emoji}</Text>
-                      <Text
-                        style={[
-                          styles.themeChipLabel,
-                          { color: active ? "#001018" : colors.foreground },
-                        ]}
-                      >
-                        {t.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-                {!showAllTags && hiddenCount > 0 && (
-                  <TouchableOpacity
-                    onPress={() => setShowAllTags(true)}
-                    activeOpacity={0.85}
-                    style={[
-                      styles.themeChip,
-                      { backgroundColor: "transparent", borderColor: colors.border },
-                    ]}
-                  >
-                    <Text style={[styles.themeChipLabel, { color: colors.mutedForeground }]}>
-                      + {hiddenCount} more
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
+          <View style={styles.pickSpacer} />
 
-            <View style={styles.actionButtons}>
-              <TouchableOpacity
-                style={[styles.retakeBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-                onPress={() => {
-                  void stopAudio();
-                  setSelectedPhoto(null);
-                }}
-              >
-                <Icon name="refresh-cw" size={18} color={colors.foreground} />
-                <Text style={[styles.retakeBtnText, { color: colors.foreground }]}>
-                  Retake
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.submitBtn, { backgroundColor: colors.primary }]}
-                onPress={submit}
-                activeOpacity={0.85}
-              >
-                <Text style={[styles.submitBtnText, { color: colors.primaryForeground }]}>
-                  Submit & Match
-                </Text>
-                <Icon name="globe" size={18} color={colors.primaryForeground} />
-              </TouchableOpacity>
-            </View>
-          </View>
-        ) : (
           <View style={styles.pickOptions}>
             <TouchableOpacity
               style={[styles.pickBtn, { backgroundColor: colors.primary }]}
@@ -1403,53 +1603,23 @@ export default function CameraScreen() {
               </Text>
             </View>
           </View>
-        )}
+        </View>
+      )}
 
-        {myPhotos.length > 0 && !submitted && (
-          <View style={styles.prevSection}>
-            <Text style={[styles.prevTitle, { color: colors.mutedForeground }]}>
-              Your recent photos
-            </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.prevScroll}>
-              {myPhotos.slice(0, 8).map((photo, i) => (
-                <View key={i} style={styles.prevItem}>
-                  {/* Tap on the photo body re-selects it for a fresh post
-                      AND toggles preview of its voice clip if one exists —
-                      this way users can both hear their past recording and
-                      re-share that photo with a single tap. We route through
-                      `togglePreview` (rather than calling `playClip` directly)
-                      so the resulting lease is tracked by `pausePreview()` and
-                      gets paused when the user navigates away. The mic badge
-                      below uses its own Pressable to toggle play/pause
-                      without affecting the selection. */}
-                  <TouchableOpacity
-                    onPress={() => {
-                      setSelectedPhoto(photo.uri);
-                      if (photo.customAudioUrl) {
-                        togglePreview(photo.customAudioUrl);
-                      }
-                    }}
-                    activeOpacity={0.85}
-                  >
-                    <Image
-                      source={{ uri: photo.uri }}
-                      style={[styles.prevPhoto, { borderColor: colors.border }]}
-                      resizeMode="cover"
-                    />
-                  </TouchableOpacity>
-                  {photo.customAudioUrl ? (
-                    <MicBadge
-                      audioUrl={photo.customAudioUrl}
-                      size="xs"
-                      style={styles.prevMicBadge}
-                    />
-                  ) : null}
-                </View>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-      </ScrollView>
+      <ProPaywallModal
+        visible={aiPaywallOpen}
+        onClose={() => setAiPaywallOpen(false)}
+        onUnlocked={runAiSuggestions}
+        title="AI suggest theme and vibe"
+        note="You can set theme and vibe yourself anytime — no subscription needed."
+        features={[
+          "AI theme & vibe suggestions from your photos",
+          "Clean share cards — no SameWave watermark",
+          "Full-size reveal photos and higher-res exports",
+        ]}
+        finePrint="Posting without AI is always free. AI uses cloud vision — Pro covers your share of that cost. Billing period is shown in the store checkout."
+      />
+
     </View>
   );
 }
@@ -1481,8 +1651,17 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     gap: 20,
   },
+  pickScreen: {
+    flex: 1,
+    paddingTop: 4,
+  },
+  pickSpacer: {
+    flex: 1,
+    minHeight: 20,
+  },
   pickOptions: {
     gap: 12,
+    paddingTop: 8,
   },
   pickBtn: {
     padding: 28,
@@ -1514,14 +1693,70 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     lineHeight: 16,
   },
-  selectedContainer: {
-    gap: 16,
+  postFormScroll: {
+    flex: 1,
   },
-  selectedImage: {
-    width: "100%",
-    height: 280,
-    borderRadius: 20,
+  postFormScrollContent: {
+    gap: 6,
+    paddingTop: 2,
+  },
+  photoPreviewShell: {
+    alignSelf: "center",
+    borderRadius: 24,
     borderWidth: 1,
+    overflow: "hidden",
+  },
+  photoPreviewShellCompact: {
+    borderRadius: 16,
+  },
+  photoPreviewImage: {
+    width: "100%",
+    height: "100%",
+  },
+  postFormControls: {
+    flexShrink: 0,
+    gap: 6,
+  },
+  aiInlineNote: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+    marginTop: -4,
+  },
+  aiSuggestSection: {
+    flexShrink: 0,
+    gap: 4,
+    marginTop: 2,
+    alignItems: "flex-end",
+  },
+  aiSuggestBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignSelf: "flex-end",
+  },
+  aiSuggestBtnText: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
+  },
+  aiSpottedLine: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+    marginTop: -2,
+  },
+  vibeSection: {
+    gap: 6,
+    flexShrink: 0,
+  },
+  submitHint: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+    textAlign: "center",
+    marginTop: 4,
   },
   actionButtons: {
     flexDirection: "row",
@@ -1578,6 +1813,7 @@ const styles = StyleSheet.create({
   },
   prevSection: {
     gap: 10,
+    marginBottom: 4,
   },
   prevTitle: {
     fontSize: 12,
@@ -1605,7 +1841,7 @@ const styles = StyleSheet.create({
     bottom: 4,
   },
   themeSection: {
-    gap: 10,
+    gap: 8,
   },
   themeSectionLabel: {
     fontSize: 12,
@@ -1613,26 +1849,44 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
-  themeChips: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
+  sectionHeading: {
+    fontSize: 16,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.2,
   },
-  themeChip: {
+  tokenChip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    height: 36,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: 18,
     borderWidth: 1,
+    flexShrink: 0,
   },
-  themeChipEmoji: {
+  tokenChipEmoji: {
     fontSize: 14,
+    lineHeight: 18,
   },
-  themeChipLabel: {
+  tokenChipLabel: {
     fontSize: 13,
     fontFamily: "Inter_500Medium",
+    lineHeight: 18,
+  },
+  customInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 14,
+    height: 44,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  customInputText: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: "Inter_500Medium",
+    paddingVertical: 0,
   },
   tagSectionHeader: {
     flexDirection: "row",
@@ -1663,81 +1917,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "Inter_600SemiBold",
     marginTop: 4,
-  },
-  themeInputWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 14,
-    height: 48,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  themeInput: {
-    flex: 1,
-    fontSize: 15,
-    fontFamily: "Inter_500Medium",
-    paddingVertical: 0,
-  },
-  quickThemes: {
-    flexDirection: "row",
-    gap: 8,
-    paddingVertical: 4,
-  },
-  musicChips: {
-    flexDirection: "row",
-    gap: 8,
-    paddingVertical: 4,
-    paddingRight: 12,
-  },
-  musicChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  musicChipEmoji: {
-    fontSize: 16,
-  },
-  musicChipLabel: {
-    fontSize: 13,
-    fontFamily: "Inter_500Medium",
-  },
-  recorderCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    marginTop: 8,
-  },
-  recorderMicBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  recorderPlayBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  recorderTitle: {
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
-  },
-  recorderSub: {
-    fontSize: 12,
-    fontFamily: "Inter_400Regular",
-    marginTop: 2,
   },
 });

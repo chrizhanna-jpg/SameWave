@@ -1,12 +1,11 @@
-# Firecircle ambience loops
+# Wavefire / Firecircle ambience loops
 
 Files:
 
-- `wave_loop.wav` — low ambient sine stub (~78 Hz), very quiet.
-- `fire_loop.wav` — sparse synthetic crackle + hiss.
-- `chatter_loop.wav` — low mixed tones as a stand-in for distant voices.
+- `wave_loop.wav` — distant ocean swell + soft surf (background).
+- `fire_loop.wav` — campfire rumble + sparse crackle (foreground).
 
-Regenerate with:
+Regenerate procedural stubs:
 
 ```bash
 pnpm run gen:firecircle

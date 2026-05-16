@@ -14,12 +14,10 @@
  *   in a wave).
  * - **Wavefire:** needs ≥3 recent echo arcs that **link by shared theme, shared
  *   vibe tag(s), or shared subject(s)** (transitive), spanning ≥3 distinct
- *   countries within `WAVEFIRE_WINDOW_MS`. When active, an animated wavy closed
- *   loop links those countries; pair arcs and travelling dots are hidden so only
- *   the Wavefire ring and ember path glow remain. A short label (theme / tag /
- *   subject) is shown under the stats row. If nothing matches, the night map shows
- *   the empty copy and a faint idle ember circle; the country ring only appears
- *   once a cluster is detected.
+ *   countries within `WAVEFIRE_WINDOW_MS`. When active, each cluster country
+ *   gets an ember glow along its outline; pair arcs and travelling dots are hidden.
+ *   Theme text is shown under the stats row. If nothing matches, the night map
+ *   shows empty copy and a faint idle ember circle.
  * - **Zoom / pan:** one-finger drag pans; pinch zooms with focal anchoring
  *   (`tx' = fx - (s'/s)(fx - tx)`). Transform is translate then scale with
  *   `transformOrigin` top-left. Translate is clamped using **scaled** canvas size
@@ -69,8 +67,6 @@ import Svg, {
   Rect,
   Stop,
 } from "react-native-svg";
-import type { GeoProjection } from "d3-geo";
-
 import {
   fetchAtlasCountryPhotos,
   type AtlasConnection,
@@ -87,10 +83,8 @@ import {
   createAtlasProjection,
 } from "@/utils/atlasArcPath";
 import { centroidLonLatForAtlas } from "@/utils/atlasCountryCentroids";
-import {
-  detectWavefireCluster,
-  orderWavefireRingCountryCodes,
-} from "@/utils/atlasWavefire";
+import { atlasCountryPathsForCodes } from "@/utils/atlasCountryOutlines";
+import { detectWavefireCluster } from "@/utils/atlasWavefire";
 import { atlasLandPathD } from "@/utils/atlasWorldLand";
 import {
   duckFirecircleActivity,
@@ -119,105 +113,14 @@ const WAVEFIRE_WINDOW_MS = 6 * 60 * 60 * 1000;
 const WAVEFIRE_MIN_EVENTS = 3;
 const WAVEFIRE_MIN_COUNTRIES = 3;
 const HIT_R = 22;
-/** Stroke gradient for the Wavefire ring loop (ember / fire tones). */
-const WAVEFIRE_RING_FIRE_GRAD_ID = "atlasWavefireRingFireGrad";
-const WAVEFIRE_RING_SAMPLES_PER_LEG = 22;
-const WAVEFIRE_RING_WAVE_FREQ = 0.026;
-const WAVEFIRE_RING_WAVE_AMP_PX = 10.5;
-/** Second harmonic for snakier motion along the ring (screen px). */
-const WAVEFIRE_RING_WAVE_SECOND = 4.2;
 
-function hashWavefireSeed(s: string): number {
-  let h = 2166136261 >>> 0;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-/**
- * One continuous closed path through Wavefire countries along the same great-circle
- * segments as the map arcs, with a perpendicular wobble in screen space (animated
- * via `nowMs` so the ripple travels along the loop).
- */
-function buildWavefireWavyRingPathD(
-  projection: GeoProjection,
-  countryCodes: string[],
-  themeSeed: string,
-  nowMs: number,
-): string | null {
-  const ordered = orderWavefireRingCountryCodes(countryCodes, projection);
-  if (ordered.length < 3) {
-    return null;
-  }
-  const k = WAVEFIRE_RING_SAMPLES_PER_LEG;
-  const base: { x: number; y: number }[] = [];
-  const pushPt = (x: number, y: number) => {
-    const last = base[base.length - 1];
-    if (last && Math.hypot(x - last.x, y - last.y) < 0.4) return;
-    base.push({ x, y });
-  };
-  const nSeg = ordered.length;
-  for (let i = 0; i < nSeg; i++) {
-    const a = centroidLonLatForAtlas(ordered[i]!);
-    const b = centroidLonLatForAtlas(ordered[(i + 1) % nSeg]!);
-    if (!a || !b) {
-      return null;
-    }
-    const seg = atlasArcSegment(projection, a, b);
-    if (!seg) {
-      return null;
-    }
-    const isLast = i === nSeg - 1;
-    const maxS = isLast ? k : k - 1;
-    for (let s = 0; s <= maxS; s++) {
-      const u = s / k;
-      const p = atlasArcPointAt(seg, Math.min(1, Math.max(0, u)));
-      pushPt(p.x, p.y);
-    }
-  }
-  if (base.length < 4) {
-    return null;
-  }
-  const n = base.length;
-  const cum = new Array<number>(n);
-  cum[0] = 0;
-  for (let i = 1; i < n; i++) {
-    cum[i] = cum[i - 1]! + Math.hypot(base[i]!.x - base[i - 1]!.x, base[i]!.y - base[i - 1]!.y);
-  }
-  const phase = (hashWavefireSeed(`${themeSeed}:wavy-ring`) % 6283) / 1000;
-  const travel = nowMs * 0.00024;
-  const waved: { x: number; y: number }[] = [];
-  for (let i = 0; i < n; i++) {
-    const ip = (i - 1 + n) % n;
-    const inn = (i + 1) % n;
-    const vx = base[inn]!.x - base[ip]!.x;
-    const vy = base[inn]!.y - base[ip]!.y;
-    const vlen = Math.hypot(vx, vy) || 1;
-    const nx = -vy / vlen;
-    const ny = vx / vlen;
-    const s = cum[i]!;
-    const ampMod = 0.72 + 0.28 * Math.sin(s * 0.007 + phase * 0.5);
-    const wob =
-      WAVEFIRE_RING_WAVE_AMP_PX *
-        ampMod *
-        Math.sin(s * WAVEFIRE_RING_WAVE_FREQ + phase + travel) +
-      WAVEFIRE_RING_WAVE_SECOND *
-        Math.sin(s * WAVEFIRE_RING_WAVE_FREQ * 2.2 - travel * 1.05 + phase * 0.65);
-    waved.push({
-      x: base[i]!.x + nx * wob,
-      y: base[i]!.y + ny * wob,
-    });
-  }
-  const p0 = waved[0]!;
-  let d = `M${p0.x},${p0.y}`;
-  for (let i = 1; i < waved.length; i++) {
-    d += `L${waved[i]!.x},${waved[i]!.y}`;
-  }
-  d += "Z";
-  return d;
-}
+/** Ember glow strokes drawn along each Wavefire country outline. */
+const WAVEFIRE_COUNTRY_GLOW_LAYERS: { w: number; color: string; o: number }[] = [
+  { w: 14, color: "#7c2d12", o: 0.11 },
+  { w: 9, color: "#ea580c", o: 0.17 },
+  { w: 5.5, color: "#fb923c", o: 0.34 },
+  { w: 2.25, color: "#fde68a", o: 0.62 },
+];
 
 function parseCreatedMs(c: AtlasConnection): number {
   const t = Date.parse(c.createdAt);
@@ -641,89 +544,22 @@ export function AtlasGlobeExperience({
   const wavefireNight = filter === "wavefire";
   const wavefireActive = wavefireNight && wavefireCluster != null;
 
-  const wavefireRingSegments = useMemo(() => {
+  /** Projected country borders for the active Wavefire cluster. */
+  const wavefireCountryPaths = useMemo(() => {
     if (!wavefireActive || !wavefireCluster) return [];
-    const ordered = orderWavefireRingCountryCodes(
-      wavefireCluster.countryCodes,
-      projection,
-    );
-    if (ordered.length < 3) return [];
-    const parts: string[] = [];
-    for (let i = 0; i < ordered.length; i++) {
-      const a = centroidLonLatForAtlas(ordered[i]!);
-      const b = centroidLonLatForAtlas(ordered[(i + 1) % ordered.length]!);
-      if (!a || !b) continue;
-      const d = atlasArcPathD(projection, a, b);
-      if (d) parts.push(d);
-    }
-    return parts;
+    return atlasCountryPathsForCodes(projection, wavefireCluster.countryCodes);
   }, [wavefireActive, wavefireCluster, projection]);
 
-  /** Single closed loop through Wavefire countries (wavy screen-space offset). */
-  const wavefireWavyRingD = useMemo(() => {
-    if (!wavefireActive || !wavefireCluster) return null;
-    return buildWavefireWavyRingPathD(
-      projection,
-      wavefireCluster.countryCodes,
-      wavefireCluster.theme,
-      now,
-    );
-  }, [wavefireActive, wavefireCluster, projection, now]);
-
-  /** Geometric centre of the Wavefire country ring (projected px) + mean radius. */
-  const wavefireRingCentroid = useMemo(() => {
-    if (!wavefireCluster) return null;
-    const ordered = orderWavefireRingCountryCodes(
-      wavefireCluster.countryCodes,
-      projection,
-    );
-    if (ordered.length < 2) return null;
-    const pts: { x: number; y: number }[] = [];
-    for (const code of ordered) {
-      const ll = centroidLonLatForAtlas(code);
-      if (!ll) continue;
-      const p = projection([ll[0], ll[1]]);
-      if (!p) continue;
-      pts.push({ x: p[0], y: p[1] });
-    }
-    if (pts.length < 2) return null;
-    const mx = pts.reduce((s, q) => s + q.x, 0) / pts.length;
-    const my = pts.reduce((s, q) => s + q.y, 0) / pts.length;
-    const ringR =
-      pts.reduce((s, q) => s + Math.hypot(q.x - mx, q.y - my), 0) /
-      Math.max(1, pts.length);
-    return { x: mx, y: my, ringR: Math.max(24, ringR) };
-  }, [wavefireCluster, projection]);
-
-  /**
-   * Soft ember stroke glow along the Wavefire ring path (`strokeWidth` scales from
-   * `ringR`, comparable bulk to the former radial core ~`ringR * 0.72`).
-   */
-  const wavefirePathGlow = useMemo(() => {
-    if (!wavefireActive || !wavefireRingCentroid) return null;
-    const { ringR } = wavefireRingCentroid;
+  /** Gentle ember flicker on country-outline glow. */
+  const wavefireCountryGlowFlick = useMemo(() => {
+    if (!wavefireActive) return 1;
     const t = now * 0.004;
-    const flick =
-      0.42 +
-      0.4 * (0.5 + 0.5 * Math.sin(t)) +
-      0.12 * Math.sin(t * 3.2 + 0.5) +
-      0.08 * Math.sin(now * 0.019);
-    const baseW = Math.max(20, ringR * 0.72);
-    const raw: { w: number; color: string; o: number }[] = [
-      { w: baseW * 1.25, color: "#7c2d12", o: 0.075 },
-      { w: baseW * 0.98, color: "#ea580c", o: 0.095 },
-      { w: baseW * 0.74, color: "#ea580c", o: 0.12 },
-      { w: baseW * 0.52, color: "#fb923c", o: 0.15 },
-      { w: baseW * 0.34, color: "#fb923c", o: 0.19 },
-      { w: baseW * 0.18, color: "#fde68a", o: 0.24 },
-    ];
-    const layers = raw.map((L) => ({
-      w: L.w,
-      color: L.color,
-      opacity: Math.min(0.92, Math.max(0.04, L.o * flick)),
-    }));
-    return { flick, layers };
-  }, [wavefireActive, wavefireRingCentroid, now]);
+    return (
+      0.78 +
+      0.17 * (0.5 + 0.5 * Math.sin(t)) +
+      0.05 * Math.sin(now * 0.019)
+    );
+  }, [wavefireActive, now]);
 
   const firecircleTiles = useMemo(() => {
     if (!wavefireActive || !wavefireCluster) return [];
@@ -896,19 +732,6 @@ export function AtlasGlobeExperience({
                     <Stop key={s.off} offset={s.off} stopColor={s.col} />
                   ))}
                 </RadialGradient>
-                <LinearGradient
-                  id={WAVEFIRE_RING_FIRE_GRAD_ID}
-                  x1="0%"
-                  y1="100%"
-                  x2="100%"
-                  y2="0%"
-                >
-                  <Stop offset="0%" stopColor="#7c2d12" stopOpacity={1} />
-                  <Stop offset="30%" stopColor="#ea580c" stopOpacity={1} />
-                  <Stop offset="55%" stopColor="#fb923c" stopOpacity={1} />
-                  <Stop offset="80%" stopColor="#fbbf24" stopOpacity={0.95} />
-                  <Stop offset="100%" stopColor="#fef08a" stopOpacity={0.9} />
-                </LinearGradient>
               </Defs>
               <Rect
                 x={0}
@@ -991,99 +814,33 @@ export function AtlasGlobeExperience({
                   : null}
               </G>
 
-              {wavefirePathGlow &&
-              (wavefireWavyRingD || wavefireRingSegments.length > 0) ? (
+              {wavefireActive && wavefireCountryPaths.length > 0 ? (
                 <G pointerEvents="none">
-                  {wavefireWavyRingD
-                    ? wavefirePathGlow.layers.map((layer, li) => (
+                  {wavefireCountryPaths.map(({ code, d }) => (
+                    <G key={`wf-country-${code}`}>
+                      {WAVEFIRE_COUNTRY_GLOW_LAYERS.map((layer, li) => (
                         <Path
-                          key={`wf-path-glow-${li}`}
-                          d={wavefireWavyRingD}
+                          key={`wf-glow-${code}-${li}`}
+                          d={d}
                           fill="none"
                           stroke={layer.color}
                           strokeWidth={layer.w}
-                          strokeLinecap="round"
                           strokeLinejoin="round"
-                          opacity={layer.opacity}
+                          strokeLinecap="round"
+                          opacity={Math.min(
+                            0.95,
+                            layer.o * wavefireCountryGlowFlick,
+                          )}
                         />
-                      ))
-                    : wavefireRingSegments.flatMap((d, si) =>
-                        wavefirePathGlow.layers.map((layer, li) => (
-                          <Path
-                            key={`wf-seg-glow-${si}-${li}`}
-                            d={d}
-                            fill="none"
-                            stroke={layer.color}
-                            strokeWidth={layer.w}
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            opacity={layer.opacity}
-                          />
-                        )),
-                      )}
-                </G>
-              ) : null}
-
-              {wavefireWavyRingD ? (
-                <G pointerEvents="none">
-                  <Path
-                    d={wavefireWavyRingD}
-                    fill="none"
-                    stroke={`url(#${WAVEFIRE_RING_FIRE_GRAD_ID})`}
-                    strokeWidth={5.25}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    opacity={0.42}
-                  />
-                  <Path
-                    d={wavefireWavyRingD}
-                    fill="none"
-                    stroke="#7c2d12"
-                    strokeWidth={2.6}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    opacity={0.55}
-                  />
-                  <Path
-                    d={wavefireWavyRingD}
-                    fill="none"
-                    stroke="#fb923c"
-                    strokeWidth={1.9}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    opacity={0.95}
-                  />
-                  <Path
-                    d={wavefireWavyRingD}
-                    fill="none"
-                    stroke="#fde68a"
-                    strokeWidth={0.7}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    opacity={0.55}
-                  />
-                </G>
-              ) : wavefireRingSegments.length > 0 ? (
-                <G pointerEvents="none">
-                  {wavefireRingSegments.map((d, i) => (
-                    <G key={`wf-ring-${i}`}>
+                      ))}
                       <Path
                         d={d}
                         fill="none"
-                        stroke={WAVEFIRE_EMBER_CORE}
-                        strokeWidth={3}
-                        strokeLinecap="round"
+                        stroke="#fff7ed"
+                        strokeWidth={1.1}
                         strokeLinejoin="round"
-                        opacity={0.22}
-                      />
-                      <Path
-                        d={d}
-                        fill="none"
-                        stroke={WAVEFIRE_LINE_STROKE}
-                        strokeWidth={1.375}
                         strokeLinecap="round"
-                        strokeLinejoin="round"
-                        opacity={0.96}
+                        opacity={0.45 * wavefireCountryGlowFlick}
                       />
                     </G>
                   ))}
@@ -1202,9 +959,6 @@ export function AtlasGlobeExperience({
             },
           ]}
         >
-          <Text style={[styles.wfThemeLabel, { color: colors.mutedForeground }]}>
-            Same echo
-          </Text>
           <Text
             style={[styles.wfThemeValue, { color: colors.foreground }]}
             numberOfLines={5}
@@ -1631,12 +1385,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderLeftWidth: 4,
     gap: 4,
-  },
-  wfThemeLabel: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 11,
-    letterSpacing: 0.4,
-    textTransform: "uppercase",
   },
   wfThemeValue: {
     fontFamily: "Inter_600SemiBold",

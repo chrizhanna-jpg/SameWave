@@ -18,9 +18,9 @@
   },
   "audio": {
     "directory": "assets/audio/firecircle/",
-    "stems": ["wave_loop.wav", "fire_loop.wav", "chatter_loop.wav"],
-    "baseDb": { "wave": -12, "fire": -18, "chatter": -20 },
-    "activityDuckDb": { "wave": -8, "fire": -8, "chatter": -12 },
+    "stems": ["wave_loop.wav", "fire_loop.wav"],
+    "baseDb": { "ocean": -14, "fire": -17 },
+    "activityDuckDb": { "ocean": -10, "fire": -11 },
     "activityDuckMs": 1200,
     "zoomOut": {
       "thresholdScale": 0.92,

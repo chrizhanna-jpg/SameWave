@@ -1219,7 +1219,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           if (!live || live.status !== "pending") return;
           const accepted = Math.random() < 0.7;
           // Pick a fake handle for the simulated counterpart
-          const platforms = ["instagram", "tiktok", "snapchat", "x", "threads"];
+          const platforms = [
+            "instagram",
+            "facebook",
+            "tiktok",
+            "snapchat",
+            "x",
+            "threads",
+          ];
           const theirPlatform = platforms[Math.floor(Math.random() * platforms.length)];
           const adjectives = ["wandering", "sunny", "quiet", "wild", "tiny", "loud", "soft", "lucky"];
           const nouns = ["fern", "lantern", "river", "moth", "cloud", "atlas", "echo", "mango"];

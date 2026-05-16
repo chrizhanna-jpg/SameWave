@@ -19,6 +19,14 @@ export const SOCIAL_PLATFORMS: SocialPlatform[] = [
     urlTemplate: (h) => `https://instagram.com/${stripHandle(h)}`,
   },
   {
+    id: "facebook",
+    name: "Facebook",
+    emoji: "📘",
+    prefix: "@",
+    placeholder: "your.name",
+    urlTemplate: (h) => `https://www.facebook.com/${stripHandle(h)}`,
+  },
+  {
     id: "tiktok",
     name: "TikTok",
     emoji: "🎵",

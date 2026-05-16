@@ -102,12 +102,30 @@ export default function EchoesScreen() {
               colors.shadows.sm,
             ]}
           >
-            <Text style={styles.emptyEmoji}>🔁</Text>
+            <View style={styles.emptyIconRow}>
+              <View
+                style={[
+                  styles.emptyIconBadge,
+                  { backgroundColor: colors.teal + "22", borderColor: colors.teal + "44" },
+                ]}
+              >
+                <Icon name="ripple" size={22} color={colors.teal} />
+              </View>
+              <Icon name="arrow-right" size={16} color={colors.mutedForeground} />
+              <View
+                style={[
+                  styles.emptyIconBadge,
+                  { backgroundColor: colors.gold + "22", borderColor: colors.gold + "44" },
+                ]}
+              >
+                <Icon name="wave-glyph" size={22} color={colors.gold} />
+              </View>
+            </View>
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
               No waves yet
             </Text>
             <Text style={[styles.emptyDesc, { color: colors.mutedForeground }]}>
-              When someone rides your ripple, you'll be asked here whether
+              When someone sends you a ripple, you'll be asked here whether
               you feel the same back. If you do, that's a wave — a mutual
               moment between two minds.
             </Text>
@@ -116,8 +134,10 @@ export default function EchoesScreen() {
           <>
             {pendingEchoes.length > 0 && (
               <SectionHeader
+                icon="ripple"
+                iconColor={colors.teal}
                 title="Waiting on you"
-                subtitle="Someone rippled one of your photos. Wave back to make it mutual."
+                subtitle="Someone sent you a ripple. Wave back if you feel the same."
               />
             )}
             {pendingEchoes.map((echo) => (
@@ -131,6 +151,8 @@ export default function EchoesScreen() {
 
             {mutualEchoes.length > 0 && (
               <SectionHeader
+                icon="wave-glyph"
+                iconColor={colors.gold}
                 title="Your waves"
                 subtitle="Two minds, one wavelength."
                 spaceTop={pendingEchoes.length > 0}
@@ -149,18 +171,27 @@ export default function EchoesScreen() {
 function SectionHeader({
   title,
   subtitle,
+  icon,
+  iconColor,
   spaceTop,
 }: {
   title: string;
   subtitle: string;
+  icon?: "ripple" | "wave-glyph";
+  iconColor?: string;
   spaceTop?: boolean;
 }) {
   const colors = useColors();
   return (
     <View style={[styles.sectionHeader, spaceTop && { marginTop: 18 }]}>
-      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-        {title}
-      </Text>
+      <View style={styles.sectionTitleRow}>
+        {icon ? (
+          <Icon name={icon} size={16} color={iconColor ?? colors.teal} />
+        ) : null}
+        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+          {title}
+        </Text>
+      </View>
       <Text style={[styles.sectionSub, { color: colors.mutedForeground }]}>
         {subtitle}
       </Text>
@@ -193,18 +224,24 @@ function PendingEchoCard({
       <View style={styles.cardHeader}>
         <Text style={styles.bigFlag}>{echo.theirs.countryFlag}</Text>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text
-            style={[styles.cardTitle, { color: colors.foreground }]}
-            numberOfLines={1}
-          >
-            Someone in {echo.theirs.country}
-          </Text>
-          <Text
-            style={[styles.cardSub, { color: colors.mutedForeground }]}
-            numberOfLines={1}
-          >
-            rippled your photo · {ago}
-          </Text>
+          <View style={styles.cardTitleRow}>
+            <Icon name="ripple" size={14} color={colors.teal} />
+            <Text
+              style={[styles.cardTitle, { color: colors.foreground }]}
+              numberOfLines={1}
+            >
+              Someone in {echo.theirs.country}
+            </Text>
+          </View>
+          <View style={styles.cardSubRow}>
+            <Icon name="ripple" size={12} color={colors.teal} />
+            <Text
+              style={[styles.cardSub, { color: colors.mutedForeground }]}
+              numberOfLines={1}
+            >
+              sent you a ripple · {ago}
+            </Text>
+          </View>
         </View>
       </View>
 
@@ -217,7 +254,7 @@ function PendingEchoCard({
             { borderColor: colors.gold + "55", backgroundColor: colors.gold + "1f" },
           ]}
         >
-          <Text style={styles.celebrateEmoji}>✨</Text>
+          <Icon name="wave-glyph" size={20} color={colors.gold} />
           <Text style={[styles.celebrateText, { color: colors.gold }]}>
             Wave! Two minds, one wavelength.
           </Text>
@@ -245,6 +282,7 @@ function PendingEchoCard({
             ]}
             activeOpacity={0.85}
           >
+            <Icon name="wave-glyph" size={16} color="#001018" />
             <Text style={[styles.actionLabel, { color: "#001018" }]}>
               wave
             </Text>
@@ -277,20 +315,26 @@ function EchoListCard({ echo }: { echo: EchoCardType }) {
       <View style={styles.cardHeader}>
         <Text style={styles.bigFlag}>{echo.theirs.countryFlag}</Text>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text
-            style={[styles.cardTitle, { color: colors.foreground }]}
-            numberOfLines={1}
-          >
-            You & someone in {echo.theirs.country}
-          </Text>
-          <Text
-            style={[styles.cardSub, { color: colors.mutedForeground }]}
-            numberOfLines={1}
-          >
-            wave · {ago}
-          </Text>
+          <View style={styles.cardTitleRow}>
+            <Icon name="wave-glyph" size={14} color={colors.gold} />
+            <Text
+              style={[styles.cardTitle, { color: colors.foreground }]}
+              numberOfLines={1}
+            >
+              You & someone in {echo.theirs.country}
+            </Text>
+          </View>
+          <View style={styles.cardSubRow}>
+            <Icon name="wave-glyph" size={12} color={colors.gold} />
+            <Text
+              style={[styles.cardSub, { color: colors.mutedForeground }]}
+              numberOfLines={1}
+            >
+              wave · {ago}
+            </Text>
+          </View>
         </View>
-        <Text style={styles.echoEmoji}>🔁</Text>
+        <Icon name="wave-glyph" size={20} color={colors.gold} />
       </View>
       <PhotoPair mine={echo.mine} theirs={echo.theirs} />
     </TouchableOpacity>
@@ -356,6 +400,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
     paddingBottom: 4,
   },
+  sectionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
   sectionTitle: {
     fontSize: 15,
     fontFamily: "Inter_700Bold",
@@ -378,9 +427,25 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   bigFlag: { fontSize: 28 },
-  echoEmoji: { fontSize: 18 },
-  cardTitle: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  cardSub: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
+  cardTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    minWidth: 0,
+  },
+  cardTitle: { fontSize: 14, fontFamily: "Inter_600SemiBold", flexShrink: 1 },
+  cardSubRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 2,
+    minWidth: 0,
+  },
+  cardSub: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    flexShrink: 1,
+  },
   photosRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   photoCol: { flex: 1, gap: 6, alignItems: "center" },
   photo: { width: "100%", aspectRatio: 1, borderRadius: 14 },
@@ -393,11 +458,13 @@ const styles = StyleSheet.create({
   actionRow: { flexDirection: "row", gap: 10 },
   actionBtn: {
     flex: 1,
+    flexDirection: "row",
     paddingVertical: 12,
     borderRadius: 12,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
+    gap: 6,
   },
   actionBtnPrimary: { borderColor: "transparent" },
   actionLabel: {
@@ -414,7 +481,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
   },
-  celebrateEmoji: { fontSize: 18 },
   celebrateText: { fontSize: 12, fontFamily: "Inter_700Bold", flex: 1 },
   emptyCard: {
     padding: 28,
@@ -424,7 +490,20 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 32,
   },
-  emptyEmoji: { fontSize: 36 },
+  emptyIconRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 4,
+  },
+  emptyIconBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   emptyTitle: { fontSize: 16, fontFamily: "Inter_700Bold" },
   emptyDesc: {
     fontSize: 13,

@@ -4,6 +4,7 @@ import {
   Animated,
   Dimensions,
   Image,
+  useWindowDimensions,
   Modal,
   Platform,
   Pressable,
@@ -18,7 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
 import * as Haptics from "expo-haptics";
 import * as Sharing from "expo-sharing";
-import ViewShot, { captureRef } from "react-native-view-shot";
+import { captureRef } from "react-native-view-shot";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { useSubscription } from "@/lib/revenuecat";
@@ -30,16 +31,28 @@ import {
 } from "@/utils/audio";
 import { CountryReveal } from "@/components/CountryReveal";
 import { ConnectSheet } from "@/components/ConnectSheet";
+import { ConnectionAtlasShareCard } from "@/components/ConnectionAtlasShareCard";
+import { SharePhotoCardPoster } from "@/components/SharePhotoCardPoster";
+import {
+  ShareLayoutModeToggle,
+  type ShareLayoutMode,
+} from "@/components/ShareLayoutModeToggle";
+import { nameFor } from "@/data/countries";
 import { DAILY_CHALLENGES } from "@/data/samplePhotos";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
 import { getTimeTier, getGeoTier } from "@/utils/celebrations";
 import { commonInterests, tagEmoji, tagLabel } from "@/utils/interests";
 import type { Match } from "@/context/AppContext";
-
-const { width } = Dimensions.get("window");
+import {
+  shareCaptureOptions,
+  sharePreviewWidth,
+  shareShotFrameStyle,
+} from "@/utils/shareDimensions";
 
 export default function RevealScreen() {
   const colors = useColors();
+  const { width: windowWidth } = useWindowDimensions();
+  const shareCardWidth = sharePreviewWidth(windowWidth);
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
   const {
@@ -78,8 +91,9 @@ export default function RevealScreen() {
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
   const [connectSent, setConnectSent] = useState(false);
+  const [shareLayoutMode, setShareLayoutMode] = useState<ShareLayoutMode>("card");
   const savedRef = useRef(false);
-  const shotRef = useRef<ViewShot>(null);
+  const shotRef = useRef<View>(null);
   // The `action` param lets callers (MatchFlash, match-history) jump
   // straight to "Share" or open the remove-watermark paywall on mount,
   // skipping the extra tap. Guarded by a ref so a re-render of the
@@ -90,11 +104,10 @@ export default function RevealScreen() {
     if (sharing || !shotRef.current) return;
     setSharing(true);
     try {
-      const uri = await captureRef(shotRef.current, {
-        format: "jpg",
-        quality: 0.95,
-        result: "tmpfile",
-      });
+      if (shareLayoutMode === "atlas") {
+        await new Promise((resolve) => setTimeout(resolve, 320));
+      }
+      const uri = await captureRef(shotRef.current, shareCaptureOptions());
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       if (Platform.OS === "web") {
         Alert.alert(
@@ -241,11 +254,18 @@ export default function RevealScreen() {
   const matchInitedRef = useRef(false);
 
   useEffect(() => {
-    if (matchInitedRef.current) return;
-    const id = params.matchId as string | undefined;
-    if (!id || matches.length === 0) return;
+    if (shareLayoutMode !== "atlas") return;
+    fadeIn.setValue(1);
+    scaleIn.setValue(1);
+  }, [shareLayoutMode, fadeIn, scaleIn]);
+
+  useEffect(() => {
+    const raw = params.matchId;
+    const id = Array.isArray(raw) ? raw[0] : raw;
+    if (!id) return;
     const found = matches.find((m) => m.id === id);
     if (!found) return;
+    if (matchInitedRef.current && match?.id === found.id) return;
 
     matchInitedRef.current = true;
     setMatch(found);
@@ -323,7 +343,39 @@ export default function RevealScreen() {
     }
   };
 
-  if (!match) return null;
+  const topPadding = Platform.OS === "web" ? 67 : insets.top;
+  const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
+
+  if (!match) {
+    const rawMatchId = params.matchId;
+    const matchIdParam = Array.isArray(rawMatchId) ? rawMatchId[0] : rawMatchId;
+    const waitingForMatch =
+      Boolean(matchIdParam) &&
+      matches.length > 0 &&
+      !matches.some((m) => m.id === matchIdParam);
+
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.header, { paddingTop: topPadding + 8 }]}>
+          <TouchableOpacity
+            onPress={handleNext}
+            style={[styles.backBtn, { backgroundColor: colors.card }]}
+          >
+            <Icon name="x" size={20} color={colors.foreground} />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }} />
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={styles.matchMissingCenter}>
+          <Text style={[styles.matchMissingText, { color: colors.mutedForeground }]}>
+            {waitingForMatch
+              ? "This match isn't available right now."
+              : "Loading your match…"}
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   const isNewCountry = !matchedCountries.some(
     (c) => c.code === match.theirCountryCode
@@ -341,6 +393,7 @@ export default function RevealScreen() {
   );
   const themeTitle = themeMeta?.title ?? match.theme ?? "the same thing";
   const themeEmoji = themeMeta?.emoji ?? "✨";
+  const myCountryName = nameFor(myCountryCode) ?? "You";
 
   // The "same X" chips that summarise WHY this match happened. These ride
   // inside the shareable card so the social-media image makes immediate
@@ -350,25 +403,6 @@ export default function RevealScreen() {
   // share image tells the viewer exactly what the two strangers shared.
   // Then we add a time chip if the posts were close enough in time, and
   // a geo chip describing how close geographically.
-  const sameChips: Array<{ label: string; emoji: string }> = [
-    { label: themeTitle, emoji: themeEmoji },
-  ];
-  const timeChipMap: Record<string, { label: string; emoji: string } | null> = {
-    minute: { label: "same minute", emoji: "⚡" },
-    hour: { label: "same hour", emoji: "✨" },
-    day: { label: "same day", emoji: "☀️" },
-    week: { label: "same week", emoji: "🗓️" },
-    distant: null,
-  };
-  const timeChip = timeChipMap[timeTier.kind];
-  if (timeChip) sameChips.push(timeChip);
-  const geoChipMap: Record<string, { label: string; emoji: string }> = {
-    country: { label: "same country", emoji: "📍" },
-    continent: { label: "same continent", emoji: "🌎" },
-    planet: { label: "same world", emoji: "🌍" },
-  };
-  sameChips.push(geoChipMap[geoTier.kind]);
-
   const sparkleScale = sparklePulse.interpolate({
     inputRange: [0, 1],
     outputRange: [1, 1.15],
@@ -377,9 +411,6 @@ export default function RevealScreen() {
     inputRange: [0, 1],
     outputRange: [0.85, 1],
   });
-
-  const topPadding = Platform.OS === "web" ? 67 : insets.top;
-  const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -412,233 +443,66 @@ export default function RevealScreen() {
             "same X" chips that explain WHY the match happened, the two
             photos with a flag beside each, and the watermark when the user
             hasn't unlocked Pro. */}
+        <ShareLayoutModeToggle
+          value={shareLayoutMode}
+          onChange={setShareLayoutMode}
+        />
+
+        <Text style={[styles.sharePreviewCaption, { color: colors.mutedForeground }]}>
+          Preview · exports as 1080×1080
+        </Text>
+
         <Animated.View
-          style={{
-            opacity: fadeIn,
-            transform: [{ scale: scaleIn }],
-          }}
-        >
-        <ViewShot
-          ref={shotRef}
-          options={{ format: "jpg", quality: 0.95 }}
           style={[
-            styles.shareCard,
-            {
-              backgroundColor: colors.card,
-              borderColor: colors.border,
-            },
+            { opacity: fadeIn },
+            ...(shareLayoutMode !== "atlas"
+              ? [{ transform: [{ scale: scaleIn }] }]
+              : []),
           ]}
         >
-          <View style={styles.shareTitleRow}>
-            <Icon name="ripple" size={20} color={colors.foreground} />
-            <Text style={[styles.shareTitle, { color: colors.foreground }]}>
-              Ripple
-            </Text>
-            <Icon name="ripple" size={20} color={colors.foreground} />
-          </View>
-
-          {/* Two-row chip layout: the topic (first chip) sits alone on
-              its own centered line, then the time + geo "same X" tokens
-              share a second line below. Previously all chips lived in a
-              single flex-wrap row, which caused the topic and time chip
-              to land together while "same world" wrapped onto its own
-              line — visually orphaning the geo token. Splitting into
-              two explicit rows reads more deliberate and pairs the two
-              "same X" badges that belong together. */}
-          {(() => {
-            const [topicChip, ...metaChips] = sameChips;
-            return (
-              <>
-                <View style={styles.shareChipsRow}>
-                  <View
-                    key={topicChip.label}
-                    style={[
-                      styles.shareChip,
-                      {
-                        backgroundColor: colors.teal + "1a",
-                        borderColor: colors.teal + "55",
-                      },
-                    ]}
-                  >
-                    <Text style={styles.shareChipEmoji}>{topicChip.emoji}</Text>
-                    <Text style={[styles.shareChipText, { color: colors.teal }]}>
-                      {topicChip.label}
-                    </Text>
-                  </View>
-                </View>
-                {metaChips.length > 0 && (
-                  <View style={styles.shareChipsRow}>
-                    {metaChips.map((chip) => (
-                      <View
-                        key={chip.label}
-                        style={[
-                          styles.shareChip,
-                          {
-                            backgroundColor: colors.teal + "1a",
-                            borderColor: colors.teal + "55",
-                          },
-                        ]}
-                      >
-                        <Text style={styles.shareChipEmoji}>{chip.emoji}</Text>
-                        <Text style={[styles.shareChipText, { color: colors.teal }]}>
-                          {chip.label}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-              </>
-            );
-          })()}
-
-          {/* The photo pair now breaks out of the share-card's horizontal
-              padding (via negative margin) so the two images run almost
-              edge-to-edge of the captured share image. The country flags
-              were previously absolutely-positioned overlays on the top-
-              right of each photo — they now live in a small row directly
-              beneath their photo, centered, same 36px size. */}
-          {/* Photo layout has two modes:
-                free  → side-by-side (same as before): two photos in a
-                        row sharing the card width, two flags in a row
-                        beneath, plus the "Find it on Google Play"
-                        watermark below the card. The compact layout
-                        leaves room for the watermark.
-                Pro   → stacked: each photo takes the full card-edge-
-                        to-card-edge width with a small flag centered
-                        directly beneath it. With the watermark
-                        removed (Pro perk), there's nothing competing
-                        for vertical space, so the photos can grow as
-                        big as the share card allows — matching the
-                        match-screen presentation the user asked for. */}
-          {proUnlocked ? (
-            <View style={styles.sharePhotoStack}>
-              <View style={styles.sharePhotoStackItem}>
-                <View style={styles.sharePhotoFrameStacked}>
-                  <Image
-                    source={{ uri: match.myPhoto }}
-                    style={styles.sharePhoto}
-                    resizeMode="cover"
-                  />
-                </View>
-                <View
-                  style={[
-                    styles.shareFlagBadge,
-                    { backgroundColor: colors.card, borderColor: colors.border },
-                  ]}
-                >
-                  <Text style={styles.shareFlagText}>{myCountryFlag ?? "🌍"}</Text>
-                </View>
-              </View>
-              <View style={styles.sharePhotoStackItem}>
-                <View style={styles.sharePhotoFrameStacked}>
-                  <Image
-                    source={{ uri: match.theirPhoto }}
-                    style={styles.sharePhoto}
-                    resizeMode="cover"
-                  />
-                </View>
-                <View
-                  style={[
-                    styles.shareFlagBadge,
-                    { backgroundColor: colors.card, borderColor: colors.border },
-                  ]}
-                >
-                  <Text style={styles.shareFlagText}>{match.theirCountryFlag ?? "🌍"}</Text>
-                </View>
-              </View>
-            </View>
+        <View
+          ref={shotRef}
+          collapsable={false}
+          style={[
+            shareShotFrameStyle(shareCardWidth),
+            shareLayoutMode === "atlas" && styles.shareAtlasShot,
+            shareLayoutMode === "card" && styles.shareShotClip,
+          ]}
+        >
+          {shareLayoutMode === "atlas" ? (
+            <ConnectionAtlasShareCard
+              kind="ripple"
+              fromCode={myCountryCode}
+              toCode={match.theirCountryCode}
+              myPhotoUri={match.myPhoto}
+              theirPhotoUri={match.theirPhoto}
+              myCountryFlag={myCountryFlag}
+              theirCountryFlag={match.theirCountryFlag}
+              themeTitle={themeTitle}
+              themeEmoji={themeEmoji}
+              timeTier={timeTier}
+              geoTier={geoTier}
+              showWatermark={!proUnlocked}
+              width={shareCardWidth}
+            />
           ) : (
-            <View style={styles.sharePhotoPair}>
-              <View style={styles.sharePhotoFramesRow}>
-                {/* Watermark used to be burned onto the photos here as
-                    a small "✨ same same" pill at the bottom of the
-                    photo row. User feedback: it cluttered the photos
-                    and felt too small to read as an actual watermark.
-                    The watermark now lives only as the larger pill
-                    below the flag row (see styles.watermark) —
-                    clearer, brand-y, and out of the photo
-                    composition. */}
-                <View style={styles.sharePhotoFrame}>
-                  <Image
-                    source={{ uri: match.myPhoto }}
-                    style={styles.sharePhoto}
-                    resizeMode="cover"
-                  />
-                  <View style={styles.photoOverlayWatermarkContainer}>
-                    <View style={styles.photoOverlayWatermark}>
-                      <Icon name="wave" size={11} color="#FFFFFF" />
-                      <Text style={styles.photoOverlayWatermarkText}>SameWave</Text>
-                    </View>
-                  </View>
-                </View>
-                <View style={styles.sharePhotoFrame}>
-                  <Image
-                    source={{ uri: match.theirPhoto }}
-                    style={styles.sharePhoto}
-                    resizeMode="cover"
-                  />
-                  <View style={styles.photoOverlayWatermarkContainer}>
-                    <View style={styles.photoOverlayWatermark}>
-                      <Icon name="wave" size={11} color="#FFFFFF" />
-                      <Text style={styles.photoOverlayWatermarkText}>SameWave</Text>
-                    </View>
-                  </View>
-                </View>
-              </View>
-              <View style={styles.shareFlagRow}>
-                <View style={styles.shareFlagSlot}>
-                  <View
-                    style={[
-                      styles.shareFlagBadge,
-                      { backgroundColor: colors.card, borderColor: colors.border },
-                    ]}
-                  >
-                    <Text style={styles.shareFlagText}>{myCountryFlag ?? "🌍"}</Text>
-                  </View>
-                </View>
-                <View style={styles.shareFlagSlot}>
-                  <View
-                    style={[
-                      styles.shareFlagBadge,
-                      { backgroundColor: colors.card, borderColor: colors.border },
-                    ]}
-                  >
-                    <Text style={styles.shareFlagText}>{match.theirCountryFlag ?? "🌍"}</Text>
-                  </View>
-                </View>
-              </View>
-            </View>
+            <SharePhotoCardPoster
+              variant="ripple"
+              side={shareCardWidth}
+              themeTitle={themeTitle}
+              themeEmoji={themeEmoji}
+              timeTier={timeTier}
+              geoTier={geoTier}
+              myPhotoUri={match.myPhoto}
+              theirPhotoUri={match.theirPhoto}
+              myCountryFlag={myCountryFlag}
+              myCountryName={myCountryName}
+              theirCountry={match.theirCountry}
+              theirCountryFlag={match.theirCountryFlag}
+              showWatermark={!proUnlocked}
+            />
           )}
-
-          {!proUnlocked && (
-            <View
-              style={[
-                styles.watermark,
-                {
-                  // Two-line attribution callout: app name on top so
-                  // viewers know what app made the image, "Find it on
-                  // Google Play" beneath so they know where to get
-                  // it. Solid black with a teal brand outline is
-                  // legible on any background. Sits inside the
-                  // ViewShot capture region so it's burned into the
-                  // exported share image.
-                  backgroundColor: "#000000",
-                  borderColor: colors.teal,
-                },
-              ]}
-            >
-              <View style={styles.watermarkRow}>
-                <Icon name="wave" size={28} color="#FFFFFF" />
-                <Text style={[styles.watermarkText, { color: "#FFFFFF" }]}>
-                  SameWave
-                </Text>
-              </View>
-              <Text style={[styles.watermarkSubtext, { color: colors.teal }]}>
-                Find it on Google Play
-              </Text>
-            </View>
-          )}
-        </ViewShot>
+        </View>
         </Animated.View>
 
         {/* Visual separator between the shareable image above and the
@@ -901,11 +765,20 @@ export default function RevealScreen() {
   );
 }
 
-const PHOTO_W = (width - 48 - 32 - 2) / 2;
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  matchMissingCenter: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 32,
+  },
+  matchMissingText: {
+    fontSize: 16,
+    fontFamily: "Inter_500Medium",
+    textAlign: "center",
   },
   header: {
     flexDirection: "row",
@@ -929,14 +802,32 @@ const styles = StyleSheet.create({
   // tight stack gap, compact title + chips above, and a portrait
   // (4:5) aspect ratio on each photo so the imagery dominates the
   // captured share card.
+  sharePreviewCaption: {
+    alignSelf: "center",
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    letterSpacing: 0.4,
+    marginTop: -6,
+    marginBottom: 2,
+  },
   shareCard: {
-    borderRadius: 24,
+    borderRadius: 18,
     borderWidth: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-    gap: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    gap: 6,
     overflow: "hidden",
     alignItems: "center",
+  },
+  shareCardCompact: {
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    gap: 5,
+  },
+  shareCardSquare: {
+    flex: 1,
+    justifyContent: "space-between",
+    height: "100%",
   },
   shareTitleRow: {
     flexDirection: "row",
@@ -944,10 +835,20 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
   },
+  shareAtlasShot: {
+    borderRadius: 24,
+    overflow: "hidden",
+  },
+  shareShotClip: {
+    overflow: "hidden",
+  },
   shareTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontFamily: "Inter_700Bold",
     letterSpacing: -0.5,
+  },
+  shareTitleCompact: {
+    fontSize: 17,
   },
   shareChipsRow: {
     flexDirection: "row",
@@ -976,42 +877,13 @@ const styles = StyleSheet.create({
   // horizontal margin equal to the share card's horizontal padding (18),
   // so the captured share image's photos run almost to the corners.
   sharePhotoPair: {
+    flex: 1,
     flexDirection: "column",
-    gap: 8,
+    gap: 4,
     alignSelf: "stretch",
-    marginHorizontal: -18,
-  },
-  // Pro-only stacked photo layout. Each photo+flag pair sits in its
-  // own column item; the outer stack adds vertical breathing space
-  // between the two pairs (larger than the within-pair gap so each
-  // photo reads as visually paired with its own flag, not the next
-  // photo). Same edge-to-edge break-out as sharePhotoPair so the
-  // photos run flush with the share-card edges.
-  sharePhotoStack: {
-    flexDirection: "column",
-    gap: 14,
-    alignSelf: "stretch",
-    marginHorizontal: -18,
-  },
-  sharePhotoStackItem: {
-    alignSelf: "stretch",
-    alignItems: "center",
-    gap: 6,
-  },
-  sharePhotoFrameStacked: {
-    alignSelf: "stretch",
-    // Landscape 4:3 at full card width. Earlier this was 4:5 (portrait)
-    // to mirror the side-by-side mode at double width, but at full card
-    // width that made each photo ~450 px tall — two stacked + the
-    // header / chips / flags couldn't fit in a single viewport, so the
-    // user could only see one photo on screen at a time. 4:3 keeps the
-    // photos substantially bigger than free's side-by-side framing
-    // while letting the whole card fit in a phone viewport for preview
-    // and a typical social-share crop.
-    aspectRatio: 4 / 3,
-    borderRadius: 16,
-    overflow: "hidden",
-    position: "relative",
+    justifyContent: "center",
+    marginHorizontal: -10,
+    minHeight: 0,
   },
   sharePhotoFramesRow: {
     flexDirection: "row",
@@ -1021,12 +893,9 @@ const styles = StyleSheet.create({
   },
   sharePhotoFrame: {
     flex: 1,
-    // Portrait 4:5. Each photo column is roughly half the card
-    // width, so this gives a tall, magazine-like frame that
-    // dominates the captured image — the title/chips above and the
-    // flags/watermark below collapse into a thin top and bottom
-    // strip around two big photos.
-    aspectRatio: 4 / 5,
+    // Square frames in the side-by-side layout keep the card short
+    // enough for story-style social posts (was 4:5 portrait).
+    aspectRatio: 1,
     borderRadius: 16,
     overflow: "hidden",
     position: "relative",
@@ -1039,24 +908,9 @@ const styles = StyleSheet.create({
   // their column. Same 36px diameter as the old absolute overlay.
   shareFlagRow: {
     flexDirection: "row",
-    gap: 6,
+    gap: 8,
     alignSelf: "stretch",
-  },
-  shareFlagSlot: {
-    flex: 1,
-    alignItems: "center",
-  },
-  shareFlagBadge: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  shareFlagText: {
-    fontSize: 16,
-    lineHeight: 18,
+    marginTop: 2,
   },
   sectionDivider: {
     flexDirection: "row",

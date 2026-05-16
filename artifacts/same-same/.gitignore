@@ -6,6 +6,7 @@ node_modules/
 # Expo
 .expo/
 dist/
+dist-android-test/
 web-build/
 expo-env.d.ts
 
@@ -33,6 +34,10 @@ yarn-error.*
 
 # local env files
 .env*.local
+
+# EAS local signing (never commit)
+credentials.json
+**/keystore.jks
 
 # typescript
 *.tsbuildinfo

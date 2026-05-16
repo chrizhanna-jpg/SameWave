@@ -70,6 +70,7 @@ import { flagFor, nameFor } from "@/data/countries";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
 import type { Match } from "@/context/AppContext";
 import { photoKey } from "@/utils/photoKey";
+import { RIPPLE_CARD_WIDTH } from "@/constants/ripplePhotoFrame";
 
 const { width } = Dimensions.get("window");
 const SWIPE_THRESHOLD = width * 0.28;
@@ -1694,8 +1695,18 @@ export default function SwipeScreen() {
                 <Icon name="maximize" size={12} color="#fff" />
               </View>
               {sharedTags.length > 0 && (
-                <View style={[styles.sharedTagsChip, { backgroundColor: colors.teal + "f2" }]}>
-                  <Text style={styles.sharedTagsLabel}>Both have</Text>
+                <View
+                  style={[styles.sharedTagsChip, { backgroundColor: colors.teal + "f2" }]}
+                  accessible
+                  accessibilityRole="text"
+                  accessibilityLabel={sharedTags
+                    .slice(0, 3)
+                    .map((id) => {
+                      const t = TAG_LIBRARY.find((x) => x.id === id);
+                      return t ? `${t.label}` : id;
+                    })
+                    .join(", ")}
+                >
                   <Text style={styles.sharedTagsValue}>
                     {sharedTags
                       .slice(0, 3)
@@ -1768,6 +1779,7 @@ export default function SwipeScreen() {
             }}
             onOpenFull={(action) => {
               const data = flashMatch;
+              const matchId = String(data.id);
               setFlashMatch(null);
               // Defer the deck advance until the user returns from /reveal
               // so the matched card's music keeps playing through the
@@ -1779,10 +1791,7 @@ export default function SwipeScreen() {
               router.push({
                 pathname: "/reveal",
                 params: {
-                  matchId: data.id,
-                  // Optional auto-action: "share" or "paywall". /reveal
-                  // fires it once the share-card has laid out so the
-                  // capture isn't blank.
+                  matchId,
                   ...(action ? { action } : {}),
                 },
               });
@@ -1894,7 +1903,7 @@ export default function SwipeScreen() {
   );
 }
 
-const CARD_WIDTH = width - 24;
+const CARD_WIDTH = RIPPLE_CARD_WIDTH;
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -2225,19 +2234,10 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     maxWidth: "70%",
   },
-  sharedTagsLabel: {
-    fontSize: 9,
-    fontFamily: "Inter_600SemiBold",
-    color: "#001018",
-    opacity: 0.7,
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-  },
   sharedTagsValue: {
     fontSize: 12,
     fontFamily: "Inter_600SemiBold",
     color: "#001018",
-    marginTop: 1,
   },
   divider: {
     position: "absolute",

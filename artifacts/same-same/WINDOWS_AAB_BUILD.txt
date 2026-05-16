@@ -1,0 +1,39 @@
+SameWave — Windows local AAB checklist
+=====================================
+
+OUTPUT (when build succeeds):
+  artifacts\same-same\android\app\build\outputs\bundle\release\*.aab
+
+COMMAND:
+  cd C:\Global-Unity-Match\artifacts\same-same
+  pnpm run build:aab:local
+
+REQUIREMENTS ON YOUR PC
+-----------------------
+[ ] Android Studio + SDK (JAVA_HOME = Studio JBR)
+[ ] pnpm install at repo root
+[ ] eas login (EXPO_TOKEN or eas login)
+[ ] credentials.json + credentials\android\keystore.jks (from: pnpm exec eas credentials -p android)
+[ ] LongPathsEnabled = 1 (you have this) — script: scripts\enable-windows-long-paths.ps1 (Admin)
+[ ] Optional but recommended: clone/copy repo to SHORT path e.g. C:\sw\SameWave then build there
+
+RENDER (for testers using the AAB)
+----------------------------------
+[ ] CLERK_SECRET_KEY on Render (you added this)
+[ ] OPENAI_API_KEY on Render (photo insights)
+
+IF LOCAL BUILD FAILS (ninja / path too long)
+-------------------------------------------
+Option A — Short path (best free):
+  1. xcopy /E /I C:\Global-Unity-Match C:\sw\SameWave
+  2. cd C:\sw\SameWave\artifacts\same-same
+  3. pnpm install (at C:\sw\SameWave)
+  4. pnpm run build:aab:local
+
+Option B — EAS cloud (paid or wait for free quota reset ~Jun 1):
+  cd artifacts\same-same
+  pnpm exec eas build --platform android --profile production
+
+KEYSTORE NOTE
+-------------
+If signing fails, re-download credentials from EAS (keystore should be >5KB, not ~2KB).

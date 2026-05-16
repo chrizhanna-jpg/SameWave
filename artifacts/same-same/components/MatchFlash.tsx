@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import {
   Animated,
+  Dimensions,
   Easing,
   Image,
   PanResponder,
@@ -10,9 +11,18 @@ import {
   View,
 } from "react-native";
 import * as Haptics from "expo-haptics";
+import { CelebrationMatchChips } from "@/components/CelebrationMatchChips";
+import {
+  CelebrationSwipeDismissHint,
+  CelebrationSwipeHandle,
+  celebrationDragScale,
+} from "@/components/CelebrationSwipeDismiss";
+import { ConnectionMapPreview } from "@/components/ConnectionMapPreview";
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
 import { getGeoTier, getTimeTier } from "@/utils/celebrations";
+
+const FLASH_MAP_WIDTH = Dimensions.get("window").width - 48;
 
 // Action a tap on one of the secondary pills should trigger on the
 // receiving /reveal screen. `undefined` means "just open it".
@@ -86,18 +96,17 @@ export function MatchFlash({
   const finish = (mode: "dismiss" | "open" | "share") => {
     if (finishedRef.current) return;
     finishedRef.current = true;
+    if (mode !== "dismiss") {
+      // Navigate immediately — deferring until the fade-out completes
+      // could race with overlay unmount and land on an unmatched route.
+      onOpenFull(mode === "share" ? "share" : undefined);
+      return;
+    }
     Animated.timing(fade, {
       toValue: 0,
       duration: 180,
       useNativeDriver: true,
-    }).start(() => {
-      if (mode === "dismiss") onDone();
-      // For both Open and Share we navigate to /reveal without an
-      // auto-action — /reveal renders its own Share button so the
-      // user gets to see the rendered card before firing the share
-      // sheet.
-      else onOpenFull(undefined);
-    });
+    }).start(() => onDone());
   };
 
   // Swipe-to-dismiss: vertical drag of more than ~80px (or a fast
@@ -114,6 +123,7 @@ export function MatchFlash({
       },
       onPanResponderRelease: (_, g) => {
         if (Math.abs(g.dy) > 80 || Math.abs(g.vy) > 0.7) {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           // Animate the card off in the swipe direction for a moment
           // before kicking off the fade — feels less abrupt than just
           // cutting the card during dismissal.
@@ -180,13 +190,22 @@ export function MatchFlash({
   // story we're telling here.
   const timeTier = getTimeTier(myPhotoUploadedAt, theirPhotoMinutesAgo);
   const geoTier = getGeoTier(myCountryCode, theirCountryCode);
+  const dragScale = celebrationDragScale(dragY);
+  const backdropDragOpacity = dragY.interpolate({
+    inputRange: [-140, 0, 140],
+    outputRange: [0.55, 1, 0.55],
+    extrapolate: "clamp",
+  });
 
   return (
     <View style={StyleSheet.absoluteFill} {...panResponder.panHandlers}>
       <Animated.View
         style={[
           styles.backdrop,
-          { backgroundColor: colors.teal + "ee", opacity: fade },
+          {
+            backgroundColor: colors.teal + "ee",
+            opacity: Animated.multiply(fade, backdropDragOpacity),
+          },
         ]}
       />
       <Animated.View
@@ -194,11 +213,16 @@ export function MatchFlash({
           styles.center,
           {
             opacity: fade,
-            transform: [{ scale }, { translateY: dragY }],
+            transform: [
+              { scale: Animated.multiply(scale, dragScale) },
+              { translateY: dragY },
+            ],
           },
         ]}
         pointerEvents="box-none"
       >
+        <CelebrationSwipeHandle style={styles.topHandle} />
+
         {/* Explicit dismiss affordance for users who don't discover the
             swipe gesture. Sits in the top-right of the celebration card
             so it's visible without dominating the layout. */}
@@ -212,6 +236,17 @@ export function MatchFlash({
         </Pressable>
 
         <Text style={styles.tagline}>a ripple</Text>
+
+        {(myCountryCode || theirCountryCode) && (
+          <ConnectionMapPreview
+            kind="ripple"
+            fromCode={myCountryCode}
+            toCode={theirCountryCode}
+            width={FLASH_MAP_WIDTH}
+            height={Math.round(FLASH_MAP_WIDTH * 0.34)}
+            style={styles.atlasPreview}
+          />
+        )}
 
         {/* Two photo thumbnails — one from each country — with the
             corresponding flag badged into the bottom-right corner.
@@ -268,60 +303,30 @@ export function MatchFlash({
 
         <Text style={styles.country}>{theirCountry}</Text>
 
-        <View style={styles.themePill}>
-          <Text style={styles.themeEmoji}>{themeEmoji}</Text>
-          <Text style={styles.themeText}>{themeTitle}</Text>
-        </View>
+        <CelebrationMatchChips
+          themeTitle={themeTitle}
+          themeEmoji={themeEmoji}
+          timeTier={timeTier}
+          geoTier={geoTier}
+          accentColor={colors.teal}
+        />
 
-        {/* Same Day / Same Country tier badges. Wrap so they reflow on
-            narrow phones rather than overflowing horizontally. */}
-        <View style={styles.tierRow}>
-          <View style={styles.tierBadge}>
-            <Text style={styles.tierEmoji}>{timeTier.emoji}</Text>
-            <Text style={styles.tierText}>{timeTier.label}</Text>
-          </View>
-          <View style={styles.tierBadge}>
-            <Text style={styles.tierEmoji}>{geoTier.emoji}</Text>
-            <Text style={styles.tierText}>{geoTier.label}</Text>
-          </View>
-        </View>
-
-        {/* Action pill row. Open is the primary CTA; Share is the
-            secondary. Both are intentionally large — these are the
-            two interactions that matter on this screen. The
-            "Remove watermark" upsell now lives downstream on the
-            /reveal share flow, so this row is short and punchy. */}
-        <View style={styles.actionRow}>
+        <View style={styles.ctaWrap}>
           <Pressable
             onPress={(e) => {
               e.stopPropagation?.();
               finish("open");
             }}
-            style={styles.openPill}
-            accessibilityLabel="Open full match"
+            style={styles.openSharePill}
+            accessibilityLabel="Open and share this match"
           >
-            <Text style={styles.openText}>Open</Text>
-            <Icon name="arrow-right" size={20} color="#001018" />
-          </Pressable>
-
-          <Pressable
-            onPress={(e) => {
-              e.stopPropagation?.();
-              // Open the full /reveal "It's a Match" page first instead of
-              // jumping straight into the OS share sheet — users want a
-              // chance to see the rendered card before deciding to share.
-              // /reveal has its own Share button that fires the share flow.
-              finish("share");
-            }}
-            style={styles.secondaryPill}
-            accessibilityLabel="Share this match"
-          >
-            <Icon name="share" size={20} color="#fff" />
-            <Text style={styles.secondaryText}>Share</Text>
+            <Icon name="share" size={18} color="#FFFFFF" />
+            <Text style={styles.openShareText}>Open / Share</Text>
+            <Icon name="arrow-right" size={18} color="#FFFFFF" />
           </Pressable>
         </View>
 
-        <Text style={styles.hint}>swipe down to dismiss</Text>
+        <CelebrationSwipeDismissHint dragY={dragY} />
       </Animated.View>
     </View>
   );
@@ -336,6 +341,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 24,
+  },
+  topHandle: {
+    position: "absolute",
+    top: 12,
+    left: 0,
+    right: 0,
   },
   dismissBtn: {
     position: "absolute",
@@ -354,7 +365,11 @@ const styles = StyleSheet.create({
     letterSpacing: 4,
     color: "rgba(0,16,24,0.55)",
     textTransform: "uppercase",
-    marginBottom: 18,
+    marginBottom: 12,
+  },
+  atlasPreview: {
+    marginBottom: 14,
+    borderColor: "rgba(0,16,24,0.12)",
   },
   thumbsRow: {
     flexDirection: "row",
@@ -384,9 +399,9 @@ const styles = StyleSheet.create({
   },
   thumbFlag: {
     position: "absolute",
-    bottom: -6,
-    right: -6,
-    fontSize: 28,
+    bottom: -8,
+    right: -8,
+    fontSize: 34,
     // White circle behind the emoji so it pops against any photo.
     textShadowColor: "rgba(0,0,0,0.45)",
     textShadowRadius: 4,
@@ -403,100 +418,35 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,16,24,0.55)",
   },
   country: {
-    fontSize: 22,
+    fontSize: 26,
     fontWeight: "800",
     color: "#001018",
-    marginBottom: 12,
+    marginBottom: 14,
     textAlign: "center",
-  },
-  themePill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: "rgba(0,16,24,0.12)",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    marginBottom: 12,
-  },
-  themeEmoji: {
-    fontSize: 18,
-  },
-  themeText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#001018",
-  },
-  tierRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    gap: 8,
-    marginBottom: 22,
-  },
-  tierBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(255,255,255,0.7)",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
-  tierEmoji: {
-    fontSize: 14,
-  },
-  tierText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#001018",
-  },
-  actionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    marginTop: 4,
-    flexWrap: "wrap",
-    justifyContent: "center",
-  },
-  // Open + Share are intentionally large — roughly twice the previous
-  // hit area so the two primary interactions on this screen are
-  // unambiguous and easy to land with a thumb.
-  openPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: "#fff",
-    paddingHorizontal: 32,
-    paddingVertical: 20,
-    borderRadius: 999,
-  },
-  openText: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#001018",
-    letterSpacing: 0.5,
-  },
-  secondaryPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: "rgba(0,16,24,0.55)",
-    paddingHorizontal: 32,
-    paddingVertical: 20,
-    borderRadius: 999,
-  },
-  secondaryText: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#fff",
     letterSpacing: 0.3,
   },
-  hint: {
-    marginTop: 18,
-    fontSize: 11,
-    color: "rgba(0,16,24,0.55)",
-    fontWeight: "600",
-    letterSpacing: 0.5,
+  ctaWrap: {
+    width: "100%",
+    alignItems: "center",
+    marginTop: 10,
+  },
+  openSharePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    minWidth: 240,
+    paddingHorizontal: 36,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: "#001018",
+    borderWidth: 2,
+    borderColor: "rgba(255, 255, 255, 0.35)",
+  },
+  openShareText: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: 0.4,
   },
 });

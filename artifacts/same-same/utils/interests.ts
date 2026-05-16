@@ -1,5 +1,7 @@
 export const TAG_EMOJI: Record<string, string> = {
-  coffee: "☕", drink: "🥤", meal: "🍽️", bread: "🥖", dessert: "🍰",
+  coffee: "☕", tea: "🍵", breakfast: "🥐", lunch: "🥪", dinner: "🍽️", snack: "🍪",
+  drink: "🥤", meal: "🍽️", bread: "🥖", dessert: "🍰", food: "🍕",
+  brunch: "🥞", grocery: "🛒", restaurant: "🍽️",
   cooking: "🍳", baking: "🧁", warm: "🔥",
   trees: "🌳", sunset: "🌇", clouds: "☁️", stars: "⭐", night: "🌙",
   mountains: "⛰️", outdoors: "🌲", water: "💧", beach: "🏖️", snow: "❄️",

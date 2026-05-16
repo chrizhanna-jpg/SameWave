@@ -1006,8 +1006,8 @@ function PhotoSlot({
       <View style={styles.flagRow}>
         <Text style={styles.flag}>{photo.countryFlag}</Text>
         <Text
-          style={[styles.country, { color: colors.foreground }]}
-          numberOfLines={1}
+          style={[styles.country, { color: colors.teal }]}
+          numberOfLines={2}
         >
           {photo.country}
         </Text>
@@ -1168,15 +1168,17 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   flagRow: {
-    flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 4,
+    paddingTop: 2,
   },
-  flag: { fontSize: 16 },
+  flag: { fontSize: 28, lineHeight: 32 },
   country: {
-    fontSize: 12,
-    fontFamily: "Inter_600SemiBold",
-    flexShrink: 1,
+    fontSize: 15,
+    fontFamily: "Inter_700Bold",
+    textAlign: "center",
+    letterSpacing: 0.2,
+    alignSelf: "stretch",
   },
   chipRow: {
     flexDirection: "row",

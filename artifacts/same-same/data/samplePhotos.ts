@@ -603,8 +603,10 @@ const SYNTH_PHOTO_BANK = {
 // Map common tag IDs → SYNTH_PHOTO_BANK theme buckets so freeform user tags
 // still funnel to a sensible photo bucket.
 const TAG_TO_BUCKET: Record<string, keyof typeof SYNTH_PHOTO_BANK> = {
-  coffee: "morning", drink: "morning", warm: "morning", cozy: "home",
-  meal: "food", bread: "food", cooking: "food", baking: "food", dessert: "food", cafe: "food",
+  coffee: "morning", tea: "morning", drink: "morning", warm: "morning", cozy: "home",
+  breakfast: "morning",
+  meal: "food", lunch: "food", dinner: "food", snack: "food",
+  bread: "food", cooking: "food", baking: "food", dessert: "food", cafe: "food", food: "food",
   art: "creative", crafts: "creative", music: "creative", photography: "creative", reading: "creative", fashion: "creative",
   sunset: "sky", clouds: "sky", stars: "sky", night: "sky",
   transit: "commute", city: "travel",
@@ -636,8 +638,8 @@ function pickFromTheme(theme: string): keyof typeof SYNTH_PHOTO_BANK {
 // label generated candidates so the "Both have …" chip on the match screen
 // only shows tags that are actually plausible for the photo shown.
 const BUCKET_TAG_POOL: Record<keyof typeof SYNTH_PHOTO_BANK, string[]> = {
-  morning: ["coffee", "warm", "cozy", "sunset", "drink"],
-  food: ["meal", "bread", "cooking", "baking", "dessert", "drink", "cafe"],
+  morning: ["coffee", "tea", "breakfast", "warm", "cozy", "sunset", "drink"],
+  food: ["meal", "lunch", "dinner", "snack", "bread", "tea", "coffee", "cooking", "baking", "dessert", "drink", "cafe", "food"],
   hands: ["art", "crafts", "people"],
   sky: ["sunset", "clouds", "stars", "night"],
   commute: ["transit", "city", "travel"],
@@ -734,6 +736,11 @@ export function generateSyntheticCandidates(
 // camera screen can suggest the most relevant chips per theme.
 export const TAG_LIBRARY: { id: string; emoji: string; label: string }[] = [
   { id: "coffee", emoji: "☕", label: "Coffee" },
+  { id: "tea", emoji: "🍵", label: "Tea" },
+  { id: "breakfast", emoji: "🥐", label: "Breakfast" },
+  { id: "lunch", emoji: "🥪", label: "Lunch" },
+  { id: "dinner", emoji: "🍽️", label: "Dinner" },
+  { id: "snack", emoji: "🍪", label: "Snack" },
   { id: "drink", emoji: "🥤", label: "Drink" },
   { id: "meal", emoji: "🍽️", label: "Meal" },
   { id: "bread", emoji: "🥖", label: "Bread" },
@@ -808,12 +815,26 @@ export const TAG_LIBRARY: { id: string; emoji: string; label: string }[] = [
   { id: "chores", emoji: "🧹", label: "Chores" },
   { id: "cleaning", emoji: "🧼", label: "Cleaning" },
   { id: "laundry", emoji: "👕", label: "Laundry" },
+  // Common everyday moments — keep IDs in sync with api-server ALLOWED_TAGS.
+  { id: "brunch", emoji: "🥞", label: "Brunch" },
+  { id: "picnic", emoji: "🧺", label: "Picnic" },
+  { id: "concert", emoji: "🎤", label: "Concert" },
+  { id: "restaurant", emoji: "🍽️", label: "Restaurant" },
+  { id: "birthday", emoji: "🎂", label: "Birthday" },
+  { id: "wedding", emoji: "💒", label: "Wedding" },
+  { id: "museum", emoji: "🏛️", label: "Museum" },
+  { id: "park", emoji: "🌳", label: "Park" },
+  { id: "lake", emoji: "🏞️", label: "Lake" },
+  { id: "food", emoji: "🍕", label: "Food" },
+  { id: "pets", emoji: "🐾", label: "Pets" },
+  { id: "sunrise", emoji: "🌄", label: "Sunrise" },
+  { id: "rain", emoji: "🌧️", label: "Rain" },
 ];
 
 // Suggested tag IDs surfaced first per theme on the camera screen.
 export const SUGGESTED_TAGS_BY_THEME: Record<string, string[]> = {
-  morning: ["coffee", "drink", "sunset", "warm", "cozy"],
-  food: ["meal", "bread", "drink", "coffee", "cooking", "baking", "dessert"],
+  morning: ["coffee", "tea", "breakfast", "drink", "sunset", "warm", "cozy"],
+  food: ["meal", "lunch", "dinner", "snack", "bread", "drink", "coffee", "tea", "cooking", "baking", "dessert", "food"],
   hands: ["art", "people", "crafts"],
   sky: ["sunset", "clouds", "stars", "night", "trees"],
   commute: ["transit", "city", "travel"],
@@ -837,7 +858,7 @@ export const SUGGESTED_TAGS_BY_THEME: Record<string, string[]> = {
   // first row when these challenges run.
   selfie: ["selfie", "mirror", "smile", "people", "fashion"],
   shopping: ["shopping", "grocery", "fashion", "parcel", "city"],
-  cafe: ["cafe", "coffee", "drink", "meal", "cozy"],
+  cafe: ["cafe", "coffee", "tea", "drink", "meal", "breakfast", "brunch", "cozy"],
   objects: ["vintage", "art", "home", "crafts", "cozy"],
   chores: ["chores", "cleaning", "laundry", "home", "cozy"],
 };

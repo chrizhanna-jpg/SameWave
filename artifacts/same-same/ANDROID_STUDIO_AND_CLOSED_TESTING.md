@@ -33,7 +33,38 @@ pnpm exec expo run:android
 
 This generates the `android/` project and Gradle opens cleanly in Android Studio after the first successful `expo run:android`.
 
-## 4) EAS builds for closed testing
+## 4) Local AAB on your PC (no EAS cloud build quota)
+
+`eas build --local` does **not** run on native Windows (Linux/macOS only). Use **Gradle on Windows** instead:
+
+1. **One-time env** (from `artifacts/same-same`):
+
+   ```powershell
+   pnpm run setup:android-env
+   ```
+
+   Close and reopen PowerShell.
+
+2. **One-time signing** (uses the same keystore as your existing Play uploads):
+
+   ```powershell
+   pnpm exec eas login
+   pnpm exec eas credentials -p android
+   ```
+
+   Download credentials into this project → `credentials.json` + `.jks` (gitignored).
+
+3. **Build the AAB** (includes `expo prebuild` + `gradlew bundleRelease`):
+
+   ```powershell
+   pnpm run build:aab:local
+   ```
+
+   Output: `android/app/build/outputs/bundle/release/*.aab` → upload to Play Console.
+
+**Optional:** Install WSL Ubuntu (`wsl --install -d Ubuntu`) if you prefer `eas build --platform android --profile production --local` inside Linux.
+
+## 5) EAS cloud builds for closed testing
 
 Edit `eas.json` (or set the same keys in **EAS Secrets**) so every `EXPO_PUBLIC_*` value matches **your** deployed API — replace the `your-public-api-host.example.com` placeholders.
 
@@ -45,6 +76,6 @@ eas build --platform android --profile preview
 
 Use `production` for Play internal/closed track AABs when ready.
 
-## 5) RevenueCat seed script (optional)
+## 6) RevenueCat seed script (optional)
 
 `pnpm --filter @workspace/scripts run seed:revenuecat` needs **`REVENUECAT_SECRET_API_KEY`** (project secret key from the RevenueCat dashboard). The workspace seed script uses a small RevenueCat API client dependency; it only talks to **RevenueCat’s** API.

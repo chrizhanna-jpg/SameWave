@@ -13,7 +13,7 @@
 
 1. **Server:** extend `GET /api/photos/atlas` connections with `userId` and same-origin `thumbnailUrl` (or `/path` only) so real faces can appear.
 2. **Optional offline WebP pack:** run ImageMagick / `cwebp` per `integration.json` naming; keep processing on your machines or CI — **never** ship raw user bytes to external “processing” services without consent.
-3. **Audio:** swap stub WAVs for designed wave / fire / chatter beds; keep levels close to the dB targets in `integration.json`.
+3. **Audio:** swap stub WAVs for designed ocean / fire beds; keep levels close to the dB targets in `integration.json`.
 4. **iOS pan:** if stereo pan is inaudible, expect to add a native audio module or pre-panned stems.
 
 See **`integration.json`** for machine-readable parameters.

@@ -4,16 +4,22 @@ import { createOpenAIClient } from "./openaiEnv";
 // in routes/analyze.ts. We extract it here so the upload endpoint can
 // reuse it and stay DRY.
 const ALLOWED_TAGS = [
-  "coffee", "drink", "meal", "bread", "dessert", "cooking", "baking", "warm", "cafe",
+  "coffee", "tea", "breakfast", "lunch", "dinner", "snack",
+  "drink", "meal", "bread", "dessert", "cooking", "baking", "warm", "cafe",
+  "brunch", "picnic", "restaurant", "food",
   "trees", "sunset", "clouds", "stars", "night", "mountains", "outdoors",
-  "water", "beach", "snow", "plants", "flowers", "garden",
-  "dog", "cat", "animal", "wildlife", "bird",
+  "water", "beach", "snow", "plants", "flowers", "garden", "park", "lake", "sunrise", "rain",
+  "dog", "cat", "animal", "wildlife", "bird", "pets",
   "people", "smile", "celebration", "family", "friends", "party", "kids",
-  "art", "photography", "music", "reading", "crafts", "fashion",
+  "birthday", "wedding", "concert",
+  "art", "photography", "music", "reading", "crafts", "fashion", "museum",
   "fitness", "yoga", "hiking", "cycling", "running", "sports", "dancing", "gaming",
   "travel", "home", "vintage", "cozy", "work", "study",
   "city", "transit", "desk", "laptop",
   "hobby", "play",
+  "selfie", "mirror",
+  "shopping", "grocery", "parcel",
+  "chores", "cleaning", "laundry",
 ];
 
 // Visual-form / composition vocabulary. Describes the SHAPE of the photo,

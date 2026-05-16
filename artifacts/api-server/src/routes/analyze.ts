@@ -8,16 +8,19 @@ const router: IRouter = Router();
 // the mobile app's TAG_LIBRARY in artifacts/same-same/data/samplePhotos.ts.
 const ALLOWED_TAGS = [
   // Food & drink
-  "coffee", "drink", "meal", "bread", "dessert", "cooking", "baking", "warm", "cafe",
+  "coffee", "tea", "breakfast", "lunch", "dinner", "snack",
+  "drink", "meal", "bread", "dessert", "cooking", "baking", "warm", "cafe",
+  "brunch", "picnic", "restaurant", "food",
   // Nature & outdoors
   "trees", "sunset", "clouds", "stars", "night", "mountains", "outdoors",
-  "water", "beach", "snow", "plants", "flowers", "garden",
+  "water", "beach", "snow", "plants", "flowers", "garden", "park", "lake", "sunrise", "rain",
   // Animals
-  "dog", "cat", "animal", "wildlife",
+  "dog", "cat", "animal", "wildlife", "bird", "pets",
   // People & social
   "people", "smile", "celebration", "family", "friends", "party", "kids",
+  "birthday", "wedding", "concert",
   // Creative & hobbies
-  "art", "photography", "music", "reading", "crafts", "fashion",
+  "art", "photography", "music", "reading", "crafts", "fashion", "museum",
   // Active hobbies
   "fitness", "yoga", "hiking", "cycling", "running", "sports", "dancing", "gaming",
   // Lifestyle & places
@@ -61,7 +64,8 @@ const PROMPT = `You are analyzing a daily-life photo for a global "find people w
 Return FOUR things:
 1. "theme" — a SHORT lowercase phrase (1–4 words) naming the activity, moment,
    or subject of the photo. Be specific and natural. Anything is fair game:
-   "morning coffee", "street food", "extreme sports", "first steps",
+   "morning coffee", "morning tea", "breakfast", "lunch", "dinner",
+   "street food", "extreme sports", "first steps",
    "childbirth", "rainy commute", "sunset hike", "birthday cake",
    "bedroom selfie", "office lunch", etc. Do NOT pad with adjectives.
 2. "tags" — up to 6 tags from this FIXED vocabulary, capturing BOTH the visual
