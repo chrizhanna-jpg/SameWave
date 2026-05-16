@@ -12,18 +12,24 @@ import {
   ActivityIndicator,
   Image,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  formatClerkRedirectAllowlistHint,
-  getBuildFingerprintLabel,
-  getGoogleSsoRedirectUrl,
-} from "@/utils/googleSsoRedirect";
+import { getGoogleSsoRedirectUrl } from "@/utils/googleSsoRedirect";
 import { postDebugSessionLog } from "@/utils/debugSessionLog";
+import {
+  formatSignInDiagnosticsLines,
+  formatSignInErrorReport,
+  getSignInDiagnostics,
+  parseSignInError,
+  probeClerkKeyMatch,
+  SIGN_IN_DIAGNOSTICS_BUILD,
+  type ClerkConfigProbe,
+} from "@/utils/signInDiagnostics";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -53,13 +59,41 @@ export default function SignInScreen() {
   const { startSSOFlow } = useSSO();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [clerkProbe, setClerkProbe] = useState<ClerkConfigProbe | null>(null);
+  const [probeBusy, setProbeBusy] = useState(false);
+  const diagnostics = getSignInDiagnostics();
+  const diagnosticLines = formatSignInDiagnosticsLines(diagnostics);
+
+  useEffect(() => {
+    void probeClerkKeyMatch().then(setClerkProbe);
+  }, []);
+
+  const runClerkProbe = useCallback(async () => {
+    setProbeBusy(true);
+    try {
+      const result = await probeClerkKeyMatch();
+      setClerkProbe(result);
+      postDebugSessionLog({
+        hypothesisId: "H-G-probe",
+        location: "sign-in.tsx:runClerkProbe",
+        message: "clerk key probe",
+        data: {
+          ...result,
+          redirectUrl: diagnostics.redirectUrlUsed,
+          marker: diagnostics.marker,
+        },
+      });
+    } finally {
+      setProbeBusy(false);
+    }
+  }, [diagnostics.marker, diagnostics.redirectUrlUsed]);
 
   const onPressGoogle = useCallback(async () => {
     if (busy) return;
     setBusy(true);
     setError(null);
+    const redirectUrl = getGoogleSsoRedirectUrl();
     try {
-      const redirectUrl = getGoogleSsoRedirectUrl();
       // #region agent log
       postDebugSessionLog({
         hypothesisId: "H-G1",
@@ -67,7 +101,7 @@ export default function SignInScreen() {
         message: "google sso start",
         data: {
           platform: Platform.OS,
-          redirectUrlLen: redirectUrl.length,
+          redirectUrl,
         },
       });
       // #endregion
@@ -95,37 +129,50 @@ export default function SignInScreen() {
         // #endregion
         router.replace("/");
       } else {
-        setError("Sign-in didn't complete. Please try again.");
+        const probe = clerkProbe ?? (await probeClerkKeyMatch());
+        setClerkProbe(probe);
+        setError(
+          formatSignInErrorReport({
+            err: new Error(
+              "Google OAuth returned without a session (browser dismissed or callback not received).",
+            ),
+            diagnostics,
+            redirectUrlAttempted: redirectUrl,
+            clerkProbe: probe,
+            flowStage: "sso_incomplete",
+          }),
+        );
       }
     } catch (e) {
-      const base =
-        e instanceof Error
-          ? e.message
-          : "Couldn't sign in. Check your connection and try again.";
+      const parsed = parseSignInError(e);
+      const probe = clerkProbe ?? (await probeClerkKeyMatch());
+      setClerkProbe(probe);
       // #region agent log
       postDebugSessionLog({
         hypothesisId: "H-Gerr",
         location: "sign-in.tsx:onPressGoogle",
         message: "google sso caught",
         data: {
-          errKind: e instanceof Error ? e.name : "non-Error",
-          msgLen: base.length,
-          msgPreview: base.slice(0, 280),
+          ...parsed,
+          redirectUrl,
+          marker: diagnostics.marker,
+          clerkKeysMatch: probe.keysMatch,
         },
       });
       // #endregion
-      const isRedirectMismatch =
-        /authorized redirect uri/i.test(base) ||
-        /redirect url.*does not match/i.test(base);
       setError(
-        isRedirectMismatch
-          ? `${base}\n\nIn Clerk → Native applications → Allowlist for mobile SSO redirect, add:\n${formatClerkRedirectAllowlistHint()}\n\nThis build uses: ${getGoogleSsoRedirectUrl()}`
-          : base,
+        formatSignInErrorReport({
+          err: e,
+          diagnostics,
+          redirectUrlAttempted: redirectUrl,
+          clerkProbe: probe,
+          flowStage: "sso_start",
+        }),
       );
     } finally {
       setBusy(false);
     }
-  }, [busy, startSSOFlow]);
+  }, [busy, clerkProbe, diagnostics, startSSOFlow]);
 
   return (
     <View
@@ -168,13 +215,65 @@ export default function SignInScreen() {
           )}
         </TouchableOpacity>
 
-        {error && <Text style={styles.errorText}>{error}</Text>}
+        {error && (
+          <ScrollView
+            style={styles.errorScroll}
+            nestedScrollEnabled
+            accessibilityLabel="Sign-in error details"
+          >
+            <Text style={styles.errorText} selectable>
+              {error}
+            </Text>
+          </ScrollView>
+        )}
+
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Test Clerk and API setup"
+          activeOpacity={0.85}
+          onPress={() => void runClerkProbe()}
+          disabled={probeBusy || busy}
+          style={styles.probeBtn}
+        >
+          {probeBusy ? (
+            <ActivityIndicator color={COLORS.teal} size="small" />
+          ) : (
+            <Text style={styles.probeBtnLabel}>Test Clerk setup (no Google)</Text>
+          )}
+        </TouchableOpacity>
+
+        <View style={styles.diagCard}>
+          <Text style={styles.diagTitle}>Closed test build info</Text>
+          {diagnosticLines.map((line) => (
+            <Text key={line} style={styles.diagLine}>
+              {line}
+            </Text>
+          ))}
+          {clerkProbe && (
+            <Text
+              style={[
+                styles.diagLine,
+                clerkProbe.keysMatch === false && styles.diagWarn,
+                clerkProbe.keysMatch === true && styles.diagOk,
+              ]}
+            >
+              {clerkProbe.ok
+                ? clerkProbe.keysMatch
+                  ? `Clerk keys match (…${clerkProbe.appKeySuffix})`
+                  : `Clerk key mismatch — app …${clerkProbe.appKeySuffix} vs server …${clerkProbe.serverKeySuffix}`
+                : `Clerk probe failed: ${clerkProbe.error ?? "unknown"}`}
+            </Text>
+          )}
+          <Text style={styles.diagHint}>
+            Need SSO-diag-{SIGN_IN_DIAGNOSTICS_BUILD} on this screen. Play 1.2.8
+            can still be an older vc — check vc {diagnostics.versionCodeNative ?? "?"}.
+          </Text>
+        </View>
 
         <Text style={styles.fineprint}>
           We don't show or store your name, email, or profile photo. Your
           Google account is only used as a private anchor for your data.
         </Text>
-        <Text style={styles.buildLabel}>{getBuildFingerprintLabel()}</Text>
       </View>
     </View>
   );
@@ -257,18 +356,63 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     paddingHorizontal: 8,
   },
-  errorText: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 13,
-    color: "#FF6B6B",
-    textAlign: "center",
+  errorScroll: {
+    maxHeight: 220,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#5c2a2a",
+    backgroundColor: "#1a0f14",
+    padding: 10,
   },
-  buildLabel: {
+  errorText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: "#FF9B9B",
+    textAlign: "left",
+    lineHeight: 16,
+  },
+  probeBtn: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    minHeight: 44,
+  },
+  probeBtnLabel: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 14,
+    color: COLORS.teal,
+  },
+  diagCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 12,
+    gap: 4,
+  },
+  diagTitle: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+    color: COLORS.foreground,
+    marginBottom: 4,
+  },
+  diagLine: {
     fontFamily: "Inter_400Regular",
     fontSize: 11,
     color: COLORS.mutedForeground,
-    textAlign: "center",
-    opacity: 0.7,
-    marginTop: 4,
+    lineHeight: 16,
   },
+  diagHint: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 10,
+    color: COLORS.mutedForeground,
+    lineHeight: 15,
+    marginTop: 6,
+    opacity: 0.85,
+  },
+  diagOk: { color: COLORS.teal },
+  diagWarn: { color: "#FFB347" },
 });

@@ -54,7 +54,7 @@ import {
   togglePreview,
 } from "@/utils/audio";
 import { MicBadge } from "@/components/MicBadge";
-import { useSubscription } from "@/lib/revenuecat";
+import { useProAccess } from "@/hooks/useProAccess";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
 
@@ -181,10 +181,8 @@ export default function CameraScreen() {
     setMyPhotoUploadState,
     myPhotos,
     myCountryCode,
-    proUnlocked,
   } = useApp();
-  const { isPro } = useSubscription();
-  const proActive = isPro || proUnlocked;
+  const { proActive } = useProAccess();
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   // Keep the raw base64 + mime alongside the URI so submit() can ship the
   // bytes to the backend (the local URI isn't reachable from the server).

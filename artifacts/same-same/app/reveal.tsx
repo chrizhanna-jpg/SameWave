@@ -22,6 +22,8 @@ import * as Sharing from "expo-sharing";
 import { captureRef } from "react-native-view-shot";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
+import { useProAccess } from "@/hooks/useProAccess";
+import { shouldShowPaywalls } from "@/lib/monetization";
 import { useSubscription } from "@/lib/revenuecat";
 import { resolveMusicUrl } from "@/data/musicLibrary";
 import {
@@ -58,7 +60,6 @@ export default function RevealScreen() {
   const {
     matches,
     matchedCountries,
-    proUnlocked,
     sendConnectRequest,
     hasOutgoingForMatch,
     myDefaultPlatform,
@@ -73,7 +74,6 @@ export default function RevealScreen() {
   // accurate for the user's storefront. `purchase()` and `restore()`
   // are awaited round-trips through the native store SDK.
   const {
-    isPro,
     proPackage,
     priceString,
     purchase,
@@ -82,10 +82,7 @@ export default function RevealScreen() {
     isPurchasing,
     isRestoring,
   } = useSubscription();
-  // Prefer the live entitlement when the SDK has answered; until then
-  // fall back to the persisted local flag so the UI doesn't flicker
-  // a watermarked state for users who already own Pro.
-  const proActive = isPro || proUnlocked;
+  const { proActive, showPaywalls } = useProAccess();
   const [match, setMatch] = useState<Match | null>(null);
   const [sharing, setSharing] = useState(false);
   const [paywallOpen, setPaywallOpen] = useState(false);
@@ -322,7 +319,7 @@ export default function RevealScreen() {
       if (action === "share") {
         handleShare();
       } else if (action === "paywall") {
-        if (!proUnlocked) setPaywallOpen(true);
+        if (showPaywalls && !proActive) setPaywallOpen(true);
       }
     }, 350);
     return () => clearTimeout(t);
@@ -482,7 +479,7 @@ export default function RevealScreen() {
               themeEmoji={themeEmoji}
               timeTier={timeTier}
               geoTier={geoTier}
-              showWatermark={!proUnlocked}
+              showWatermark={!proActive}
               width={shareCardWidth}
             />
           ) : (
@@ -499,7 +496,7 @@ export default function RevealScreen() {
               myCountryName={myCountryName}
               theirCountry={match.theirCountry}
               theirCountryFlag={match.theirCountryFlag}
-              showWatermark={!proUnlocked}
+              showWatermark={!proActive}
             />
           )}
         </View>
@@ -641,9 +638,9 @@ export default function RevealScreen() {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Paywall modal */}
+      {/* Paywall modal — hidden when monetization is off for free launch */}
       <Modal
-        visible={paywallOpen}
+        visible={showPaywalls && paywallOpen}
         transparent
         animationType="fade"
         onRequestClose={() => setPaywallOpen(false)}

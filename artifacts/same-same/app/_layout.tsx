@@ -32,11 +32,13 @@ import { AppProvider, useApp } from "@/context/AppContext";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { setAuthTokenGetter } from "@/utils/api";
 import { postDebugSessionLog } from "@/utils/debugSessionLog";
+import { isMonetizationEnabled } from "@/lib/monetization";
 import {
   initializeRevenueCat,
   SubscriptionProvider,
   useSubscription,
 } from "@/lib/revenuecat";
+import { resolveClerkProxyUrl } from "@/utils/clerkConfig";
 import { getPublicApiOrigin } from "@/utils/publicEnv";
 
 SplashScreen.preventAutoHideAsync();
@@ -86,10 +88,12 @@ if (errorUtils?.setGlobalHandler && errorUtils?.getGlobalHandler) {
 // Configure the RevenueCat SDK exactly once at module load. Wrapped in
 // try/catch so a missing public key (e.g. a misconfigured EAS profile)
 // surfaces as a visible alert instead of a white-screen crash.
-try {
-  initializeRevenueCat();
-} catch (err: any) {
-  Alert.alert("Billing unavailable", err?.message ?? "Unknown error");
+if (isMonetizationEnabled()) {
+  try {
+    initializeRevenueCat();
+  } catch (err: any) {
+    Alert.alert("Billing unavailable", err?.message ?? "Unknown error");
+  }
 }
 
 const queryClient = new QueryClient();
@@ -104,15 +108,11 @@ if (!CLERK_PUBLISHABLE_KEY && __DEV__) {
   );
 }
 
-// Production: if your Clerk frontend API hostname has TLS quirks on Android, proxy via the api-server (`/api/__clerk`).
-// Dev (`__DEV__`): leave proxy undefined (Clerk `*.accounts.dev` cert is fine).
-// Fallback uses the same public API origin as `utils/publicEnv.ts` + `eas.json` / `.env`.
-const CLERK_PROXY_URL: string | undefined = __DEV__
-  ? undefined
-  : (
-      process.env.EXPO_PUBLIC_CLERK_PROXY_URL?.trim() ||
-      `${getPublicApiOrigin()}/api/__clerk`
-    );
+// pk_test_* → direct Clerk (proxy returns host_invalid). pk_live_* → optional proxy.
+const CLERK_PROXY_URL = resolveClerkProxyUrl(
+  CLERK_PUBLISHABLE_KEY,
+  getPublicApiOrigin(),
+);
 
 // --- Clerk boot gate (replaces <ClerkLoaded>) ----------------------------
 // `<ClerkLoaded>` from @clerk/expo simply returns null until isLoaded is
@@ -128,7 +128,7 @@ const CLERK_PROXY_URL: string | undefined = __DEV__
 // 8 s was picked empirically: v1.2.4's normal cold-start Clerk init was
 // well under 2 s on mid-tier Android over LTE, so 8 s is ~4× headroom.
 // Tune if real-world telemetry shows otherwise.
-const CLERK_BOOT_TIMEOUT_MS = 8000;
+const CLERK_BOOT_TIMEOUT_MS = 20000;
 function ClerkBootGate({
   children,
   onRetry,
@@ -164,11 +164,13 @@ function ClerkBootGate({
     <View style={bootGateStyles.root}>
       <Text style={bootGateStyles.title}>Can&apos;t reach SameWave</Text>
       <Text style={bootGateStyles.body}>
-        We couldn&apos;t connect to the sign-in service. This usually means
-        your phone is offline or on a network that&apos;s blocking us.
+        We couldn&apos;t connect to the sign-in service (timed out after{" "}
+        {CLERK_BOOT_TIMEOUT_MS / 1000}s). You have mobile data — this is usually
+        a server or Clerk configuration issue, not your Wi-Fi.
       </Text>
       <Text style={bootGateStyles.body}>
-        Check your Wi-Fi or mobile data, then tap below to try again.
+        Tap Try again. If it keeps failing, wait a minute (the API may be
+        waking up) or contact support with a screenshot of this screen.
       </Text>
       <TouchableOpacity
         style={bootGateStyles.button}
@@ -275,6 +277,10 @@ function RevenueCatProBridge() {
   const { isPro, hasResolvedEntitlements } = useSubscription();
   const { setProUnlocked } = useApp();
   useEffect(() => {
+    if (!isMonetizationEnabled()) {
+      setProUnlocked(true);
+      return;
+    }
     if (!hasResolvedEntitlements) return;
     setProUnlocked(isPro);
   }, [isPro, hasResolvedEntitlements, setProUnlocked]);

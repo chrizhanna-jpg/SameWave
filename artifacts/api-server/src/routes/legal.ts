@@ -3,6 +3,9 @@ import { Router, type IRouter } from "express";
 
 const router: IRouter = Router();
 
+/** Public contact for privacy, data deletion, terms, and safety reports. */
+const CONTACT_EMAIL = "samewaveripple@gmail.com";
+
 const PAGE_CSS = `
   :root { color-scheme: light dark; }
   * { box-sizing: border-box; }
@@ -111,7 +114,7 @@ const PRIVACY_HTML = layout(
   <p>If we change this policy in any material way we will update the date at the top of the page and, where appropriate, surface a notice inside the App.</p>
 
   <h2>Contact</h2>
-  <p>Questions or deletion requests: <a href="mailto:twin2win.support@gmail.com">twin2win.support@gmail.com</a></p>
+  <p>Questions or deletion requests: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
 
   <hr />
   <p class="meta"><a href="/api/terms">Terms of Service</a></p>
@@ -155,7 +158,7 @@ const TERMS_HTML = layout(
   <p>We may update these terms; the "last updated" date above will reflect the most recent version. Continued use of the App after a change constitutes acceptance.</p>
 
   <h2>Contact</h2>
-  <p><a href="mailto:twin2win.support@gmail.com">twin2win.support@gmail.com</a></p>
+  <p><a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
 
   <hr />
   <p class="meta"><a href="/api/privacy">Privacy Policy</a></p>
@@ -210,7 +213,7 @@ const CSAE_HTML = layout(
       hide it from circulation pending review. You do not need to be the
       subject of the photo, or even a registered user, to report.</li>
     <li><strong>By email:</strong> anyone — user or non-user — can email
-      <a href="mailto:twin2win.support@gmail.com">twin2win.support@gmail.com</a>
+      <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>
       with details of the content and, if possible, a screenshot or photo
       identifier. Please put "CSAE" in the subject line so it reaches us
       quickly. Reports are accepted in any language.</li>
@@ -240,7 +243,7 @@ const CSAE_HTML = layout(
   <h2>Compliance contact</h2>
   <p>For questions about these standards, requests from law enforcement, or
   press enquiries related to child safety, contact:
-  <a href="mailto:twin2win.support@gmail.com">twin2win.support@gmail.com</a></p>
+  <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
 
   <hr />
   <p class="meta"><a href="/api/privacy">Privacy Policy</a> · <a href="/api/terms">Terms of Service</a></p>
@@ -268,7 +271,7 @@ const DATA_DELETION_HTML = layout(
   matches, votes, device linkage, and notification tokens), email us from the
   address you use with the App (if applicable) or describe your account so we
   can locate it:</p>
-  <p><a href="mailto:twin2win.support@gmail.com?subject=SameWave%20data%20deletion%20request">twin2win.support@gmail.com</a>
+  <p><a href="mailto:${CONTACT_EMAIL}?subject=SameWave%20data%20deletion%20request">${CONTACT_EMAIL}</a>
   — please use subject line <code>SameWave data deletion request</code>.</p>
   <p>We will confirm receipt and process verifiable requests within a reasonable
   time, usually within <strong>30 days</strong>, unless a longer period is

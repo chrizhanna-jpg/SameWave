@@ -27,7 +27,7 @@ import {
   type ShareLayoutMode,
 } from "@/components/ShareLayoutModeToggle";
 import { useColors } from "@/hooks/useColors";
-import { useApp } from "@/context/AppContext";
+import { useProAccess } from "@/hooks/useProAccess";
 import { getTimeTier, getGeoTier } from "@/utils/celebrations";
 import { DAILY_CHALLENGES } from "@/data/samplePhotos";
 import { fetchPair, type PhotoPairResult } from "@/utils/api";
@@ -44,7 +44,7 @@ export default function EchoPairScreen() {
   const shareCardWidth = sharePreviewWidth(windowWidth);
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ a?: string; b?: string }>();
-  const { proUnlocked } = useApp();
+  const { proActive } = useProAccess();
 
   // Pause any voice-clip preview the user kicked off via a mic badge
   // tap when they navigate away. `pausePreview()` is lease-aware and
@@ -288,7 +288,7 @@ export default function EchoPairScreen() {
               themeEmoji={themeEmoji}
               timeTier={timeTier}
               geoTier={geoTier}
-              showWatermark={!proUnlocked}
+              showWatermark={!proActive}
               width={shareCardWidth}
             />
           ) : (
@@ -305,7 +305,7 @@ export default function EchoPairScreen() {
               myCountryName={pair.a.country}
               theirCountry={pair.b.country}
               theirCountryFlag={pair.b.countryFlag}
-              showWatermark={!proUnlocked}
+              showWatermark={!proActive}
               highlightBothCountries
               renderPhotoOverlay={(slot) => {
                 const photo = slot === "mine" ? pair.a : pair.b;

@@ -11,7 +11,7 @@ import * as AuthSession from "expo-auth-session";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 
-/** Marketing / deep-link scheme in app.json (not used for Clerk SSO redirect). */
+/** Marketing / deep-link scheme in app.json (legacy; not the Clerk SSO redirect). */
 export const SAMEWAVE_APP_SCHEME = "same-same";
 
 export const SAMEWAVE_ANDROID_PACKAGE =
@@ -22,29 +22,48 @@ export const SAMEWAVE_IOS_BUNDLE_ID =
 
 export const SAMEWAVE_SSO_CALLBACK_PATH = "callback";
 
+/** @clerk/expo Android SSOReceiverActivity intent filter (scheme clerk). */
+export function getClerkNativeSsoRedirectUrl(): string {
+  const host =
+    Platform.OS === "ios"
+      ? SAMEWAVE_IOS_BUNDLE_ID
+      : SAMEWAVE_ANDROID_PACKAGE;
+  return `clerk://${host}.${SAMEWAVE_SSO_CALLBACK_PATH}`;
+}
+
 /** Clerk-documented native redirect (package / bundle id as scheme). */
 export function getNativeClerkSsoRedirectUrl(): string {
   const scheme =
     Platform.OS === "ios"
       ? SAMEWAVE_IOS_BUNDLE_ID
       : SAMEWAVE_ANDROID_PACKAGE;
-  return `${scheme}://${SAMEWAVE_SSO_CALLBACK_PATH}`;
+  return AuthSession.makeRedirectUri({
+    scheme,
+    path: SAMEWAVE_SSO_CALLBACK_PATH,
+    preferLocalhost: false,
+  });
 }
 
-/** Legacy marketing scheme — only allowlist if you keep deep links on same-same:// */
+/** Legacy marketing scheme — allowlist only if an older build still sends it. */
 export const SAMEWAVE_MARKETING_SSO_REDIRECT_URL = `${SAMEWAVE_APP_SCHEME}://${SAMEWAVE_SSO_CALLBACK_PATH}`;
 
 /**
  * All URIs to add in Clerk Native applications allowlist (same Clerk app as pk_test in EAS).
  */
-export const CLERK_MOBILE_SSO_ALLOWLIST_HINTS: readonly string[] = [
-  getNativeClerkSsoRedirectUrl(),
-  `${SAMEWAVE_ANDROID_PACKAGE}://`,
-  SAMEWAVE_MARKETING_SSO_REDIRECT_URL,
-  `${SAMEWAVE_APP_SCHEME}://`,
-];
+export function getClerkMobileSsoAllowlistHints(): readonly string[] {
+  const primary = getNativeClerkSsoRedirectUrl();
+  return [
+    primary,
+    getClerkNativeSsoRedirectUrl(),
+    `${SAMEWAVE_ANDROID_PACKAGE}://`,
+    SAMEWAVE_MARKETING_SSO_REDIRECT_URL,
+    `${SAMEWAVE_APP_SCHEME}://`,
+  ];
+}
 
 export function getGoogleSsoRedirectUrl(): string {
+  const forced = process.env.EXPO_PUBLIC_CLERK_SSO_REDIRECT?.trim();
+  if (forced) return forced;
   if (Platform.OS === "web") {
     return AuthSession.makeRedirectUri({ path: SAMEWAVE_SSO_CALLBACK_PATH });
   }
@@ -52,16 +71,24 @@ export function getGoogleSsoRedirectUrl(): string {
 }
 
 export function formatClerkRedirectAllowlistHint(): string {
-  return CLERK_MOBILE_SSO_ALLOWLIST_HINTS.map((u) => `  • ${u}`).join("\n");
+  return getClerkMobileSsoAllowlistHints()
+    .map((u) => `  • ${u}`)
+    .join("\n");
 }
 
 /** Shown on sign-in so Play testers can confirm they received a new binary. */
 export function getBuildFingerprintLabel(): string {
-  const version = Constants.expoConfig?.version ?? "?";
-  const versionCode = Constants.expoConfig?.android?.versionCode;
+  const version =
+    Constants.nativeApplicationVersion ??
+    Constants.expoConfig?.version ??
+    "?";
   const vc =
-    typeof versionCode === "number"
-      ? ` · Android ${versionCode}`
-      : "";
-  return `Build ${version}${vc}`;
+    Constants.nativeBuildVersion ??
+    (typeof Constants.expoConfig?.android?.versionCode === "number"
+      ? String(Constants.expoConfig.android.versionCode)
+      : null);
+  const vcLabel = vc ? ` · vc ${vc}` : "";
+  const redirect =
+    Platform.OS === "web" ? "" : `\nRedirect: ${getGoogleSsoRedirectUrl()}`;
+  return `Build ${version}${vcLabel}${redirect}`;
 }

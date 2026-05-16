@@ -5,7 +5,7 @@
     "version": "1.2.8",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": ["same-same", "app.echo.samesame"],
+    "scheme": ["app.echo.samesame", "same-same"],
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
@@ -27,7 +27,7 @@
     "android": {
       "package": "app.echo.samesame",
       "softwareKeyboardLayoutMode": "resize",
-      "versionCode": 25,
+      "versionCode": 30,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#166FFC"
@@ -80,6 +80,12 @@
         "expo-build-properties",
         {
           "android": {
+            "buildArchs": [
+              "armeabi-v7a",
+              "arm64-v8a",
+              "x86",
+              "x86_64"
+            ],
             "packagingOptions": {
               "pickFirst": [
                 "META-INF/versions/9/OSGI-INF/MANIFEST.MF"

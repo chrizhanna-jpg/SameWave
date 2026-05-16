@@ -25,6 +25,7 @@ import Purchases, {
   type PurchasesOffering,
   type PurchasesPackage,
 } from "react-native-purchases";
+import { isMonetizationEnabled } from "@/lib/monetization";
 
 // Hardcoded fallbacks — see the long note in app/_layout.tsx about why
 // we don't trust EXPO_PUBLIC_* env vars to actually be inlined into the
@@ -98,6 +99,7 @@ async function fetchOfferingsAndCustomerInfoSequential() {
 }
 
 export function initializeRevenueCat(): void {
+  if (!isMonetizationEnabled()) return;
   if (configured || G.__sameWaveRcConfigured) return;
   const apiKey = getRevenueCatApiKey();
   if (!apiKey) {
@@ -150,11 +152,35 @@ const SubscriptionContext = createContext<SubscriptionContextValue | null>(
   null,
 );
 
+const FREE_LAUNCH_SUBSCRIPTION_VALUE: SubscriptionContextValue = {
+  isPro: true,
+  hasResolvedEntitlements: true,
+  proPackage: null,
+  priceString: null,
+  isLoading: false,
+  isPurchasing: false,
+  isRestoring: false,
+  purchase: async () => {
+    throw new Error("In-app purchases are not enabled in this build.");
+  },
+  restore: async () => {
+    throw new Error("In-app purchases are not enabled in this build.");
+  },
+};
+
 export function SubscriptionProvider({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  if (!isMonetizationEnabled()) {
+    return (
+      <SubscriptionContext.Provider value={FREE_LAUNCH_SUBSCRIPTION_VALUE}>
+        {children}
+      </SubscriptionContext.Provider>
+    );
+  }
+
   const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
   const [offering, setOffering] = useState<PurchasesOffering | null>(null);
   const [isLoading, setIsLoading] = useState(true);

@@ -54,6 +54,16 @@ function Invoke-NoisyNative {
 Write-Host "=== SameWave local Android AAB (Windows) ===" -ForegroundColor Cyan
 Write-Host "Project root: $realAppRoot" -ForegroundColor DarkGray
 
+$syncScript = Join-Path $PSScriptRoot "sync-deploy-tree.ps1"
+if ((Test-Path $syncScript) -and ($sameSame -ne (Join-Path $realAppRoot "artifacts\same-same"))) {
+  $deployRoot = if (Test-Path (Join-Path $realAppRoot "app.json")) { $realAppRoot } else { $sameSame }
+  if ($deployRoot -match "^C:\\w\\app$|^C:\\sw\\") {
+    Write-Host "Syncing sources into deploy tree $deployRoot ..." -ForegroundColor DarkGray
+    $env:SW_DEPLOY_ROOT = $deployRoot
+    & $syncScript
+  }
+}
+
 # Prefer Win32 long paths (helps CMake/ninja under deep pnpm trees).
 try {
   $lp = Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -ErrorAction SilentlyContinue
@@ -140,10 +150,15 @@ if (Test-Path $androidDir) {
 
 $env:SW_MONOREPO = $realAppRoot
 $env:SW_SAME_SAME = $sameSame
-$patchDir = Join-Path $sameSame "scripts"
+# Prefer scripts next to this file (repo) so deploy trees do not need duplicate patches.
+$patchDir = $PSScriptRoot
+if (-not (Test-Path (Join-Path $patchDir "patch-android-play-abis.ps1"))) {
+  $patchDir = Join-Path $sameSame "scripts"
+}
 & "$patchDir\patch-android-react-root.ps1"
 & "$patchDir\patch-android-hermes.ps1"
 & "$patchDir\patch-android-signing.ps1"
+& "$patchDir\patch-android-play-abis.ps1"
 if (-not (Test-Path $androidDir)) {
   Write-Error "prebuild did not create android/"
 }

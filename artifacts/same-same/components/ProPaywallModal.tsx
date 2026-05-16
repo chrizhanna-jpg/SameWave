@@ -12,6 +12,7 @@ import * as Haptics from "expo-haptics";
 
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
+import { shouldShowPaywalls } from "@/lib/monetization";
 import { useSubscription } from "@/lib/revenuecat";
 
 type ProPaywallModalProps = {
@@ -37,6 +38,8 @@ export function ProPaywallModal({
   features,
   finePrint = "Price and billing period are shown in the store before you confirm.",
 }: ProPaywallModalProps) {
+  if (!shouldShowPaywalls()) return null;
+
   const colors = useColors();
   const {
     proPackage,
