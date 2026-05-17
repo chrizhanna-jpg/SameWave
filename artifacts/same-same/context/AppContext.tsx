@@ -314,8 +314,8 @@ interface AppContextValue extends AppState {
     uri: string,
     state: NonNullable<MyPhoto["uploadState"]>,
   ) => void;
-  completeOnboarding: () => void;
-  resetOnboarding: () => void;
+  completeOnboarding: () => Promise<void>;
+  resetOnboarding: () => Promise<void>;
   unlockPro: () => void;
   setProUnlocked: (value: boolean) => void;
   getWorldMapCoverage: () => number;
@@ -1116,20 +1116,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
-  const completeOnboarding = useCallback(() => {
+  const completeOnboarding = useCallback(async () => {
+    let snapshot: AppState | undefined;
     setState((prev) => {
-      const newState = { ...prev, onboardingComplete: true };
-      saveState(newState);
-      return newState;
+      snapshot = { ...prev, onboardingComplete: true };
+      return snapshot;
     });
+    if (snapshot) await saveState(snapshot);
   }, []);
 
-  const resetOnboarding = useCallback(() => {
+  const resetOnboarding = useCallback(async () => {
+    let snapshot: AppState | undefined;
     setState((prev) => {
-      const newState = { ...prev, onboardingComplete: false };
-      saveState(newState);
-      return newState;
+      snapshot = { ...prev, onboardingComplete: false };
+      return snapshot;
     });
+    if (snapshot) await saveState(snapshot);
   }, []);
 
   const unlockPro = useCallback(() => {

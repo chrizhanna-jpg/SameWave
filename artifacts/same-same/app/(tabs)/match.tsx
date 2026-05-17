@@ -36,8 +36,11 @@ import {
   TAG_LIBRARY,
   generateSyntheticCandidates,
   ENABLE_SYNTHETIC_MATCHES,
+  isSamplePhoto,
   type SamplePhoto,
 } from "@/data/samplePhotos";
+import { StockPhotoWatermark } from "@/components/StockPhotoWatermark";
+import { ENABLE_STOCK_PHOTO_POOL } from "@/lib/stockPhotos";
 import {
   fetchCandidates,
   votePhoto,
@@ -129,16 +132,13 @@ function scoreCandidates(
   const myShapeSet = new Set(myShapes);
   const mySubjectSet = new Set(mySubjects);
 
-  // Production: pool is REAL candidates only (extraPool comes from
-  // /api/photos/candidates, populated by SwipeScreen below).
-  // Dev/Expo Go: blend curated SAMPLE_PHOTOS + synthetic generator + any
-  // real candidates the dev server happens to have. Synthetic generation is
-  // hard-gated by ENABLE_SYNTHETIC_MATCHES so a release build can never
-  // accidentally show invented matches.
+  // Production launch: curated stock (Unsplash) + live API candidates.
+  // Dev/Expo Go: stock + synthetic generator + API. Synthetic stays dev-only.
   const synthetic = generateSyntheticCandidates(preferredTheme, myTags, 24, excludeKeys);
+  const stock = ENABLE_STOCK_PHOTO_POOL ? SAMPLE_PHOTOS : [];
   const pool: SamplePhoto[] = ENABLE_SYNTHETIC_MATCHES
-    ? [...SAMPLE_PHOTOS, ...synthetic, ...extraPool]
-    : extraPool;
+    ? [...stock, ...synthetic, ...extraPool]
+    : [...stock, ...extraPool];
 
   // Excluded keys + per-call key dedupe. We compare on the stable
   // photoKey (not the raw URI) so two URIs pointing at the same image
@@ -1680,6 +1680,9 @@ export default function SwipeScreen() {
                 style={styles.fillPhoto}
                 resizeMode="cover"
               />
+              {isSamplePhoto(theirPhoto.uri) ? (
+                <StockPhotoWatermark size="sm" />
+              ) : null}
               {/* Mic badge — when the other user attached a custom voice
                   clip to their photo, surface it here so the listener
                   can preview it independently of the auto-play music
@@ -1814,11 +1817,19 @@ export default function SwipeScreen() {
           onPress={() => setFullscreenUri(null)}
         >
           {fullscreenUri && (
-            <Image
-              source={{ uri: fullscreenUri }}
-              style={styles.fullscreenImage}
-              resizeMode="contain"
-            />
+            <View style={styles.fullscreenImageWrap}>
+              <Image
+                source={{ uri: fullscreenUri }}
+                style={styles.fullscreenImage}
+                resizeMode="contain"
+              />
+              {isSamplePhoto(fullscreenUri) ? (
+                <StockPhotoWatermark
+                  size="md"
+                  style={{ top: insets.top + 14, right: 56 }}
+                />
+              ) : null}
+            </View>
           )}
           <TouchableOpacity
             onPress={() => setFullscreenUri(null)}
@@ -2199,6 +2210,11 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.97)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  fullscreenImageWrap: {
+    width: "100%",
+    height: "100%",
+    position: "relative",
   },
   fullscreenImage: {
     width: "100%",

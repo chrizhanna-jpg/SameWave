@@ -17,7 +17,7 @@ import {
 } from "@/utils/googleSsoRedirect";
 
 /** Bump when changing sign-in / SSO diagnostics (visible on sign-in screen). */
-export const SIGN_IN_DIAGNOSTICS_BUILD = 31;
+export const SIGN_IN_DIAGNOSTICS_BUILD = 33;
 
 export type SignInDiagnostics = {
   marker: string;

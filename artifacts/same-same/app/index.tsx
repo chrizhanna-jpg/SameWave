@@ -2,14 +2,14 @@ import { Redirect } from "expo-router";
 import { useAuth } from "@clerk/expo";
 import { useApp } from "@/context/AppContext";
 
-// Show the tutorial automatically on the first N cold starts so the
-// brand + flow has a chance to land before the user is asked to sign
-// in. After this threshold, cold starts skip past the tutorial — the
-// user can still open it manually via the "Replay tutorial" button on
-// the home screen.
+// Show the tutorial automatically on the first cold start (while
+// onboardingComplete is false). After they finish or skip, cold starts
+// go straight to sign-in or tabs. They can replay via the home screen.
 //
-// Currently 2 → tutorial appears on opens 1 and 2.
-const TUTORIAL_OPENS = 2;
+// Show the full tutorial on the first cold start only. If the user
+// kills the app mid-tutorial, open 2 can still show it until they tap
+// "Let's start" / Skip (onboardingComplete is persisted before "/").
+const TUTORIAL_OPENS = 1;
 
 // Single decision point for "where should the user land right now?"
 // Order:

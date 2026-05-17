@@ -30,6 +30,7 @@ import { OceanShimmer } from "@/components/OceanShimmer";
 import { PressableScale } from "@/components/PressableScale";
 import { useColors } from "@/hooks/useColors";
 import { buildDiscoveryFeed, type DiscoveryItem } from "@/data/discoveryFeed";
+import { StockPhotoWatermark } from "@/components/StockPhotoWatermark";
 import { isSamplePhoto, type SamplePhoto } from "@/data/samplePhotos";
 import { fetchEchoCountsByTheme } from "@/utils/api";
 import { useApp } from "@/context/AppContext";
@@ -974,11 +975,7 @@ function PhotoSlot({
         ]}
       >
         <Image source={{ uri: thumbUri(photo.uri) }} style={styles.photo} />
-        {isSamplePhoto(photo.uri) && (
-          <View style={styles.sampleBadge} accessibilityLabel="Sample photo">
-            <Icon name="globe" size={11} color="#ffffff" />
-          </View>
-        )}
+        {isSamplePhoto(photo.uri) ? <StockPhotoWatermark size="sm" /> : null}
         {/* Mic badge for any real (non-sample) photo that carries a
             custom voice clip. Today the discovery feed is dominated by
             synthetic SamplePhotos which never set customAudioUrl, so

@@ -3,6 +3,7 @@ import { Image, StyleSheet, Text, View } from "react-native";
 import { Icon } from "@/components/Icon";
 import { MicBadge } from "@/components/MicBadge";
 import { useColors } from "@/hooks/useColors";
+import { StockPhotoWatermark } from "@/components/StockPhotoWatermark";
 import { isSamplePhoto } from "@/data/samplePhotos";
 import { isAiPhoto } from "@/context/AppContext";
 
@@ -61,8 +62,9 @@ export function PhotoCard({
   const isAi = showAiBadge ?? isAiPhoto(uri);
   const showSample = (showSampleBadge ?? isSamplePhoto(uri)) && !isAi;
   const badgeSize = size === "sm" ? 20 : size === "md" ? 24 : 28;
-  const iconSize = size === "sm" ? 10 : size === "md" ? 12 : 14;
   const badgeOffset = size === "sm" ? 4 : 6;
+  const stockMarkSize: "sm" | "md" | "lg" =
+    size === "sm" ? "sm" : size === "md" ? "md" : "lg";
   const aiFontSize = size === "sm" ? 9 : size === "md" ? 10 : 12;
 
   return (
@@ -115,22 +117,10 @@ export function PhotoCard({
         </View>
       )}
       {showSample && (
-        <View
-          style={[
-            styles.badge,
-            {
-              width: badgeSize,
-              height: badgeSize,
-              borderRadius: badgeSize / 2,
-              top: badgeOffset,
-              right: badgeOffset,
-              backgroundColor: "rgba(0, 0, 0, 0.55)",
-            },
-          ]}
-          accessibilityLabel="Sample photo"
-        >
-          <Icon name="globe" size={iconSize} color="#ffffff" />
-        </View>
+        <StockPhotoWatermark
+          size={stockMarkSize}
+          style={{ top: badgeOffset, right: badgeOffset }}
+        />
       )}
       {audioUrl ? (
         <MicBadge

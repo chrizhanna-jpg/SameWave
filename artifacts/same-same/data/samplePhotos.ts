@@ -1,4 +1,5 @@
 import { photoKey } from "@/utils/photoKey";
+import { suggestGenre, type MusicGenre } from "@/data/musicLibrary";
 
 export interface SamplePhoto {
   id: string;
@@ -39,10 +40,15 @@ export interface SamplePhoto {
    * may include it when the uploader recorded their own audio.
    */
   customAudioUrl?: string;
+  /**
+   * Optional launch checklist id (see STOCK_LAUNCH_SLOTS). Helps QA confirm
+   * each everyday moment type has stock coverage.
+   */
+  launchSlot?: string;
 }
 
-// Helper used by PhotoCard to know whether to overlay the "sample" globe
-// badge in the corner. We resolve the URI set lazily so the SAMPLE_PHOTOS
+// Helper used to overlay the SameWave stock watermark (top-right). We
+// resolve the URI set lazily so the SAMPLE_PHOTOS
 // constant declared below can populate it on first call. Compared by
 // stable photoKey so URI variants (?w=…, etc.) still match.
 let _sampleKeySet: Set<string> | undefined;
@@ -430,7 +436,359 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   { id: "110", uri: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400", country: "Sweden", countryCode: "SE", countryFlag: "🇸🇪", theme: "music", minutesAgo: 95, tags: ["music","cozy","hobby"] },
   { id: "111", uri: "https://images.unsplash.com/photo-1485579149621-3123dd979885?w=400", country: "Italy", countryCode: "IT", countryFlag: "🇮🇹", theme: "music", minutesAgo: 240, tags: ["music","vintage"] },
   { id: "112", uri: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400", country: "Brazil", countryCode: "BR", countryFlag: "🇧🇷", theme: "music", minutesAgo: 47, tags: ["music","party"] },
+  // ── Launch moment coverage (30 everyday photo types) ───────────────────
+  // New Unsplash IDs only where the bank had no free URI. Each slot also
+  // maps in STOCK_LAUNCH_SLOTS below (existing photos cover many slots).
+  {
+    id: "113",
+    launchSlot: "selfie",
+    uri: "https://images.unsplash.com/photo-1524504388940-b1c4c055d93c?w=400",
+    country: "Bangladesh",
+    countryCode: "BD",
+    countryFlag: "🇧🇩",
+    theme: "selfie",
+    minutesAgo: 14,
+    tags: ["selfie", "people", "smile"],
+    subjects: ["selfie", "portrait", "face"],
+    musicGenre: "joy",
+  },
+  {
+    id: "114",
+    launchSlot: "tea_drinks",
+    uri: "https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=400",
+    country: "Jordan",
+    countryCode: "JO",
+    countryFlag: "🇯🇴",
+    theme: "morning",
+    minutesAgo: 31,
+    tags: ["tea", "drink", "warm"],
+    subjects: ["tea cup", "tea", "ceramic mug"],
+    musicGenre: "calm",
+  },
+  {
+    id: "115",
+    launchSlot: "weather",
+    uri: "https://images.unsplash.com/photo-1519696307457-dfc0c3c74295?w=400",
+    country: "Laos",
+    countryCode: "LA",
+    countryFlag: "🇱🇦",
+    theme: "weather",
+    minutesAgo: 52,
+    tags: ["rain", "clouds", "outdoors"],
+    subjects: ["rain", "window", "clouds"],
+    musicGenre: "calm",
+  },
+  {
+    id: "116",
+    launchSlot: "street_scene",
+    uri: "https://images.unsplash.com/photo-1444723127819-4a371bda1800?w=400",
+    country: "Panama",
+    countryCode: "PA",
+    countryFlag: "🇵🇦",
+    theme: "commute",
+    minutesAgo: 67,
+    tags: ["city", "outdoors", "transit"],
+    subjects: ["street", "pavement", "city"],
+    musicGenre: "stress",
+  },
+  {
+    id: "117",
+    launchSlot: "bed_morning",
+    uri: "https://images.unsplash.com/photo-1522771739844-6a209f3098a7?w=400",
+    country: "Romania",
+    countryCode: "RO",
+    countryFlag: "🇷🇴",
+    theme: "night",
+    minutesAgo: 39,
+    tags: ["home", "cozy", "warm"],
+    subjects: ["bed", "bedroom", "morning light"],
+    musicGenre: "calm",
+  },
+  {
+    id: "118",
+    launchSlot: "shopping_groceries",
+    uri: "https://images.unsplash.com/photo-1542838132-92b533b27a4a?w=400",
+    country: "Ukraine",
+    countryCode: "UA",
+    countryFlag: "🇺🇦",
+    theme: "groceries",
+    minutesAgo: 84,
+    tags: ["grocery", "food", "meal"],
+    subjects: ["groceries", "vegetables", "shopping bag"],
+    musicGenre: "content",
+  },
+  {
+    id: "119",
+    launchSlot: "car_interior",
+    uri: "https://images.unsplash.com/photo-1486224470-ef1db9abe6f6?w=400",
+    country: "Latvia",
+    countryCode: "LV",
+    countryFlag: "🇱🇻",
+    theme: "wheels",
+    minutesAgo: 21,
+    tags: ["transit", "city"],
+    subjects: ["car interior", "dashboard", "steering wheel"],
+    musicGenre: "stress",
+  },
+  {
+    id: "120",
+    launchSlot: "mirror_outfit",
+    uri: "https://images.unsplash.com/photo-1515886652478-2691b5f38025?w=400",
+    country: "Estonia",
+    countryCode: "EE",
+    countryFlag: "🇪🇪",
+    theme: "wearing",
+    minutesAgo: 48,
+    tags: ["mirror", "fashion", "people"],
+    subjects: ["mirror", "outfit", "selfie"],
+    musicGenre: "nostalgia",
+  },
+  {
+    id: "121",
+    launchSlot: "travel_airport",
+    uri: "https://images.unsplash.com/photo-1436491865332-7a61a109bf55?w=400",
+    country: "Ghana",
+    countryCode: "GH",
+    countryFlag: "🇬🇭",
+    theme: "travel",
+    minutesAgo: 156,
+    tags: ["travel", "transit"],
+    subjects: ["airport", "airplane window", "suitcase"],
+    musicGenre: "hope",
+  },
+  {
+    id: "122",
+    launchSlot: "shoes_feet",
+    uri: "https://images.unsplash.com/photo-1460353580275-bcb0bde9a22a?w=400",
+    country: "Pakistan",
+    countryCode: "PK",
+    countryFlag: "🇵🇰",
+    theme: "shoes",
+    minutesAgo: 73,
+    tags: ["outdoors", "city"],
+    subjects: ["shoes", "sneakers", "pavement"],
+    musicGenre: "calm",
+  },
+  {
+    id: "123",
+    launchSlot: "window_view",
+    uri: "https://images.unsplash.com/photo-1497366216548-37526070297c?w=400",
+    country: "Malaysia",
+    countryCode: "MY",
+    countryFlag: "🇲🇾",
+    theme: "view",
+    minutesAgo: 95,
+    tags: ["desk", "city", "outdoors"],
+    subjects: ["window view", "city skyline", "desk"],
+    musicGenre: "wonder",
+  },
+  {
+    id: "124",
+    launchSlot: "food_prep",
+    uri: "https://images.unsplash.com/photo-1516321497487-31a2490a83a6?w=400",
+    country: "Taiwan",
+    countryCode: "TW",
+    countryFlag: "🇹🇼",
+    theme: "food",
+    minutesAgo: 44,
+    tags: ["cooking", "food", "meal"],
+    subjects: ["ingredients", "cutting board", "kitchen"],
+    musicGenre: "content",
+  },
+  {
+    id: "125",
+    launchSlot: "public_cafe",
+    uri: "https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=400",
+    country: "Cuba",
+    countryCode: "CU",
+    countryFlag: "🇨🇺",
+    theme: "cafe",
+    minutesAgo: 58,
+    tags: ["cafe", "coffee", "drink"],
+    subjects: ["cafe", "coffee cup", "table"],
+    musicGenre: "calm",
+  },
+  {
+    id: "126",
+    launchSlot: "funny_unexpected",
+    uri: "https://images.unsplash.com/photo-1583337130417-3346a1be1dee?w=400",
+    country: "Bolivia",
+    countryCode: "BO",
+    countryFlag: "🇧🇴",
+    theme: "joy",
+    minutesAgo: 29,
+    tags: ["dog", "animal", "smile"],
+    subjects: ["dog", "funny face", "pet"],
+    musicGenre: "amusement",
+  },
+  {
+    id: "127",
+    launchSlot: "object_in_hand",
+    uri: "https://images.unsplash.com/photo-1515823064-29ebd4a3294d?w=400",
+    country: "Cambodia",
+    countryCode: "KH",
+    countryFlag: "🇰🇭",
+    theme: "coffee",
+    minutesAgo: 17,
+    tags: ["coffee", "drink", "warm"],
+    subjects: ["coffee cup", "hand", "latte"],
+    musicGenre: "calm",
+  },
 ];
+
+/** Maps launch QA slots → primary stock photo id (existing + new). */
+export const STOCK_LAUNCH_SLOTS: Readonly<Record<string, string>> = {
+  selfie: "113",
+  coffee_tea_drinks: "114",
+  breakfast_lunch_dinner: "26",
+  pets: "14",
+  kids_family: "50",
+  desk_work: "30",
+  commute: "45",
+  weather: "115",
+  window_view: "123",
+  street_scene: "116",
+  couch_cozy: "77",
+  tv_gaming: "89",
+  gym_workout: "74",
+  cooking: "57",
+  hobby: "92",
+  garden_plants: "78",
+  shoes_feet: "122",
+  object_in_hand: "127",
+  social_hangout: "69",
+  sunset_sunrise: "63",
+  shopping_groceries: "118",
+  car_interior: "119",
+  mirror_outfit: "120",
+  book_reading: "93",
+  random_detail: "41",
+  public_cafe: "125",
+  travel_moment: "121",
+  food_prep: "124",
+  bed_morning: "117",
+  funny_unexpected: "126",
+};
+
+const TAG_SUBJECT_HINTS: Record<string, string[]> = {
+  coffee: ["coffee cup", "coffee"],
+  tea: ["tea cup", "tea"],
+  drink: ["drink", "glass"],
+  breakfast: ["breakfast", "toast"],
+  lunch: ["lunch", "meal"],
+  dinner: ["dinner", "meal"],
+  meal: ["meal", "plate"],
+  snack: ["snack"],
+  bread: ["bread"],
+  cooking: ["cooking", "kitchen"],
+  baking: ["baking"],
+  dog: ["dog"],
+  cat: ["cat"],
+  animal: ["animal"],
+  wildlife: ["wildlife"],
+  people: ["people"],
+  smile: ["smile"],
+  friends: ["friends"],
+  family: ["family"],
+  kids: ["children", "family"],
+  laptop: ["laptop", "computer"],
+  desk: ["desk", "workspace"],
+  study: ["study", "books"],
+  transit: ["commute", "train"],
+  city: ["city", "street"],
+  rain: ["rain", "weather"],
+  clouds: ["clouds", "sky"],
+  sunset: ["sunset", "sky"],
+  sunrise: ["sunrise", "sky"],
+  stars: ["stars", "night sky"],
+  night: ["night"],
+  home: ["home", "room"],
+  cozy: ["cozy", "blanket"],
+  plants: ["plants", "greenery"],
+  flowers: ["flowers"],
+  garden: ["garden"],
+  gaming: ["gaming", "screen"],
+  play: ["play"],
+  fitness: ["workout", "gym"],
+  yoga: ["yoga"],
+  running: ["running"],
+  cycling: ["cycling"],
+  hiking: ["hiking"],
+  crafts: ["crafts", "handmade"],
+  art: ["art"],
+  music: ["music"],
+  photography: ["photography"],
+  reading: ["book", "reading"],
+  travel: ["travel"],
+  beach: ["beach"],
+  water: ["water"],
+  mountains: ["mountains"],
+  trees: ["trees"],
+  outdoors: ["outdoors"],
+  selfie: ["selfie", "portrait"],
+  mirror: ["mirror", "reflection"],
+  shopping: ["shopping"],
+  grocery: ["groceries"],
+  cafe: ["cafe"],
+  food: ["food"],
+};
+
+const THEME_SUBJECT_HINTS: Record<string, string[]> = {
+  morning: ["morning", "coffee cup"],
+  coffee: ["coffee cup", "coffee"],
+  food: ["meal", "food"],
+  work: ["desk", "laptop"],
+  commute: ["commute", "transit"],
+  sky: ["sky", "clouds"],
+  weather: ["weather", "rain"],
+  joy: ["smile", "people"],
+  nature: ["landscape", "outdoors"],
+  pets: ["pet", "animal"],
+  home: ["home", "cozy"],
+  travel: ["travel"],
+  games: ["gaming"],
+  hobbies: ["hobby"],
+  music: ["music"],
+  selfie: ["selfie", "portrait"],
+  reading: ["book", "reading"],
+  view: ["window view", "landscape"],
+  groceries: ["groceries", "food"],
+  cafe: ["cafe", "coffee cup"],
+  shoes: ["shoes", "feet"],
+  wearing: ["outfit", "mirror"],
+  wheels: ["car", "vehicle"],
+  night: ["bedroom", "night"],
+  made: ["handmade", "craft"],
+  movement: ["workout", "exercise"],
+};
+
+function inferStockSubjects(photo: SamplePhoto): string[] {
+  const out: string[] = [];
+  const push = (s: string) => {
+    const t = s.trim().toLowerCase();
+    if (t && !out.includes(t)) out.push(t);
+  };
+  for (const tag of photo.tags) {
+    for (const s of TAG_SUBJECT_HINTS[tag] ?? [tag]) push(s);
+  }
+  for (const s of THEME_SUBJECT_HINTS[photo.theme] ?? []) push(s);
+  return out.slice(0, 8);
+}
+
+function enrichLaunchStockMetadata(photo: SamplePhoto): SamplePhoto {
+  const musicGenre: MusicGenre =
+    (photo.musicGenre as MusicGenre | undefined) ??
+    suggestGenre(photo.theme, photo.tags);
+  const subjects =
+    photo.subjects && photo.subjects.length > 0
+      ? photo.subjects
+      : inferStockSubjects(photo);
+  return { ...photo, musicGenre, subjects };
+}
+
+for (let i = 0; i < SAMPLE_PHOTOS.length; i++) {
+  SAMPLE_PHOTOS[i] = enrichLaunchStockMetadata(SAMPLE_PHOTOS[i]);
+}
 
 // ─────────────────────────────────────────────────────────────────────────
 // TEST-BUILD ONLY: synthetic candidate generator

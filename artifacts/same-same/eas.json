@@ -13,7 +13,8 @@
       "env": {
         "EXPO_PUBLIC_API_URL": "https://samewave.onrender.com",
         "EXPO_PUBLIC_DOMAIN": "samewave.onrender.com",
-        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_a25vd2luZy1qYXdmaXNoLTQ1LmNsZXJrLmFjY291bnRzLmRldiQ"
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_a25vd2luZy1qYXdmaXNoLTQ1LmNsZXJrLmFjY291bnRzLmRldiQ",
+        "EXPO_PUBLIC_STOCK_PHOTOS_ENABLED": "true"
       }
     },
     "preview": {
@@ -25,7 +26,8 @@
         "EXPO_PUBLIC_API_URL": "https://samewave.onrender.com",
         "EXPO_PUBLIC_DOMAIN": "samewave.onrender.com",
         "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_a25vd2luZy1qYXdmaXNoLTQ1LmNsZXJrLmFjY291bnRzLmRldiQ",
-        "EXPO_PUBLIC_MONETIZATION_ENABLED": "false"
+        "EXPO_PUBLIC_MONETIZATION_ENABLED": "false",
+        "EXPO_PUBLIC_STOCK_PHOTOS_ENABLED": "true"
       }
     },
     "production": {
@@ -36,7 +38,8 @@
         "EXPO_PUBLIC_API_URL": "https://samewave.onrender.com",
         "EXPO_PUBLIC_DOMAIN": "samewave.onrender.com",
         "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_a25vd2luZy1qYXdmaXNoLTQ1LmNsZXJrLmFjY291bnRzLmRldiQ",
-        "EXPO_PUBLIC_MONETIZATION_ENABLED": "false"
+        "EXPO_PUBLIC_MONETIZATION_ENABLED": "false",
+        "EXPO_PUBLIC_STOCK_PHOTOS_ENABLED": "true"
       }
     }
   },

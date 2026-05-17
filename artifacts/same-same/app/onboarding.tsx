@@ -68,7 +68,7 @@ export default function OnboardingScreen() {
   const slideAnim = useRef(new Animated.Value(0)).current;
   const globeScale = useRef(new Animated.Value(1)).current;
 
-  const goNext = () => {
+  const goNext = async () => {
     // In production, the country step is a hard gate — the Continue
     // button no-ops until they've picked one.
     if (isCountryStep && REQUIRE_COUNTRY && !myCountryCode) return;
@@ -108,7 +108,10 @@ export default function OnboardingScreen() {
         ]).start();
       });
     } else {
-      completeOnboarding();
+      // Persist onboardingComplete before "/" — otherwise index.tsx can
+      // still see the old flag and send the user through the tutorial
+      // (and country step) a second time in the same session.
+      await completeOnboarding();
       // Route through "/" so the index gate decides whether sign-in is
       // still required (first-time users complete the tutorial BEFORE
       // they're asked to sign in) or it can drop them on the home tabs.
@@ -341,8 +344,8 @@ export default function OnboardingScreen() {
         {(step < STEPS.length - 1 ||
           (isCountryStep && !REQUIRE_COUNTRY && !myCountryCode)) && (
           <PressableScale
-            onPress={() => {
-              completeOnboarding();
+            onPress={async () => {
+              await completeOnboarding();
               // Route through "/" so the gate enforces sign-in next if
               // the user skipped the tutorial before authenticating.
               router.replace("/");
