@@ -10,7 +10,7 @@ if (-not (Test-Path $dst)) {
   Write-Error "Deploy root missing: $dst - run pnpm deploy first."
 }
 
-$dirs = @("app", "utils", "lib", "hooks", "components", "context", "data")
+$dirs = @("app", "assets", "utils", "lib", "hooks", "components", "context", "data")
 foreach ($d in $dirs) {
   $from = Join-Path $src $d
   if (Test-Path $from) {
