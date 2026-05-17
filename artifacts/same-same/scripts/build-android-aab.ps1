@@ -7,31 +7,47 @@ $env:JAVA_HOME = $JBR
 $env:ANDROID_HOME = $SDK
 $env:PATH = "$JBR\bin;$SDK\platform-tools;$env:PATH"
 
-# Prefer C:\sw\SameWave when present (shorter native build paths on Windows).
-$scriptRoot = Join-Path $PSScriptRoot "..\..\.."
-$defaultRoot = [System.IO.Path]::GetFullPath($scriptRoot)
-$candidateRoots = @(
-  "C:\w\app",
-  "C:\g\w",
-  "C:\sw\SameWave",
-  $defaultRoot
-)
-$realAppRoot = if ($env:SW_BUILD_ROOT) {
+# Canonical Windows deploy tree (short paths). Override only with SW_BUILD_ROOT.
+$DeployRoot = if ($env:SW_BUILD_ROOT) {
   $env:SW_BUILD_ROOT
 } else {
-  ($candidateRoots | Where-Object {
-    (Test-Path (Join-Path $_ "artifacts\same-same\package.json")) -or
-    (Test-Path (Join-Path $_ "app.json"))
-  } | Select-Object -First 1)
+  "C:\w\app"
 }
-if (-not $realAppRoot) { $realAppRoot = $defaultRoot }
-
-$sameSame = if (Test-Path (Join-Path $realAppRoot "artifacts\same-same\package.json")) {
-  Join-Path $realAppRoot "artifacts\same-same"
-} elseif (Test-Path (Join-Path $realAppRoot "app.json")) {
-  $realAppRoot
+# Stable folder for upload-ready bundles (not under android\app\build\...).
+$AabOutputDir = if ($env:SW_AAB_OUTPUT_DIR) {
+  $env:SW_AAB_OUTPUT_DIR
 } else {
-  Join-Path $realAppRoot "artifacts\same-same"
+  Join-Path $DeployRoot "aab"
+}
+
+$repoSameSame = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
+$monorepoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\..\.."))
+
+if (-not (Test-Path (Join-Path $DeployRoot "app.json"))) {
+  Write-Error @"
+Deploy tree missing at $DeployRoot (need app.json + android/).
+
+One-time setup from the repo:
+  pnpm --filter @workspace/same-same deploy C:\w\app --legacy
+  cd C:\w\app && pnpm install
+
+Or copy an existing flat deploy tree to $DeployRoot, then re-run build:aab:local.
+"@
+}
+
+$realAppRoot = $DeployRoot
+$sameSame = $DeployRoot
+
+# Always refresh C:\w\app from the git checkout before building.
+$syncScript = Join-Path $PSScriptRoot "sync-deploy-tree.ps1"
+if ((Test-Path $syncScript) -and (Test-Path (Join-Path $repoSameSame "app.json"))) {
+  $repoResolved = [System.IO.Path]::GetFullPath($repoSameSame)
+  $deployResolved = [System.IO.Path]::GetFullPath($DeployRoot)
+  if ($repoResolved -ne $deployResolved) {
+    Write-Host "Syncing sources: $repoResolved -> $deployResolved" -ForegroundColor DarkGray
+    $env:SW_DEPLOY_ROOT = $DeployRoot
+    & $syncScript
+  }
 }
 $androidDir = Join-Path $sameSame "android"
 $credentialsJson = Join-Path $sameSame "credentials.json"
@@ -52,17 +68,8 @@ function Invoke-NoisyNative {
 }
 
 Write-Host "=== SameWave local Android AAB (Windows) ===" -ForegroundColor Cyan
-Write-Host "Project root: $realAppRoot" -ForegroundColor DarkGray
-
-$syncScript = Join-Path $PSScriptRoot "sync-deploy-tree.ps1"
-if ((Test-Path $syncScript) -and ($sameSame -ne (Join-Path $realAppRoot "artifacts\same-same"))) {
-  $deployRoot = if (Test-Path (Join-Path $realAppRoot "app.json")) { $realAppRoot } else { $sameSame }
-  if ($deployRoot -match "^C:\\w\\app$|^C:\\sw\\") {
-    Write-Host "Syncing sources into deploy tree $deployRoot ..." -ForegroundColor DarkGray
-    $env:SW_DEPLOY_ROOT = $deployRoot
-    & $syncScript
-  }
-}
+Write-Host "Deploy root: $DeployRoot" -ForegroundColor DarkGray
+Write-Host "AAB output:  $AabOutputDir" -ForegroundColor DarkGray
 
 # Prefer Win32 long paths (helps CMake/ninja under deep pnpm trees).
 try {
@@ -163,8 +170,8 @@ if (-not (Test-Path $androidDir)) {
   Write-Error "prebuild did not create android/"
 }
 
-# Staging dir for native (.cxx) outputs — shorter than pnpm-nested paths.
-$nativeStage = "C:\sw-native"
+# Staging dir for native (.cxx) outputs — under the deploy tree.
+$nativeStage = Join-Path $DeployRoot "native-cache"
 if (-not (Test-Path $nativeStage)) { New-Item -ItemType Directory -Path $nativeStage -Force | Out-Null }
 $env:REACT_NATIVE_CCACHE_DIR = $nativeStage
 $env:CMAKE_BUILD_DIR = $nativeStage
@@ -222,15 +229,36 @@ if ($gradleExit -ne 0) {
 
 Set-Location $sameSame
 
-$aab = Get-ChildItem -Path (Join-Path $androidDir "app\build\outputs\bundle\release") -Filter "*.aab" -ErrorAction SilentlyContinue |
+$gradleAab = Get-ChildItem -Path (Join-Path $androidDir "app\build\outputs\bundle\release") -Filter "*.aab" -ErrorAction SilentlyContinue |
   Select-Object -First 1
-if (-not $aab) {
+if (-not $gradleAab) {
   Write-Error "No .aab found. See $gradleLog"
 }
 
+$versionCode = 0
+try {
+  $appJsonPath = Join-Path $sameSame "app.json"
+  $versionCode = [int]((Get-Content $appJsonPath -Raw | ConvertFrom-Json).expo.android.versionCode)
+} catch {
+  Write-Host "Could not read versionCode from app.json — using timestamp in filename." -ForegroundColor DarkYellow
+}
+
+New-Item -ItemType Directory -Path $AabOutputDir -Force | Out-Null
+$stamp = if ($versionCode -gt 0) { "vc$versionCode" } else { (Get-Date -Format "yyyyMMdd-HHmm") }
+$canonicalName = "SameWave-$stamp.aab"
+$canonicalPath = Join-Path $AabOutputDir $canonicalName
+$latestPath = Join-Path $AabOutputDir "SameWave-latest.aab"
+
+Copy-Item -Path $gradleAab.FullName -Destination $canonicalPath -Force
+Copy-Item -Path $gradleAab.FullName -Destination $latestPath -Force
+
 Write-Host ""
-Write-Host "AAB built:" -ForegroundColor Green
-Write-Host $aab.FullName
-Write-Host ("Size: {0:N2} MB" -f ($aab.Length / 1MB))
+Write-Host "AAB built (Gradle):" -ForegroundColor Green
+Write-Host $gradleAab.FullName
+Write-Host ""
+Write-Host "AAB for Play upload (canonical):" -ForegroundColor Green
+Write-Host $canonicalPath
+Write-Host $latestPath
+Write-Host ("Size: {0:N2} MB" -f ((Get-Item $canonicalPath).Length / 1MB))
 Write-Host "Logs: $logDir"
 Write-Host "Upload in Play Console -> Closed testing."

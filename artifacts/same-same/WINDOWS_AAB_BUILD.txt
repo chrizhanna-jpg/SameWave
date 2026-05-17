@@ -1,39 +1,39 @@
 SameWave — Windows local AAB checklist
 =====================================
 
-OUTPUT (when build succeeds):
-  artifacts\same-same\android\app\build\outputs\bundle\release\*.aab
+CANONICAL OUTPUT (always use these for Play upload):
+  C:\w\app\aab\SameWave-latest.aab
+  C:\w\app\aab\SameWave-vc<versionCode>.aab   (versioned copy)
 
-COMMAND:
+Gradle also writes:
+  C:\w\app\android\app\build\outputs\bundle\release\app-release.aab
+
+COMMAND (from repo or from C:\w\app):
   cd C:\Global-Unity-Match\artifacts\same-same
   pnpm run build:aab:local
 
+The script syncs sources into C:\w\app, builds there, then copies the .aab into C:\w\app\aab\.
+
 REQUIREMENTS ON YOUR PC
 -----------------------
+[ ] Deploy tree at C:\w\app (app.json + android/ + node_modules)
 [ ] Android Studio + SDK (JAVA_HOME = Studio JBR)
-[ ] pnpm install at repo root
-[ ] eas login (EXPO_TOKEN or eas login)
-[ ] credentials.json + credentials\android\keystore.jks (from: pnpm exec eas credentials -p android)
-[ ] LongPathsEnabled = 1 (you have this) — script: scripts\enable-windows-long-paths.ps1 (Admin)
-[ ] Optional but recommended: clone/copy repo to SHORT path e.g. C:\sw\SameWave then build there
+[ ] credentials.json + credentials\android\keystore.jks in C:\w\app
+[ ] LongPathsEnabled = 1 (optional; C:\w\app keeps native paths short)
+
+ONE-TIME DEPLOY TREE SETUP (if C:\w\app is missing)
+-------------------------------------------------
+  pnpm --filter @workspace/same-same deploy C:\w\app --legacy
+  cd C:\w\app
+  pnpm install
+  pnpm exec eas credentials -p android   (keystore into C:\w\app\credentials\)
 
 RENDER (for testers using the AAB)
 ----------------------------------
-[ ] CLERK_SECRET_KEY on Render (you added this)
-[ ] OPENAI_API_KEY on Render (photo insights)
+[ ] API deployed from main (POST /api/photos/atlas/explore on samewave.onrender.com)
+[ ] CLERK_SECRET_KEY + OPENAI_API_KEY on Render
 
-IF LOCAL BUILD FAILS (ninja / path too long)
--------------------------------------------
-Option A — Short path (best free):
-  1. xcopy /E /I C:\Global-Unity-Match C:\sw\SameWave
-  2. cd C:\sw\SameWave\artifacts\same-same
-  3. pnpm install (at C:\sw\SameWave)
-  4. pnpm run build:aab:local
-
-Option B — EAS cloud (paid or wait for free quota reset ~Jun 1):
-  cd artifacts\same-same
-  pnpm exec eas build --platform android --profile production
-
-KEYSTORE NOTE
--------------
-If signing fails, re-download credentials from EAS (keystore should be >5KB, not ~2KB).
+OVERRIDES (rare)
+-----------------
+  SW_BUILD_ROOT=C:\other\path     — different deploy tree
+  SW_AAB_OUTPUT_DIR=C:\w\app\aab  — default is already C:\w\app\aab

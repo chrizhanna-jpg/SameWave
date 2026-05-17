@@ -1,6 +1,7 @@
 # Copy SameWave app sources into the short-path deploy tree (C:\w\app) before local AAB builds.
 $ErrorActionPreference = "Stop"
 $src = Join-Path $PSScriptRoot ".."
+# Always C:\w\app unless the build script sets SW_DEPLOY_ROOT explicitly.
 $dst = if ($env:SW_DEPLOY_ROOT) { $env:SW_DEPLOY_ROOT } else { "C:\w\app" }
 
 if (-not (Test-Path (Join-Path $src "app.json"))) {

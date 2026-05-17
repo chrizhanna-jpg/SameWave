@@ -1,26 +1,26 @@
-# One-time: mirror repo to C:\g\w (short paths for Windows native build).
+# One-time: ensure the canonical Windows deploy tree exists at C:\w\app.
 $ErrorActionPreference = "Stop"
-$src = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
-$dest = "C:\g\w"
+$deployRoot = if ($env:SW_DEPLOY_ROOT) { $env:SW_DEPLOY_ROOT } else { "C:\w\app" }
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
 
-$parent = Split-Path $dest -Parent
-if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
-
-Write-Host "Mirroring $src -> $dest (excluding node_modules, build caches)..." -ForegroundColor Cyan
-robocopy $src $dest /MIR /XD node_modules android\app\build android\build android\.gradle .expo dist dist-android-test /NFL /NDL /NJH /NJS /nc /ns /np
-if ($LASTEXITCODE -ge 8) { Write-Error "robocopy failed with exit $LASTEXITCODE" }
-
-Set-Location $dest
-$npmrc = Join-Path $dest ".npmrc"
-if (-not (Select-String -Path $npmrc -Pattern "node-linker=hoisted" -Quiet -ErrorAction SilentlyContinue)) {
-  Add-Content -Path $npmrc -Value "`nnode-linker=hoisted`n"
-  Write-Host "Added node-linker=hoisted to $npmrc" -ForegroundColor Yellow
+if (Test-Path (Join-Path $deployRoot "app.json")) {
+  Write-Host "Deploy tree already exists: $deployRoot" -ForegroundColor Green
+} else {
+  Write-Host "Creating deploy tree at $deployRoot ..." -ForegroundColor Cyan
+  Set-Location $repoRoot
+  pnpm --filter @workspace/same-same deploy $deployRoot --legacy
 }
 
-Write-Host "pnpm install at short path (hoisted node_modules)..." -ForegroundColor Cyan
-if (Test-Path "node_modules") { Remove-Item -Recurse -Force "node_modules" }
-pnpm install
+Set-Location $deployRoot
+if (-not (Test-Path "node_modules")) {
+  Write-Host "pnpm install at $deployRoot ..." -ForegroundColor Cyan
+  pnpm install
+}
 
-Write-Host "Done. Build with:" -ForegroundColor Green
-Write-Host "  cd $dest\artifacts\same-same"
+$env:SW_DEPLOY_ROOT = $deployRoot
+& (Join-Path $PSScriptRoot "sync-deploy-tree.ps1")
+
+Write-Host "Done. Build AAB with:" -ForegroundColor Green
+Write-Host "  cd $repoRoot\artifacts\same-same"
 Write-Host "  pnpm run build:aab:local"
+Write-Host "Output: $deployRoot\aab\SameWave-latest.aab"
