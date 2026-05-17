@@ -1,10 +1,9 @@
 import { Platform } from "react-native";
 import type * as ImagePicker from "expo-image-picker";
 
-// Echo accepts both authentic camera photos AND AI-generated images, but we
-// detect AI images via EXIF and flag them so the rest of the app can:
-//   - mark them visually (PhotoCard "AI" badge)
-//   - exclude them from echo connections (no echoes generated for AI uploads)
+// Echo accepts both authentic camera photos AND AI-generated images. We
+// detect likely AI images via EXIF and flag them so the app can show an
+// "AI generated" badge. AI photos still upload and can form Ripples/Waves.
 //
 // Strategy:
 //   - source === "camera": always trusted, never AI.

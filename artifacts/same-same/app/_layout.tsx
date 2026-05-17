@@ -378,7 +378,7 @@ function RootLayoutNav() {
             const b = String(pendingFlashEcho.theirs.id);
             router.push({
               pathname: "/echo-pair",
-              params: { a, b },
+              params: { a, b, celebrate: "1" },
             });
             setTimeout(() => dismissFlashEcho(), 400);
           }}

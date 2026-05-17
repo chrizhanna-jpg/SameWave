@@ -99,6 +99,13 @@ export function createAtlasProjection(
  * Quadratic arc in projected pixel space (inset endpoints so lines meet
  * cluster edges — same idea as the web mockup).
  */
+function arcPathFromSegment(seg: AtlasArcSegment): string {
+  if (seg.mode === "line") {
+    return `M${seg.x1},${seg.y1} L${seg.x2},${seg.y2}`;
+  }
+  return `M${seg.sx},${seg.sy} Q${seg.cx},${seg.cy} ${seg.ex},${seg.ey}`;
+}
+
 export function atlasArcPathD(
   projection: GeoProjection,
   fromLonLat: readonly [number, number],
@@ -106,10 +113,66 @@ export function atlasArcPathD(
 ): string {
   const seg = atlasArcSegment(projection, fromLonLat, toLonLat);
   if (!seg) return "";
-  if (seg.mode === "line") {
-    return `M${seg.x1},${seg.y1} L${seg.x2},${seg.y2}`;
+  return arcPathFromSegment(seg);
+}
+
+export type AtlasScreenPoint = { x: number; y: number };
+
+const WAVEFIRE_RING_INSET = 5;
+const WAVEFIRE_RING_BOW_MAX = 32;
+
+/**
+ * One continuous ember ring through country centroids (closed loop). Each leg is
+ * a shallow quadratic bow with a very subtle wobble so the string reads alive
+ * without looking squiggly.
+ */
+export function atlasWavefireRingPathD(
+  ringPoints: AtlasScreenPoint[],
+  wavePhase: number,
+): string {
+  const n = ringPoints.length;
+  if (n < 2) return "";
+  const cx =
+    ringPoints.reduce((s, p) => s + p.x, 0) / n;
+  const cy =
+    ringPoints.reduce((s, p) => s + p.y, 0) / n;
+  const centroid = { x: cx, y: cy };
+
+  const parts: string[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = ringPoints[i]!;
+    const b = ringPoints[(i + 1) % n]!;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 0.5) continue;
+    const ux = dx / len;
+    const uy = dy / len;
+    const inset = Math.min(WAVEFIRE_RING_INSET, len * 0.32);
+    const sx = a.x + ux * inset;
+    const sy = a.y + uy * inset;
+    const ex = b.x - ux * inset;
+    const ey = b.y - uy * inset;
+    const mx = (sx + ex) / 2;
+    const my = (sy + ey) / 2;
+    const vx = mx - centroid.x;
+    const vy = my - centroid.y;
+    const vlen = Math.hypot(vx, vy) || 1;
+    const nx = vx / vlen;
+    const ny = vy / vlen;
+    const bow = Math.min(len * 0.2, WAVEFIRE_RING_BOW_MAX);
+    const wobble = Math.sin(wavePhase + i * 0.45) * 2.2;
+    const px = -uy;
+    const py = ux;
+    const qcx = mx + nx * bow + px * wobble;
+    const qcy = my + ny * bow + py * wobble;
+    if (parts.length === 0) {
+      parts.push(`M${sx},${sy} Q${qcx},${qcy} ${ex},${ey}`);
+    } else {
+      parts.push(`Q${qcx},${qcy} ${ex},${ey}`);
+    }
   }
-  return `M${seg.sx},${seg.sy} Q${seg.cx},${seg.cy} ${seg.ex},${seg.ey}`;
+  return parts.join(" ");
 }
 
 export type AtlasArcSegment =

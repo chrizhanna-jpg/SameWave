@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Animated,
   Dimensions,
-  Image,
   Modal,
   PanResponder,
   Platform,
@@ -27,7 +26,7 @@ import { GradientCard } from "@/components/GradientCard";
 import { expandToVibe } from "@/utils/interests";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
-import { useApp } from "@/context/AppContext";
+import { isAiPhoto, useApp } from "@/context/AppContext";
 import {
   SAMPLE_PHOTOS,
   DAILY_CHALLENGES,
@@ -39,6 +38,8 @@ import {
   isSamplePhoto,
   type SamplePhoto,
 } from "@/data/samplePhotos";
+import { AiGeneratedBadge } from "@/components/AiGeneratedBadge";
+import { RemotePhotoImage } from "@/components/RemotePhotoImage";
 import { StockPhotoWatermark } from "@/components/StockPhotoWatermark";
 import { ENABLE_STOCK_PHOTO_POOL } from "@/lib/stockPhotos";
 import {
@@ -73,6 +74,7 @@ import { flagFor, nameFor } from "@/data/countries";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
 import type { Match } from "@/context/AppContext";
 import { photoKey } from "@/utils/photoKey";
+import { stashMatchPhotoUris } from "@/utils/matchPhotoSnapshot";
 import { RIPPLE_CARD_WIDTH } from "@/constants/ripplePhotoFrame";
 
 const { width } = Dimensions.get("window");
@@ -1091,6 +1093,11 @@ export default function SwipeScreen() {
                 matchStats: sampleMatchStats(snapshotPhoto.uri),
               }
             : { ...match, ...(liveId ? { theirPhotoId: liveId } : {}) };
+        stashMatchPhotoUris(
+          matchWithStats.id,
+          matchWithStats.myPhoto,
+          matchWithStats.theirPhoto,
+        );
         addMatch(matchWithStats);
         if (liveId) {
           // Persist the verdict to the backend. Pass the user's currently-
@@ -1212,6 +1219,42 @@ export default function SwipeScreen() {
   // previous UTC day — this makes Start Matching prompt for a fresh photo
   // each new daily-challenge cycle instead of recycling yesterday's.
   const hasUploadedPhoto = todaysPhoto !== undefined;
+
+  // Production builds used to mount with realPool=[] and stock off, so
+  // `initial` was null → permanent "all caught up" even after /candidates
+  // returned. Re-pick when the live pool fills or we're on placeholder/empty.
+  useEffect(() => {
+    if (!hasHydrated || !hasUploadedPhoto) return;
+    const stuck =
+      noMore ||
+      theirPhotoRef.current.id === "placeholder" ||
+      theirPhotoRef.current.uri === myPhotoUriRef.current;
+    if (!stuck) return;
+    const next = getTheirPhoto(
+      activeThemeRef.current,
+      myTagsRef.current,
+      buildExcludeKeys(photoKey(theirPhotoRef.current.uri) || undefined),
+      photoKey(theirPhotoRef.current.uri) || undefined,
+      realPoolRef.current,
+      [],
+      mySubjectsRef.current,
+    );
+    if (next) {
+      setTheirPhoto(next.photo);
+      setMatchedTheme(next.matchedTheme);
+      setSharedTags(next.sharedTags);
+      setNoMore(false);
+    }
+  }, [
+    hasHydrated,
+    hasUploadedPhoto,
+    realPool.length,
+    noMore,
+    buildExcludeKeys,
+    myTagsKey,
+    mySubjectsKey,
+    activeTheme,
+  ]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -1653,11 +1696,12 @@ export default function SwipeScreen() {
               style={styles.photoSection}
               onPress={() => setFullscreenUri(myPhotoUri)}
             >
-              <Image
-                source={{ uri: myPhotoUri }}
+              <RemotePhotoImage
+                uri={myPhotoUri}
                 style={styles.fillPhoto}
                 resizeMode="cover"
               />
+              {isAiPhoto(myPhotoUri) ? <AiGeneratedBadge size="sm" /> : null}
               <View style={[styles.expandHint, { backgroundColor: "rgba(0,0,0,0.45)" }]}>
                 <Icon name="maximize" size={12} color="#fff" />
               </View>
@@ -1675,8 +1719,8 @@ export default function SwipeScreen() {
               style={styles.photoSection}
               onPress={() => setFullscreenUri(theirPhoto.uri)}
             >
-              <Image
-                source={{ uri: theirPhoto.uri }}
+              <RemotePhotoImage
+                uri={theirPhoto.uri}
                 style={styles.fillPhoto}
                 resizeMode="cover"
               />
@@ -1747,7 +1791,7 @@ export default function SwipeScreen() {
                 onPress={() => handleSwipe("right")}
                 activeOpacity={0.85}
                 accessibilityLabel="Send ripple"
-                accessibilityHint="Sends a ripple on this photo. If the other person reciprocates, it becomes a wave."
+                accessibilityHint="Sends a Ripple on this photo. When they Ripple back, it becomes a Wave."
               >
                 <Icon name="ripple" size={30} color="#001018" />
               </TouchableOpacity>
@@ -1783,6 +1827,7 @@ export default function SwipeScreen() {
             onOpenFull={(action) => {
               const data = flashMatch;
               const matchId = String(data.id);
+              stashMatchPhotoUris(matchId, data.myPhoto, data.theirPhoto);
               setFlashMatch(null);
               // Defer the deck advance until the user returns from /reveal
               // so the matched card's music keeps playing through the
@@ -1818,11 +1863,17 @@ export default function SwipeScreen() {
         >
           {fullscreenUri && (
             <View style={styles.fullscreenImageWrap}>
-              <Image
-                source={{ uri: fullscreenUri }}
+              <RemotePhotoImage
+                uri={fullscreenUri}
                 style={styles.fullscreenImage}
                 resizeMode="contain"
               />
+              {isAiPhoto(fullscreenUri) ? (
+                <AiGeneratedBadge
+                  size="md"
+                  style={{ top: insets.top + 14, right: 56 }}
+                />
+              ) : null}
               {isSamplePhoto(fullscreenUri) ? (
                 <StockPhotoWatermark
                   size="md"

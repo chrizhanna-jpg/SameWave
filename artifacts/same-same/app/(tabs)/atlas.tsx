@@ -130,6 +130,11 @@ export default function AtlasScreen() {
     [connections, matches, myCountryCode, isSignedIn],
   );
 
+  const localRippleMatches = useMemo(
+    () => matches.filter((m) => m.verdict === "same"),
+    [matches],
+  );
+
   const runConnectivityDiagnostics = useCallback(async () => {
     setDiagBusy(true);
     try {
@@ -320,6 +325,8 @@ export default function AtlasScreen() {
             connections={globeConnections}
             countries={summary}
             isSignedIn={!!isSignedIn}
+            localRippleMatches={localRippleMatches}
+            viewerCountryCode={myCountryCode}
           />
         </View>
       ) : null}

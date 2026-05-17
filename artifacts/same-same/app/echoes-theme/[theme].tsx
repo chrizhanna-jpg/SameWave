@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
 import { MicBadge } from "@/components/MicBadge";
 import { useColors } from "@/hooks/useColors";
+import { THEME_WAVES_EMPTY } from "@/data/waveRippleGlossary";
 import { fetchEchoesByTheme, type ThemeEchoPhoto } from "@/utils/api";
 import { pausePreview } from "@/utils/audio";
 
@@ -109,8 +110,7 @@ export default function EchoesThemeScreen() {
         <View style={styles.center}>
           <Text style={styles.bigEmoji}>🌱</Text>
           <Text style={[styles.empty, { color: colors.mutedForeground }]}>
-            No waves here yet. Wave on a {title.toLowerCase()} photo and start
-            one.
+            {THEME_WAVES_EMPTY(title.toLowerCase())}
           </Text>
         </View>
       ) : (

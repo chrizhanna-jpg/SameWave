@@ -3,6 +3,7 @@ import { and, desc, eq, or, sql } from "drizzle-orm";
 import { db, echoesTable, photosTable, votesTable } from "@workspace/db";
 import { resolveUserFromRequest } from "../lib/users";
 import { sendPushToUser } from "../lib/push";
+import { PUSH_COPY } from "../lib/pushCopy";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -169,20 +170,23 @@ export async function recordEchoOffer(input: {
     )}&b=${encodeURIComponent(pair.highId)}`;
     void Promise.allSettled([
       sendPushToUser(recipientUserId, {
-        title: "Same same! ✨",
-        body: "You both echoed each other. Tap to see your match.",
+        title: PUSH_COPY.mutual.title,
+        body: PUSH_COPY.mutual.body,
+        categoryId: PUSH_COPY.mutual.categoryId,
         data: { deepLink: pairLink, echoId, state: "mutual" },
       }),
       sendPushToUser(voterUserId, {
-        title: "Same same! ✨",
-        body: "They echoed you back. Tap to see your match.",
+        title: PUSH_COPY.mutual.title,
+        body: PUSH_COPY.mutual.body,
+        categoryId: PUSH_COPY.mutual.categoryId,
         data: { deepLink: pairLink, echoId, state: "mutual" },
       }),
     ]).catch((err) => logger.error({ err }, "echo push (mutual) failed"));
   } else if (wasNew) {
     void sendPushToUser(recipientUserId, {
-      title: "Someone echoed your photo",
-      body: "A stranger said same same. Tap back to make it mutual.",
+      title: PUSH_COPY.pending.title,
+      body: PUSH_COPY.pending.body,
+      categoryId: PUSH_COPY.pending.categoryId,
       data: { deepLink: "/echoes", echoId, state: "pending" },
     }).catch((err) => logger.error({ err }, "echo push (pending) failed"));
   }
@@ -501,15 +505,20 @@ router.post("/echoes/:id/respond", async (req, res) => {
     const pairLink = `/echo-pair?a=${encodeURIComponent(
       echo.photoLowId,
     )}&b=${encodeURIComponent(echo.photoHighId)}`;
-    void sendPushToUser(otherUserId, {
-      title: "Same same! ✨",
-      body: "They echoed you back. Tap to see your match.",
-      data: {
-        deepLink: pairLink,
-        echoId,
-        state: "mutual",
-      },
-    }).catch((err) => req.log.error({ err }, "echo push (respond) failed"));
+    void Promise.allSettled([
+      sendPushToUser(otherUserId, {
+        title: PUSH_COPY.mutual.title,
+        body: PUSH_COPY.mutual.body,
+        categoryId: PUSH_COPY.mutual.categoryId,
+        data: { deepLink: pairLink, echoId, state: "mutual" },
+      }),
+      sendPushToUser(user.id, {
+        title: PUSH_COPY.mutual.title,
+        body: PUSH_COPY.mutual.body,
+        categoryId: PUSH_COPY.mutual.categoryId,
+        data: { deepLink: pairLink, echoId, state: "mutual" },
+      }),
+    ]).catch((err) => req.log.error({ err }, "echo push (respond) failed"));
 
     res.json({ ok: true, state: "mutual" });
   } catch (err) {

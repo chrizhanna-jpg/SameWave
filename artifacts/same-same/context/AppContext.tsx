@@ -10,13 +10,17 @@ import React, {
 import {
   fetchEchoesInbox,
   fetchEchoesMine,
+  fetchMyCountryCode,
   fetchSeenPhotoIds,
   respondEcho as respondEchoApi,
   unvotePhoto,
+  updateMyCountryCode,
   type ServerEcho,
 } from "@/utils/api";
+import { nameFor, flagFor } from "@/data/countries";
 import { requestAtlasRefresh } from "@/utils/atlasHub";
 import { photoKey } from "@/utils/photoKey";
+import { stashMatchPhotoUris } from "@/utils/matchPhotoSnapshot";
 
 export interface MatchedCountry {
   code: string;
@@ -40,16 +44,15 @@ export interface MyPhoto {
    */
   subjects?: string[];
   /**
-   * Marked true when the photo failed our EXIF authenticity check
-   * (no camera metadata, AI software signature, etc). AI photos are
-   * shown with an "AI" badge and excluded from echo connections.
+   * Marked true when EXIF inspection suggests the image is AI-generated.
+   * Shown with an "AI generated" badge; still uploads and can form Waves.
    */
   isAI?: boolean;
   /**
    * Backend ID returned from the photos upload API once the photo lands
    * on the server. Needed when this photo participates in an echo offer
    * (the vote endpoint pairs the candidate photo with this ID). Absent
-   * for AI photos (never uploaded) or while an upload is still in flight.
+   * while an upload is still in flight or if upload never succeeded.
    */
   backendId?: string;
   /**
@@ -57,8 +60,7 @@ export interface MyPhoto {
    * "still uploading" from "upload failed" — before this field, both
    * looked identical (no backendId), and a silent failure left the user
    * stuck with a perpetual "still uploading" message and no way to know
-   * the post never reached the server. Only set for real (non-AI) user
-   * uploads:
+   * the post never reached the server.
    *   • "pending" — POST /photos in flight, no response yet
    *   • "ok"      — POST /photos returned an id (also implies backendId)
    *   • "failed"  — POST /photos errored or returned a malformed body
@@ -93,8 +95,8 @@ export interface MyPhotoUploadAck {
 }
 
 // Module-scoped registry of URIs flagged as AI. Kept in sync with the
-// `myPhotos` slice so any PhotoCard rendering one of these URIs can show
-// the AI badge without prop drilling. Sample photos use the same pattern.
+// `myPhotos` slice so any PhotoCard / match view can show the badge
+// without prop drilling.
 const AI_PHOTO_URIS: Set<string> = new Set();
 export function isAiPhoto(uri: string): boolean {
   return AI_PHOTO_URIS.has(uri);
@@ -276,7 +278,7 @@ interface AppContextValue extends AppState {
    * Returns the updated match (with any newly-earned badges) or null.
    */
   changeVerdict: (id: string, newVerdict: "same" | "different") => Match | null;
-  setMyCountry: (code: string, name: string, flag: string) => void;
+  setMyCountry: (code: string, name: string, flag: string) => Promise<void>;
   addMyPhoto: (
     uri: string,
     theme: string,
@@ -459,6 +461,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // the full persisted ledger and any pre-hydration picks should be
   // re-evaluated.
   const [hasHydrated, setHasHydrated] = useState(false);
+  // Serializes AsyncStorage writes so a slower earlier save cannot
+  // overwrite onboardingComplete or country after a later save finishes.
+  const persistQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     loadState().finally(() => setHasHydrated(true));
@@ -524,6 +529,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state.myPhotos]);
 
+  const mergePersistedPatch = async (patch: Record<string, unknown>) => {
+    try {
+      const raw = await AsyncStorage.getItem("samesame_state");
+      const latest =
+        raw && typeof raw === "string"
+          ? (JSON.parse(raw) as Record<string, unknown>)
+          : {};
+      await AsyncStorage.setItem(
+        "samesame_state",
+        JSON.stringify({ ...latest, ...patch }),
+      );
+    } catch {}
+  };
+
   const loadState = async () => {
     try {
       const stored = await AsyncStorage.getItem("samesame_state");
@@ -535,7 +554,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         // Persist immediately so even an instant kill-and-relaunch
         // counts as an opened session.
         const fresh = { appOpenCount: 1 };
-        AsyncStorage.setItem("samesame_state", JSON.stringify(fresh)).catch(() => {});
+        await mergePersistedPatch(fresh);
         setState((prev) => ({ ...prev, appOpenCount: 1 }));
         return;
       }
@@ -626,14 +645,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               ? 999
               : 0;
         const nextOpenCount = priorOpenCount + 1;
-        // Persist the bumped count immediately so it survives a quick
-        // app close before any other state mutation triggers a save —
-        // otherwise the user could see the tutorial more than the
-        // intended N times if they kill the app fast.
-        AsyncStorage.setItem(
-          "samesame_state",
-          JSON.stringify({ ...parsed, appOpenCount: nextOpenCount }),
-        ).catch(() => {});
+        // Merge the open-count bump into whatever is on disk *now* so a
+        // concurrent save (country pick, onboardingComplete) is not wiped.
+        await mergePersistedPatch({ appOpenCount: nextOpenCount });
         setState((prev) => ({
           ...prev,
           ...parsed,
@@ -666,11 +680,43 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   };
 
-  const saveState = async (newState: AppState) => {
-    try {
-      await AsyncStorage.setItem("samesame_state", JSON.stringify(newState));
-    } catch {}
+  const saveState = (newState: AppState): Promise<void> => {
+    stateRef.current = newState;
+    persistQueueRef.current = persistQueueRef.current
+      .then(async () => {
+        await AsyncStorage.setItem(
+          "samesame_state",
+          JSON.stringify(newState),
+        );
+      })
+      .catch(() => {});
+    return persistQueueRef.current;
   };
+
+  // After sign-in, pull country from the server when local storage is empty.
+  useEffect(() => {
+    if (!hasHydrated || state.myCountryCode) return;
+    let cancelled = false;
+    fetchMyCountryCode()
+      .then((code) => {
+        if (cancelled || !code) return;
+        setState((prev) => {
+          if (prev.myCountryCode) return prev;
+          const newState: AppState = {
+            ...prev,
+            myCountryCode: code,
+            myCountryName: nameFor(code) ?? code,
+            myCountryFlag: flagFor(code),
+          };
+          void saveState(newState);
+          return newState;
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [hasHydrated, state.myCountryCode]);
 
   // Pure helper: compute country list + badges given the set of all
   // CONFIRMED ("same") matches. Used by addMatch / removeMatch /
@@ -721,6 +767,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const addMatch = useCallback((match: Match) => {
+    stashMatchPhotoUris(match.id, match.myPhoto, match.theirPhoto);
     setState((prev) => {
       const allMatches = [match, ...prev.matches];
       const confirmed = allMatches.filter((m) => m.verdict === "same");
@@ -973,17 +1020,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const setMyCountry = useCallback(
-    (code: string, name: string, flag: string) => {
-      setState((prev) => {
-        const newState: AppState = {
-          ...prev,
-          myCountryCode: code,
-          myCountryName: name,
-          myCountryFlag: flag,
-        };
-        saveState(newState);
-        return newState;
-      });
+    async (code: string, name: string, flag: string) => {
+      const newState: AppState = {
+        ...stateRef.current,
+        myCountryCode: code,
+        myCountryName: name,
+        myCountryFlag: flag,
+      };
+      setState(newState);
+      await saveState(newState);
+      void updateMyCountryCode(code);
     },
     [],
   );
@@ -1009,11 +1055,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       isAI: isAI ?? false,
       musicGenre: musicGenre,
       customAudioUrl,
-      // Real (non-AI) photos start as "pending" — the camera screen
-      // fires the POST /photos call and will patch this to "ok" or
-      // "failed" once the network round-trip resolves. AI photos are
-      // never uploaded, so leave the field undefined for them.
-      uploadState: isAI ? undefined : "pending",
+      // Camera screen fires POST /photos and patches to "ok" or "failed".
+      uploadState: "pending",
     };
     setState((prev) => {
       // Adding a new photo is a "fresh chance" moment: this new
@@ -1117,12 +1160,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const completeOnboarding = useCallback(async () => {
-    let snapshot: AppState | undefined;
-    setState((prev) => {
-      snapshot = { ...prev, onboardingComplete: true };
-      return snapshot;
-    });
-    if (snapshot) await saveState(snapshot);
+    const snapshot: AppState = {
+      ...stateRef.current,
+      onboardingComplete: true,
+    };
+    setState(snapshot);
+    await saveState(snapshot);
   }, []);
 
   const resetOnboarding = useCallback(async () => {

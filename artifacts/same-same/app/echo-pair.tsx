@@ -13,6 +13,7 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
@@ -43,7 +44,15 @@ export default function EchoPairScreen() {
   const { width: windowWidth } = useWindowDimensions();
   const shareCardWidth = sharePreviewWidth(windowWidth);
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ a?: string; b?: string }>();
+  const params = useLocalSearchParams<{
+    a?: string;
+    b?: string;
+    celebrate?: string;
+  }>();
+  const celebrateWave =
+    params.celebrate === "1" ||
+    params.celebrate === "true" ||
+    (Array.isArray(params.celebrate) && params.celebrate[0] === "1");
   const { proActive } = useProAccess();
 
   // Pause any voice-clip preview the user kicked off via a mic badge
@@ -236,6 +245,18 @@ export default function EchoPairScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {celebrateWave ? (
+        <LinearGradient
+          pointerEvents="none"
+          colors={[
+            colors.gold + "44",
+            colors.background,
+            colors.teal + "22",
+          ]}
+          locations={[0, 0.45, 1]}
+          style={StyleSheet.absoluteFill}
+        />
+      ) : null}
       {renderHeader()}
 
       <ScrollView
@@ -243,6 +264,23 @@ export default function EchoPairScreen() {
         contentContainerStyle={[styles.body, { paddingBottom: bottomPadding }]}
         showsVerticalScrollIndicator={false}
       >
+        {celebrateWave ? (
+          <View
+            style={[
+              styles.waveRevealBanner,
+              {
+                borderColor: colors.gold + "88",
+                backgroundColor: colors.gold + "1a",
+              },
+            ]}
+          >
+            <Icon name="wave-glyph" size={22} color={colors.gold} />
+            <Text style={[styles.waveRevealBannerText, { color: colors.gold }]}>
+              Wave reveal — you both Rippled back
+            </Text>
+            <Icon name="wave-glyph" size={22} color={colors.gold} />
+          </View>
+        ) : null}
         {/* The shareable card. ONLY the contents of <ViewShot> are
             captured by handleShare and exported as the social-media
             image, so any extra context / buttons sit OUTSIDE this block.
@@ -273,6 +311,11 @@ export default function EchoPairScreen() {
               shareShotFrameStyle(shareCardWidth),
               shareLayoutMode === "atlas" && styles.shareAtlasShot,
               shareLayoutMode === "card" && styles.shareShotClip,
+              celebrateWave && {
+                borderWidth: 3,
+                borderColor: colors.gold,
+                borderRadius: 20,
+              },
             ]}
           >
           {shareLayoutMode === "atlas" ? (
@@ -373,6 +416,23 @@ export default function EchoPairScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  waveRevealBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  waveRevealBannerText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+    textAlign: "center",
+    flexShrink: 1,
+  },
   header: {
     flexDirection: "row",
     alignItems: "center",

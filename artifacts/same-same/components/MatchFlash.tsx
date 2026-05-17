@@ -3,7 +3,6 @@ import {
   Animated,
   Dimensions,
   Easing,
-  Image,
   PanResponder,
   Pressable,
   StyleSheet,
@@ -11,6 +10,7 @@ import {
   View,
 } from "react-native";
 import * as Haptics from "expo-haptics";
+import { Image } from "expo-image";
 import { CelebrationMatchChips } from "@/components/CelebrationMatchChips";
 import {
   CelebrationSwipeDismissHint,
@@ -264,7 +264,13 @@ export function MatchFlash({
             ]}
           >
             {myPhotoUri ? (
-              <Image source={{ uri: myPhotoUri }} style={styles.thumb} />
+              <Image
+                source={{ uri: myPhotoUri }}
+                style={styles.thumb}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                recyclingKey={myPhotoUri}
+              />
             ) : (
               <View style={[styles.thumb, styles.thumbFallback]}>
                 <Text style={styles.thumbFallbackFlag}>
@@ -289,7 +295,13 @@ export function MatchFlash({
             ]}
           >
             {theirPhotoUri ? (
-              <Image source={{ uri: theirPhotoUri }} style={styles.thumb} />
+              <Image
+                source={{ uri: theirPhotoUri }}
+                style={styles.thumb}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                recyclingKey={theirPhotoUri}
+              />
             ) : (
               <View style={[styles.thumb, styles.thumbFallback]}>
                 <Text style={styles.thumbFallbackFlag}>

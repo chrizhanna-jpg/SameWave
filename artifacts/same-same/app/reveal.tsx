@@ -50,6 +50,7 @@ import {
   sharePreviewWidth,
   shareShotFrameStyle,
 } from "@/utils/shareDimensions";
+import { resolveMatchPhotoUris } from "@/utils/matchPhotoSnapshot";
 
 export default function RevealScreen() {
   const colors = useColors();
@@ -262,10 +263,28 @@ export default function RevealScreen() {
     if (!id) return;
     const found = matches.find((m) => m.id === id);
     if (!found) return;
-    if (matchInitedRef.current && match?.id === found.id) return;
+
+    const uris = resolveMatchPhotoUris(found.id, {
+      myPhoto: found.myPhoto,
+      theirPhoto: found.theirPhoto,
+    });
+    const merged: Match = {
+      ...found,
+      myPhoto: uris.myPhoto,
+      theirPhoto: uris.theirPhoto,
+    };
+
+    if (
+      matchInitedRef.current &&
+      match?.id === merged.id &&
+      match.myPhoto === merged.myPhoto &&
+      match.theirPhoto === merged.theirPhoto
+    ) {
+      return;
+    }
 
     matchInitedRef.current = true;
-    setMatch(found);
+    setMatch(merged);
 
     // The match is already persisted by the swipe handler in match.tsx
     // before navigating here — calling addMatch again would create a

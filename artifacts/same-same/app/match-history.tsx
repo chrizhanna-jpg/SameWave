@@ -18,6 +18,7 @@ import type { Match } from "@/context/AppContext";
 import { PhotoCard } from "@/components/PhotoCard";
 import { MatchTierChips } from "@/components/MatchTierChips";
 import { timeAgo } from "@/utils/timeAgo";
+import { MATCH_HISTORY_EMPTY } from "@/data/waveRippleGlossary";
 
 export default function MatchHistoryScreen() {
   const colors = useColors();
@@ -295,8 +296,7 @@ export default function MatchHistoryScreen() {
               No ripples yet
             </Text>
             <Text style={[styles.emptyDesc, { color: colors.mutedForeground }]}>
-              Send a Ripple on photo pairs to start your journey. When
-              the other side reciprocates, your Ripple becomes a Wave.
+              {MATCH_HISTORY_EMPTY}
             </Text>
           </View>
         ) : (
@@ -320,7 +320,7 @@ export default function MatchHistoryScreen() {
                       { color: colors.mutedForeground },
                     ]}
                   >
-                    mutual moments
+                    both Rippled back
                   </Text>
                 </View>
                 {sortedWaves.map((echo) => {

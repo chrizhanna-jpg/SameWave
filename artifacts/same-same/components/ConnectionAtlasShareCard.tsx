@@ -1,5 +1,6 @@
 import React from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 
 import {
@@ -115,7 +116,9 @@ export function ConnectionAtlasShareCard({
               <Image
                 source={{ uri: myPhotoUri }}
                 style={[styles.thumb, { borderRadius: L.radiusPhoto - 2 }]}
-                resizeMode="cover"
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                recyclingKey={myPhotoUri}
               />
               <Text
                 style={[
@@ -172,7 +175,9 @@ export function ConnectionAtlasShareCard({
               <Image
                 source={{ uri: theirPhotoUri }}
                 style={[styles.thumb, { borderRadius: L.radiusPhoto - 2 }]}
-                resizeMode="cover"
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                recyclingKey={theirPhotoUri}
               />
               <Text
                 style={[

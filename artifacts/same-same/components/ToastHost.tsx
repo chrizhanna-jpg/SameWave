@@ -21,7 +21,14 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { Icon, type IconName } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
+
+export interface ToastAction {
+  label: string;
+  icon?: IconName;
+  onPress: () => void;
+}
 
 export interface ToastPayload {
   title?: string;
@@ -30,6 +37,8 @@ export interface ToastPayload {
   // dismissal; the callback only needs to perform the action (e.g.
   // router.push).
   onPress?: () => void;
+  /** Primary CTA pill (e.g. "Make a Wave" on an incoming Ripple toast). */
+  action?: ToastAction;
   // Override the default auto-dismiss window (ms).
   durationMs?: number;
 }
@@ -152,8 +161,13 @@ function ToastView({ payload, topInset, colors, onDismiss }: ToastViewProps) {
     );
   }, [onDismiss, opacity, translateY]);
 
-  const handlePress = useCallback(() => {
+  const handleBodyPress = useCallback(() => {
     payload.onPress?.();
+    animateOutAndDismiss();
+  }, [animateOutAndDismiss, payload]);
+
+  const handleActionPress = useCallback(() => {
+    payload.action?.onPress();
     animateOutAndDismiss();
   }, [animateOutAndDismiss, payload]);
 
@@ -208,7 +222,7 @@ function ToastView({ payload, topInset, colors, onDismiss }: ToastViewProps) {
           accessibilityLiveRegion="polite"
         >
           <Pressable
-            onPress={handlePress}
+            onPress={handleBodyPress}
             style={styles.pressable}
             accessibilityRole="button"
             accessibilityLabel={
@@ -225,11 +239,24 @@ function ToastView({ payload, topInset, colors, onDismiss }: ToastViewProps) {
             ) : null}
             <Text
               style={[styles.body, { color: colors.mutedForeground }]}
-              numberOfLines={2}
+              numberOfLines={3}
             >
               {payload.body}
             </Text>
           </Pressable>
+          {payload.action ? (
+            <Pressable
+              onPress={handleActionPress}
+              style={[styles.actionBtn, { backgroundColor: colors.gold }]}
+              accessibilityRole="button"
+              accessibilityLabel={payload.action.label}
+            >
+              {payload.action.icon ? (
+                <Icon name={payload.action.icon} size={16} color="#001018" />
+              ) : null}
+              <Text style={styles.actionBtnText}>{payload.action.label}</Text>
+            </Pressable>
+          ) : null}
         </Animated.View>
       </GestureDetector>
     </View>
@@ -268,5 +295,20 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     fontSize: 13,
     lineHeight: 18,
+  },
+  actionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginTop: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+  },
+  actionBtnText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 14,
+    color: "#001018",
   },
 });

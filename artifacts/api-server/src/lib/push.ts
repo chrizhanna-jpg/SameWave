@@ -11,12 +11,15 @@ export interface PushPayload {
   // Arbitrary JSON delivered to the client. We use it for deep-linking —
   // the mobile app reads `data.deepLink` from the notification response.
   data?: Record<string, unknown>;
+  /** iOS notification category (action buttons). Android uses the same id. */
+  categoryId?: string;
 }
 
 interface ExpoMessage extends PushPayload {
   to: string;
   sound?: "default" | null;
   channelId?: string;
+  categoryId?: string;
 }
 
 interface ExpoTicket {
@@ -75,6 +78,7 @@ export async function sendPushToTokens(
     body: payload.body,
     data: payload.data ?? {},
     channelId: "echoes",
+    ...(payload.categoryId ? { categoryId: payload.categoryId } : {}),
   }));
 
   let res: Response;

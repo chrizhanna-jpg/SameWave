@@ -19,6 +19,7 @@ import { PressableScale } from "@/components/PressableScale";
 import { useCountUp } from "@/hooks/useCountUp";
 import { getTodaysChallenge } from "@/data/samplePhotos";
 import { tagLabel } from "@/utils/interests";
+import { RIPPLE_ONE_LINER, WAVE_ONE_LINER } from "@/data/waveRippleGlossary";
 
 export default function HomeScreen() {
   const colors = useColors();
@@ -83,7 +84,12 @@ export default function HomeScreen() {
 
         {/* Stats — layered surface, count-up numbers, tabular figures */}
         <Surface elevation="md" radius="xl" style={styles.statsCard}>
-          <View style={styles.statItem}>
+          <View
+            style={styles.statItem}
+            accessible
+            accessibilityRole="text"
+            accessibilityLabel={`Ripples: ${totalMatches}. ${RIPPLE_ONE_LINER}`}
+          >
             <Text style={[styles.statNum, { color: colors.foreground }]}>
               {matchesAnim}
             </Text>
@@ -95,7 +101,12 @@ export default function HomeScreen() {
             </View>
           </View>
           <View style={[styles.statDivider, { backgroundColor: colors.borderSubtle }]} />
-          <View style={styles.statItem}>
+          <View
+            style={styles.statItem}
+            accessible
+            accessibilityRole="text"
+            accessibilityLabel={`Waves: ${totalWaves}. ${WAVE_ONE_LINER}`}
+          >
             <Text style={[styles.statNum, { color: colors.foreground }]}>
               {wavesAnim}
             </Text>

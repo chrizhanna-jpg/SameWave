@@ -40,7 +40,7 @@ const STEPS: Step[] = [
     kind: "intro",
     title: null,
     subtitle: null,
-    body: "Share a photo of your moment. Somewhere in the world, someone is on the same wavelength as you.",
+    body: "Share your moment. Someone out there might be on the Same Wavelength as you right now.",
   },
   {
     kind: "intro",
@@ -108,9 +108,11 @@ export default function OnboardingScreen() {
         ]).start();
       });
     } else {
-      // Persist onboardingComplete before "/" — otherwise index.tsx can
-      // still see the old flag and send the user through the tutorial
-      // (and country step) a second time in the same session.
+      // Persist country + onboardingComplete before "/" — otherwise a
+      // racing AsyncStorage write can drop the flag and replay the tutorial.
+      if (myCountryCode && myCountryName && myCountryFlag) {
+        await setMyCountry(myCountryCode, myCountryName, myCountryFlag);
+      }
       await completeOnboarding();
       // Route through "/" so the index gate decides whether sign-in is
       // still required (first-time users complete the tutorial BEFORE

@@ -1,4 +1,5 @@
 import { photoKey } from "@/utils/photoKey";
+import { normalizeUnsplashUri, unsplashPhotoUrl } from "@/utils/unsplashUri";
 import { suggestGenre, type MusicGenre } from "@/data/musicLibrary";
 
 export interface SamplePhoto {
@@ -783,7 +784,10 @@ function enrichLaunchStockMetadata(photo: SamplePhoto): SamplePhoto {
     photo.subjects && photo.subjects.length > 0
       ? photo.subjects
       : inferStockSubjects(photo);
-  return { ...photo, musicGenre, subjects };
+  const uri = photo.uri.includes("images.unsplash.com")
+    ? normalizeUnsplashUri(photo.uri)
+    : photo.uri;
+  return { ...photo, uri, musicGenre, subjects };
 }
 
 for (let i = 0; i < SAMPLE_PHOTOS.length; i++) {
@@ -1078,7 +1082,7 @@ export function generateSyntheticCandidates(
     const synthTags = Array.from(synthTagsSet);
     out.push({
       id: `synth-${photoId}-${c.code}-${i}`,
-      uri: `https://images.unsplash.com/photo-${photoId}?w=400`,
+      uri: unsplashPhotoUrl(photoId),
       country: c.country,
       countryCode: c.code,
       countryFlag: c.flag,

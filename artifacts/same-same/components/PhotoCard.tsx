@@ -1,10 +1,12 @@
 import React from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { RemotePhotoImage } from "@/components/RemotePhotoImage";
 import { Icon } from "@/components/Icon";
 import { MicBadge } from "@/components/MicBadge";
 import { useColors } from "@/hooks/useColors";
 import { StockPhotoWatermark } from "@/components/StockPhotoWatermark";
 import { isSamplePhoto } from "@/data/samplePhotos";
+import { AiGeneratedBadge } from "@/components/AiGeneratedBadge";
 import { isAiPhoto } from "@/context/AppContext";
 
 interface Props {
@@ -61,11 +63,11 @@ export function PhotoCard({
   // important provenance signal than "this is a curated sample").
   const isAi = showAiBadge ?? isAiPhoto(uri);
   const showSample = (showSampleBadge ?? isSamplePhoto(uri)) && !isAi;
-  const badgeSize = size === "sm" ? 20 : size === "md" ? 24 : 28;
   const badgeOffset = size === "sm" ? 4 : 6;
   const stockMarkSize: "sm" | "md" | "lg" =
     size === "sm" ? "sm" : size === "md" ? "md" : "lg";
-  const aiFontSize = size === "sm" ? 9 : size === "md" ? 10 : 12;
+  const aiBadgeSize: "sm" | "md" | "lg" =
+    size === "sm" ? "sm" : size === "md" ? "md" : "lg";
 
   return (
     <View
@@ -81,41 +83,15 @@ export function PhotoCard({
         style,
       ]}
     >
-      <Image
-        source={{ uri }}
+      <RemotePhotoImage
+        uri={uri}
         style={[
           styles.image,
           { borderRadius: dimensions.borderRadius },
         ]}
         resizeMode="cover"
       />
-      {isAi && (
-        <View
-          style={[
-            styles.aiBadge,
-            {
-              height: badgeSize,
-              borderRadius: badgeSize / 2,
-              top: badgeOffset,
-              right: badgeOffset,
-              paddingHorizontal: badgeSize / 2.5,
-              backgroundColor: colors.primary,
-            },
-          ]}
-          accessibilityLabel="AI-generated photo"
-        >
-          <Text
-            style={{
-              color: colors.primaryForeground,
-              fontSize: aiFontSize,
-              fontFamily: "Inter_700Bold",
-              letterSpacing: 0.5,
-            }}
-          >
-            AI
-          </Text>
-        </View>
-      )}
+      {isAi ? <AiGeneratedBadge size={aiBadgeSize} /> : null}
       {showSample && (
         <StockPhotoWatermark
           size={stockMarkSize}
@@ -147,11 +123,6 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   badge: {
-    position: "absolute",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  aiBadge: {
     position: "absolute",
     alignItems: "center",
     justifyContent: "center",

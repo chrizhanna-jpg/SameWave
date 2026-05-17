@@ -1,5 +1,6 @@
 import React from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 
 import { SharePosterTopSection } from "@/components/SharePosterHeader";
@@ -61,7 +62,13 @@ function PhotoTile({
         },
       ]}
     >
-      <Image source={{ uri }} style={styles.photo} resizeMode="cover" />
+      <Image
+        source={{ uri }}
+        style={styles.photo}
+        contentFit="cover"
+        cachePolicy="memory-disk"
+        recyclingKey={uri}
+      />
       <LinearGradient
         colors={["transparent", "rgba(0,0,0,0.82)"]}
         style={[styles.scrim, { height: layout.photoScrimH }]}

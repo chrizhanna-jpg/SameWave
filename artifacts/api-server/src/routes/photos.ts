@@ -1321,6 +1321,239 @@ router.get("/photos/atlas", async (req, res) => {
   }
 });
 
+// ---- POST /api/photos/atlas/explore ---------------------------------------
+// Body: { ids: string[] } — echo ids from a Wavefire / Ripplefire cluster.
+// Returns both participants' photos (theme, vibe clip, image) per moment.
+router.post("/photos/atlas/explore", async (req, res) => {
+  try {
+    const body = (req.body ?? {}) as {
+      ids?: unknown;
+      kind?: unknown;
+      countryCodes?: unknown;
+      theme?: unknown;
+    };
+    const raw = body.ids;
+    const ids = Array.isArray(raw)
+      ? [
+          ...new Set(
+            raw
+              .map((x) => String(x ?? "").trim())
+              .filter((x) => x.length > 0 && x.length <= 64),
+          ),
+        ].slice(0, 40)
+      : [];
+    const kind =
+      body.kind === "wave" ? "wave" : body.kind === "ripple" ? "ripple" : null;
+    const countryCodes = Array.isArray(body.countryCodes)
+      ? [
+          ...new Set(
+            body.countryCodes
+              .map((c) => String(c ?? "").trim().toUpperCase())
+              .filter((c) => /^[A-Z]{2}$/.test(c)),
+          ),
+        ].slice(0, 12)
+      : [];
+    const themeHint = String(body.theme ?? "")
+      .trim()
+      .toLowerCase();
+
+    if (ids.length === 0 && !(kind && countryCodes.length > 0)) {
+      res.status(400).json({ error: "ids or cluster context required" });
+      return;
+    }
+
+    const activePhotoFilters = sql`
+        AND pl.status = 'active'
+        AND ph.status = 'active'
+        AND pl.report_count < ${REPORT_HIDE_THRESHOLD}
+        AND ph.report_count < ${REPORT_HIDE_THRESHOLD}
+        AND (pl.expires_at IS NULL OR pl.expires_at > now())
+        AND (ph.expires_at IS NULL OR ph.expires_at > now())
+    `;
+
+    const exploreSelectCore = sql`
+      SELECT
+        e.id::text AS id,
+        e.state AS state,
+        e.created_at AS "createdAt",
+        e.mutual_at AS "mutualAt",
+        coalesce(e.theme, '') AS theme,
+        pl.id::text AS pl_id,
+        pl.theme AS pl_theme,
+        pl.tags AS pl_tags,
+        pl.subjects AS pl_subjects,
+        pl.music_genre AS pl_music,
+        pl.mime_type AS pl_mime,
+        pl.bytes_base64 AS pl_bytes,
+        pl.custom_audio_base64 AS pl_audio_b64,
+        pl.custom_audio_mime AS pl_audio_mime,
+        pl.user_id::text AS pl_user,
+        upper(trim(both from coalesce(
+          nullif(trim(both from pl.country_code), ''),
+          nullif(trim(both from u_pl.country_code), '')
+        ))) AS pl_country,
+        ph.id::text AS ph_id,
+        ph.theme AS ph_theme,
+        ph.tags AS ph_tags,
+        ph.subjects AS ph_subjects,
+        ph.music_genre AS ph_music,
+        ph.mime_type AS ph_mime,
+        ph.bytes_base64 AS ph_bytes,
+        ph.custom_audio_base64 AS ph_audio_b64,
+        ph.custom_audio_mime AS ph_audio_mime,
+        ph.user_id::text AS ph_user,
+        upper(trim(both from coalesce(
+          nullif(trim(both from ph.country_code), ''),
+          nullif(trim(both from u_ph.country_code), '')
+        ))) AS ph_country
+      FROM echoes e
+      INNER JOIN photos pl ON pl.id = e.photo_low_id
+      INNER JOIN photos ph ON ph.id = e.photo_high_id
+      INNER JOIN users u_pl ON u_pl.id = pl.user_id
+      INNER JOIN users u_ph ON u_ph.id = ph.user_id
+    `;
+
+    let echoRows: { rows: Array<Record<string, unknown>> } = { rows: [] };
+
+    if (ids.length > 0) {
+      const idsExpr = sql`ARRAY[${sql.join(
+        ids.map((id) => sql`${id}`),
+        sql`, `,
+      )}]::text[]`;
+      echoRows = await db.execute(sql`
+        ${exploreSelectCore}
+        WHERE e.id::text = ANY(${idsExpr})
+        ${activePhotoFilters}
+      `);
+    }
+
+    if (echoRows.rows.length === 0 && kind && countryCodes.length > 0) {
+      const ccExpr = sql`ARRAY[${sql.join(
+        countryCodes.map((c) => sql`${c}`),
+        sql`, `,
+      )}]::text[]`;
+      const stateFilter =
+        kind === "wave" ? sql`e.state = 'mutual'` : sql`e.state = 'pending'`;
+      const themeFilter =
+        themeHint.length >= 2
+          ? sql`AND lower(coalesce(e.theme, '')) LIKE ${`%${themeHint}%`}`
+          : sql``;
+      echoRows = await db.execute(sql`
+        ${exploreSelectCore}
+        WHERE ${stateFilter}
+        ${themeFilter}
+        AND (
+          upper(trim(both from coalesce(
+            nullif(trim(both from pl.country_code), ''),
+            nullif(trim(both from u_pl.country_code), '')
+          ))) = ANY(${ccExpr})
+          OR upper(trim(both from coalesce(
+            nullif(trim(both from ph.country_code), ''),
+            nullif(trim(both from u_ph.country_code), '')
+          ))) = ANY(${ccExpr})
+        )
+        ${activePhotoFilters}
+        ORDER BY COALESCE(e.mutual_at, e.created_at) DESC
+        LIMIT 40
+      `);
+    }
+
+    const iso2 = (s: unknown) => {
+      const u = String(s ?? "").toUpperCase();
+      return /^[A-Z]{2}$/.test(u) ? u : null;
+    };
+
+    const mapSide = (r: Record<string, unknown>, prefix: "pl" | "ph") => {
+      const mime = String(r[`${prefix}_mime`] ?? "image/jpeg");
+      const b64 = String(r[`${prefix}_bytes`] ?? "");
+      const audioB64 = (r[`${prefix}_audio_b64`] as string | null) ?? null;
+      const audioMime = (r[`${prefix}_audio_mime`] as string | null) ?? null;
+      const normTags = (v: unknown): string[] => {
+        if (!Array.isArray(v)) return [];
+        return v
+          .filter((x): x is string => typeof x === "string")
+          .map((s) => s.trim())
+          .filter(Boolean);
+      };
+      return {
+        photoId: String(r[`${prefix}_id`] ?? ""),
+        userId: String(r[`${prefix}_user`] ?? ""),
+        countryCode: iso2(r[`${prefix}_country`]) ?? "",
+        theme: String(r[`${prefix}_theme`] ?? ""),
+        tags: normTags(r[`${prefix}_tags`]),
+        subjects: normTags(r[`${prefix}_subjects`]),
+        musicGenre: (r[`${prefix}_music`] as string | null) ?? null,
+        customAudioUrl:
+          audioB64 && audioMime ? `data:${audioMime};base64,${audioB64}` : null,
+        uri: b64.length > 0 ? `data:${mime};base64,${b64}` : "",
+      };
+    };
+
+    const moments = (echoRows.rows as Array<Record<string, unknown>>)
+      .map((r) => {
+        const id = String(r.id ?? "");
+        if (!id) return null;
+        const state = String(r.state ?? "");
+        const momentKind =
+          state === "mutual" ? ("wave" as const) : ("ripple" as const);
+        const themeRaw = String(r.theme ?? "");
+        const { tags, subjects } = atlasMergeConnectionTagsSubjects(
+          r.pl_tags,
+          r.ph_tags,
+          r.pl_subjects,
+          r.ph_subjects,
+        );
+        const createdBase = r.createdAt
+          ? new Date(String(r.createdAt)).getTime()
+          : 0;
+        const mutualMs = r.mutualAt
+          ? new Date(String(r.mutualAt)).getTime()
+          : NaN;
+        const createdAt = atlasSafeIso(
+          momentKind === "wave" && Number.isFinite(mutualMs)
+            ? mutualMs
+            : createdBase,
+        );
+        const low = mapSide(r, "pl");
+        const high = mapSide(r, "ph");
+        const participants = [low, high].filter((p) => p.uri.length > 0);
+        if (participants.length === 0) return null;
+        const lc = low.countryCode;
+        const hc = high.countryCode;
+        const echoTheme =
+          themeRaw.trim() ||
+          low.theme.trim() ||
+          high.theme.trim() ||
+          "";
+        return {
+          id,
+          kind: momentKind,
+          theme: echoTheme,
+          tags,
+          subjects,
+          createdAt,
+          from: lc && hc ? (lc < hc ? lc : hc) : lc || hc,
+          to: lc && hc ? (lc < hc ? hc : lc) : hc || lc,
+          participants,
+        };
+      })
+      .filter((m): m is NonNullable<typeof m> => m != null);
+
+    res.setHeader("Cache-Control", "private, no-store, max-age=0");
+    res.json({ moments });
+  } catch (err) {
+    req.log.error({ err }, "atlas explore failed");
+    const detail = atlasDevErrorDetail(err);
+    res
+      .status(500)
+      .json(
+        detail
+          ? { error: "atlas explore failed", detail }
+          : { error: "atlas explore failed" },
+      );
+  }
+});
+
 // ---- GET /api/photos/atlas/:countryCode -----------------------------------
 // Returns up to 30 recent active photos from a given country.
 // Used by the Atlas tab to populate the inline photo grid when the user

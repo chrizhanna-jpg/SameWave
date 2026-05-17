@@ -10,17 +10,20 @@ import {
   View,
 } from "react-native";
 import * as Haptics from "expo-haptics";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
+import { ECHOES_SCREEN } from "@/data/waveRippleGlossary";
 import type { EchoCard as EchoCardType } from "@/context/AppContext";
 import { timeAgo } from "@/utils/timeAgo";
 
 export default function EchoesScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { focus: focusParam } = useLocalSearchParams<{ focus?: string }>();
+  const focusEchoId = Array.isArray(focusParam) ? focusParam[0] : focusParam;
   const {
     pendingEchoes,
     mutualEchoes,
@@ -75,10 +78,10 @@ export default function EchoesScreen() {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-            Waves
+            {ECHOES_SCREEN.title}
           </Text>
           <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
-            Mutual moments with people elsewhere
+            {ECHOES_SCREEN.subtitle}
           </Text>
         </View>
       </View>
@@ -122,12 +125,10 @@ export default function EchoesScreen() {
               </View>
             </View>
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-              No waves yet
+              {ECHOES_SCREEN.emptyTitle}
             </Text>
             <Text style={[styles.emptyDesc, { color: colors.mutedForeground }]}>
-              When someone sends you a ripple, you'll be asked here whether
-              you feel the same back. If you do, that's a wave — a mutual
-              moment between two minds.
+              {ECHOES_SCREEN.emptyBody}
             </Text>
           </View>
         ) : (
@@ -137,7 +138,7 @@ export default function EchoesScreen() {
                 icon="ripple"
                 iconColor={colors.teal}
                 title="Waiting on you"
-                subtitle="Someone sent you a ripple. Wave back if you feel the same."
+                subtitle={ECHOES_SCREEN.pendingSubtitle}
               />
             )}
             {pendingEchoes.map((echo) => (
@@ -146,6 +147,7 @@ export default function EchoesScreen() {
                 echo={echo}
                 onRespond={handleRespond}
                 celebrating={celebratingId === echo.id}
+                highlighted={!!focusEchoId && focusEchoId === echo.id}
               />
             ))}
 
@@ -154,7 +156,7 @@ export default function EchoesScreen() {
                 icon="wave-glyph"
                 iconColor={colors.gold}
                 title="Your waves"
-                subtitle="Two minds, one wavelength."
+                subtitle={ECHOES_SCREEN.wavesSectionSubtitle}
                 spaceTop={pendingEchoes.length > 0}
               />
             )}
@@ -203,10 +205,12 @@ function PendingEchoCard({
   echo,
   onRespond,
   celebrating,
+  highlighted,
 }: {
   echo: EchoCardType;
   onRespond: (id: string, verdict: "same" | "different") => void;
   celebrating: boolean;
+  highlighted?: boolean;
 }) {
   const colors = useColors();
   const ago = timeAgo(new Date(echo.createdAt));
@@ -216,7 +220,12 @@ function PendingEchoCard({
         styles.card,
         {
           backgroundColor: colors.cardElevated,
-          borderColor: celebrating ? colors.gold : colors.teal + "55",
+          borderColor: celebrating
+            ? colors.gold
+            : highlighted
+              ? colors.gold
+              : colors.teal + "55",
+          borderWidth: celebrating || highlighted ? 2 : 1,
         },
         celebrating ? colors.shadows.glowAccent : colors.shadows.sm,
       ]}
@@ -284,7 +293,7 @@ function PendingEchoCard({
           >
             <Icon name="wave-glyph" size={16} color="#001018" />
             <Text style={[styles.actionLabel, { color: "#001018" }]}>
-              wave
+              Make a Wave
             </Text>
           </TouchableOpacity>
         </View>

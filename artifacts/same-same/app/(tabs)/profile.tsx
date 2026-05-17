@@ -23,6 +23,7 @@ import { GlobeAnimation } from "@/components/GlobeAnimation";
 import { Surface } from "@/components/Surface";
 import { GradientCard } from "@/components/GradientCard";
 import { PressableScale } from "@/components/PressableScale";
+import { profileEchoBellA11y } from "@/data/waveRippleGlossary";
 
 // Region buckets used by the World Map breakdown. Order roughly matches
 // what feels exciting to the user — Europe & Asia first since the
@@ -289,11 +290,7 @@ export default function ProfileScreen() {
               borderColor: unreadEchoes > 0 ? colors.teal : colors.border,
             },
           ]}
-          accessibilityLabel={
-            unreadEchoes > 0
-              ? `${unreadEchoes} new wave${unreadEchoes === 1 ? "" : "s"}`
-              : "Waves — others connecting to your photos"
-          }
+          accessibilityLabel={profileEchoBellA11y(unreadEchoes)}
           hitSlop={6}
         >
           <Icon
@@ -347,14 +344,14 @@ export default function ProfileScreen() {
             <View style={styles.heroStats}>
               <View style={styles.heroStat}>
                 <Text style={styles.heroStatNum}>{totalMatches}</Text>
-                <Text style={styles.heroStatLabel}>ripples</Text>
+                <Text style={styles.heroStatLabel}>Ripples</Text>
               </View>
               <View style={[styles.heroDivider]} />
               <View style={styles.heroStat}>
                 <Text style={styles.heroStatNum}>
-                  {mutualEchoes.length + pendingEchoes.length}
+                  {mutualEchoes.length}
                 </Text>
-                <Text style={styles.heroStatLabel}>waves</Text>
+                <Text style={styles.heroStatLabel}>Waves</Text>
               </View>
               <View style={[styles.heroDivider]} />
               <View style={styles.heroStat}>

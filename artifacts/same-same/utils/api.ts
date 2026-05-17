@@ -576,6 +576,43 @@ export async function markPhotosSeen(photoIds: string[]): Promise<boolean> {
   }
 }
 
+/** Signed-in user's home country (ISO2) from the server profile row. */
+export async function fetchMyCountryCode(): Promise<string | null> {
+  try {
+    const base = getApiBase();
+    const res = await fetch(`${base}/api/users/me`, {
+      headers: await authedHeaders(),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { countryCode?: unknown };
+    return typeof json.countryCode === "string" && json.countryCode.length === 2
+      ? json.countryCode.toUpperCase()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Persist home country after onboarding or profile edit. Best-effort. */
+export async function updateMyCountryCode(countryCode: string): Promise<boolean> {
+  const code = countryCode.trim().toUpperCase();
+  if (code.length !== 2) return false;
+  try {
+    const base = getApiBase();
+    const res = await fetch(`${base}/api/users/me`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...(await authedHeaders()),
+      },
+      body: JSON.stringify({ countryCode: code }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 /** Fetch the IDs of every photo the current user has seen or voted on. */
 export async function fetchSeenPhotoIds(): Promise<string[]> {
   try {
@@ -951,7 +988,11 @@ export interface AtlasCountry {
   count: number;
 }
 
-/** Pending echo (ripple) or mutual echo (wave) for Atlas arc overlay. */
+/**
+ * Atlas arc between two countries.
+ * - `ripple` — one side tapped Same; waiting for the other to Ripple back.
+ * - `wave` — both Rippled back (mutual Same).
+ */
 export interface AtlasConnection {
   id: string;
   kind: "ripple" | "wave";
@@ -1337,6 +1378,657 @@ export interface AtlasPhoto {
   musicGenre: string | null;
   customAudioUrl: string | null;
   createdAt: string;
+}
+
+export type AtlasFireParticipant = {
+  photoId: string;
+  userId: string;
+  countryCode: string;
+  theme: string;
+  tags: string[];
+  subjects: string[];
+  musicGenre: string | null;
+  customAudioUrl: string | null;
+  uri: string;
+};
+
+export type AtlasFireMoment = {
+  id: string;
+  kind: "ripple" | "wave";
+  theme: string;
+  tags: string[];
+  subjects: string[];
+  createdAt: string;
+  from: string;
+  to: string;
+  participants: AtlasFireParticipant[];
+};
+
+/** Populated when explore returns no photos — shown in the UI for debugging. */
+export type AtlasFireExploreDiagnostics = {
+  summary: string;
+  apiBase: string;
+  cluster: {
+    kind: string;
+    displayTheme: string;
+    countries: string[];
+    connectionCount: number;
+    allConnectionIds: string[];
+    skippedLocalIds: string[];
+    echoIdsSent: string[];
+  };
+  http: {
+    endpoint: string;
+    reached: boolean;
+    ok: boolean | null;
+    status: number | null;
+    statusText: string | null;
+    responseSnippet: string | null;
+  };
+  api: {
+    momentsReturned: number;
+    participantsTotal: number;
+    participantsMissingUri: number;
+    momentIds: string[];
+  };
+  fallback: {
+    attempted: boolean;
+    countryLoads: Array<{
+      code: string;
+      photosFetched: number;
+      withUri: number;
+      afterThemeFilter: number;
+    }>;
+    momentsFromFallback: number;
+  };
+  localDevice: {
+    attempted: boolean;
+    momentsFromMatches: number;
+    matchIds: string[];
+  };
+  flatten: {
+    tilesBuilt: number;
+    droppedNoUri: number;
+  };
+  hints: string[];
+};
+
+export type AtlasFireExploreResult = {
+  moments: AtlasFireMoment[];
+  error: string | null;
+  diagnostics: AtlasFireExploreDiagnostics;
+};
+
+function exploreDiagBase(
+  cluster: AtlasFireExploreCluster | undefined,
+  connectionIds: string[],
+): AtlasFireExploreDiagnostics {
+  const all = connectionIds.map((id) => id.trim()).filter(Boolean);
+  const skippedLocal = all.filter((id) => id.startsWith("local-"));
+  const echoIds = all.filter((id) => !id.startsWith("local-"));
+  return {
+    summary: "Loading…",
+    apiBase: getApiBase(),
+    cluster: {
+      kind: cluster?.kind ?? "—",
+      displayTheme: cluster?.displayTheme?.trim() ?? "—",
+      countries: cluster?.countryCodes ?? [],
+      connectionCount: all.length,
+      allConnectionIds: all.slice(0, 12),
+      skippedLocalIds: skippedLocal,
+      echoIdsSent: echoIds.slice(0, 12),
+    },
+    http: {
+      endpoint: "/api/photos/atlas/explore",
+      reached: false,
+      ok: null,
+      status: null,
+      statusText: null,
+      responseSnippet: null,
+    },
+    api: {
+      momentsReturned: 0,
+      participantsTotal: 0,
+      participantsMissingUri: 0,
+      momentIds: [],
+    },
+    fallback: {
+      attempted: false,
+      countryLoads: [],
+      momentsFromFallback: 0,
+    },
+    localDevice: {
+      attempted: false,
+      momentsFromMatches: 0,
+      matchIds: [],
+    },
+    flatten: {
+      tilesBuilt: 0,
+      droppedNoUri: 0,
+    },
+    hints: [],
+  };
+}
+
+/** Minimal match fields for on-device Ripplefire explore (avoids AppContext import cycle). */
+export type LocalRippleExploreMatch = {
+  id: string;
+  verdict: "same" | "different" | null;
+  theirPhoto: string;
+  theirPhotoId?: string;
+  theirCountryCode: string;
+  myCountry?: string;
+  theme?: string;
+  theirActualTheme?: string;
+  theirTags?: string[];
+  sharedTags?: string[];
+  theirMusicGenre?: string;
+  theirCustomAudioUrl?: string;
+  timestamp: string;
+};
+
+/** Build explore moments from `local-ripple-{matchId}` arcs (no API). */
+export function buildLocalMatchExploreMoments(
+  connectionIds: string[],
+  matches: LocalRippleExploreMatch[],
+  cluster: AtlasFireExploreCluster,
+  viewerCountryCode?: string,
+): AtlasFireMoment[] {
+  const matchIds = new Set<string>();
+  for (const id of connectionIds) {
+    if (id.startsWith("local-ripple-")) {
+      matchIds.add(id.slice("local-ripple-".length));
+    }
+  }
+  if (matchIds.size === 0 || matches.length === 0) return [];
+
+  const countrySet = new Set(
+    cluster.countryCodes.map((c) => c.trim().toUpperCase()).filter(Boolean),
+  );
+  const viewer = (viewerCountryCode ?? "").trim().toUpperCase();
+  const moments: AtlasFireMoment[] = [];
+
+  for (const m of matches) {
+    if (!matchIds.has(m.id) || m.verdict !== "same") continue;
+    const their = (m.theirCountryCode ?? "").trim().toUpperCase();
+    if (countrySet.size > 0 && their && !countrySet.has(their)) continue;
+    const uri = m.theirPhoto?.trim();
+    if (!uri) continue;
+
+    const theme =
+      (m.theirActualTheme ?? m.theme ?? cluster.displayTheme ?? "").trim() ||
+      cluster.displayTheme ||
+      "";
+    const tags = [...(m.theirTags ?? []), ...(m.sharedTags ?? [])].filter(Boolean);
+    const from =
+      viewer && /^[A-Z]{2}$/.test(viewer)
+        ? viewer
+        : (m.myCountry ?? "").trim().slice(0, 2).toUpperCase() || their;
+
+    moments.push({
+      id: `local-match-${m.id}`,
+      kind: cluster.kind,
+      theme,
+      tags,
+      subjects: [],
+      createdAt: m.timestamp || new Date().toISOString(),
+      from,
+      to: their || from,
+      participants: [
+        {
+          photoId: m.theirPhotoId?.trim() || m.id,
+          userId: "",
+          countryCode: their,
+          theme,
+          tags,
+          subjects: [],
+          musicGenre: m.theirMusicGenre ?? null,
+          customAudioUrl: m.theirCustomAudioUrl ?? null,
+          uri,
+        },
+      ],
+    });
+  }
+  return moments;
+}
+
+function countMomentParticipants(moments: AtlasFireMoment[]): {
+  total: number;
+  missingUri: number;
+} {
+  let total = 0;
+  let missingUri = 0;
+  for (const m of moments) {
+    for (const p of m.participants) {
+      total += 1;
+      if (!p.uri?.trim()) missingUri += 1;
+    }
+  }
+  return { total, missingUri };
+}
+
+function finalizeExploreDiagnostics(
+  diag: AtlasFireExploreDiagnostics,
+  moments: AtlasFireMoment[],
+  tilesBuilt: number,
+): AtlasFireExploreDiagnostics {
+  const { total, missingUri } = countMomentParticipants(moments);
+  diag.api.momentsReturned = moments.length;
+  diag.api.participantsTotal = total;
+  diag.api.participantsMissingUri = missingUri;
+  diag.api.momentIds = moments.map((m) => m.id).slice(0, 12);
+  diag.flatten.tilesBuilt = tilesBuilt;
+  diag.flatten.droppedNoUri = Math.max(0, total - tilesBuilt);
+
+  if (tilesBuilt > 0) {
+    diag.summary = `OK — ${tilesBuilt} photo(s) ready`;
+    return diag;
+  }
+
+  if (!diag.http.reached) {
+    diag.summary = "Network error — could not reach API";
+    if (isLocalDevApiOrigin(diag.apiBase)) {
+      if (
+        !diag.hints.some((h) =>
+          h.includes("EXPO_PUBLIC_DEV_API_URL"),
+        )
+      ) {
+        diag.hints.push(
+          "Check EXPO_PUBLIC_DEV_API_URL matches your PC LAN IP :8787 (same Wi‑Fi, Windows firewall allows port 8787)",
+        );
+      }
+    }
+  } else if (diag.http.status === 404) {
+    diag.summary = "API missing explore route (404)";
+    diag.hints.push("Deploy/restart api-server with POST /api/photos/atlas/explore");
+  } else if (!diag.http.ok) {
+    diag.summary = `API error HTTP ${diag.http.status ?? "?"}`;
+  } else if (diag.api.momentsReturned === 0 && !diag.fallback.attempted) {
+    diag.summary = "API returned 0 moments (no echo rows matched)";
+    diag.hints.push(
+      "Echo ids in cluster may not exist in DB — re-seed or refresh Atlas",
+    );
+  } else if (diag.api.momentsReturned === 0 && diag.fallback.momentsFromFallback === 0) {
+    diag.summary = "Explore + country fallback both returned 0 photos";
+    diag.hints.push(
+      "Run seed:atlas-global on api-server or add photos in cluster countries",
+    );
+  } else if (missingUri > 0 && tilesBuilt === 0) {
+    diag.summary = `${moments.length} moment(s) but all photos missing image bytes`;
+    diag.hints.push("Photos exist in DB but bytes_base64 is empty on server");
+  } else {
+    diag.summary = "No displayable photos for this cluster";
+  }
+
+  if (
+    diag.cluster.skippedLocalIds.length > 0 &&
+    diag.localDevice.momentsFromMatches === 0
+  ) {
+    diag.hints.push(
+      `${diag.cluster.skippedLocalIds.length} local-only arc(s) skipped (not on server)`,
+    );
+  }
+  if (diag.localDevice.momentsFromMatches > 0) {
+    diag.hints.push(
+      `${diag.localDevice.momentsFromMatches} photo(s) from ripples on this device`,
+    );
+  }
+  if (diag.cluster.echoIdsSent.length === 0 && diag.cluster.countries.length === 0) {
+    diag.hints.push("Cluster has no echo ids and no countries to fall back on");
+  }
+  if (tilesBuilt === 0 && !isLocalDevApiOrigin(diag.apiBase)) {
+    diag.hints.push(
+      `App is calling ${diag.apiBase} (not local :8787) — deploy api-server or set EXPO_PUBLIC_DEV_API_URL`,
+    );
+  }
+
+  return diag;
+}
+
+/** Multi-line report for the explore empty state. */
+export function formatAtlasFireExploreDiagnostics(
+  d: AtlasFireExploreDiagnostics,
+): string {
+  const lines: string[] = [
+    `Summary: ${d.summary}`,
+    "",
+    `API: ${d.apiBase}`,
+    `POST ${d.http.endpoint}`,
+    `HTTP: ${d.http.reached ? (d.http.ok ? `OK ${d.http.status}` : `FAIL ${d.http.status} ${d.http.statusText ?? ""}`.trim()) : "not reached"}`,
+  ];
+  if (d.http.responseSnippet) {
+    lines.push(`Body: ${d.http.responseSnippet}`);
+  }
+  lines.push(
+    "",
+    `Cluster (${d.cluster.kind}): "${d.cluster.displayTheme}"`,
+    `Countries: ${d.cluster.countries.join(", ") || "—"}`,
+    `Connections: ${d.cluster.connectionCount}`,
+    `Echo ids sent: ${d.cluster.echoIdsSent.join(", ") || "—"}`,
+  );
+  if (d.cluster.skippedLocalIds.length > 0) {
+    lines.push(`Skipped local ids: ${d.cluster.skippedLocalIds.join(", ")}`);
+  }
+  lines.push(
+    "",
+    `API moments: ${d.api.momentsReturned} (participants ${d.api.participantsTotal}, missing uri ${d.api.participantsMissingUri})`,
+  );
+  if (d.localDevice.attempted) {
+    lines.push(
+      "",
+      `On-device ripples: ${d.localDevice.momentsFromMatches} photo(s)`,
+      d.localDevice.matchIds.length > 0
+        ? `Match ids: ${d.localDevice.matchIds.join(", ")}`
+        : "",
+    );
+  }
+  if (d.fallback.attempted) {
+    lines.push(
+      "",
+      "Country fallback:",
+      ...d.fallback.countryLoads.map(
+        (c) =>
+          `  ${c.code}: fetched ${c.photosFetched}, with uri ${c.withUri}, after theme ${c.afterThemeFilter}`,
+      ),
+      `Fallback moments: ${d.fallback.momentsFromFallback}`,
+    );
+  }
+  lines.push("", `Tiles built: ${d.flatten.tilesBuilt}`);
+  if (d.hints.length > 0) {
+    lines.push("", "Likely fix:", ...d.hints.map((h) => `• ${h}`));
+  }
+  return lines.join("\n");
+}
+
+export type AtlasFireExploreCluster = {
+  kind: "ripple" | "wave";
+  countryCodes: string[];
+  displayTheme?: string;
+};
+
+async function exploreFallbackFromCountries(
+  cluster: AtlasFireExploreCluster,
+  diag: AtlasFireExploreDiagnostics,
+): Promise<AtlasFireMoment[]> {
+  diag.fallback.attempted = true;
+  const themeHint = (cluster.displayTheme ?? "").trim().toLowerCase();
+  const moments: AtlasFireMoment[] = [];
+  for (const code of cluster.countryCodes) {
+    const photos = await fetchAtlasCountryPhotos(code);
+    let withUri = 0;
+    let afterTheme = 0;
+    for (const p of photos) {
+      if (!p.uri) continue;
+      withUri += 1;
+      if (themeHint.length >= 2) {
+        const pt = p.theme.toLowerCase();
+        const tagHit = (p.tags ?? []).some((t) => {
+          const x = t.toLowerCase();
+          return x.includes(themeHint) || themeHint.includes(x);
+        });
+        const themeHit =
+          pt.includes(themeHint) ||
+          themeHint.includes(pt) ||
+          tagHit;
+        if (!themeHit) continue;
+      }
+      afterTheme += 1;
+      moments.push({
+        id: `country-${code}-${p.id}`,
+        kind: cluster.kind,
+        theme: p.theme || cluster.displayTheme || "",
+        tags: p.tags ?? [],
+        subjects: [],
+        createdAt: p.createdAt ?? new Date().toISOString(),
+        from: code,
+        to: code,
+        participants: [
+          {
+            photoId: p.id,
+            userId: "",
+            countryCode: code,
+            theme: p.theme,
+            tags: p.tags ?? [],
+            subjects: [],
+            musicGenre: p.musicGenre,
+            customAudioUrl: p.customAudioUrl,
+            uri: p.uri,
+          },
+        ],
+      });
+    }
+    diag.fallback.countryLoads.push({
+      code,
+      photosFetched: photos.length,
+      withUri,
+      afterThemeFilter: afterTheme,
+    });
+  }
+  diag.fallback.momentsFromFallback = moments.length;
+  return moments;
+}
+
+function exploreApiBases(): string[] {
+  const primary = getApiBase();
+  const bases = [primary];
+  if (__DEV__ && isLocalDevApiOrigin(primary)) {
+    const remote = getStagedProductionApiOrigin();
+    if (remote && remote !== primary) bases.push(remote);
+  }
+  return bases;
+}
+
+async function postAtlasFireExplore(
+  base: string,
+  endpoint: string,
+  body: Record<string, unknown>,
+): Promise<{
+  reached: boolean;
+  ok: boolean;
+  status: number;
+  statusText: string;
+  rawText: string;
+}> {
+  const res = await fetch(`${base}${endpoint}`, {
+    method: "POST",
+    headers: {
+      ...(await authedHeaders()),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  const rawText = await res.text();
+  return {
+    reached: true,
+    ok: res.ok,
+    status: res.status,
+    statusText: res.statusText,
+    rawText,
+  };
+}
+
+export type AtlasFireExploreOptions = {
+  localMatches?: LocalRippleExploreMatch[];
+  viewerCountryCode?: string;
+};
+
+/** Load photos + vibes for Wavefire / Ripplefire cluster echo ids. */
+export async function fetchAtlasFireExplore(
+  connectionIds: string[],
+  cluster?: AtlasFireExploreCluster,
+  options?: AtlasFireExploreOptions,
+): Promise<AtlasFireExploreResult> {
+  const diag = exploreDiagBase(cluster, connectionIds);
+  const ids = [
+    ...new Set(
+      connectionIds
+        .map((id) => id.trim())
+        .filter((id) => id.length > 0 && !id.startsWith("local-")),
+    ),
+  ].slice(0, 40);
+  diag.cluster.echoIdsSent = ids.slice(0, 12);
+
+  const hasCluster =
+    cluster != null &&
+    cluster.countryCodes.length > 0 &&
+    (cluster.kind === "ripple" || cluster.kind === "wave");
+
+  const finish = (moments: AtlasFireMoment[], error: string | null) => {
+    const tiles = flattenAtlasFireExplorePhotos(
+      moments,
+      cluster?.displayTheme ?? "",
+    );
+    finalizeExploreDiagnostics(diag, moments, tiles.length);
+    return { moments, error, diagnostics: diag };
+  };
+
+  const tryLocalDeviceMoments = (): AtlasFireMoment[] | null => {
+    if (!options?.localMatches?.length || !cluster) return null;
+    diag.localDevice.attempted = true;
+    const local = buildLocalMatchExploreMoments(
+      connectionIds,
+      options.localMatches,
+      cluster,
+      options.viewerCountryCode,
+    );
+    diag.localDevice.momentsFromMatches = local.length;
+    diag.localDevice.matchIds = local
+      .map((m) => m.id.replace(/^local-match-/, ""))
+      .slice(0, 12);
+    return local.length > 0 ? local : null;
+  };
+
+  // Cluster is only local arcs — show on-device photos without waiting on LAN API.
+  if (
+    ids.length === 0 &&
+    diag.cluster.skippedLocalIds.length > 0 &&
+    options?.localMatches?.length
+  ) {
+    const localOnly = tryLocalDeviceMoments();
+    if (localOnly) {
+      diag.summary = `OK — ${localOnly.length} photo(s) from your ripples`;
+      return finish(localOnly, null);
+    }
+  }
+
+  if (ids.length === 0 && !hasCluster) {
+    const local = tryLocalDeviceMoments();
+    if (local) return finish(local, null);
+    diag.summary = "Cluster has no server echo ids and no country fallback";
+    diag.hints.push("Wait for Atlas arcs to load or switch Atlas filter to All");
+    return finish([], "Nothing to load for this cluster.");
+  }
+
+  const exploreBody = {
+    ids,
+    kind: cluster?.kind,
+    countryCodes: cluster?.countryCodes,
+    theme: cluster?.displayTheme,
+  };
+
+  const bases = exploreApiBases();
+  let lastNetworkError: string | null = null;
+
+  for (let bi = 0; bi < bases.length; bi++) {
+    const base = bases[bi]!;
+    diag.apiBase = base;
+    if (bi > 0) {
+      diag.hints.push(`Retried explore on ${base}`);
+    }
+
+    if (ids.length === 0) {
+      break;
+    }
+
+    try {
+      const result = await postAtlasFireExplore(
+        base,
+        diag.http.endpoint,
+        exploreBody,
+      );
+      diag.http.reached = result.reached;
+      diag.http.ok = result.ok;
+      diag.http.status = result.status;
+      diag.http.statusText = result.statusText;
+      const rawText = result.rawText;
+
+      if (!result.ok) {
+        diag.http.responseSnippet = rawText.slice(0, 280);
+        if (bi < bases.length - 1) continue;
+        if (hasCluster && cluster) {
+          const fallback = await exploreFallbackFromCountries(cluster, diag);
+          if (fallback.length > 0) return finish(fallback, null);
+        }
+        const local = tryLocalDeviceMoments();
+        if (local) return finish(local, null);
+        return finish(
+          [],
+          result.status === 404
+            ? "Explore is not available on this server yet."
+            : `Could not load cluster photos (HTTP ${result.status}).`,
+        );
+      }
+
+      let json: { moments?: AtlasFireMoment[] } = {};
+      try {
+        json = JSON.parse(rawText) as { moments?: AtlasFireMoment[] };
+      } catch {
+        diag.http.responseSnippet = rawText.slice(0, 280);
+        diag.hints.push("API returned non-JSON — check api-server logs");
+      }
+      let moments = Array.isArray(json.moments) ? json.moments : [];
+      if (moments.length === 0 && hasCluster && cluster) {
+        moments = await exploreFallbackFromCountries(cluster, diag);
+      }
+      if (moments.length === 0) {
+        const local = tryLocalDeviceMoments();
+        if (local) return finish(local, null);
+      }
+      return finish(moments, null);
+    } catch (err) {
+      diag.http.reached = false;
+      diag.http.ok = null;
+      diag.http.status = null;
+      lastNetworkError =
+        err instanceof Error ? err.message.slice(0, 280) : String(err).slice(0, 280);
+      diag.http.responseSnippet = lastNetworkError;
+      if (bi < bases.length - 1) continue;
+    }
+  }
+
+  if (hasCluster && cluster) {
+    const fallback = await exploreFallbackFromCountries(cluster, diag);
+    if (fallback.length > 0) return finish(fallback, null);
+  }
+
+  const local = tryLocalDeviceMoments();
+  if (local) return finish(local, null);
+
+  return finish([], "Network error loading cluster photos.");
+}
+
+/** Flatten explore moments into scrollable photo rows. */
+export function flattenAtlasFireExplorePhotos(
+  moments: AtlasFireMoment[],
+  fallbackTheme: string,
+): Array<{ key: string; theme: string; participant: AtlasFireParticipant }> {
+  const out: Array<{
+    key: string;
+    theme: string;
+    participant: AtlasFireParticipant;
+  }> = [];
+  for (const m of moments) {
+    for (const p of m.participants) {
+      if (!p.uri) continue;
+      out.push({
+        key: `${m.id}:${p.photoId}`,
+        theme: p.theme.trim() || m.theme.trim() || fallbackTheme,
+        participant: p,
+      });
+    }
+  }
+  return out;
 }
 
 /** Returns up to 30 recent photos for a given country code. */

@@ -10,9 +10,9 @@ import {
 const LOGO = require("@/assets/images/samewave-logo.png");
 
 const SIZES = {
-  sm: { box: 26, logo: 20, pad: 3, radius: 8 },
-  md: { box: 32, logo: 24, pad: 4, radius: 9 },
-  lg: { box: 40, logo: 30, pad: 5, radius: 10 },
+  sm: { logo: 22 },
+  md: { logo: 28 },
+  lg: { logo: 34 },
 } as const;
 
 type Size = keyof typeof SIZES;
@@ -22,21 +22,12 @@ type Props = {
   style?: StyleProp<ViewStyle>;
 };
 
-/** Top-right SameWave mark on curated stock / placeholder photos. */
+/** Top-right SameWave logo on curated stock / placeholder photos (no frame). */
 export function StockPhotoWatermark({ size = "md", style }: Props) {
   const s = SIZES[size];
   return (
     <View
-      style={[
-        styles.wrap,
-        {
-          width: s.box,
-          height: s.box,
-          borderRadius: s.radius,
-          padding: s.pad,
-        },
-        style,
-      ]}
+      style={[styles.wrap, style]}
       accessibilityRole="image"
       accessibilityLabel="SameWave placeholder photo"
     >
@@ -54,10 +45,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 6,
     right: 6,
-    backgroundColor: "rgba(7, 24, 40, 0.72)",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255, 255, 255, 0.22)",
   },
 });

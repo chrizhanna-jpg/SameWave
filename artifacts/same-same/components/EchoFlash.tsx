@@ -230,8 +230,12 @@ export function EchoFlash({
           <Icon name="x" size={20} color="rgba(0,16,24,0.7)" />
         </Pressable>
 
-        <Text style={styles.tagline}>wave</Text>
-        <Text style={styles.headline}>Wave!</Text>
+        <View style={styles.headlineRow}>
+          <Icon name="wave-glyph" size={28} color={colors.gold} />
+          <Text style={styles.headline}>Wave!</Text>
+          <Icon name="wave-glyph" size={28} color={colors.gold} />
+        </View>
+        <Text style={styles.tagline}>Both of you Rippled back</Text>
 
         {(myCountryCode || theirCountryCode) && (
           <ConnectionMapPreview
@@ -316,12 +320,14 @@ export function EchoFlash({
               e.stopPropagation?.();
               finish("open");
             }}
-            style={styles.openSharePill}
-            accessibilityLabel="Open and share this wave"
+            style={[styles.openSharePill, { backgroundColor: colors.gold }]}
+            accessibilityLabel="Open your Wave reveal card"
           >
-            <Icon name="share" size={18} color="#FFFFFF" />
-            <Text style={styles.openShareText}>Open / Share</Text>
-            <Icon name="arrow-right" size={18} color="#FFFFFF" />
+            <Icon name="wave-glyph" size={18} color="#001018" />
+            <Text style={[styles.openShareText, { color: "#001018" }]}>
+              Open Wave reveal
+            </Text>
+            <Icon name="arrow-right" size={18} color="#001018" />
           </Pressable>
         </View>
 
@@ -444,17 +450,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 10,
     minWidth: 240,
-    paddingHorizontal: 36,
+    paddingHorizontal: 28,
     paddingVertical: 12,
     borderRadius: 12,
-    backgroundColor: "#001018",
     borderWidth: 2,
-    borderColor: "rgba(255, 255, 255, 0.35)",
+    borderColor: "rgba(0, 16, 24, 0.2)",
   },
   openShareText: {
     fontSize: 16,
     fontWeight: "800",
-    color: "#FFFFFF",
-    letterSpacing: 0.4,
+    letterSpacing: 0.2,
   },
 });

@@ -19,6 +19,7 @@ import { router, useFocusEffect } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { consumePendingCapture } from "@/utils/captureBus";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AiGeneratedBadge } from "@/components/AiGeneratedBadge";
 import { Icon } from "@/components/Icon";
 import { LoadingGlobe } from "@/components/LoadingGlobe";
 import * as Haptics from "expo-haptics";
@@ -191,9 +192,7 @@ export default function CameraScreen() {
     mimeType: string;
   } | null>(null);
   // Set when EXIF inspection flags the picked image as AI-generated. Drives
-  // the "AI image" banner, the badge persisted on the photo, and the skip
-  // of the backend upload (so AI photos never appear in others' candidate
-  // pools and never trigger echo connections).
+  // the on-photo badge and `isAI` on the local/server photo record.
   const [isAi, setIsAi] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const challenge = getTodaysChallenge();
@@ -573,8 +572,6 @@ export default function CameraScreen() {
     resetForNewPhoto();
     setIsAi(verdict.looksAi);
     if (verdict.looksAi) {
-      // Soft heads-up — not blocking. The submit flow will mark the photo
-      // as AI and exclude it from echo connections.
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     }
     setSelectedPhoto(asset.uri);
@@ -939,13 +936,9 @@ export default function CameraScreen() {
     // Stop the preview clip — user is leaving the screen.
     void stopAudio();
     void teardownPreviewSound();
-    // Fire-and-forget upload to the backend so other users can match against
-    // this photo. Local-only state stays the source of truth for *this*
-    // user's UI; the backend just makes the photo discoverable to others.
-    // AI-flagged photos are NOT uploaded — they should never appear in
-    // anyone else's candidate pool or generate echo connections.
+    // Fire-and-forget upload so others can match and Ripples/Waves can form.
     const captured = selectedAssetRef.current;
-    if (captured?.base64 && !isAi) {
+    if (captured?.base64) {
       const localUri = selectedPhoto;
       uploadPhoto({
         imageBase64: captured.base64,
@@ -996,8 +989,8 @@ export default function CameraScreen() {
           // retry path on the match screen.
           if (localUri) setMyPhotoUploadState(localUri, "failed");
         });
-    } else if (!isAi && selectedPhoto) {
-      // Non-AI photo without base64 — image picker / camera failed to
+    } else if (selectedPhoto) {
+      // Photo without base64 — image picker / camera failed to
       // include the encoded body, so the upload was never attempted.
       // Without this branch the photo would sit at uploadState=
       // "pending" forever, even though no request is in flight. Mark
@@ -1149,6 +1142,7 @@ export default function CameraScreen() {
                 style={styles.photoPreviewImage}
                 resizeMode="cover"
               />
+              {isAi ? <AiGeneratedBadge size="lg" /> : null}
             </View>
 
             <View style={styles.postFormControls}>
@@ -1157,7 +1151,7 @@ export default function CameraScreen() {
               style={[styles.aiInlineNote, { color: colors.mutedForeground }]}
               numberOfLines={2}
             >
-              AI image — badge only, no wave connection
+              AI-generated image — labeled in the top corner. You can still Ripple and make Waves.
             </Text>
           )}
 
@@ -1597,7 +1591,7 @@ export default function CameraScreen() {
             <View style={[styles.authenticNote, { borderColor: colors.border }]}>
               <Icon name="info" size={14} color={colors.mutedForeground} />
               <Text style={[styles.authenticNoteText, { color: colors.mutedForeground }]}>
-                AI-generated images are welcome but get an AI badge and don't count as wave connections.
+                AI-generated images are welcome. They show an AI generated label and can still make Waves.
               </Text>
             </View>
           </View>

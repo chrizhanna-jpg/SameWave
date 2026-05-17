@@ -30,6 +30,7 @@ import { OceanShimmer } from "@/components/OceanShimmer";
 import { PressableScale } from "@/components/PressableScale";
 import { useColors } from "@/hooks/useColors";
 import { buildDiscoveryFeed, type DiscoveryItem } from "@/data/discoveryFeed";
+import { DISCOVER_A11Y } from "@/data/waveRippleGlossary";
 import { StockPhotoWatermark } from "@/components/StockPhotoWatermark";
 import { isSamplePhoto, type SamplePhoto } from "@/data/samplePhotos";
 import { fetchEchoCountsByTheme } from "@/utils/api";
@@ -827,7 +828,7 @@ function DiscoveryCard({
       {item.kind === "wave" ? (
         <View
           style={styles.shareTitleRow}
-          accessibilityLabel="Wave — mutual reciprocation"
+          accessibilityLabel={DISCOVER_A11Y.wave}
         >
           {/* "wave-glyph" is the standalone wave artwork (no wordmark).
               Same icon and same size used by the Wave share-card title
@@ -842,7 +843,7 @@ function DiscoveryCard({
       ) : (
         <View
           style={styles.shareTitleRow}
-          accessibilityLabel="Ripple — one-way match"
+          accessibilityLabel={DISCOVER_A11Y.ripple}
         >
           <Icon name="ripple" size={18} color={colors.foreground} />
           <Text style={[styles.shareTitle, { color: colors.foreground }]}>

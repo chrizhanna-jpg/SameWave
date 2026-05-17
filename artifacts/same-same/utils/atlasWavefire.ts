@@ -3,7 +3,7 @@ import type { GeoProjection } from "d3-geo";
 import type { AtlasConnection } from "@/utils/api";
 import { centroidLonLatForAtlas } from "@/utils/atlasCountryCentroids";
 
-export type WavefireCluster = {
+export type AtlasThemeCluster = {
   /** Stable lowercase seed for ring animation / hashing (not always a single theme). */
   theme: string;
   /** Short label for the stats panel (theme, vibe tag, or subject). */
@@ -11,6 +11,9 @@ export type WavefireCluster = {
   connections: AtlasConnection[];
   countryCodes: string[];
 };
+
+/** @deprecated Use {@link AtlasThemeCluster} */
+export type WavefireCluster = AtlasThemeCluster;
 
 const THEME_MIN_LEN = 2;
 
@@ -165,18 +168,19 @@ export function orderWavefireRingCountryCodes(
 }
 
 /**
- * Client-side Wavefire: groups recent echo arcs when they link by **theme OR
- * shared vibe tags OR shared subjects** (transitive closure), require ≥
- * `minEvents` arcs and ≥ `minCountries` distinct ISO2 endpoints in the window.
+ * Groups recent atlas arcs of one kind (`ripple` or mutual `wave`) when they link
+ * by **theme OR shared vibe tags OR shared subjects** (transitive closure).
  */
-export function detectWavefireCluster(
+export function detectAtlasThemeCluster(
   connections: AtlasConnection[],
   windowMs: number,
   minEvents: number,
   minCountries: number,
-): WavefireCluster | null {
+  kind: AtlasConnection["kind"],
+): AtlasThemeCluster | null {
   const now = Date.now();
   const recentAll = connections.filter((c) => {
+    if (c.kind !== kind) return false;
     const t = Date.parse(c.createdAt);
     return Number.isFinite(t) && now - t <= windowMs;
   });
@@ -207,7 +211,7 @@ export function detectWavefireCluster(
     else buckets.set(r, [feats[i].c]);
   }
 
-  let best: WavefireCluster | null = null;
+  let best: AtlasThemeCluster | null = null;
   for (const list of buckets.values()) {
     if (list.length < minEvents) continue;
     const countries = new Set<string>();
@@ -228,4 +232,36 @@ export function detectWavefireCluster(
     }
   }
   return best;
+}
+
+/** Wavefire — mutual **waves** only (both people rippled back). */
+export function detectWavefireCluster(
+  connections: AtlasConnection[],
+  windowMs: number,
+  minEvents: number,
+  minCountries: number,
+): AtlasThemeCluster | null {
+  return detectAtlasThemeCluster(
+    connections,
+    windowMs,
+    minEvents,
+    minCountries,
+    "wave",
+  );
+}
+
+/** Ripplefire — one-way **ripples** only; same clustering rules, easier threshold. */
+export function detectRipplefireCluster(
+  connections: AtlasConnection[],
+  windowMs: number,
+  minEvents: number,
+  minCountries: number,
+): AtlasThemeCluster | null {
+  return detectAtlasThemeCluster(
+    connections,
+    windowMs,
+    minEvents,
+    minCountries,
+    "ripple",
+  );
 }
