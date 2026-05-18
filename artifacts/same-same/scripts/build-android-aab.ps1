@@ -240,7 +240,7 @@ try {
   $appJsonPath = Join-Path $sameSame "app.json"
   $versionCode = [int]((Get-Content $appJsonPath -Raw | ConvertFrom-Json).expo.android.versionCode)
 } catch {
-  Write-Host "Could not read versionCode from app.json — using timestamp in filename." -ForegroundColor DarkYellow
+  Write-Host "Could not read versionCode from app.json; using timestamp in filename." -ForegroundColor DarkYellow
 }
 
 New-Item -ItemType Directory -Path $AabOutputDir -Force | Out-Null
@@ -261,4 +261,4 @@ Write-Host $canonicalPath
 Write-Host $latestPath
 Write-Host ("Size: {0:N2} MB" -f ((Get-Item $canonicalPath).Length / 1MB))
 Write-Host "Logs: $logDir"
-Write-Host "Upload in Play Console -> Closed testing."
+Write-Host 'Upload in Play Console: Closed testing.'
