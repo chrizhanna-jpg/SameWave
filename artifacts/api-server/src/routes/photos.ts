@@ -14,6 +14,12 @@ import { analyzePhoto, extractObjectTags } from "../lib/photoAnalysis";
 import { recordEchoOffer, revokeEchoForUnvote } from "./echoes";
 import { normalizeMusicGenre } from "../lib/allowedMusicGenres";
 import { sendPhotoReportAlert } from "../lib/moderationEmail";
+import {
+  capExplorePhotoRepeats,
+  echoPairExposurePenaltySql,
+  exposurePenaltyExpr,
+  photoExposureCte,
+} from "../lib/photoExposure";
 
 const router: IRouter = Router();
 
@@ -366,6 +372,10 @@ router.post("/photos", async (req, res) => {
 //   music_score = 5 if same musicGenre as the requester's photo, else 0.
 //   jitter      = tiny random factor (0..0.3) so two consecutive calls
 //                 don't return the exact same ordering.
+//   exposure    = subtract up to 12 pts from globally over-shown photos
+//                 (many "same" votes / seen impressions) so one generic
+//                 image — e.g. a popular coffee-cup shot — cannot dominate
+//                 every user's deck.
 //
 // Primary deck (theme set): subject (0..15) + vibe (0..10) + theme
 //                          (0..10) + shapes (0..10) + music (0..5).
@@ -486,7 +496,8 @@ router.get("/photos/candidates", async (req, res) => {
     // the user's deck, and DISTINCT ON inside the same query prevents two
     // copies from appearing in a single candidates response.
     const rows = await db.execute(sql`
-      WITH scored AS (
+      WITH ${photoExposureCte},
+      scored AS (
         SELECT
           p.id,
           p.theme,
@@ -578,9 +589,11 @@ router.get("/photos/candidates", async (req, res) => {
                 WHEN p.music_genre = ${musicGenre} THEN 5
                 ELSE 0
               END
+            - ${exposurePenaltyExpr("pe")}
             + random() * 0.3
           ) AS rank_score
         FROM photos p
+        LEFT JOIN photo_exposure pe ON pe.photo_id = p.id
         WHERE p.status = 'active'
           AND p.user_id <> ${user.id}
           AND p.report_count < ${REPORT_HIDE_THRESHOLD}
@@ -1378,6 +1391,8 @@ router.post("/photos/atlas/explore", async (req, res) => {
       INNER JOIN photos ph ON ph.id = e.photo_high_id
       INNER JOIN users u_pl ON u_pl.id = pl.user_id
       INNER JOIN users u_ph ON u_ph.id = ph.user_id
+      LEFT JOIN photo_exposure pe_pl ON pe_pl.photo_id = pl.id
+      LEFT JOIN photo_exposure pe_ph ON pe_ph.photo_id = ph.id
     `;
 
     let echoRows: { rows: Array<Record<string, unknown>> } = { rows: [] };
@@ -1388,9 +1403,12 @@ router.post("/photos/atlas/explore", async (req, res) => {
         sql`, `,
       )}]::text[]`;
       echoRows = await db.execute(sql`
+        WITH ${photoExposureCte}
         ${exploreSelectCore}
         WHERE e.id::text = ANY(${idsExpr})
         ${activePhotoFilters}
+        ORDER BY ${echoPairExposurePenaltySql("pe_pl", "pe_ph")} ASC,
+          COALESCE(e.mutual_at, e.created_at) DESC
       `);
     }
 
@@ -1406,6 +1424,7 @@ router.post("/photos/atlas/explore", async (req, res) => {
           ? sql`AND lower(coalesce(e.theme, '')) LIKE ${`%${themeHint}%`}`
           : sql``;
       echoRows = await db.execute(sql`
+        WITH ${photoExposureCte}
         ${exploreSelectCore}
         WHERE ${stateFilter}
         ${themeFilter}
@@ -1420,7 +1439,8 @@ router.post("/photos/atlas/explore", async (req, res) => {
           ))) = ANY(${ccExpr})
         )
         ${activePhotoFilters}
-        ORDER BY COALESCE(e.mutual_at, e.created_at) DESC
+        ORDER BY ${echoPairExposurePenaltySql("pe_pl", "pe_ph")} ASC,
+          COALESCE(e.mutual_at, e.created_at) DESC
         LIMIT 40
       `);
     }
@@ -1506,8 +1526,10 @@ router.post("/photos/atlas/explore", async (req, res) => {
       })
       .filter((m): m is NonNullable<typeof m> => m != null);
 
+    const momentsDeduped = capExplorePhotoRepeats(moments);
+
     res.setHeader("Cache-Control", "private, no-store, max-age=0");
-    res.json({ moments });
+    res.json({ moments: momentsDeduped });
   } catch (err) {
     req.log.error({ err }, "atlas explore failed");
     const detail = atlasDevErrorDetail(err);
@@ -1537,6 +1559,37 @@ router.get("/photos/atlas/:countryCode", async (req, res) => {
       return;
     }
     const rows = await db.execute(sql`
+      WITH ${photoExposureCte},
+      ranked AS (
+        SELECT
+          p.id,
+          p.user_id,
+          p.bytes_base64,
+          p.mime_type,
+          p.theme,
+          p.tags,
+          p.music_genre,
+          p.custom_audio_base64,
+          p.custom_audio_mime,
+          p.created_at,
+          md5(substring(p.bytes_base64 from 1 for 4096)) AS content_hash,
+          row_number() OVER (
+            PARTITION BY p.user_id
+            ORDER BY p.created_at DESC
+          ) AS user_rank,
+          ${exposurePenaltyExpr("pe")} AS exposure_penalty
+        FROM photos p
+        LEFT JOIN photo_exposure pe ON pe.photo_id = p.id
+        WHERE p.status = 'active'
+          AND p.report_count < ${REPORT_HIDE_THRESHOLD}
+          AND (p.expires_at IS NULL OR p.expires_at > now())
+          AND upper(p.country_code) = ${code}
+      ),
+      deduped AS (
+        SELECT DISTINCT ON (content_hash) *
+        FROM ranked
+        ORDER BY content_hash, exposure_penalty ASC, created_at DESC
+      )
       SELECT
         id,
         bytes_base64,
@@ -1547,12 +1600,8 @@ router.get("/photos/atlas/:countryCode", async (req, res) => {
         custom_audio_base64,
         custom_audio_mime,
         created_at
-      FROM photos
-      WHERE status       = 'active'
-        AND report_count < ${REPORT_HIDE_THRESHOLD}
-        AND (expires_at IS NULL OR expires_at > now())
-        AND upper(country_code) = ${code}
-      ORDER BY created_at DESC
+      FROM deduped
+      ORDER BY user_rank ASC, exposure_penalty ASC, created_at DESC
       LIMIT 30
     `);
     const photos = (rows.rows as Array<Record<string, unknown>>).map((r) => {
