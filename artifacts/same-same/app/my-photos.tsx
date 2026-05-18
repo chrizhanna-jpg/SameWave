@@ -1,5 +1,6 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import {
+  Alert,
   Platform,
   ScrollView,
   StyleSheet,
@@ -16,11 +17,36 @@ import { PhotoCard } from "@/components/PhotoCard";
 import { tagEmoji, tagLabel } from "@/utils/interests";
 import { timeAgo } from "@/utils/timeAgo";
 import { pausePreview, togglePreview } from "@/utils/audio";
+import { confirmDeleteMyPhoto } from "@/utils/photoModeration";
 
 export default function MyPhotosScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { myPhotos } = useApp();
+  const { myPhotos, removeMyPhoto } = useApp();
+  const [removingUri, setRemovingUri] = useState<string | null>(null);
+
+  const handleRemove = (uri: string) => {
+    confirmDeleteMyPhoto(async () => {
+      setRemovingUri(uri);
+      const ok = await removeMyPhoto(uri);
+      setRemovingUri(null);
+      if (Platform.OS === "web") {
+        // eslint-disable-next-line no-alert
+        window.alert(
+          ok
+            ? "Photo removed."
+            : "Could not remove this photo. Sign in and try again.",
+        );
+        return;
+      }
+      if (!ok) {
+        Alert.alert(
+          "Could not remove",
+          "Sign in and try again. If the problem continues, email support from My Path → Legal.",
+        );
+      }
+    });
+  };
 
   // Pause any voice-clip preview the user kicked off here when they
   // navigate away, so a previewed clip doesn't keep looping in the
@@ -147,6 +173,33 @@ export default function MyPhotosScreen() {
                       ))}
                     </View>
                   )}
+                  <TouchableOpacity
+                    onPress={() => handleRemove(photo.uri)}
+                    disabled={removingUri === photo.uri}
+                    style={[
+                      styles.removeBtn,
+                      {
+                        borderColor: colors.border,
+                        opacity: removingUri === photo.uri ? 0.5 : 1,
+                      },
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Remove this photo from SameWave"
+                  >
+                    <Icon
+                      name="x"
+                      size={14}
+                      color={colors.mutedForeground}
+                    />
+                    <Text
+                      style={[
+                        styles.removeBtnText,
+                        { color: colors.mutedForeground },
+                      ]}
+                    >
+                      {removingUri === photo.uri ? "Removing…" : "Remove photo"}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               </>
             );
@@ -253,6 +306,21 @@ const styles = StyleSheet.create({
   },
   audioHintText: {
     fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+  },
+  removeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  removeBtnText: {
+    fontSize: 12,
     fontFamily: "Inter_600SemiBold",
   },
   emptyCard: {

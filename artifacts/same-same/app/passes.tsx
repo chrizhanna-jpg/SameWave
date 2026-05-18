@@ -15,6 +15,7 @@ import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { PhotoCard } from "@/components/PhotoCard";
 import { MatchTierChips } from "@/components/MatchTierChips";
+import { confirmReportPhoto } from "@/utils/photoModeration";
 
 export default function PassesScreen() {
   const colors = useColors();
@@ -126,11 +127,33 @@ export default function PassesScreen() {
               </View>
 
               <View style={styles.passedFooter}>
-                <Text
-                  style={[styles.matchAction, { color: colors.mutedForeground }]}
-                >
-                  You said different
-                </Text>
+                <View style={styles.passedFooterLeft}>
+                  <Text
+                    style={[styles.matchAction, { color: colors.mutedForeground }]}
+                  >
+                    You said different
+                  </Text>
+                  {match.theirPhotoId ? (
+                    <TouchableOpacity
+                      onPress={() =>
+                        confirmReportPhoto(match.theirPhotoId!, {
+                          countryLabel: match.theirCountry,
+                        })
+                      }
+                      hitSlop={8}
+                      accessibilityLabel={`Report photo from ${match.theirCountry}`}
+                    >
+                      <Text
+                        style={[
+                          styles.reportLink,
+                          { color: colors.mutedForeground },
+                        ]}
+                      >
+                        Report photo
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
                 <TouchableOpacity
                   onPress={() => reconsiderAsSame(match.id)}
                   style={[styles.reconsiderBtn, { backgroundColor: colors.teal }]}
@@ -213,10 +236,19 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 12,
   },
+  passedFooterLeft: {
+    flex: 1,
+    gap: 4,
+  },
   matchFlag: { fontSize: 14 },
   matchAction: {
     fontSize: 11,
     fontFamily: "Inter_500Medium",
+  },
+  reportLink: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    textDecorationLine: "underline",
   },
   reconsiderBtn: {
     paddingHorizontal: 14,

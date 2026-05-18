@@ -40,7 +40,7 @@ const STEPS: Step[] = [
     kind: "intro",
     title: null,
     subtitle: null,
-    body: "Share your moment. Someone out there might be on the Same Wavelength as you right now.",
+    body: "Post your moment right now and see who's on the same wavelength.",
   },
   {
     kind: "intro",

@@ -20,7 +20,9 @@ export const SHARE_COLORS = {
   chipBorder: "rgba(10, 37, 82, 0.12)",
   photoBorder: "rgba(255, 255, 255, 0.92)",
   divider: "rgba(255, 255, 255, 0.14)",
-  watermarkBg: "#000000",
+  /** Full share watermark (non‑Pro) — transparent; legibility via text shadow in ShareWatermark. */
+  watermarkBg: "transparent",
+  watermarkBorder: "rgba(79, 216, 156, 0.45)",
 } as const;
 
 /** Brand-gradient backdrops for share posters (from the app-icon palette). */
@@ -82,12 +84,12 @@ export function shareLayoutTokens(side: number) {
     flagEmoji: r(30),
     countryFont: r(22),
     countryFontHi: r(24),
-    watermarkPadV: r(14),
-    watermarkPadH: r(24),
-    watermarkIcon: r(28),
-    watermarkTitle: r(22),
-    watermarkSub: r(16),
-    watermarkBorder: Math.max(1, r(2)),
+    watermarkPadV: r(18),
+    watermarkPadH: r(30),
+    watermarkIcon: r(34),
+    watermarkTitle: r(26),
+    watermarkSub: r(18),
+    watermarkBorder: Math.max(1.5, r(2.5)),
     mapRadius: r(16),
     mapHeightRatio: 0.34,
     thumbSize: r(148),

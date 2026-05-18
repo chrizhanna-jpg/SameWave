@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  FlatList,
   Modal,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,12 +20,17 @@ import { resolveMusicUrl } from "@/data/musicLibrary";
 import { flagFor, nameFor } from "@/data/countries";
 import { useColors } from "@/hooks/useColors";
 import {
+  authedImageHeaders,
+  explorePhotoUriNeedsAuth,
   fetchAtlasFireExplore,
   flattenAtlasFireExplorePhotos,
   formatAtlasFireExploreDiagnostics,
   type AtlasFireParticipant,
   type LocalRippleExploreMatch,
+  type LocalWaveExploreEcho,
+  type ViewerExplorePhoto,
 } from "@/utils/api";
+import { getPublicApiOrigin } from "@/utils/publicEnv";
 import type { AtlasThemeCluster } from "@/utils/atlasWavefire";
 import type { AtlasFireMode } from "@/utils/atlasFireVisuals";
 import type { AtlasFireVisual } from "@/utils/atlasFireVisuals";
@@ -42,7 +48,9 @@ type Props = {
   cluster: AtlasThemeCluster;
   /** Same-swipe ripples merged into Atlas as `local-ripple-*` arcs. */
   localRippleMatches?: LocalRippleExploreMatch[];
+  localWaveEchoes?: LocalWaveExploreEcho[];
   viewerCountryCode?: string;
+  viewerMyPhotos?: ViewerExplorePhoto[];
 };
 
 export type ExplorePhotoTile = {
@@ -50,6 +58,19 @@ export type ExplorePhotoTile = {
   theme: string;
   participant: AtlasFireParticipant;
 };
+
+type PageEdgeLabel = "first" | "last" | "only";
+
+function explorePageEdgeLabel(
+  index: number,
+  total: number,
+): PageEdgeLabel | null {
+  if (total <= 0) return null;
+  if (total === 1) return "only";
+  if (index === 0) return "first";
+  if (index === total - 1) return "last";
+  return null;
+}
 
 function vibeUrl(p: AtlasFireParticipant): string | null {
   return (
@@ -63,13 +84,52 @@ function vibeUrl(p: AtlasFireParticipant): string | null {
   );
 }
 
+/** Show the theme string stored on the photo (upload), not challenge catalog titles. */
 function resolveThemeDisplay(raw: string): { title: string; emoji: string } {
   const t = raw.trim();
   if (!t) return { title: "Moment", emoji: "✨" };
   const meta = DAILY_CHALLENGES.find(
     (c) => c.id === t || c.title.toLowerCase() === t.toLowerCase(),
   );
-  return { title: meta?.title ?? t, emoji: meta?.emoji ?? "✨" };
+  return { title: t, emoji: meta?.emoji ?? "✨" };
+}
+
+/** Loads explore URIs — uses bearer headers for `/api/photos/:id/image` streams. */
+function ExploreAtlasPhoto({ uri }: { uri: string }) {
+  const needsAuth = explorePhotoUriNeedsAuth(uri);
+  const [headers, setHeaders] = useState<Record<string, string> | undefined>();
+
+  useEffect(() => {
+    if (!needsAuth) {
+      setHeaders(undefined);
+      return;
+    }
+    let cancelled = false;
+    void authedImageHeaders().then((h) => {
+      if (!cancelled) setHeaders(h);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [needsAuth, uri]);
+
+  if (needsAuth && !headers) {
+    return (
+      <View style={styles.explorePhotoLoader}>
+        <ActivityIndicator color="#4FD89C" size="large" />
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={needsAuth && headers ? { uri, headers } : { uri }}
+      style={StyleSheet.absoluteFillObject}
+      contentFit="contain"
+      cachePolicy="memory-disk"
+      recyclingKey={uri}
+    />
+  );
 }
 
 function ImmersivePhotoViewer({
@@ -82,7 +142,8 @@ function ImmersivePhotoViewer({
   onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
-  const { title, emoji } = resolveThemeDisplay(tile.theme);
+  const uploadedTheme = (tile.participant.theme || tile.theme).trim();
+  const { title, emoji } = resolveThemeDisplay(uploadedTheme);
   const country = tile.participant.countryCode;
   const clip = vibeUrl(tile.participant);
   const playLease = useRef(0);
@@ -102,12 +163,7 @@ function ImmersivePhotoViewer({
   return (
     <Modal visible animationType="fade" presentationStyle="fullScreen">
       <View style={styles.immersiveRoot}>
-        <Image
-          source={{ uri: tile.participant.uri }}
-          style={StyleSheet.absoluteFill}
-          contentFit="cover"
-          cachePolicy="memory-disk"
-        />
+        <ExploreAtlasPhoto uri={tile.participant.uri} />
         <View style={styles.immersiveScrim} pointerEvents="none" />
         <Pressable
           onPress={onClose}
@@ -145,33 +201,64 @@ function ImmersivePhotoViewer({
 
 function FullScreenPhotoPage({
   tile,
+  pageWidth,
   pageHeight,
   captionBottomInset,
+  edgeLabel,
+  accent,
   onOpen,
 }: {
   tile: ExplorePhotoTile;
+  pageWidth: number;
   pageHeight: number;
   /** Safe area + breathing room so caption stays on screen. */
   captionBottomInset: number;
+  edgeLabel: PageEdgeLabel | null;
+  accent: string;
   onOpen: () => void;
 }) {
-  const { title, emoji } = resolveThemeDisplay(tile.theme);
+  const uploadedTheme = (tile.participant.theme || tile.theme).trim();
+  const { title, emoji } = resolveThemeDisplay(uploadedTheme);
   const country = tile.participant.countryCode;
+  const edgeText =
+    edgeLabel === "only"
+      ? "Only photo in this cluster"
+      : edgeLabel === "first"
+        ? "First photo — swipe up for more"
+        : edgeLabel === "last"
+          ? "Last photo in this cluster"
+          : null;
 
   return (
     <Pressable
       onPress={onOpen}
-      style={[styles.page, { height: pageHeight }]}
+      style={[styles.page, { width: pageWidth, height: pageHeight }]}
       accessibilityRole="button"
-      accessibilityLabel={`${title}, ${nameFor(country) ?? country}. Tap for fullscreen and vibe.`}
+      accessibilityLabel={`${title}, ${nameFor(country) ?? country}. ${edgeText ?? "Tap for fullscreen and vibe."}`}
     >
-      <Image
-        source={{ uri: tile.participant.uri }}
-        style={StyleSheet.absoluteFill}
-        contentFit="cover"
-        cachePolicy="memory-disk"
-      />
+      <ExploreAtlasPhoto uri={tile.participant.uri} />
       <View style={styles.pageScrim} pointerEvents="none" />
+      {edgeText ? (
+        <View
+          style={[styles.pageEdgeBadge, { borderColor: accent }]}
+          pointerEvents="none"
+        >
+          <Icon
+            name={
+              edgeLabel === "last"
+                ? "chevron-down"
+                : edgeLabel === "first"
+                  ? "chevron-up"
+                  : "layers"
+            }
+            size={14}
+            color={accent}
+          />
+          <Text style={[styles.pageEdgeBadgeText, { color: accent }]}>
+            {edgeText}
+          </Text>
+        </View>
+      ) : null}
       <View
         style={[
           styles.pageCaption,
@@ -197,26 +284,25 @@ export function AtlasFireExploreModal({
   visual,
   cluster,
   localRippleMatches,
+  localWaveEchoes,
   viewerCountryCode,
+  viewerMyPhotos,
 }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { width, height: windowH } = useWindowDimensions();
+  const { width } = useWindowDimensions();
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [debugReport, setDebugReport] = useState<string | null>(null);
   const [photoTiles, setPhotoTiles] = useState<ExplorePhotoTile[]>([]);
   const [immersive, setImmersive] = useState<ExplorePhotoTile | null>(null);
   const [listViewportHeight, setListViewportHeight] = useState(0);
+  const [photoIndex, setPhotoIndex] = useState(0);
 
-  // Each page must match the FlatList viewport (below the top bar), not full window —
-  // otherwise the bottom caption sits off-screen.
-  const pageHeight = Math.max(
-    1,
-    listViewportHeight > 0
-      ? listViewportHeight
-      : windowH - insets.top - insets.bottom - 72,
-  );
+  // Page height must match the measured list viewport — never guess from windowH or
+  // paging/getItemLayout desync and the first slides render blank.
+  const pageHeight = Math.max(1, listViewportHeight);
+  const listPagingReady = listViewportHeight > 0;
   const captionBottomInset = insets.bottom + 20;
 
   const clusterContext = useMemo(
@@ -234,10 +320,31 @@ export function AtlasFireExploreModal({
   );
 
   useEffect(() => {
+    setPhotoIndex(0);
+  }, [photoTiles.length, connectionIds, visible]);
+
+  const onPhotoScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (pageHeight <= 0 || photoTiles.length === 0) return;
+      const y = e.nativeEvent.contentOffset.y;
+      const idx = Math.round(y / pageHeight);
+      setPhotoIndex(Math.max(0, Math.min(photoTiles.length - 1, idx)));
+    },
+    [pageHeight, photoTiles.length],
+  );
+
+  const photoCountLabel =
+    photoTiles.length > 0
+      ? `Photo ${photoIndex + 1} of ${photoTiles.length}`
+      : null;
+
+  useEffect(() => {
     if (!visible) {
       setImmersive(null);
       setPhotoTiles([]);
       setDebugReport(null);
+      setListViewportHeight(0);
+      setPhotoIndex(0);
       return;
     }
     let cancelled = false;
@@ -247,12 +354,15 @@ export function AtlasFireExploreModal({
     const ids = cluster.connections.map((c) => c.id);
     void fetchAtlasFireExplore(ids, clusterContext, {
       localMatches: localRippleMatches,
+      localWaves: localWaveEchoes,
       viewerCountryCode,
+      viewerMyPhotos,
     }).then(({ moments, error, diagnostics }) => {
         if (cancelled) return;
         const tiles = flattenAtlasFireExplorePhotos(
           moments,
           cluster.displayTheme,
+          getPublicApiOrigin(),
         );
         setPhotoTiles(tiles);
         setLoadError(error);
@@ -273,25 +383,15 @@ export function AtlasFireExploreModal({
     clusterContext,
     cluster.displayTheme,
     localRippleMatches,
+    localWaveEchoes,
     viewerCountryCode,
+    viewerMyPhotos,
   ]);
 
   const handleClose = useCallback(() => {
     setImmersive(null);
     onClose();
   }, [onClose]);
-
-  const renderPage = useCallback(
-    ({ item }: { item: ExplorePhotoTile }) => (
-      <FullScreenPhotoPage
-        tile={item}
-        pageHeight={pageHeight}
-        captionBottomInset={captionBottomInset}
-        onOpen={() => setImmersive(item)}
-      />
-    ),
-    [pageHeight, captionBottomInset],
-  );
 
   return (
     <>
@@ -313,9 +413,24 @@ export function AtlasFireExploreModal({
           >
             <View style={styles.topBarTitle}>
               <Icon name={visual.filterIcon} size={20} color={visual.lineStroke} />
-              <Text style={[styles.topBarLabel, { color: colors.foreground }]}>
-                {visual.label}
-              </Text>
+              <View style={styles.topBarTitleText}>
+                <Text style={[styles.topBarLabel, { color: colors.foreground }]}>
+                  {visual.label}
+                </Text>
+                {photoCountLabel ? (
+                  <Text
+                    style={[styles.topBarCounter, { color: colors.mutedForeground }]}
+                  >
+                    {photoCountLabel}
+                    {photoIndex === 0 && photoTiles.length > 1
+                      ? " · at the start"
+                      : photoIndex === photoTiles.length - 1 &&
+                          photoTiles.length > 1
+                        ? " · at the end"
+                        : ""}
+                  </Text>
+                ) : null}
+              </View>
             </View>
             <Pressable
               onPress={handleClose}
@@ -376,22 +491,72 @@ export function AtlasFireExploreModal({
                 }
               }}
             >
-              <FlatList
-                data={photoTiles}
-                keyExtractor={(item) => item.key}
-                renderItem={renderPage}
-                pagingEnabled
-                showsVerticalScrollIndicator={false}
-                snapToAlignment="start"
-                decelerationRate="fast"
-                getItemLayout={(_, index) => ({
-                  length: pageHeight,
-                  offset: pageHeight * index,
-                  index,
-                })}
-                style={{ width, flex: 1 }}
-                extraData={pageHeight}
-              />
+              {photoTiles.length > 1 && photoIndex > 0 ? (
+                <View style={styles.scrollHintTop} pointerEvents="none">
+                  <View
+                    style={[
+                      styles.scrollHintPill,
+                      { borderColor: visual.lineStroke + "88" },
+                    ]}
+                  >
+                    <Icon name="chevron-up" size={14} color={visual.lineStroke} />
+                    <Text style={[styles.scrollHintText, { color: visual.lineStroke }]}>
+                      Earlier photos above
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+              {photoTiles.length > 1 &&
+              photoIndex < photoTiles.length - 1 ? (
+                <View style={styles.scrollHintBottom} pointerEvents="none">
+                  <View
+                    style={[
+                      styles.scrollHintPill,
+                      { borderColor: visual.lineStroke + "88" },
+                    ]}
+                  >
+                    <Icon
+                      name="chevron-down"
+                      size={14}
+                      color={visual.lineStroke}
+                    />
+                    <Text style={[styles.scrollHintText, { color: visual.lineStroke }]}>
+                      More photos below
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+              {listPagingReady ? (
+                <ScrollView
+                  key={`explore-pager-${pageHeight}`}
+                  pagingEnabled
+                  showsVerticalScrollIndicator={false}
+                  snapToAlignment="start"
+                  snapToInterval={pageHeight}
+                  decelerationRate="fast"
+                  style={{ flex: 1, width }}
+                  nestedScrollEnabled
+                  onScroll={onPhotoScroll}
+                  scrollEventThrottle={16}
+                >
+                  {photoTiles.map((tile, index) => (
+                    <FullScreenPhotoPage
+                      key={tile.key}
+                      tile={tile}
+                      pageWidth={width}
+                      pageHeight={pageHeight}
+                      captionBottomInset={captionBottomInset}
+                      edgeLabel={explorePageEdgeLabel(index, photoTiles.length)}
+                      accent={visual.lineStroke}
+                      onOpen={() => setImmersive(tile)}
+                    />
+                  ))}
+                </ScrollView>
+              ) : (
+                <View style={styles.centered}>
+                  <ActivityIndicator color={visual.lineStroke} size="large" />
+                </View>
+              )}
             </View>
           )}
         </View>
@@ -426,9 +591,18 @@ const styles = StyleSheet.create({
     gap: 8,
     flex: 1,
   },
+  topBarTitleText: {
+    flex: 1,
+    gap: 2,
+  },
   topBarLabel: {
     fontFamily: "Inter_700Bold",
     fontSize: 17,
+  },
+  topBarCounter: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+    letterSpacing: 0.2,
   },
   closeBtn: {
     width: 40,
@@ -480,8 +654,13 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   page: {
-    width: "100%",
     backgroundColor: "#000",
+    overflow: "hidden",
+  },
+  explorePhotoLoader: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
   },
   pageScrim: {
     ...StyleSheet.absoluteFillObject,
@@ -490,6 +669,57 @@ const styles = StyleSheet.create({
   listViewport: {
     flex: 1,
     width: "100%",
+  },
+  scrollHintTop: {
+    position: "absolute",
+    top: 8,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 4,
+  },
+  scrollHintBottom: {
+    position: "absolute",
+    bottom: 12,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 4,
+  },
+  scrollHintPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    backgroundColor: "rgba(0, 16, 24, 0.72)",
+  },
+  scrollHintText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+  },
+  pageEdgeBadge: {
+    position: "absolute",
+    top: 14,
+    left: 14,
+    right: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    backgroundColor: "rgba(0, 16, 24, 0.78)",
+    zIndex: 2,
+  },
+  pageEdgeBadgeText: {
+    flex: 1,
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+    letterSpacing: 0.15,
   },
   pageCaption: {
     position: "absolute",

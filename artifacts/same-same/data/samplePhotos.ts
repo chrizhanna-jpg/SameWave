@@ -48,7 +48,7 @@ export interface SamplePhoto {
   launchSlot?: string;
 }
 
-// Helper used to overlay the SameWave stock watermark (top-right). We
+// Helper used to overlay the SameWave stock logo (top-left). We
 // resolve the URI set lazily so the SAMPLE_PHOTOS
 // constant declared below can populate it on first call. Compared by
 // stable photoKey so URI variants (?w=…, etc.) still match.

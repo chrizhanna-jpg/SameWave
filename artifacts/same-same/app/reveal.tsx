@@ -51,6 +51,7 @@ import {
   shareShotFrameStyle,
 } from "@/utils/shareDimensions";
 import { resolveMatchPhotoUris } from "@/utils/matchPhotoSnapshot";
+import { confirmReportPhoto } from "@/utils/photoModeration";
 
 export default function RevealScreen() {
   const colors = useColors();
@@ -614,6 +615,27 @@ export default function RevealScreen() {
               {sharing ? "Preparing…" : "Share"}
             </Text>
           </TouchableOpacity>
+
+          {match.theirPhotoId ? (
+            <TouchableOpacity
+              style={[
+                styles.shareBtn,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+              onPress={() =>
+                confirmReportPhoto(match.theirPhotoId!, {
+                  countryLabel: match.theirCountry,
+                })
+              }
+              activeOpacity={0.85}
+              accessibilityLabel={`Report photo from ${match.theirCountry}`}
+            >
+              <Icon name="alert-circle" size={18} color={colors.mutedForeground} />
+              <Text style={[styles.shareBtnText, { color: colors.mutedForeground }]}>
+                Report
+              </Text>
+            </TouchableOpacity>
+          ) : null}
 
           {!proActive && (
             <TouchableOpacity

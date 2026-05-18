@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { postDebugSessionLog } from "@/utils/debugSessionLog";
+import { resolveMatchPhotoUris } from "@/utils/matchPhotoSnapshot";
 import {
   getPublicApiOrigin,
   getStagedProductionApiOrigin,
@@ -66,6 +67,13 @@ let authTokenGetter: (() => Promise<string | null>) | null = null;
 
 export function setAuthTokenGetter(getter: () => Promise<string | null>): void {
   authTokenGetter = getter;
+}
+
+/** Bearer headers for authenticated image URLs (`/api/photos/:id/image`). */
+export async function authedImageHeaders(
+  extra?: Record<string, string>,
+): Promise<Record<string, string>> {
+  return authedHeaders(extra);
 }
 
 async function authedHeaders(extra?: Record<string, string>): Promise<Record<string, string>> {
@@ -979,6 +987,56 @@ export async function reportPhoto(photoId: string, reason?: string): Promise<boo
   }
 }
 
+/**
+ * Reuse an existing server photo for matching — updates metadata and
+ * refreshes retention without inserting a duplicate row.
+ */
+export async function reactivateMyPhoto(
+  photoId: string,
+  input: {
+    theme?: string;
+    tags?: string[];
+    musicGenre?: string;
+    countryCode?: string;
+  },
+): Promise<UploadedPhoto | null> {
+  try {
+    const base = getApiBase();
+    const res = await fetch(`${base}/api/photos/${photoId}/reactivate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(await authedHeaders()) },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as Partial<UploadedPhoto>;
+    if (!json.id) return null;
+    return {
+      id: json.id,
+      theme: json.theme ?? "",
+      tags: Array.isArray(json.tags) ? json.tags : [],
+      subjects: Array.isArray(json.subjects) ? json.subjects : [],
+      musicGenre: typeof json.musicGenre === "string" ? json.musicGenre : null,
+      hasCustomAudio: json.hasCustomAudio === true,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Delete a photo you uploaded. Requires sign-in; only the owner can delete. */
+export async function deleteMyPhoto(photoId: string): Promise<boolean> {
+  try {
+    const base = getApiBase();
+    const res = await fetch(`${base}/api/photos/${photoId}`, {
+      method: "DELETE",
+      headers: { ...(await authedHeaders()) },
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Atlas — world map of photos by country.
 // ─────────────────────────────────────────────────────────────────────────
@@ -1514,8 +1572,10 @@ function exploreDiagBase(
 export type LocalRippleExploreMatch = {
   id: string;
   verdict: "same" | "different" | null;
+  myPhoto: string;
   theirPhoto: string;
   theirPhotoId?: string;
+  myPhotoId?: string;
   theirCountryCode: string;
   myCountry?: string;
   theme?: string;
@@ -1524,8 +1584,120 @@ export type LocalRippleExploreMatch = {
   sharedTags?: string[];
   theirMusicGenre?: string;
   theirCustomAudioUrl?: string;
+  myMusicGenre?: string;
+  myCustomAudioUrl?: string;
   timestamp: string;
 };
+
+/** Mutual wave on device for Wavefire explore (`local-wave-{echoId}` arcs). */
+export type LocalWaveExploreEcho = {
+  id: string;
+  theme: string;
+  myPhoto: string;
+  myPhotoId?: string;
+  theirPhoto: string;
+  theirPhotoId?: string;
+  theirCountryCode: string;
+  myCountryCode?: string;
+  theirTags?: string[];
+  myTags?: string[];
+  theirMusicGenre?: string;
+  theirCustomAudioUrl?: string;
+  myMusicGenre?: string;
+  myCustomAudioUrl?: string;
+  mutualAt?: string | null;
+};
+
+/** Viewer uploads used to fill missing self-side tiles in explore. */
+export type ViewerExplorePhoto = {
+  uri: string;
+  backendId?: string;
+  theme?: string;
+  tags?: string[];
+  subjects?: string[];
+  musicGenre?: string;
+  customAudioUrl?: string;
+};
+
+const LOCAL_MY_PHOTO_ID_PREFIX = "local-my-";
+
+function viewerExploreParticipant(
+  photo: ViewerExplorePhoto,
+  countryCode: string,
+  fallbackTheme: string,
+  photoIdSuffix: string,
+): AtlasFireParticipant | null {
+  const uri = photo.uri?.trim();
+  if (!uri) return null;
+  const theme =
+    (photo.theme ?? fallbackTheme).trim() || fallbackTheme || "";
+  return {
+    photoId: photo.backendId?.trim() || `${LOCAL_MY_PHOTO_ID_PREFIX}${photoIdSuffix}`,
+    userId: "",
+    countryCode,
+    theme,
+    tags: [...(photo.tags ?? [])].filter(Boolean),
+    subjects: [...(photo.subjects ?? [])].filter(Boolean),
+    musicGenre: photo.musicGenre ?? null,
+    customAudioUrl: photo.customAudioUrl ?? null,
+    uri,
+  };
+}
+
+/** Ensure each cluster moment includes the viewer's photo when they're part of the pair. */
+function enrichExploreWithViewerPhotos(
+  moments: AtlasFireMoment[],
+  viewerPhotos: ViewerExplorePhoto[],
+  viewerCountryCode?: string,
+): AtlasFireMoment[] {
+  const viewer = (viewerCountryCode ?? "").trim().toUpperCase();
+  const primary = viewerPhotos[0];
+  if (!primary?.uri?.trim()) return moments;
+
+  const primaryBackendId = primary.backendId?.trim();
+
+  const isViewerParticipant = (p: AtlasFireParticipant) => {
+    if (primaryBackendId && p.photoId === primaryBackendId) return true;
+    if (p.photoId.startsWith(LOCAL_MY_PHOTO_ID_PREFIX)) return true;
+    return !!(viewer && p.countryCode === viewer);
+  };
+
+  return moments.map((m) => {
+    const fallbackTheme =
+      m.theme.trim() || primary.theme?.trim() || "";
+
+    let participants = m.participants.map((p) => {
+      if (!isViewerParticipant(p) || p.uri?.trim()) return p;
+      const patched = viewerExploreParticipant(
+        primary,
+        p.countryCode || viewer || "",
+        fallbackTheme,
+        m.id,
+      );
+      return patched ?? p;
+    });
+
+    const hasViewerTile = participants.some(
+      (p) => isViewerParticipant(p) && !!p.uri?.trim(),
+    );
+
+    if (
+      !hasViewerTile &&
+      viewer &&
+      (m.from === viewer || m.to === viewer)
+    ) {
+      const mine = viewerExploreParticipant(
+        primary,
+        viewer,
+        fallbackTheme,
+        m.id,
+      );
+      if (mine) participants = [mine, ...participants];
+    }
+
+    return { ...m, participants };
+  });
+}
 
 /** Build explore moments from `local-ripple-{matchId}` arcs (no API). */
 export function buildLocalMatchExploreMoments(
@@ -1552,8 +1724,12 @@ export function buildLocalMatchExploreMoments(
     if (!matchIds.has(m.id) || m.verdict !== "same") continue;
     const their = (m.theirCountryCode ?? "").trim().toUpperCase();
     if (countrySet.size > 0 && their && !countrySet.has(their)) continue;
-    const uri = m.theirPhoto?.trim();
-    if (!uri) continue;
+    const stash = resolveMatchPhotoUris(m.id, {
+      myPhoto: m.myPhoto ?? "",
+      theirPhoto: m.theirPhoto ?? "",
+    });
+    const theirUri = stash.theirPhoto?.trim();
+    const myUri = stash.myPhoto?.trim();
 
     const theme =
       (m.theirActualTheme ?? m.theme ?? cluster.displayTheme ?? "").trim() ||
@@ -1565,6 +1741,35 @@ export function buildLocalMatchExploreMoments(
         ? viewer
         : (m.myCountry ?? "").trim().slice(0, 2).toUpperCase() || their;
 
+    const participants: AtlasFireParticipant[] = [];
+    if (myUri) {
+      participants.push({
+        photoId: m.myPhotoId?.trim() || `${LOCAL_MY_PHOTO_ID_PREFIX}${m.id}`,
+        userId: "",
+        countryCode: from,
+        theme: (m.theme ?? theme).trim() || theme,
+        tags: [...(m.sharedTags ?? [])].filter(Boolean),
+        subjects: [],
+        musicGenre: m.myMusicGenre ?? null,
+        customAudioUrl: m.myCustomAudioUrl ?? null,
+        uri: myUri,
+      });
+    }
+    if (theirUri) {
+      participants.push({
+        photoId: m.theirPhotoId?.trim() || m.id,
+        userId: "",
+        countryCode: their,
+        theme,
+        tags,
+        subjects: [],
+        musicGenre: m.theirMusicGenre ?? null,
+        customAudioUrl: m.theirCustomAudioUrl ?? null,
+        uri: theirUri,
+      });
+    }
+    if (participants.length === 0) continue;
+
     moments.push({
       id: `local-match-${m.id}`,
       kind: cluster.kind,
@@ -1574,19 +1779,86 @@ export function buildLocalMatchExploreMoments(
       createdAt: m.timestamp || new Date().toISOString(),
       from,
       to: their || from,
-      participants: [
-        {
-          photoId: m.theirPhotoId?.trim() || m.id,
-          userId: "",
-          countryCode: their,
-          theme,
-          tags,
-          subjects: [],
-          musicGenre: m.theirMusicGenre ?? null,
-          customAudioUrl: m.theirCustomAudioUrl ?? null,
-          uri,
-        },
-      ],
+      participants,
+    });
+  }
+  return moments;
+}
+
+/** Build explore moments from `local-wave-{echoId}` arcs (no API). */
+export function buildLocalWaveExploreMoments(
+  connectionIds: string[],
+  echoes: LocalWaveExploreEcho[],
+  cluster: AtlasFireExploreCluster,
+  viewerCountryCode?: string,
+): AtlasFireMoment[] {
+  const echoIds = new Set<string>();
+  for (const id of connectionIds) {
+    if (id.startsWith("local-wave-")) {
+      echoIds.add(id.slice("local-wave-".length));
+    }
+  }
+  if (echoIds.size === 0 || echoes.length === 0) return [];
+
+  const countrySet = new Set(
+    cluster.countryCodes.map((c) => c.trim().toUpperCase()).filter(Boolean),
+  );
+  const viewer = (viewerCountryCode ?? "").trim().toUpperCase();
+  const moments: AtlasFireMoment[] = [];
+
+  for (const e of echoes) {
+    if (!echoIds.has(e.id)) continue;
+    const their = (e.theirCountryCode ?? "").trim().toUpperCase();
+    if (countrySet.size > 0 && their && !countrySet.has(their)) continue;
+    const theirUri = e.theirPhoto?.trim();
+    const myUri = e.myPhoto?.trim();
+
+    const theme = (e.theme ?? cluster.displayTheme ?? "").trim() || cluster.displayTheme || "";
+    const tags = [...(e.myTags ?? []), ...(e.theirTags ?? [])].filter(Boolean);
+    const from =
+      viewer && /^[A-Z]{2}$/.test(viewer)
+        ? viewer
+        : (e.myCountryCode ?? "").trim().toUpperCase() || their;
+
+    const participants: AtlasFireParticipant[] = [];
+    if (myUri) {
+      participants.push({
+        photoId: e.myPhotoId?.trim() || `${LOCAL_MY_PHOTO_ID_PREFIX}wave-${e.id}`,
+        userId: "",
+        countryCode: from,
+        theme,
+        tags: [...(e.myTags ?? [])].filter(Boolean),
+        subjects: [],
+        musicGenre: e.myMusicGenre ?? null,
+        customAudioUrl: e.myCustomAudioUrl ?? null,
+        uri: myUri,
+      });
+    }
+    if (theirUri) {
+      participants.push({
+        photoId: e.theirPhotoId?.trim() || e.id,
+        userId: "",
+        countryCode: their,
+        theme,
+        tags: [...(e.theirTags ?? [])].filter(Boolean),
+        subjects: [],
+        musicGenre: e.theirMusicGenre ?? null,
+        customAudioUrl: e.theirCustomAudioUrl ?? null,
+        uri: theirUri,
+      });
+    }
+    if (participants.length === 0) continue;
+
+    moments.push({
+      id: `local-wave-${e.id}`,
+      kind: "wave",
+      theme,
+      tags,
+      subjects: [],
+      createdAt: e.mutualAt ?? new Date().toISOString(),
+      from,
+      to: their || from,
+      participants,
     });
   }
   return moments;
@@ -1850,7 +2122,10 @@ async function postAtlasFireExplore(
 
 export type AtlasFireExploreOptions = {
   localMatches?: LocalRippleExploreMatch[];
+  localWaves?: LocalWaveExploreEcho[];
   viewerCountryCode?: string;
+  /** Your posted photos — used when server/local moments omit your side of a pair. */
+  viewerMyPhotos?: ViewerExplorePhoto[];
 };
 
 /** Load photos + vibes for Wavefire / Ripplefire cluster echo ids. */
@@ -1875,26 +2150,55 @@ export async function fetchAtlasFireExplore(
     (cluster.kind === "ripple" || cluster.kind === "wave");
 
   const finish = (moments: AtlasFireMoment[], error: string | null) => {
-    const tiles = flattenAtlasFireExplorePhotos(
+    const merged = mergeExploreWithLocalMoments(
       moments,
+      connectionIds,
+      collectLocalDeviceMoments,
+    );
+    const withViewer = enrichExploreWithViewerPhotos(
+      merged,
+      options?.viewerMyPhotos ?? [],
+      options?.viewerCountryCode,
+    );
+    const tiles = flattenAtlasFireExplorePhotos(
+      withViewer,
       cluster?.displayTheme ?? "",
     );
-    finalizeExploreDiagnostics(diag, moments, tiles.length);
-    return { moments, error, diagnostics: diag };
+    finalizeExploreDiagnostics(diag, withViewer, tiles.length);
+    return { moments: withViewer, error, diagnostics: diag };
+  };
+
+  const collectLocalDeviceMoments = (): AtlasFireMoment[] => {
+    if (!cluster) return [];
+    const ripple = options?.localMatches?.length
+      ? buildLocalMatchExploreMoments(
+          connectionIds,
+          options.localMatches,
+          cluster,
+          options.viewerCountryCode,
+        )
+      : [];
+    const wave = options?.localWaves?.length
+      ? buildLocalWaveExploreMoments(
+          connectionIds,
+          options.localWaves,
+          cluster,
+          options.viewerCountryCode,
+        )
+      : [];
+    return [...ripple, ...wave];
   };
 
   const tryLocalDeviceMoments = (): AtlasFireMoment[] | null => {
-    if (!options?.localMatches?.length || !cluster) return null;
+    const hasLocal =
+      (options?.localMatches?.length ?? 0) > 0 ||
+      (options?.localWaves?.length ?? 0) > 0;
+    if (!hasLocal || !cluster) return null;
     diag.localDevice.attempted = true;
-    const local = buildLocalMatchExploreMoments(
-      connectionIds,
-      options.localMatches,
-      cluster,
-      options.viewerCountryCode,
-    );
+    const local = collectLocalDeviceMoments();
     diag.localDevice.momentsFromMatches = local.length;
     diag.localDevice.matchIds = local
-      .map((m) => m.id.replace(/^local-match-/, ""))
+      .map((m) => m.id.replace(/^local-(match|wave)-/, ""))
       .slice(0, 12);
     return local.length > 0 ? local : null;
   };
@@ -1903,11 +2207,14 @@ export async function fetchAtlasFireExplore(
   if (
     ids.length === 0 &&
     diag.cluster.skippedLocalIds.length > 0 &&
-    options?.localMatches?.length
+    ((options?.localMatches?.length ?? 0) > 0 ||
+      (options?.localWaves?.length ?? 0) > 0)
   ) {
     const localOnly = tryLocalDeviceMoments();
     if (localOnly) {
-      diag.summary = `OK — ${localOnly.length} photo(s) from your ripples`;
+      const label =
+        cluster?.kind === "wave" ? "your waves" : "your ripples";
+      diag.summary = `OK — ${localOnly.length} photo(s) from ${label}`;
       return finish(localOnly, null);
     }
   }
@@ -2008,23 +2315,132 @@ export async function fetchAtlasFireExplore(
   return finish([], "Network error loading cluster photos.");
 }
 
+/** Keep explore scroll order aligned with cluster arcs (incl. `local-ripple-*`). */
+export function orderExploreMomentsByConnections(
+  moments: AtlasFireMoment[],
+  connectionIds: string[],
+): AtlasFireMoment[] {
+  if (moments.length <= 1 || connectionIds.length === 0) return moments;
+
+  const findForConnection = (connId: string): AtlasFireMoment | undefined => {
+    if (connId.startsWith("local-ripple-")) {
+      const matchId = connId.slice("local-ripple-".length);
+      return moments.find((m) => m.id === `local-match-${matchId}`);
+    }
+    if (connId.startsWith("local-wave-")) {
+      const echoId = connId.slice("local-wave-".length);
+      return moments.find((m) => m.id === `local-wave-${echoId}`);
+    }
+    return moments.find((m) => m.id === connId);
+  };
+
+  const ordered: AtlasFireMoment[] = [];
+  const used = new Set<string>();
+  for (const connId of connectionIds) {
+    const m = findForConnection(connId);
+    if (m && !used.has(m.id)) {
+      ordered.push(m);
+      used.add(m.id);
+    }
+  }
+  for (const m of moments) {
+    if (!used.has(m.id)) ordered.push(m);
+  }
+  return ordered;
+}
+
+function mergeExploreWithLocalMoments(
+  serverMoments: AtlasFireMoment[],
+  connectionIds: string[],
+  collectLocal: () => AtlasFireMoment[],
+): AtlasFireMoment[] {
+  const local = collectLocal();
+  const seen = new Set(serverMoments.map((m) => m.id));
+  const merged = [...serverMoments];
+  for (const lm of local) {
+    if (!seen.has(lm.id)) {
+      merged.push(lm);
+      seen.add(lm.id);
+    }
+  }
+  return orderExploreMomentsByConnections(merged, connectionIds);
+}
+
+const EXPLORE_INLINE_DATA_URI_MAX = 480_000;
+
+/** Pick a URI the explore pager can decode (stream API image when data: is huge). */
+export function resolveExplorePhotoDisplayUri(
+  participant: AtlasFireParticipant,
+  apiBase: string,
+  momentId?: string,
+): string {
+  const base = apiBase.replace(/\/$/, "");
+  const localMatchId =
+    momentId?.startsWith("local-match-") === true
+      ? momentId.slice("local-match-".length)
+      : undefined;
+  if (localMatchId) {
+    const stash = resolveMatchPhotoUris(localMatchId, {
+      myPhoto: "",
+      theirPhoto: "",
+    });
+    const pid = participant.photoId?.trim() ?? "";
+    if (pid.startsWith(LOCAL_MY_PHOTO_ID_PREFIX)) {
+      const mine = stash.myPhoto?.trim();
+      if (mine) return mine;
+    }
+    const theirs = stash.theirPhoto?.trim();
+    if (theirs) return theirs;
+    const fallback = participant.uri?.trim();
+    if (fallback) return fallback;
+  }
+
+  const raw = participant.uri?.trim() ?? "";
+  if (raw.startsWith("file:")) return raw;
+
+  const photoId = participant.photoId?.trim() ?? "";
+  const serverImage =
+    photoId && !photoId.startsWith("local-")
+      ? `${base}/api/photos/${encodeURIComponent(photoId)}/image`
+      : "";
+
+  if (raw.startsWith("data:")) {
+    if (raw.length <= EXPLORE_INLINE_DATA_URI_MAX) return raw;
+    return serverImage || raw;
+  }
+
+  if (serverImage) return serverImage;
+  return raw;
+}
+
+export function explorePhotoUriNeedsAuth(uri: string): boolean {
+  return /\/api\/photos\/[^/]+\/image(?:\?|$)/.test(uri);
+}
+
 /** Flatten explore moments into scrollable photo rows. */
 export function flattenAtlasFireExplorePhotos(
   moments: AtlasFireMoment[],
   fallbackTheme: string,
+  apiBase?: string,
 ): Array<{ key: string; theme: string; participant: AtlasFireParticipant }> {
+  const base = apiBase?.trim() || getApiBase();
   const out: Array<{
     key: string;
     theme: string;
     participant: AtlasFireParticipant;
   }> = [];
+  const seenTileKeys = new Set<string>();
   for (const m of moments) {
     for (const p of m.participants) {
-      if (!p.uri) continue;
+      const displayUri = resolveExplorePhotoDisplayUri(p, base, m.id);
+      if (!displayUri) continue;
+      const tileKey = `${p.photoId}:${displayUri}`;
+      if (seenTileKeys.has(tileKey)) continue;
+      seenTileKeys.add(tileKey);
       out.push({
         key: `${m.id}:${p.photoId}`,
         theme: p.theme.trim() || m.theme.trim() || fallbackTheme,
-        participant: p,
+        participant: { ...p, uri: displayUri },
       });
     }
   }

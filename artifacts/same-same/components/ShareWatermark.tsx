@@ -10,6 +10,13 @@ type ShareWatermarkProps = {
   compact?: boolean;
 };
 
+/** Keeps “SameWave” readable on busy share posters without a solid pill. */
+const READABILITY_SHADOW = {
+  textShadowColor: "rgba(0, 16, 24, 0.9)",
+  textShadowOffset: { width: 0, height: 1 },
+  textShadowRadius: 5,
+} as const;
+
 export function ShareWatermark({ layout, compact = false }: ShareWatermarkProps) {
   if (compact) {
     return (
@@ -40,9 +47,13 @@ export function ShareWatermark({ layout, compact = false }: ShareWatermarkProps)
       ]}
     >
       <View style={[styles.watermarkRow, { gap: layout.gapSm }]}>
-        <Icon name="wave" size={layout.watermarkIcon} color="#FFFFFF" />
+        <Icon name="wave" size={layout.watermarkIcon} color={SHARE_COLORS.text} />
         <Text
-          style={[styles.watermarkTitle, { fontSize: layout.watermarkTitle }]}
+          style={[
+            styles.watermarkTitle,
+            { fontSize: layout.watermarkTitle },
+            READABILITY_SHADOW,
+          ]}
         >
           SameWave
         </Text>
@@ -51,6 +62,7 @@ export function ShareWatermark({ layout, compact = false }: ShareWatermarkProps)
         style={[
           styles.watermarkSub,
           { fontSize: layout.watermarkSub, color: SHARE_COLORS.wave },
+          READABILITY_SHADOW,
         ]}
       >
         Find it on Google Play
@@ -73,7 +85,7 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     alignItems: "center",
     backgroundColor: SHARE_COLORS.watermarkBg,
-    borderColor: SHARE_COLORS.wave,
+    borderColor: SHARE_COLORS.watermarkBorder,
     gap: 4,
   },
   watermarkRow: {
@@ -82,7 +94,7 @@ const styles = StyleSheet.create({
   },
   watermarkTitle: {
     fontFamily: "Inter_700Bold",
-    color: "#FFFFFF",
+    color: SHARE_COLORS.text,
     letterSpacing: -0.3,
   },
   watermarkSub: {

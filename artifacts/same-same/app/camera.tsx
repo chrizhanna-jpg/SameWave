@@ -29,7 +29,7 @@ import {
   getTodaysChallenge,
   TAG_LIBRARY,
 } from "@/data/samplePhotos";
-import { analyzePhoto, uploadPhoto } from "@/utils/api";
+import { analyzePhoto, reactivateMyPhoto, uploadPhoto } from "@/utils/api";
 import { requestAtlasRefresh } from "@/utils/atlasHub";
 import { detectPhotoOrigin, type PhotoSource } from "@/utils/photoOrigin";
 import {
@@ -178,6 +178,7 @@ export default function CameraScreen() {
   const insets = useSafeAreaInsets();
   const {
     addMyPhoto,
+    activateMyPhotoForMatch,
     setMyPhotoBackendId,
     setMyPhotoUploadState,
     myPhotos,
@@ -603,9 +604,32 @@ export default function CameraScreen() {
   };
 
   const selectRecentPhoto = (uri: string) => {
+    const existing = myPhotos.find((p) => p.uri === uri);
     setSelectedPhoto(uri);
     pickedAssetRef.current = null;
     selectedAssetRef.current = null;
+    if (existing) {
+      const theme = normalizeTheme(existing.theme);
+      if (theme) {
+        setThemeText(theme);
+        setThemeEdited(true);
+        themeEditedRef.current = true;
+      }
+      if (existing.tags && existing.tags.length > 0) {
+        setSelectedTags(existing.tags);
+      }
+      if (existing.musicGenre) {
+        setMusicGenre(existing.musicGenre as MusicGenre);
+        setGenreEdited(true);
+        genreEditedRef.current = true;
+        const meta = MUSIC_LIBRARY.find((g) => g.id === existing.musicGenre);
+        if (meta) setVibeSearchText(meta.label);
+      }
+      if (existing.customAudioUrl) {
+        setCustomAudioUrl(existing.customAudioUrl);
+      }
+      setIsAi(existing.isAI === true);
+    }
   };
 
   const resetForNewPhoto = () => {
@@ -920,52 +944,27 @@ export default function CameraScreen() {
     // ships the base64 to the backend so others hear it on match.
     const recordedBase64 = customAudioBase64;
     const recordedUrl = customAudioUrl;
-    addMyPhoto(
-      selectedPhoto,
-      finalTheme,
-      merged,
-      isAi,
-      finalGenre,
-      recordedUrl ?? undefined,
-      // Free-form subjects from Gemini — captured in analyzeSelected
-      // and stashed on the local MyPhoto so the match screen can pass
-      // them into /candidates as the `subjects=` query param. Empty if
-      // analysis hadn't returned by the time the user submitted.
-      aiSubjectsRef.current,
-    );
-    // Stop the preview clip — user is leaving the screen.
-    void stopAudio();
-    void teardownPreviewSound();
-    // Fire-and-forget upload so others can match and Ripples/Waves can form.
+    const localUri = selectedPhoto;
+    const existing = myPhotos.find((p) => p.uri === localUri);
     const captured = selectedAssetRef.current;
-    if (captured?.base64) {
-      const localUri = selectedPhoto;
-      uploadPhoto({
-        imageBase64: captured.base64,
-        mimeType: captured.mimeType,
-        countryCode: myCountryCode,
+
+    if (existing?.backendId) {
+      // Reuse a photo that already reached the server — no duplicate row.
+      activateMyPhotoForMatch(localUri, {
+        theme: finalTheme,
+        tags: merged,
         musicGenre: finalGenre,
-        customAudioBase64: recordedBase64 ?? undefined,
-        customAudioMime: recordedBase64 ? RECORDING_MIME : undefined,
+        customAudioUrl: recordedUrl ?? undefined,
+        subjects: aiSubjectsRef.current,
+      });
+      void reactivateMyPhoto(existing.backendId, {
+        theme: finalTheme,
+        tags: merged,
+        musicGenre: finalGenre,
+        countryCode: myCountryCode,
       })
         .then((res) => {
-          // Store the backend ID back onto the local photo record so future
-          // votes against this photo can flag it as the voter's side and
-          // form echo offers. Also forward the upload-time `subjects`
-          // array — the upload's analysis is the authoritative one (it's
-          // what got persisted and what /candidates ranks against), so
-          // any drift between the pre-upload analyze pass and the
-          // upload-time pass is reconciled in favor of the server.
-          // setMyPhotoBackendId no-ops when the array is empty so a
-          // failed upload-time analysis doesn't wipe usable local
-          // subjects we already had.
           if (res?.id && localUri) {
-            // Success path: setMyPhotoBackendId also flips uploadState
-            // to "ok" — no separate setMyPhotoUploadState call needed.
-            // Merge theme/tags/music from the server response so Ripple
-            // (and /candidates) see the upload-time AI result even when
-            // the pre-upload /analyze-photo call failed or the user left
-            // the camera tab before it finished.
             setMyPhotoBackendId(localUri, {
               backendId: res.id,
               subjects: res.subjects,
@@ -974,31 +973,53 @@ export default function CameraScreen() {
               musicGenre: res.musicGenre,
             });
             requestAtlasRefresh();
-          } else if (localUri) {
-            // uploadPhoto resolved but the body was malformed / missing
-            // an id — treat as failed so the match screen surfaces a
-            // real "upload failed, retry" instead of pretending we're
-            // still uploading. Until v1.2.5 this was silently swallowed
-            // and left users stuck at the "still uploading" footer.
-            setMyPhotoUploadState(localUri, "failed");
           }
         })
-        .catch(() => {
-          // Network / fetch threw — same surfacing as the malformed-body
-          // case above. The user can re-tap "Post a photo" or use the
-          // retry path on the match screen.
-          if (localUri) setMyPhotoUploadState(localUri, "failed");
-        });
-    } else if (selectedPhoto) {
-      // Photo without base64 — image picker / camera failed to
-      // include the encoded body, so the upload was never attempted.
-      // Without this branch the photo would sit at uploadState=
-      // "pending" forever, even though no request is in flight. Mark
-      // it failed so the match screen surfaces "didn't reach the
-      // server, post again" instead of an indefinite "still
-      // uploading" footer.
-      setMyPhotoUploadState(selectedPhoto, "failed");
+        .catch(() => {});
+    } else {
+      addMyPhoto(
+        localUri,
+        finalTheme,
+        merged,
+        isAi,
+        finalGenre,
+        recordedUrl ?? undefined,
+        aiSubjectsRef.current,
+      );
+      if (captured?.base64) {
+        uploadPhoto({
+          imageBase64: captured.base64,
+          mimeType: captured.mimeType,
+          countryCode: myCountryCode,
+          musicGenre: finalGenre,
+          customAudioBase64: recordedBase64 ?? undefined,
+          customAudioMime: recordedBase64 ? RECORDING_MIME : undefined,
+        })
+          .then((res) => {
+            if (res?.id && localUri) {
+              setMyPhotoBackendId(localUri, {
+                backendId: res.id,
+                subjects: res.subjects,
+                theme: res.theme,
+                tags: res.tags,
+                musicGenre: res.musicGenre,
+              });
+              requestAtlasRefresh();
+            } else if (localUri) {
+              setMyPhotoUploadState(localUri, "failed");
+            }
+          })
+          .catch(() => {
+            if (localUri) setMyPhotoUploadState(localUri, "failed");
+          });
+      } else if (localUri && !existing?.backendId) {
+        setMyPhotoUploadState(localUri, "failed");
+      }
     }
+
+    // Stop the preview clip — user is leaving the screen.
+    void stopAudio();
+    void teardownPreviewSound();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setTimeout(() => {
       // Ripple opens `/camera` without `?from=home`. `router.back()` is flaky

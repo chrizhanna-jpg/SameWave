@@ -1,6 +1,7 @@
 import React, { useCallback } from "react";
 import {
   Image,
+  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -24,6 +25,12 @@ import { Surface } from "@/components/Surface";
 import { GradientCard } from "@/components/GradientCard";
 import { PressableScale } from "@/components/PressableScale";
 import { profileEchoBellA11y } from "@/data/waveRippleGlossary";
+import {
+  COPYRIGHT_FOOTER_LABEL,
+  COPYRIGHT_FOOTER_LINE,
+  SUPPORT_EMAIL,
+  WAVE_BLUE,
+} from "@/data/studioLegal";
 
 // Region buckets used by the World Map breakdown. Order roughly matches
 // what feels exciting to the user — Europe & Asia first since the
@@ -107,7 +114,7 @@ function NavRow({
   );
 }
 
-// Tiny "Signed in" pill that lives directly under the "My Journey" header
+// Tiny "Signed in" pill that lives directly under the "My Path" header
 // title. Purely an ambient cue — the user explicitly asked for a small,
 // always-visible reassurance that the account is active, so they don't
 // have to scroll all the way down to the SignedInRow at the bottom of
@@ -272,7 +279,7 @@ export default function ProfileScreen() {
       <View style={[styles.header, { paddingTop: topPadding + 8 }]}>
         <View style={styles.headerTitleCol}>
           <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-            My Journey
+            My Path
           </Text>
           {/* Tiny "Signed in" cue under the title — purely ambient
               reassurance. The full sign-out row still lives at the
@@ -436,6 +443,19 @@ export default function ProfileScreen() {
           }
           onPress={() => router.push("/match-history")}
           accessibilityLabel="Open full match history"
+        />
+
+        <NavRow
+          icon="x"
+          tint={colors.mutedForeground}
+          title="Recent Different"
+          subtitle={
+            passedCount === 0
+              ? "Nothing to reconsider"
+              : `${passedCount} ${passedCount === 1 ? "pass" : "passes"} · changed your mind?`
+          }
+          onPress={() => router.push("/passes")}
+          accessibilityLabel="Open recent passes"
         />
 
         {/* ─────────────── World Map (merged in from old World tab) ─────────────── */}
@@ -773,21 +793,6 @@ export default function ProfileScreen() {
           </ScrollView>
         </View>
 
-        {/* Match History was moved up next to the Recent matches preview.
-            Recent passes + My Photos remain here as deep-link rows. */}
-        <NavRow
-          icon="x"
-          tint={colors.mutedForeground}
-          title="Recent Different"
-          subtitle={
-            passedCount === 0
-              ? "Nothing to reconsider"
-              : `${passedCount} ${passedCount === 1 ? "pass" : "passes"} · changed your mind?`
-          }
-          onPress={() => router.push("/passes")}
-          accessibilityLabel="Open recent passes"
-        />
-
         <NavRow
           icon="camera"
           tint={colors.gold}
@@ -800,6 +805,54 @@ export default function ProfileScreen() {
           onPress={() => router.push("/my-photos")}
           accessibilityLabel="Open your posted photos"
         />
+
+        <NavRow
+          icon="lock"
+          tint={WAVE_BLUE}
+          title="Legal, copyright & policies"
+          subtitle="Privacy, terms, safety, IP · SameWave Studios"
+          onPress={() => router.push("/studio-legal")}
+          accessibilityLabel="Open legal, copyright, and policy information"
+        />
+
+        <View style={styles.studioFooterRow}>
+          <View style={styles.studioFooterCol}>
+            <Text
+              style={[styles.studioFooterLabel, { color: colors.mutedForeground }]}
+            >
+              {COPYRIGHT_FOOTER_LABEL}
+            </Text>
+            <Text
+              style={[styles.studioCopyright, { color: colors.mutedForeground }]}
+            >
+              {COPYRIGHT_FOOTER_LINE}
+            </Text>
+          </View>
+          <PressableScale
+            onPress={() =>
+              Linking.openURL(
+                `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("SameWave feedback")}`,
+              ).catch(() => {})
+            }
+            haptic="light"
+            accessibilityLabel={`Email ${SUPPORT_EMAIL} for issues and feature requests`}
+            style={styles.studioContactCol}
+          >
+            <Text
+              style={[styles.studioFooterLabel, { color: colors.mutedForeground }]}
+            >
+              Contact
+            </Text>
+            <Text style={[styles.studioContactEmail, { color: WAVE_BLUE }]}>
+              {SUPPORT_EMAIL}
+            </Text>
+            <Text
+              style={[styles.studioContactHint, { color: colors.mutedForeground }]}
+            >
+              Issues · features · feedback
+            </Text>
+          </PressableScale>
+        </View>
 
         <SignedInRow />
 
@@ -883,7 +936,7 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     letterSpacing: -0.5,
   },
-  // Tiny pill that sits directly under the "My Journey" title to confirm
+  // Tiny pill that sits directly under the "My Path" title to confirm
   // the user is signed in. Kept intentionally low-key (small text, no
   // background) so it reads as ambient status, not a CTA.
   headerSignedInBadge: {
@@ -1234,5 +1287,47 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     textAlign: "center",
     lineHeight: 20,
+  },
+  studioFooterRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 16,
+    marginHorizontal: 20,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  studioFooterCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  studioContactCol: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: "flex-end",
+  },
+  studioFooterLabel: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    marginBottom: 4,
+  },
+  studioCopyright: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+    lineHeight: 16,
+  },
+  studioContactEmail: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    lineHeight: 16,
+    textAlign: "right",
+  },
+  studioContactHint: {
+    fontSize: 10,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 14,
+    marginTop: 4,
+    textAlign: "right",
   },
 });

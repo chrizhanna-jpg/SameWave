@@ -64,8 +64,8 @@ export function PhotoCard({
   const isAi = showAiBadge ?? isAiPhoto(uri);
   const showSample = (showSampleBadge ?? isSamplePhoto(uri)) && !isAi;
   const badgeOffset = size === "sm" ? 4 : 6;
-  const stockMarkSize: "sm" | "md" | "lg" =
-    size === "sm" ? "sm" : size === "md" ? "md" : "lg";
+  const stockMarkSize: "sm" | "md" | "lg" | "xl" =
+    size === "sm" ? "md" : size === "md" ? "lg" : "xl";
   const aiBadgeSize: "sm" | "md" | "lg" =
     size === "sm" ? "sm" : size === "md" ? "md" : "lg";
 
@@ -95,7 +95,7 @@ export function PhotoCard({
       {showSample && (
         <StockPhotoWatermark
           size={stockMarkSize}
-          style={{ top: badgeOffset, right: badgeOffset }}
+          style={{ top: badgeOffset, left: badgeOffset }}
         />
       )}
       {audioUrl ? (

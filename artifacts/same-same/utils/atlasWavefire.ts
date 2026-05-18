@@ -171,13 +171,13 @@ export function orderWavefireRingCountryCodes(
  * Groups recent atlas arcs of one kind (`ripple` or mutual `wave`) when they link
  * by **theme OR shared vibe tags OR shared subjects** (transitive closure).
  */
-export function detectAtlasThemeCluster(
+export function detectAtlasThemeClusters(
   connections: AtlasConnection[],
   windowMs: number,
   minEvents: number,
   minCountries: number,
   kind: AtlasConnection["kind"],
-): AtlasThemeCluster | null {
+): AtlasThemeCluster[] {
   const now = Date.now();
   const recentAll = connections.filter((c) => {
     if (c.kind !== kind) return false;
@@ -194,7 +194,7 @@ export function detectAtlasThemeCluster(
         f.subjects.size > 0,
     );
 
-  if (feats.length < minEvents) return null;
+  if (feats.length < minEvents) return [];
 
   const uf = new UnionFind(feats.length);
   for (let i = 0; i < feats.length; i++) {
@@ -211,7 +211,7 @@ export function detectAtlasThemeCluster(
     else buckets.set(r, [feats[i].c]);
   }
 
-  let best: AtlasThemeCluster | null = null;
+  const clusters: AtlasThemeCluster[] = [];
   for (const list of buckets.values()) {
     if (list.length < minEvents) continue;
     const countries = new Set<string>();
@@ -220,28 +220,46 @@ export function detectAtlasThemeCluster(
       countries.add(c.to);
     }
     if (countries.size < minCountries) continue;
-    if (!best || list.length > best.connections.length) {
-      const displayTheme = pickDisplayTheme(list);
-      const theme = clusterSeedKey(list, displayTheme);
-      best = {
-        theme,
-        displayTheme,
-        connections: list,
-        countryCodes: [...countries],
-      };
-    }
+    const displayTheme = pickDisplayTheme(list);
+    const theme = clusterSeedKey(list, displayTheme);
+    clusters.push({
+      theme,
+      displayTheme,
+      connections: list,
+      countryCodes: [...countries],
+    });
   }
-  return best;
+  clusters.sort((a, b) => b.connections.length - a.connections.length);
+  return clusters;
 }
 
-/** Wavefire — mutual **waves** only (both people rippled back). */
-export function detectWavefireCluster(
+/** Largest cluster only — convenience for callers that need a single result. */
+export function detectAtlasThemeCluster(
   connections: AtlasConnection[],
   windowMs: number,
   minEvents: number,
   minCountries: number,
+  kind: AtlasConnection["kind"],
 ): AtlasThemeCluster | null {
-  return detectAtlasThemeCluster(
+  return (
+    detectAtlasThemeClusters(
+      connections,
+      windowMs,
+      minEvents,
+      minCountries,
+      kind,
+    )[0] ?? null
+  );
+}
+
+/** Wavefire — mutual **waves** only (both people rippled back). */
+export function detectWavefireClusters(
+  connections: AtlasConnection[],
+  windowMs: number,
+  minEvents: number,
+  minCountries: number,
+): AtlasThemeCluster[] {
+  return detectAtlasThemeClusters(
     connections,
     windowMs,
     minEvents,
@@ -250,18 +268,46 @@ export function detectWavefireCluster(
   );
 }
 
-/** Ripplefire — one-way **ripples** only; same clustering rules, easier threshold. */
-export function detectRipplefireCluster(
+export function detectWavefireCluster(
   connections: AtlasConnection[],
   windowMs: number,
   minEvents: number,
   minCountries: number,
 ): AtlasThemeCluster | null {
-  return detectAtlasThemeCluster(
+  return detectWavefireClusters(
+    connections,
+    windowMs,
+    minEvents,
+    minCountries,
+  )[0] ?? null;
+}
+
+/** Ripplefire — one-way **ripples** only; same clustering rules, easier threshold. */
+export function detectRipplefireClusters(
+  connections: AtlasConnection[],
+  windowMs: number,
+  minEvents: number,
+  minCountries: number,
+): AtlasThemeCluster[] {
+  return detectAtlasThemeClusters(
     connections,
     windowMs,
     minEvents,
     minCountries,
     "ripple",
   );
+}
+
+export function detectRipplefireCluster(
+  connections: AtlasConnection[],
+  windowMs: number,
+  minEvents: number,
+  minCountries: number,
+): AtlasThemeCluster | null {
+  return detectRipplefireClusters(
+    connections,
+    windowMs,
+    minEvents,
+    minCountries,
+  )[0] ?? null;
 }

@@ -227,7 +227,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: "My Waves",
+          title: "My Path",
           tabBarIcon: ({ color, focused }) => (
             <TabIcon
               name="globe"

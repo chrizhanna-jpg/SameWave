@@ -976,7 +976,7 @@ function PhotoSlot({
         ]}
       >
         <Image source={{ uri: thumbUri(photo.uri) }} style={styles.photo} />
-        {isSamplePhoto(photo.uri) ? <StockPhotoWatermark size="sm" /> : null}
+        {isSamplePhoto(photo.uri) ? <StockPhotoWatermark size="md" /> : null}
         {/* Mic badge for any real (non-sample) photo that carries a
             custom voice clip. Today the discovery feed is dominated by
             synthetic SamplePhotos which never set customAudioUrl, so

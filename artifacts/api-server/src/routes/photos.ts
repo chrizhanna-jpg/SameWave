@@ -12,6 +12,8 @@ import { getOpenAIEnv } from "../lib/openaiEnv";
 import { resolveUserFromRequest } from "../lib/users";
 import { analyzePhoto, extractObjectTags } from "../lib/photoAnalysis";
 import { recordEchoOffer, revokeEchoForUnvote } from "./echoes";
+import { normalizeMusicGenre } from "../lib/allowedMusicGenres";
+import { sendPhotoReportAlert } from "../lib/moderationEmail";
 
 const router: IRouter = Router();
 
@@ -254,42 +256,7 @@ router.post("/photos", async (req, res) => {
     // legacy, or malicious client can't store a value the playback
     // path can't resolve (which would crash `pickClipForSeed` on the
     // receiving side).
-    const ALLOWED_MUSIC_GENRES = new Set([
-      "joy",
-      "overjoyed",
-      "elated",
-      "amusement",
-      "cheers",
-      "love",
-      "caring",
-      "romance",
-      "gratitude",
-      "pride",
-      "hope",
-      "wonder",
-      "fascinated",
-      "calm",
-      "content",
-      "chilling",
-      "relaxed",
-      "nostalgia",
-      "longing",
-      "sad",
-      "heartbroken",
-      "lonely",
-      "grief",
-      "fear",
-      "scared",
-      "afraid",
-      "anger",
-      "stress",
-      "passion",
-    ]);
-    const musicGenre =
-      typeof body.musicGenre === "string" &&
-      ALLOWED_MUSIC_GENRES.has(body.musicGenre)
-        ? body.musicGenre
-        : null;
+    const musicGenre = normalizeMusicGenre(body.musicGenre);
 
     // Optional user-recorded vibe clip. Only persist when both fields
     // are valid and the size fits — otherwise silently drop so a
@@ -1640,6 +1607,52 @@ router.get("/photos/atlas/:countryCode", async (req, res) => {
   }
 });
 
+// ---- GET /api/photos/:id/image --------------------------------------------
+// Streams one photo for in-app viewers (Atlas Ripplefire / Wavefire explore).
+// Avoids multi‑MB base64 JSON payloads that break RN image decoders in lists.
+router.get("/photos/:id/image", async (req, res) => {
+  try {
+    const user = await resolveUserFromRequest(req);
+    if (!user) {
+      res.status(401).json({ error: "authentication required" });
+      return;
+    }
+    const photoId = String(req.params.id ?? "").trim();
+    if (!photoId || photoId.length > 64) {
+      res.status(400).json({ error: "invalid photo id" });
+      return;
+    }
+
+    const rows = await db.execute(sql`
+      SELECT mime_type, bytes_base64
+      FROM photos
+      WHERE id::text = ${photoId}
+        AND status = 'active'
+        AND report_count < ${REPORT_HIDE_THRESHOLD}
+        AND (expires_at IS NULL OR expires_at > now())
+      LIMIT 1
+    `);
+    const r = rows.rows[0] as Record<string, unknown> | undefined;
+    if (!r) {
+      res.status(404).json({ error: "photo not found" });
+      return;
+    }
+    const mime = String(r.mime_type ?? "image/jpeg");
+    const b64 = String(r.bytes_base64 ?? "");
+    if (!b64) {
+      res.status(404).json({ error: "photo not found" });
+      return;
+    }
+    const buf = Buffer.from(b64, "base64");
+    res.setHeader("Content-Type", mime);
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    res.send(buf);
+  } catch (err) {
+    req.log.error({ err }, "photo image failed");
+    res.status(500).json({ error: "photo image failed" });
+  }
+});
+
 // ---- POST /api/photos/:id/vote --------------------------------------------
 // Body: { verdict: "same" | "different" }
 router.post("/photos/:id/vote", async (req, res) => {
@@ -1820,6 +1833,144 @@ router.get("/photos/:id/match-stats", async (req, res) => {
   }
 });
 
+// ---- POST /api/photos/:id/reactivate --------------------------------------
+// Reuse an existing upload for a new match session — no duplicate image row.
+// Body: { theme?, tags?, musicGenre?, countryCode? }
+router.post("/photos/:id/reactivate", async (req, res) => {
+  try {
+    const user = await resolveUserFromRequest(req);
+    if (!user) {
+      res.status(401).json({ error: "authentication required" });
+      return;
+    }
+    const photoId = req.params.id;
+    const body = (req.body ?? {}) as {
+      theme?: unknown;
+      tags?: unknown;
+      musicGenre?: unknown;
+      countryCode?: unknown;
+    };
+
+    const rows = await db
+      .select({
+        id: photosTable.id,
+        userId: photosTable.userId,
+        theme: photosTable.theme,
+        tags: photosTable.tags,
+        subjects: photosTable.subjects,
+        musicGenre: photosTable.musicGenre,
+      })
+      .from(photosTable)
+      .where(eq(photosTable.id, photoId))
+      .limit(1);
+    const row = rows[0];
+    if (!row) {
+      res.status(404).json({ error: "photo not found" });
+      return;
+    }
+    if (row.userId !== user.id) {
+      res.status(403).json({ error: "forbidden" });
+      return;
+    }
+
+    const countryCode =
+      typeof body.countryCode === "string" && body.countryCode.length === 2
+        ? body.countryCode.toUpperCase()
+        : null;
+    if (countryCode) {
+      await db
+        .update(usersTable)
+        .set({ countryCode })
+        .where(eq(usersTable.id, user.id));
+    }
+
+    const nextTheme =
+      typeof body.theme === "string" && body.theme.trim().length > 0
+        ? body.theme.trim().slice(0, 64)
+        : row.theme;
+    const nextTags = Array.isArray(body.tags)
+      ? body.tags
+          .filter((t): t is string => typeof t === "string" && t.length > 0)
+          .slice(0, 12)
+      : row.tags;
+    const nextMusic =
+      body.musicGenre !== undefined
+        ? normalizeMusicGenre(body.musicGenre)
+        : row.musicGenre;
+
+    const [updated] = await db
+      .update(photosTable)
+      .set({
+        theme: nextTheme,
+        tags: nextTags,
+        musicGenre: nextMusic,
+        status: "active",
+        expiresAt: new Date(Date.now() + RETENTION_MS),
+        ...(countryCode ? { countryCode } : {}),
+      })
+      .where(eq(photosTable.id, photoId))
+      .returning({
+        id: photosTable.id,
+        theme: photosTable.theme,
+        tags: photosTable.tags,
+        subjects: photosTable.subjects,
+        musicGenre: photosTable.musicGenre,
+      });
+
+    try {
+      await db
+        .delete(seenPhotosTable)
+        .where(eq(seenPhotosTable.userId, user.id));
+    } catch (clearErr) {
+      req.log.warn({ err: clearErr }, "seen-photos clear after reactivate failed");
+    }
+
+    res.json({
+      id: updated.id,
+      theme: updated.theme,
+      tags: updated.tags ?? [],
+      subjects: updated.subjects ?? [],
+      musicGenre: updated.musicGenre,
+      reactivated: true,
+    });
+  } catch (err) {
+    req.log.error({ err }, "photo reactivate failed");
+    res.status(500).json({ error: "reactivate failed" });
+  }
+});
+
+// ---- DELETE /api/photos/:id -----------------------------------------------
+// Owner-only. Cascading FKs remove votes, reports, echoes, and seen rows.
+router.delete("/photos/:id", async (req, res) => {
+  try {
+    const user = await resolveUserFromRequest(req);
+    if (!user) {
+      res.status(401).json({ error: "authentication required" });
+      return;
+    }
+    const photoId = req.params.id;
+    const rows = await db
+      .select({ id: photosTable.id, userId: photosTable.userId })
+      .from(photosTable)
+      .where(eq(photosTable.id, photoId))
+      .limit(1);
+    const row = rows[0];
+    if (!row) {
+      res.status(404).json({ error: "photo not found" });
+      return;
+    }
+    if (row.userId !== user.id) {
+      res.status(403).json({ error: "forbidden" });
+      return;
+    }
+    await db.delete(photosTable).where(eq(photosTable.id, photoId));
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "photo delete failed");
+    res.status(500).json({ error: "delete failed" });
+  }
+});
+
 // ---- POST /api/photos/:id/report ------------------------------------------
 // Body: { reason?: string }
 router.post("/photos/:id/report", async (req, res) => {
@@ -1847,10 +1998,20 @@ router.post("/photos/:id/report", async (req, res) => {
       })
       .returning({ id: reportsTable.id });
     if (inserted.length > 0) {
-      await db
+      const [countRow] = await db
         .update(photosTable)
         .set({ reportCount: sql`${photosTable.reportCount} + 1` })
-        .where(eq(photosTable.id, photoId));
+        .where(eq(photosTable.id, photoId))
+        .returning({ reportCount: photosTable.reportCount });
+      const reportCount = countRow?.reportCount ?? 0;
+      if (reportCount > 1) {
+        void sendPhotoReportAlert(req.log, {
+          photoId,
+          reportCount,
+          reason,
+          reporterUserId: user.id,
+        });
+      }
     }
 
     res.json({ ok: true });

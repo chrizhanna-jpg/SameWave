@@ -8,6 +8,7 @@ import React, {
   useState,
 } from "react";
 import {
+  deleteMyPhoto,
   fetchEchoesInbox,
   fetchEchoesMine,
   fetchMyCountryCode,
@@ -315,6 +316,25 @@ interface AppContextValue extends AppState {
   setMyPhotoUploadState: (
     uri: string,
     state: NonNullable<MyPhoto["uploadState"]>,
+  ) => void;
+  /**
+   * Remove one of the user's posted photos from device state and, when
+   * `backendId` is known, DELETE it on the server.
+   */
+  removeMyPhoto: (uri: string) => Promise<boolean>;
+  /**
+   * Promote an existing local photo to "today's match" without duplicating
+   * the myPhotos list. Used when reusing a prior upload from the camera tab.
+   */
+  activateMyPhotoForMatch: (
+    uri: string,
+    patch: {
+      theme: string;
+      tags?: string[];
+      musicGenre?: string;
+      customAudioUrl?: string;
+      subjects?: string[];
+    },
   ) => void;
   completeOnboarding: () => Promise<void>;
   resetOnboarding: () => Promise<void>;
@@ -1043,33 +1063,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     customAudioUrl?: string,
     subjects?: string[],
   ) => {
-    const photo: MyPhoto = {
-      uri,
-      uploadedAt: new Date().toISOString(),
-      theme,
-      tags: tags ?? [],
-      // Persist subjects on the local record. Empty array (rather than
-      // undefined) keeps the match screen's `mySubjects ?? []` paths
-      // simple and matches the server-side `default ARRAY[]::text[]`.
-      subjects: subjects ?? [],
-      isAI: isAI ?? false,
-      musicGenre: musicGenre,
-      customAudioUrl,
-      // Camera screen fires POST /photos and patches to "ok" or "failed".
-      uploadState: "pending",
-    };
     setState((prev) => {
-      // Adding a new photo is a "fresh chance" moment: this new
-      // photo may match candidates the user already saw (and
-      // dismissed without voting) for previous photos. Clear the
-      // local seen ledger so the next /candidates fetch doesn't
-      // re-send those IDs as excludeIds. The server independently
-      // wipes its seen_photos table on POST /photos for the same
-      // reason. The votes table is untouched on both sides — past
-      // explicit same/no decisions still stand.
+      const existing = prev.myPhotos.find((p) => p.uri === uri);
+      const photo: MyPhoto = {
+        uri,
+        uploadedAt: new Date().toISOString(),
+        theme,
+        tags: tags ?? [],
+        subjects: subjects ?? [],
+        isAI: isAI ?? existing?.isAI ?? false,
+        musicGenre: musicGenre ?? existing?.musicGenre,
+        customAudioUrl: customAudioUrl ?? existing?.customAudioUrl,
+        backendId: existing?.backendId,
+        uploadState: existing?.backendId ? "ok" : "pending",
+      };
+      const rest = prev.myPhotos.filter((p) => p.uri !== uri);
       const newState = {
         ...prev,
-        myPhotos: [photo, ...prev.myPhotos],
+        myPhotos: [photo, ...rest],
         seenPhotoKeys: [],
         seenPhotoIds: [],
       };
@@ -1077,6 +1088,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return newState;
     });
   }, []);
+
+  const activateMyPhotoForMatch = useCallback(
+    (
+      uri: string,
+      patch: {
+        theme: string;
+        tags?: string[];
+        musicGenre?: string;
+        customAudioUrl?: string;
+        subjects?: string[];
+      },
+    ) => {
+      setState((prev) => {
+        const existing = prev.myPhotos.find((p) => p.uri === uri);
+        if (!existing) return prev;
+        const updated: MyPhoto = {
+          ...existing,
+          uploadedAt: new Date().toISOString(),
+          theme: patch.theme,
+          tags: patch.tags ?? existing.tags ?? [],
+          subjects: patch.subjects ?? existing.subjects ?? [],
+          musicGenre: patch.musicGenre ?? existing.musicGenre,
+          customAudioUrl: patch.customAudioUrl ?? existing.customAudioUrl,
+          uploadState: existing.backendId ? "ok" : existing.uploadState,
+        };
+        const rest = prev.myPhotos.filter((p) => p.uri !== uri);
+        const newState = {
+          ...prev,
+          myPhotos: [updated, ...rest],
+          seenPhotoKeys: [],
+          seenPhotoIds: [],
+        };
+        saveState(newState);
+        return newState;
+      });
+    },
+    [],
+  );
 
   const setMyPhotoBackendId = useCallback((uri: string, ack: MyPhotoUploadAck) => {
     setState((prev) => {
@@ -1158,6 +1207,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     },
     [],
   );
+
+  const removeMyPhoto = useCallback(async (uri: string): Promise<boolean> => {
+    const target = stateRef.current.myPhotos.find((p) => p.uri === uri);
+    if (!target) return false;
+
+    if (target.backendId) {
+      const ok = await deleteMyPhoto(target.backendId);
+      if (!ok) return false;
+    }
+
+    setState((prev) => {
+      const nextPhotos = prev.myPhotos.filter((p) => p.uri !== uri);
+      if (nextPhotos.length === prev.myPhotos.length) return prev;
+      const removedId = target.backendId;
+      const newState = {
+        ...prev,
+        myPhotos: nextPhotos,
+        seenPhotoIds: removedId
+          ? prev.seenPhotoIds.filter((id) => id !== removedId)
+          : prev.seenPhotoIds,
+      };
+      saveState(newState);
+      return newState;
+    });
+    AI_PHOTO_URIS.delete(uri);
+    requestAtlasRefresh();
+    return true;
+  }, []);
 
   const completeOnboarding = useCallback(async () => {
     const snapshot: AppState = {
@@ -1549,6 +1626,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addMyPhoto,
         setMyPhotoBackendId,
         setMyPhotoUploadState,
+        removeMyPhoto,
+        activateMyPhotoForMatch,
         completeOnboarding,
         resetOnboarding,
         unlockPro,

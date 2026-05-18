@@ -19,6 +19,7 @@ import { PhotoCard } from "@/components/PhotoCard";
 import { MatchTierChips } from "@/components/MatchTierChips";
 import { timeAgo } from "@/utils/timeAgo";
 import { MATCH_HISTORY_EMPTY } from "@/data/waveRippleGlossary";
+import { confirmReportPhoto } from "@/utils/photoModeration";
 
 export default function MatchHistoryScreen() {
   const colors = useColors();
@@ -203,6 +204,40 @@ export default function MatchHistoryScreen() {
                 </Text>
               </TouchableOpacity>
             )}
+
+            {match.theirPhotoId ? (
+              <TouchableOpacity
+                onPress={(e) => {
+                  e.stopPropagation?.();
+                  confirmReportPhoto(match.theirPhotoId!, {
+                    countryLabel: match.theirCountry,
+                  });
+                }}
+                style={[
+                  styles.quickBtn,
+                  {
+                    backgroundColor: colors.background,
+                    borderColor: colors.border,
+                  },
+                ]}
+                hitSlop={6}
+                accessibilityLabel={`Report photo from ${match.theirCountry}`}
+              >
+                <Icon
+                  name="alert-circle"
+                  size={12}
+                  color={colors.mutedForeground}
+                />
+                <Text
+                  style={[
+                    styles.quickBtnText,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  Report
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
 
           <TouchableOpacity

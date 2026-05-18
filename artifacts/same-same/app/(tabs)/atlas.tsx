@@ -20,7 +20,8 @@ import { Icon } from "@/components/Icon";
 import { OceanShimmer } from "@/components/OceanShimmer";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
-import type { Match } from "@/context/AppContext";
+import type { EchoCard, Match } from "@/context/AppContext";
+import type { LocalWaveExploreEcho } from "@/utils/api";
 import {
   fetchAtlasSummary,
   fetchAtlasTabDiagnostics,
@@ -97,6 +98,50 @@ function mergeLocalSameRippleArcs(
   return [...api, ...added];
 }
 
+/** Mutual Waves on device before the server arc appears on Atlas. */
+function mergeLocalWaveArcs(
+  api: AtlasConnection[],
+  mutualEchoes: EchoCard[],
+  myCountryCode: string | undefined,
+  matches: Match[],
+  isSignedIn: boolean,
+): AtlasConnection[] {
+  if (!isSignedIn) return api;
+  const mine = resolveViewerIso2(myCountryCode, matches);
+  if (!mine) return api;
+
+  const hasApiWaveBetween = (to: string) =>
+    api.some(
+      (c) =>
+        c.kind === "wave" &&
+        ((c.from === mine && c.to === to) || (c.from === to && c.to === mine)),
+    );
+
+  const added: AtlasConnection[] = [];
+  for (const e of mutualEchoes) {
+    if (e.state !== "mutual") continue;
+    const to = (e.theirs.countryCode ?? "").trim().toUpperCase();
+    if (!/^[A-Z]{2}$/.test(to) || to === mine) continue;
+    if (hasApiWaveBetween(to)) continue;
+    const theme = (e.theme ?? "").trim();
+    added.push({
+      id: `local-wave-${e.id}`,
+      kind: "wave",
+      from: mine,
+      to,
+      fresh: true,
+      createdAt: e.mutualAt ?? e.createdAt,
+      theme,
+      tags: [],
+      subjects: [],
+      color: "#D4AF37",
+      mine: true,
+    });
+  }
+  if (added.length === 0) return api;
+  return [...api, ...added];
+}
+
 export default function AtlasScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -117,23 +162,86 @@ export default function AtlasScreen() {
   const [diagBusy, setDiagBusy] = useState(false);
   const [diagJson, setDiagJson] = useState<string | null>(null);
 
-  const { matches, myCountryCode } = useApp();
+  const { matches, myCountryCode, mutualEchoes, myPhotos } = useApp();
 
   const globeConnections = useMemo(
     () =>
-      mergeLocalSameRippleArcs(
-        connections,
-        matches,
+      mergeLocalWaveArcs(
+        mergeLocalSameRippleArcs(
+          connections,
+          matches,
+          myCountryCode,
+          !!isSignedIn,
+        ),
+        mutualEchoes,
         myCountryCode,
+        matches,
         !!isSignedIn,
       ),
-    [connections, matches, myCountryCode, isSignedIn],
+    [connections, matches, mutualEchoes, myCountryCode, isSignedIn],
+  );
+
+  const viewerExplorePhotos = useMemo(
+    () =>
+      myPhotos.map((p) => ({
+        uri: p.uri,
+        backendId: p.backendId,
+        theme: p.theme,
+        tags: p.tags,
+        subjects: p.subjects,
+        musicGenre: p.musicGenre,
+        customAudioUrl: p.customAudioUrl,
+      })),
+    [myPhotos],
   );
 
   const localRippleMatches = useMemo(
-    () => matches.filter((m) => m.verdict === "same"),
-    [matches],
+    () =>
+      matches
+        .filter((m) => m.verdict === "same")
+        .map((m) => {
+          const mine = myPhotos.find((p) => p.uri === m.myPhoto);
+          return {
+            id: m.id,
+            verdict: m.verdict,
+            myPhoto: m.myPhoto,
+            theirPhoto: m.theirPhoto,
+            theirPhotoId: m.theirPhotoId,
+            myPhotoId: mine?.backendId,
+            theirCountryCode: m.theirCountryCode,
+            myCountry: m.myCountry,
+            theme: m.theme,
+            theirActualTheme: m.theme,
+            theirTags: m.sharedTags,
+            sharedTags: m.sharedTags,
+            theirMusicGenre: undefined,
+            theirCustomAudioUrl: undefined,
+            myMusicGenre: mine?.musicGenre,
+            myCustomAudioUrl: mine?.customAudioUrl,
+            timestamp: m.timestamp,
+          };
+        }),
+    [matches, myPhotos],
   );
+
+  const localWaveEchoes = useMemo((): LocalWaveExploreEcho[] => {
+    const mine = resolveViewerIso2(myCountryCode, matches);
+    return mutualEchoes
+      .filter((e) => e.state === "mutual")
+      .map((e) => ({
+        id: e.id,
+        theme: (e.theme ?? "").trim(),
+        myPhoto: e.mine.uri,
+        myPhotoId: e.mine.id,
+        theirPhoto: e.theirs.uri,
+        theirPhotoId: e.theirs.id,
+        theirCountryCode: (e.theirs.countryCode ?? "").trim().toUpperCase(),
+        myCountryCode: mine,
+        myMusicGenre: undefined,
+        theirMusicGenre: undefined,
+        mutualAt: e.mutualAt,
+      }));
+  }, [mutualEchoes, myCountryCode, matches]);
 
   const runConnectivityDiagnostics = useCallback(async () => {
     setDiagBusy(true);
@@ -326,7 +434,9 @@ export default function AtlasScreen() {
             countries={summary}
             isSignedIn={!!isSignedIn}
             localRippleMatches={localRippleMatches}
+            localWaveEchoes={localWaveEchoes}
             viewerCountryCode={myCountryCode}
+            viewerMyPhotos={viewerExplorePhotos}
           />
         </View>
       ) : null}

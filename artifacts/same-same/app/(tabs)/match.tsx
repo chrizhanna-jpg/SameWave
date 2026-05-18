@@ -1725,7 +1725,7 @@ export default function SwipeScreen() {
                 resizeMode="cover"
               />
               {isSamplePhoto(theirPhoto.uri) ? (
-                <StockPhotoWatermark size="sm" />
+                <StockPhotoWatermark size="md" />
               ) : null}
               {/* Mic badge — when the other user attached a custom voice
                   clip to their photo, surface it here so the listener
@@ -1876,8 +1876,8 @@ export default function SwipeScreen() {
               ) : null}
               {isSamplePhoto(fullscreenUri) ? (
                 <StockPhotoWatermark
-                  size="md"
-                  style={{ top: insets.top + 14, right: 56 }}
+                  size="lg"
+                  style={{ top: insets.top + 14, left: 16 }}
                 />
               ) : null}
             </View>

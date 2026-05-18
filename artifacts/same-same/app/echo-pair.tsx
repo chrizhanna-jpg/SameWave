@@ -32,6 +32,8 @@ import { useProAccess } from "@/hooks/useProAccess";
 import { getTimeTier, getGeoTier } from "@/utils/celebrations";
 import { DAILY_CHALLENGES } from "@/data/samplePhotos";
 import { fetchPair, type PhotoPairResult } from "@/utils/api";
+import { useApp } from "@/context/AppContext";
+import { confirmReportPhoto } from "@/utils/photoModeration";
 import { pausePreview } from "@/utils/audio";
 import {
   shareCaptureOptions,
@@ -54,6 +56,7 @@ export default function EchoPairScreen() {
     params.celebrate === "true" ||
     (Array.isArray(params.celebrate) && params.celebrate[0] === "1");
   const { proActive } = useProAccess();
+  const { myPhotos } = useApp();
 
   // Pause any voice-clip preview the user kicked off via a mic badge
   // tap when they navigate away. `pausePreview()` is lease-aware and
@@ -243,6 +246,13 @@ export default function EchoPairScreen() {
     pair.b.countryCode ?? undefined,
   );
 
+  const myPhotoIds = new Set(
+    myPhotos
+      .map((p) => p.backendId)
+      .filter((id): id is string => typeof id === "string" && id.length > 0),
+  );
+  const partnerSide = myPhotoIds.has(pair.a.id) ? pair.b : pair.a;
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {celebrateWave ? (
@@ -386,25 +396,49 @@ export default function EchoPairScreen() {
           />
         </View>
 
-        <TouchableOpacity
-          onPress={handleShare}
-          disabled={sharing}
-          style={[
-            styles.shareBtn,
-            {
-              backgroundColor: colors.primary,
-              opacity: sharing ? 0.7 : 1,
-            },
-          ]}
-          activeOpacity={0.85}
-        >
-          <Icon name="share" size={18} color={colors.primaryForeground} />
-          <Text
-            style={[styles.shareBtnText, { color: colors.primaryForeground }]}
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            onPress={handleShare}
+            disabled={sharing}
+            style={[
+              styles.shareBtn,
+              {
+                backgroundColor: colors.primary,
+                opacity: sharing ? 0.7 : 1,
+              },
+            ]}
+            activeOpacity={0.85}
           >
-            {sharing ? "Preparing…" : "Share this wave"}
-          </Text>
-        </TouchableOpacity>
+            <Icon name="share" size={18} color={colors.primaryForeground} />
+            <Text
+              style={[styles.shareBtnText, { color: colors.primaryForeground }]}
+            >
+              {sharing ? "Preparing…" : "Share this wave"}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() =>
+              confirmReportPhoto(partnerSide.id, {
+                countryLabel: partnerSide.country,
+              })
+            }
+            style={[
+              styles.reportBtn,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+              },
+            ]}
+            activeOpacity={0.85}
+            accessibilityLabel={`Report photo from ${partnerSide.country}`}
+          >
+            <Icon name="alert-circle" size={18} color={colors.mutedForeground} />
+            <Text style={[styles.reportBtnText, { color: colors.mutedForeground }]}>
+              Report
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         <Text style={[styles.footer, { color: colors.mutedForeground }]}>
           Where minds meet
@@ -692,16 +726,32 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
     textTransform: "uppercase",
   },
+  actionRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 4,
+  },
   shareBtn: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
     paddingVertical: 14,
     borderRadius: 14,
-    marginTop: 4,
   },
   shareBtnText: { fontSize: 14, fontFamily: "Inter_700Bold" },
+  reportBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  reportBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   footer: {
     textAlign: "center",
     fontSize: 12,

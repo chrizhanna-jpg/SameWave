@@ -67,6 +67,8 @@ import {
   type AtlasConnection,
   type AtlasCountry,
   type LocalRippleExploreMatch,
+  type ViewerExplorePhoto,
+  type LocalWaveExploreEcho,
 } from "@/utils/api";
 import { flagFor, nameFor } from "@/data/countries";
 import { AtlasFireExploreModal } from "@/components/AtlasFireExploreModal";
@@ -82,10 +84,20 @@ import {
 } from "@/utils/atlasArcPath";
 import { centroidLonLatForAtlas } from "@/utils/atlasCountryCentroids";
 import {
-  detectRipplefireCluster,
-  detectWavefireCluster,
+  detectRipplefireClusters,
+  detectWavefireClusters,
   orderWavefireRingCountryCodes,
+  type AtlasThemeCluster,
 } from "@/utils/atlasWavefire";
+import {
+  ATLAS_FIRE_WINDOW_MS,
+  RIPPLEFIRE_MIN_COUNTRIES,
+  RIPPLEFIRE_MIN_EVENTS,
+  WAVEFIRE_MIN_COUNTRIES,
+  WAVEFIRE_MIN_EVENTS,
+} from "@/utils/atlasFireConfig";
+import { PressableScale } from "@/components/PressableScale";
+import * as Haptics from "expo-haptics";
 import {
   ATLAS_COUNTRY_MODAL,
   ATLAS_FILTER_A11Y,
@@ -122,11 +134,6 @@ const ATLAS_WAVE_HALF_MS = Math.round(ATLAS_MAP_ANIM_BASE_MS / 2.65);
 const ATLAS_RIPPLE_TRAVEL_MS = ATLAS_WAVE_HALF_MS * 2;
 const ATLAS_LINE_FADE_MS = 520;
 const ATLAS_MAX_ANIMATED_CONNECTIONS = 120;
-const ATLAS_FIRE_WINDOW_MS = 6 * 60 * 60 * 1000;
-const WAVEFIRE_MIN_EVENTS = 3;
-const WAVEFIRE_MIN_COUNTRIES = 3;
-const RIPPLEFIRE_MIN_EVENTS = 2;
-const RIPPLEFIRE_MIN_COUNTRIES = 2;
 const HIT_R = 22;
 
 function atlasFireModeFromFilter(
@@ -270,7 +277,9 @@ interface Props {
   /** When set, country modal shows "View moments". */
   onOpenCountryPhotos?: (code: string) => void;
   localRippleMatches?: LocalRippleExploreMatch[];
+  localWaveEchoes?: LocalWaveExploreEcho[];
   viewerCountryCode?: string;
+  viewerMyPhotos?: ViewerExplorePhoto[];
   style?: StyleProp<ViewStyle>;
 }
 
@@ -281,7 +290,9 @@ export function AtlasGlobeExperience({
   isSignedIn,
   onOpenCountryPhotos,
   localRippleMatches,
+  localWaveEchoes,
   viewerCountryCode,
+  viewerMyPhotos,
   style,
 }: Props) {
   const colors = useColors();
@@ -442,6 +453,7 @@ export function AtlasGlobeExperience({
   const [filter, setFilter] = useState<AtlasFilterMode>("ripplefire");
   const [modalCode, setModalCode] = useState<string | null>(null);
   const [fireExploreOpen, setFireExploreOpen] = useState(false);
+  const [fireClusterIndex, setFireClusterIndex] = useState(0);
   const [atlasTabFocused, setAtlasTabFocused] = useState(false);
 
   useFocusEffect(
@@ -470,9 +482,9 @@ export function AtlasGlobeExperience({
     [connections],
   );
 
-  const wavefireCluster = useMemo(
+  const wavefireClusters = useMemo(
     () =>
-      detectWavefireCluster(
+      detectWavefireClusters(
         normalized,
         ATLAS_FIRE_WINDOW_MS,
         WAVEFIRE_MIN_EVENTS,
@@ -481,9 +493,9 @@ export function AtlasGlobeExperience({
     [normalized],
   );
 
-  const ripplefireCluster = useMemo(
+  const ripplefireClusters = useMemo(
     () =>
-      detectRipplefireCluster(
+      detectRipplefireClusters(
         normalized,
         ATLAS_FIRE_WINDOW_MS,
         RIPPLEFIRE_MIN_EVENTS,
@@ -494,12 +506,26 @@ export function AtlasGlobeExperience({
 
   const fireMode = atlasFireModeFromFilter(filter);
   const fireVisual = fireMode ? atlasFireVisual(fireMode) : null;
-  const fireCluster =
+  const fireClusters =
     fireMode === "wavefire"
-      ? wavefireCluster
+      ? wavefireClusters
       : fireMode === "ripplefire"
-        ? ripplefireCluster
-        : null;
+        ? ripplefireClusters
+        : [];
+
+  useEffect(() => {
+    setFireClusterIndex(0);
+  }, [filter]);
+
+  useEffect(() => {
+    setFireClusterIndex((idx) => {
+      if (fireClusters.length === 0) return 0;
+      return Math.min(idx, fireClusters.length - 1);
+    });
+  }, [fireClusters]);
+
+  const fireCluster: AtlasThemeCluster | null =
+    fireClusters[fireClusterIndex] ?? null;
 
   const baseFiltered = useMemo(
     () => filterConnections(normalized, filter, isSignedIn),
@@ -727,6 +753,18 @@ export function AtlasGlobeExperience({
     if (!fireActive || !fireCluster || !fireVisual) return;
     setFireExploreOpen(true);
   }, [fireActive, fireCluster, fireVisual]);
+
+  const stepFireCluster = useCallback(
+    (delta: number) => {
+      if (fireClusters.length <= 1) return;
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setFireClusterIndex((idx) => {
+        const n = fireClusters.length;
+        return (idx + delta + n) % n;
+      });
+    },
+    [fireClusters.length],
+  );
 
   useEffect(() => {
     if (!fireMode) setFireExploreOpen(false);
@@ -1004,31 +1042,18 @@ export function AtlasGlobeExperience({
               />
             ))}
             </Animated.View>
-            {fireActive && fireVisual ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Explore ${fireVisual.label}`}
-                onPress={openFireExplore}
-                style={[
-                  styles.fireExploreFab,
-                  {
-                    backgroundColor: fireVisual.chipActiveBg,
-                    borderColor: fireVisual.lineStroke,
-                  },
-                ]}
-              >
-                <Icon
-                  name={fireVisual.filterIcon}
-                  size={18}
-                  color={fireVisual.lineStroke}
-                />
-                <Text
-                  style={[styles.fireExploreFabText, { color: colors.foreground }]}
-                >
-                  Explore {fireVisual.label}
-                </Text>
-                <Icon name="chevron-right" size={18} color={fireVisual.lineStroke} />
-              </Pressable>
+            {fireActive && fireVisual && fireCluster ? (
+              <FireClusterExploreBar
+                visual={fireVisual}
+                cluster={fireCluster}
+                clusterIndex={fireClusterIndex}
+                clusterCount={fireClusters.length}
+                foreground={colors.foreground}
+                muted={colors.mutedForeground}
+                onExplore={openFireExplore}
+                onPrev={() => stepFireCluster(-1)}
+                onNext={() => stepFireCluster(1)}
+              />
             ) : null}
           </View>
         </GestureDetector>
@@ -1059,7 +1084,7 @@ export function AtlasGlobeExperience({
         {fireNight && fireVisual ? (
           <StatPill
             accessibilityLabel={fireVisual.statA11y}
-            value={fireActive ? 1 : 0}
+            value={fireClusters.length}
             fg={colors.foreground}
             icon={fireVisual.filterIcon}
             iconColor={fireVisual.lineStroke}
@@ -1138,9 +1163,128 @@ export function AtlasGlobeExperience({
           visual={fireVisual}
           cluster={fireCluster}
           localRippleMatches={localRippleMatches}
+          localWaveEchoes={localWaveEchoes}
           viewerCountryCode={viewerCountryCode}
+          viewerMyPhotos={viewerMyPhotos}
         />
       ) : null}
+    </View>
+  );
+}
+
+function FireClusterExploreBar({
+  visual,
+  cluster,
+  clusterIndex,
+  clusterCount,
+  foreground,
+  muted,
+  onExplore,
+  onPrev,
+  onNext,
+}: {
+  visual: AtlasFireVisual;
+  cluster: AtlasThemeCluster;
+  clusterIndex: number;
+  clusterCount: number;
+  foreground: string;
+  muted: string;
+  onExplore: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  const multi = clusterCount > 1;
+  const themeLabel = cluster.displayTheme.trim();
+  const counter = `${clusterIndex + 1} / ${clusterCount}`;
+
+  return (
+    <View style={styles.fireExploreRow} pointerEvents="box-none">
+      {multi ? (
+        <PressableScale
+          onPress={onPrev}
+          haptic="light"
+          accessibilityRole="button"
+          accessibilityLabel={`Previous ${visual.label}`}
+          style={[
+            styles.fireNavBtn,
+            {
+              backgroundColor: visual.chipActiveBg,
+              borderColor: visual.lineStroke,
+            },
+          ]}
+        >
+          <Icon name="chevron-left" size={22} color={visual.lineStroke} />
+        </PressableScale>
+      ) : (
+        <View style={styles.fireNavSpacer} />
+      )}
+
+      <PressableScale
+        onPress={onExplore}
+        haptic="medium"
+        accessibilityRole="button"
+        accessibilityLabel={
+          multi
+            ? `Explore ${visual.label}, ${themeLabel || "cluster"}, ${counter}`
+            : `Explore ${visual.label}`
+        }
+        style={[
+          styles.fireExploreCta,
+          {
+            backgroundColor: visual.chipActiveBg,
+            borderColor: visual.lineStroke,
+            shadowColor: visual.chipShadowColor,
+          },
+        ]}
+      >
+        <View style={styles.fireExploreCtaTop}>
+          <Icon name={visual.filterIcon} size={18} color={visual.lineStroke} />
+          <Text style={[styles.fireExploreCtaTitle, { color: foreground }]}>
+            Explore {visual.label}
+          </Text>
+          <Icon name="chevron-right" size={18} color={visual.lineStroke} />
+        </View>
+        {themeLabel ? (
+          <Text
+            style={[styles.fireExploreCtaTheme, { color: muted }]}
+            numberOfLines={1}
+          >
+            {themeLabel}
+          </Text>
+        ) : null}
+        {multi ? (
+          <View
+            style={[
+              styles.fireExploreCounter,
+              { borderColor: visual.lineStroke + "88" },
+            ]}
+          >
+            <Text style={[styles.fireExploreCounterText, { color: visual.lineStroke }]}>
+              {counter}
+            </Text>
+          </View>
+        ) : null}
+      </PressableScale>
+
+      {multi ? (
+        <PressableScale
+          onPress={onNext}
+          haptic="light"
+          accessibilityRole="button"
+          accessibilityLabel={`Next ${visual.label}`}
+          style={[
+            styles.fireNavBtn,
+            {
+              backgroundColor: visual.chipActiveBg,
+              borderColor: visual.lineStroke,
+            },
+          ]}
+        >
+          <Icon name="chevron-right" size={22} color={visual.lineStroke} />
+        </PressableScale>
+      ) : (
+        <View style={styles.fireNavSpacer} />
+      )}
     </View>
   );
 }
@@ -1417,26 +1561,86 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     overflow: "hidden",
   },
-  fireExploreFab: {
+  fireExploreRow: {
     position: "absolute",
-    left: 12,
-    right: 12,
-    bottom: 12,
+    left: 8,
+    right: 8,
+    bottom: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    zIndex: 4,
+  },
+  fireNavSpacer: {
+    width: 44,
+    height: 44,
+  },
+  fireNavBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.28,
+        shadowRadius: 4,
+      },
+      android: { elevation: 4 },
+      default: {},
+    }),
+  },
+  fireExploreCta: {
+    flex: 1,
+    minHeight: 52,
+    borderRadius: 16,
+    borderWidth: 2,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    gap: 4,
+    ...Platform.select({
+      ios: {
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.35,
+        shadowRadius: 6,
+      },
+      android: { elevation: 6 },
+      default: {},
+    }),
+  },
+  fireExploreCtaTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    borderWidth: 1.5,
-    zIndex: 4,
+    gap: 6,
   },
-  fireExploreFabText: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 14,
-    flex: 1,
+  fireExploreCtaTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 15,
+    flexShrink: 1,
     textAlign: "center",
+  },
+  fireExploreCtaTheme: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 12,
+    textAlign: "center",
+    paddingHorizontal: 4,
+  },
+  fireExploreCounter: {
+    alignSelf: "center",
+    marginTop: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 2,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  fireExploreCounterText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 11,
+    letterSpacing: 0.3,
   },
   hit: {
     position: "absolute",
