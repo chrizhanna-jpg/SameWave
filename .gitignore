@@ -49,6 +49,9 @@ Thumbs.db
 **/.env
 artifacts/api-server/.env
 
+# Optional local confidential notes (never commit trade-secret drafts)
+docs/private/
+
 # Local / tool caches
 .cache/
 .local/
