@@ -1,14 +1,17 @@
 import { sql, type SQL } from "drizzle-orm";
 
 /** Max points subtracted from candidate rank for global over-exposure. */
-export const EXPOSURE_PENALTY_CAP = 12;
+export const EXPOSURE_PENALTY_CAP = 18;
 /** Weight for each historical "same" vote on a photo. */
 export const EXPOSURE_VOTE_SAME_WEIGHT = 1;
 /** Weight for each time any user marked the photo seen (deck impression). */
-export const EXPOSURE_SEEN_WEIGHT = 0.35;
+export const EXPOSURE_SEEN_WEIGHT = 0.55;
 /** Extra penalty once a photo has this many "same" votes (viral/generic shots). */
-export const EXPOSURE_HOT_SAME_THRESHOLD = 20;
-export const EXPOSURE_HOT_EXTRA_PENALTY = 6;
+export const EXPOSURE_HOT_SAME_THRESHOLD = 10;
+export const EXPOSURE_HOT_EXTRA_PENALTY = 8;
+/** Extra penalty when a photo has been shown very often even with few votes. */
+export const EXPOSURE_HOT_SEEN_THRESHOLD = 40;
+export const EXPOSURE_HOT_SEEN_EXTRA_PENALTY = 6;
 
 /** Max times the same photo may appear across Atlas explore moments in one response. */
 export const EXPLORE_MAX_PHOTO_REPEATS = 1;
@@ -45,10 +48,15 @@ export const photoExposureCte = sql`
 function penaltySql(peAlias: string): string {
   return `LEAST(
     LN(1.0 + COALESCE(${peAlias}.same_votes, 0) * ${EXPOSURE_VOTE_SAME_WEIGHT}
-      + COALESCE(${peAlias}.seen_cnt, 0) * ${EXPOSURE_SEEN_WEIGHT}) * 2.5
+      + COALESCE(${peAlias}.seen_cnt, 0) * ${EXPOSURE_SEEN_WEIGHT}) * 2.8
     + CASE
         WHEN COALESCE(${peAlias}.same_votes, 0) >= ${EXPOSURE_HOT_SAME_THRESHOLD}
         THEN ${EXPOSURE_HOT_EXTRA_PENALTY}
+        ELSE 0
+      END
+    + CASE
+        WHEN COALESCE(${peAlias}.seen_cnt, 0) >= ${EXPOSURE_HOT_SEEN_THRESHOLD}
+        THEN ${EXPOSURE_HOT_SEEN_EXTRA_PENALTY}
         ELSE 0
       END,
     ${EXPOSURE_PENALTY_CAP}

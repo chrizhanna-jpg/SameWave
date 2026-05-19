@@ -81,7 +81,12 @@ const PROMPT = `You are analyzing a daily-life photo for a global "find people w
 
 Return FOUR things:
 1. "theme" — a SHORT lowercase phrase (1–4 words) naming the activity, moment,
-   or subject of the photo. Be specific and natural.
+   or subject of the photo. Be specific and natural. The theme MUST match the
+   primary visible subject (e.g. cups/mugs → "coffee" or "morning", footwear →
+   "shoes", meals → "food"). Never label drinks as footwear or shoes as drinks.
+   When one of these daily-challenge ids fits, prefer it exactly: morning,
+   coffee, shoes, food, hands, sky, commute, work, joy, nature, pets, cafe,
+   movement, instrument, view, selfie, shopping, active, travel, home, music.
 2. "tags" — up to 6 tags from this FIXED vocabulary, capturing BOTH the visual
    subject AND any lifestyle/hobby/interest the photo strongly suggests:
    ${ALLOWED_TAGS.join(", ")}

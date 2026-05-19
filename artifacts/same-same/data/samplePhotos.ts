@@ -460,10 +460,10 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     country: "Jordan",
     countryCode: "JO",
     countryFlag: "🇯🇴",
-    theme: "morning",
+    theme: "coffee",
     minutesAgo: 31,
-    tags: ["tea", "drink", "warm"],
-    subjects: ["tea cup", "tea", "ceramic mug"],
+    tags: ["tea", "drink", "warm", "coffee"],
+    subjects: ["tea cup", "tea", "ceramic mug", "coffee cup"],
     musicGenre: "calm",
   },
   {
@@ -849,8 +849,21 @@ const SYNTH_PHOTO_BANK = {
   morning: [
     "1495474472287-4d71bcdd2085","1541167760496-1628856ab772","1509042239860-f550ce710b93",
     "1521017432531-fbd92d768814","1494314671902-399b18174975","1497935586351-b67a49e012bf",
-    "1542990253-0d0f5be5f0ed","1559056199-641a0ac8b55e","1497636577773-f1231844b336",
+    "1542990253-0d0f5be5f0ed","1497636577773-f1231844b336",
     "1466637574441-749b8f19452f",
+  ],
+  // Coffee / café — kept separate from morning so the over-used
+  // three-cup stock shot (1559056199) only appears via curated id 114.
+  coffee: [
+    "1495474472287-4d71bcdd2085","1509042239860-f550ce710b93","1497935586351-b67a49e012bf",
+    "1542990253-0d0f5be5f0ed",
+  ],
+  cafe: [
+    "1495474472287-4d71bcdd2085","1509042239860-f550ce710b93","1497935586351-b67a49e012bf",
+    "1542990253-0d0f5be5f0ed",
+  ],
+  shoes: [
+    "1460353580275-bcb0bde9a22a",
   ],
   food: [
     "1504674900247-0877df9cc836","1476224203421-9ac39bcb3327","1568901346375-23c9450c58cd",
@@ -965,7 +978,8 @@ const SYNTH_PHOTO_BANK = {
 // Map common tag IDs → SYNTH_PHOTO_BANK theme buckets so freeform user tags
 // still funnel to a sensible photo bucket.
 const TAG_TO_BUCKET: Record<string, keyof typeof SYNTH_PHOTO_BANK> = {
-  coffee: "morning", tea: "morning", drink: "morning", warm: "morning", cozy: "home",
+  coffee: "coffee", tea: "coffee", drink: "coffee", warm: "morning", cozy: "home",
+  shoes: "shoes", sneakers: "shoes", boots: "shoes", feet: "shoes",
   breakfast: "morning",
   meal: "food", lunch: "food", dinner: "food", snack: "food",
   bread: "food", cooking: "food", baking: "food", dessert: "food", cafe: "food", food: "food",
@@ -1001,6 +1015,9 @@ function pickFromTheme(theme: string): keyof typeof SYNTH_PHOTO_BANK {
 // only shows tags that are actually plausible for the photo shown.
 const BUCKET_TAG_POOL: Record<keyof typeof SYNTH_PHOTO_BANK, string[]> = {
   morning: ["coffee", "tea", "breakfast", "warm", "cozy", "sunset", "drink"],
+  coffee: ["coffee", "tea", "drink", "warm", "cafe", "breakfast"],
+  cafe: ["cafe", "coffee", "tea", "drink", "meal", "warm", "cozy"],
+  shoes: ["shoes", "sneakers", "boots", "feet", "outdoors", "city"],
   food: ["meal", "lunch", "dinner", "snack", "bread", "tea", "coffee", "cooking", "baking", "dessert", "drink", "cafe", "food"],
   hands: ["art", "crafts", "people"],
   sky: ["sunset", "clouds", "stars", "night"],
@@ -1223,6 +1240,8 @@ export const SUGGESTED_TAGS_BY_THEME: Record<string, string[]> = {
   cafe: ["cafe", "coffee", "tea", "drink", "meal", "breakfast", "brunch", "cozy"],
   objects: ["vintage", "art", "home", "crafts", "cozy"],
   chores: ["chores", "cleaning", "laundry", "home", "cozy"],
+  shoes: ["shoes", "sneakers", "boots", "feet", "outdoors", "city"],
+  coffee: ["coffee", "tea", "drink", "cafe", "warm", "breakfast"],
 };
 
 // The daily challenge pool. One theme is shown to the entire world each
@@ -1289,7 +1308,7 @@ export const DAILY_CHALLENGES = [
 // pool is exhausted so the user can still find a match nearby.
 export const THEME_ADJACENCY: Record<string, string[]> = {
   morning: ["food", "commute", "sky"],
-  food: ["morning", "hands", "joy"],
+  food: ["morning", "coffee", "cafe", "hands", "joy"],
   hands: ["food", "work", "joy"],
   sky: ["nature", "morning"],
   commute: ["morning", "work", "sky"],
@@ -1316,6 +1335,12 @@ export const THEME_ADJACENCY: Record<string, string[]> = {
   cafe: ["coffee", "morning", "food"],
   objects: ["made", "wall", "smallthing"],
   chores: ["ritual", "made", "home"],
+  shoes: ["movement", "commute", "wearing", "outdoors"],
+  coffee: ["morning", "cafe", "food"],
+  wearing: ["selfie", "shoes", "movement", "joy"],
+  movement: ["active", "shoes", "morning"],
+  instrument: ["music", "hobbies", "made"],
+  view: ["sky", "work", "nature", "home"],
 };
 
 export function getThemeChain(theme: string): string[] {

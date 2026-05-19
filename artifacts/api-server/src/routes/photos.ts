@@ -589,6 +589,18 @@ router.get("/photos/candidates", async (req, res) => {
                 WHEN p.music_genre = ${musicGenre} THEN 5
                 ELSE 0
               END
+            -- Off-topic rows (wrong daily theme, no subject overlap) sink so
+            -- mis-tagged stock (e.g. coffee cups under "shoes") cannot win on
+            -- generic vibe tags alone.
+            + CASE
+                WHEN ${theme} = '' THEN 0
+                WHEN p.theme = ${theme} THEN 0
+                WHEN p.theme ILIKE '%' || ${theme} || '%' OR ${theme} ILIKE '%' || p.theme || '%' THEN 0
+                WHEN cardinality(${subjectsExpr}) > 0
+                  AND cardinality(ARRAY(SELECT unnest(p.subjects) INTERSECT SELECT unnest(${subjectsExpr}))) > 0
+                THEN 0
+                ELSE -16
+              END
             - ${exposurePenaltyExpr("pe")}
             + random() * 0.3
           ) AS rank_score

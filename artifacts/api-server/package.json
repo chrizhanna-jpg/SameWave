@@ -7,6 +7,8 @@
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "seed:atlas-global": "node ./scripts/seed-atlas-global-demo.mjs",
+    "audit:photo-themes": "node ./scripts/audit-fix-photo-themes.mjs",
+    "audit:photo-themes:apply": "node ./scripts/audit-fix-photo-themes.mjs --apply",
     "dev": "node ./scripts/dev.mjs",
     "sync:clerk-publishable": "node ./scripts/sync-clerk-publishable.mjs",
     "build": "node ./build.mjs",

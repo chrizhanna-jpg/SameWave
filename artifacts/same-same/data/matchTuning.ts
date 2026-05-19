@@ -31,7 +31,7 @@
  * Raise toward 1.0 if users complain the deck feels random; lower toward
  * 0.0 if they say it feels repetitive / too narrow.
  */
-export const THEME_RELEVANCE_TARGET = 0.6;
+export const THEME_RELEVANCE_TARGET = 0.8;
 
 /**
  * SUBJECT-MATTER relevance — how often the chosen photo must share at
@@ -56,39 +56,43 @@ type ThemeRelevanceArgs = {
   candidateTheme: string;
   preferredTheme: string;
   sharedTags: string[];
+  /** Same chain as scoreCandidates (`getThemeChain(preferredTheme)`). */
+  themeChain?: string[];
 };
 
+function themeInChain(candidateTheme: string, chain: string[]): boolean {
+  const c = candidateTheme.trim().toLowerCase();
+  if (!c) return false;
+  return chain.some((t) => {
+    const tl = t.trim().toLowerCase();
+    if (!tl) return false;
+    return c === tl || c.includes(tl) || tl.includes(c);
+  });
+}
+
 /**
- * A candidate is theme-relevant when ANY of these are true:
- *   • exact theme match (the strongest signal),
- *   • either theme contains the other (mirrors the server's ILIKE
- *     fallback for "Cosy mornings" vs "Mornings"),
- *   • the candidate shares at least one vibe tag with the requester
- *     ("calm", "warm", "playful" overlap is meaningful even when the
- *     theme bucket differs).
+ * A candidate is theme-relevant when its theme bucket is plausibly related
+ * to the requester's daily challenge:
+ *   • exact match or substring match on the preferred theme,
+ *   • OR the candidate theme is in the preferred theme's adjacency chain.
  *
- * Note: adjacent themes in the same chain are NOT treated as relevant
- * here. The chain already earns a small score bonus inside the ranker,
- * but for the user-facing relevance gate we hold the line at exact /
- * contains / shared-vibe to match the spec exactly.
+ * Shared vibe tags alone do NOT qualify — that gate let generic tags like
+ * "warm" or "outdoors" surface coffee shots under unrelated themes (e.g.
+ * shoes). Vibe overlap still boosts rank inside scoreCandidates.
  *
- * Empty preferredTheme (subject-matter mode where the user hasn't picked
- * a theme) treats every candidate as theme-relevant — the gate is a
- * no-op so subject-matter mode falls back to subject relevance only.
+ * Empty preferredTheme (subject-matter mode) is a no-op — every candidate
+ * passes the theme gate.
  */
 export function isThemeRelevant({
   candidateTheme,
   preferredTheme,
-  sharedTags,
+  sharedTags: _sharedTags,
+  themeChain = [],
 }: ThemeRelevanceArgs): boolean {
   if (!preferredTheme) return true;
-  if (sharedTags.length > 0) return true;
-  if (!candidateTheme) return false;
-  if (candidateTheme === preferredTheme) return true;
-  return (
-    candidateTheme.toLowerCase().includes(preferredTheme.toLowerCase()) ||
-    preferredTheme.toLowerCase().includes(candidateTheme.toLowerCase())
-  );
+  const chain =
+    themeChain.length > 0 ? themeChain : [preferredTheme];
+  return themeInChain(candidateTheme, chain);
 }
 
 type SubjectRelevanceArgs = {

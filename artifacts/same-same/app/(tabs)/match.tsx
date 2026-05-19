@@ -195,13 +195,18 @@ function scoreCandidates(
           : Math.min(sharedSubjects.length, 5) * 3;
       const vibeScore = Math.min(sharedTags.length, 5) * 2;
       const shapeScore = Math.min(sharedShapes.length, 5) * 2;
+      // Off-topic photos (wrong daily theme, not in adjacency chain) sink
+      // so coffee stock cannot outrank shoes uploads via generic vibe tags.
+      const offTopic =
+        Boolean(preferredTheme) && !sameTheme && !inChain;
       const score =
         subjectScore +
         (sameTheme ? 10 : 0) +
         vibeScore +
         shapeScore +
         (inChain && !sameTheme ? Math.max(0, 3 - idx * 1) : 0) +
-        Math.max(0, 0.6 - p.minutesAgo / 4320); // up to +0.6, decays over 3 days
+        Math.max(0, 0.6 - p.minutesAgo / 4320) - // up to +0.6, decays over 3 days
+        (offTopic ? 14 : 0);
       return {
         photo: p,
         score,
@@ -308,6 +313,7 @@ function getTheirPhoto(
           candidateTheme: p.theme,
           preferredTheme,
           sharedTags: p.tags.filter((t) => myTagSetSynth.has(t)),
+          themeChain: getThemeChain(preferredTheme),
         }),
       );
       if (themeOnly.length > 0) synthPool = themeOnly;
@@ -342,6 +348,7 @@ function getTheirPhoto(
         candidateTheme: c.photo.theme,
         preferredTheme,
         sharedTags: c.sharedTags,
+        themeChain: getThemeChain(preferredTheme),
       }),
     );
     if (themeOnly.length > 0) pool = themeOnly;
