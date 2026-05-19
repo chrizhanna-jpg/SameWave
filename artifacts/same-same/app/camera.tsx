@@ -15,7 +15,7 @@ import { getRipplePhotoPaneMetrics } from "@/constants/ripplePhotoFrame";
 import { HorizontalTokenScroll } from "@/components/HorizontalTokenScroll";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { ProPaywallModal } from "@/components/ProPaywallModal";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { consumePendingCapture } from "@/utils/captureBus";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -27,6 +27,7 @@ import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import {
   getTodaysChallenge,
+  SUGGESTED_TAGS_BY_THEME,
   TAG_LIBRARY,
 } from "@/data/samplePhotos";
 import { analyzePhoto, reactivateMyPhoto, uploadPhoto } from "@/utils/api";
@@ -152,6 +153,67 @@ function themeSuggestionTerms(s: ThemeSuggestion): string[] {
   return [s.label, s.tagId ?? "", s.emoji];
 }
 
+type PostIntent = "challenge" | "interests";
+
+function parsePostIntent(raw: string | string[] | undefined): PostIntent | null {
+  const v = Array.isArray(raw) ? raw[0] : raw;
+  if (v === "challenge" || v === "interests") return v;
+  return null;
+}
+
+function PostIntentPrompt({
+  intent,
+  challenge,
+  colors,
+}: {
+  intent: PostIntent;
+  challenge: ReturnType<typeof getTodaysChallenge>;
+  colors: ReturnType<typeof useColors>;
+}) {
+  if (intent === "challenge") {
+    return (
+      <View
+        style={[
+          styles.intentPrompt,
+          { backgroundColor: colors.card, borderColor: colors.border },
+        ]}
+        accessibilityRole="text"
+        accessibilityLabel={`Today's theme: ${challenge.title}. ${challenge.description}`}
+      >
+        <Text style={[styles.intentPromptLabel, { color: colors.mutedForeground }]}>
+          Today's theme
+        </Text>
+        <View style={styles.intentPromptTitleRow}>
+          <Text style={styles.intentPromptEmoji}>{challenge.emoji}</Text>
+          <Text style={[styles.intentPromptTitle, { color: colors.foreground }]}>
+            {challenge.title}
+          </Text>
+        </View>
+        <Text style={[styles.intentPromptDesc, { color: colors.mutedForeground }]}>
+          {challenge.description}
+        </Text>
+      </View>
+    );
+  }
+  return (
+    <View
+      style={[
+        styles.intentPrompt,
+        { backgroundColor: colors.card, borderColor: colors.border },
+      ]}
+      accessibilityRole="text"
+      accessibilityLabel="Your interests. Share your passion."
+    >
+      <Text style={[styles.intentPromptLabel, { color: colors.mutedForeground }]}>
+        Your interests
+      </Text>
+      <Text style={[styles.intentPromptTitle, { color: colors.foreground }]}>
+        Share your passion.
+      </Text>
+    </View>
+  );
+}
+
 /** Local file / content URIs are not fetchable by the API — always send base64. */
 async function readImageAsBase64ForAnalyze(
   asset: ImagePicker.ImagePickerAsset,
@@ -176,6 +238,8 @@ async function readImageAsBase64ForAnalyze(
 export default function CameraScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { intent: intentParam } = useLocalSearchParams<{ intent?: string }>();
+  const postIntent = parsePostIntent(intentParam);
   const {
     addMyPhoto,
     activateMyPhotoForMatch,
@@ -183,6 +247,7 @@ export default function CameraScreen() {
     setMyPhotoUploadState,
     myPhotos,
     myCountryCode,
+    myVibe,
   } = useApp();
   const { proActive } = useProAccess();
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
@@ -197,6 +262,7 @@ export default function CameraScreen() {
   const [isAi, setIsAi] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const challenge = getTodaysChallenge();
+  const intentSeedAppliedRef = useRef(false);
   const [themeText, setThemeText] = useState<string>("");
   const [themeEdited, setThemeEdited] = useState(false);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -632,6 +698,26 @@ export default function CameraScreen() {
     }
   };
 
+  const applyPostIntentSeed = useCallback(() => {
+    if (!postIntent) return;
+    if (postIntent === "challenge") {
+      setThemeText(challenge.title);
+      setThemeEdited(true);
+      themeEditedRef.current = true;
+      const suggested = SUGGESTED_TAGS_BY_THEME[challenge.id];
+      if (suggested?.length) {
+        setSelectedTags(suggested.slice(0, MAX_TAGS));
+      }
+    } else {
+      setThemeText("passions");
+      setThemeEdited(true);
+      themeEditedRef.current = true;
+      if (myVibe.length > 0) {
+        setSelectedTags(myVibe.slice(0, MAX_TAGS));
+      }
+    }
+  }, [postIntent, challenge.id, challenge.title, myVibe]);
+
   const resetForNewPhoto = () => {
     pickedAssetRef.current = null;
     setSelectedTags([]);
@@ -656,6 +742,7 @@ export default function CameraScreen() {
     setCustomAudioUrl(null);
     setRecordedDurationMs(0);
     setRecordingProgressMs(0);
+    if (postIntent) applyPostIntentSeed();
   };
 
   // Whenever the AI's pick changes (and the user hasn't manually
@@ -747,6 +834,12 @@ export default function CameraScreen() {
     playLeaseRef.current = playClip(clip.url);
   };
 
+  useEffect(() => {
+    if (!postIntent || intentSeedAppliedRef.current) return;
+    intentSeedAppliedRef.current = true;
+    applyPostIntentSeed();
+  }, [postIntent, applyPostIntentSeed]);
+
   const takePhoto = async () => {
     if (Platform.OS === "web") {
       // Web doesn't get the in-app camera (no expo-camera support);
@@ -758,7 +851,7 @@ export default function CameraScreen() {
     // Open the in-app square-viewfinder camera. It pushes the captured
     // photo onto the captureBus and pops back; useFocusEffect below
     // picks it up the next time this screen regains focus.
-    router.push("/in-camera");
+    router.push(postIntent ? `/in-camera?intent=${postIntent}` : "/in-camera");
   };
 
   // Drain anything the in-app camera left for us when we regain focus
@@ -1106,6 +1199,16 @@ export default function CameraScreen() {
         </Text>
         <View style={{ width: 40 }} />
       </View>
+
+      {postIntent && !submitted ? (
+        <View style={styles.intentPromptWrap}>
+          <PostIntentPrompt
+            intent={postIntent}
+            challenge={challenge}
+            colors={colors}
+          />
+        </View>
+      ) : null}
 
       {submitted ? (
         <View
@@ -1485,6 +1588,7 @@ export default function CameraScreen() {
                 void stopAudio();
                 pickedAssetRef.current = null;
                 setSelectedPhoto(null);
+                if (postIntent) applyPostIntentSeed();
               }}
             >
               <Icon name="refresh-cw" size={18} color={colors.foreground} />
@@ -1640,6 +1744,42 @@ export default function CameraScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  intentPromptWrap: {
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+  },
+  intentPrompt: {
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 4,
+  },
+  intentPromptLabel: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+    letterSpacing: 0.3,
+    textTransform: "uppercase",
+  },
+  intentPromptTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 2,
+  },
+  intentPromptEmoji: { fontSize: 22 },
+  intentPromptTitle: {
+    fontSize: 17,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -0.3,
+    flex: 1,
+  },
+  intentPromptDesc: {
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 20,
+    marginTop: 2,
   },
   header: {
     flexDirection: "row",

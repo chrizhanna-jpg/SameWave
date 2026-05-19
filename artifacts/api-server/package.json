@@ -9,6 +9,8 @@
     "seed:atlas-global": "node ./scripts/seed-atlas-global-demo.mjs",
     "audit:photo-themes": "node ./scripts/audit-fix-photo-themes.mjs",
     "audit:photo-themes:apply": "node ./scripts/audit-fix-photo-themes.mjs --apply",
+    "replace:viral-coffee": "node ./scripts/replace-viral-coffee-photo.mjs",
+    "replace:viral-coffee:apply": "node ./scripts/replace-viral-coffee-photo.mjs --apply",
     "dev": "node ./scripts/dev.mjs",
     "sync:clerk-publishable": "node ./scripts/sync-clerk-publishable.mjs",
     "build": "node ./build.mjs",

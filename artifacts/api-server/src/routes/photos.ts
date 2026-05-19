@@ -15,11 +15,20 @@ import { recordEchoOffer, revokeEchoForUnvote } from "./echoes";
 import { normalizeMusicGenre } from "../lib/allowedMusicGenres";
 import { sendPhotoReportAlert } from "../lib/moderationEmail";
 import {
+  BANNED_PHOTO_B64_MD5,
   capExplorePhotoRepeats,
   echoPairExposurePenaltySql,
   exposurePenaltyExpr,
   photoExposureCte,
 } from "../lib/photoExposure";
+
+const bannedB64Md5Expr =
+  BANNED_PHOTO_B64_MD5.length > 0
+    ? sql`ARRAY[${sql.join(
+        BANNED_PHOTO_B64_MD5.map((h) => sql`${h}`),
+        sql`, `,
+      )}]::text[]`
+    : sql`ARRAY[]::text[]`;
 
 const router: IRouter = Router();
 
@@ -610,6 +619,7 @@ router.get("/photos/candidates", async (req, res) => {
           AND p.user_id <> ${user.id}
           AND p.report_count < ${REPORT_HIDE_THRESHOLD}
           AND (p.expires_at IS NULL OR p.expires_at > now())
+          AND md5(p.bytes_base64) <> ALL(${bannedB64Md5Expr})
           AND p.id NOT IN (
             SELECT v.photo_id FROM votes v WHERE v.voter_user_id = ${user.id}
             UNION ALL

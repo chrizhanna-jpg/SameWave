@@ -18,14 +18,13 @@ import { GradientCard } from "@/components/GradientCard";
 import { PressableScale } from "@/components/PressableScale";
 import { useCountUp } from "@/hooks/useCountUp";
 import { getTodaysChallenge } from "@/data/samplePhotos";
-import { tagLabel } from "@/utils/interests";
 import { RIPPLE_ONE_LINER, WAVE_ONE_LINER } from "@/data/waveRippleGlossary";
 import { scrollPaddingAboveTabBar } from "@/utils/tabBarSafeArea";
 
 export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { matches, matchedCountries, mutualEchoes, resetOnboarding, myVibe } =
+  const { matches, matchedCountries, mutualEchoes, resetOnboarding } =
     useApp();
   const challenge = getTodaysChallenge();
 
@@ -134,7 +133,7 @@ export default function HomeScreen() {
 
         {/* Daily challenge — gradient depth, springs on press */}
         <PressableScale
-          onPress={() => router.push("/(tabs)/match")}
+          onPress={() => router.push("/camera?intent=challenge")}
           haptic="light"
           style={styles.fullWidth}
         >
@@ -160,7 +159,7 @@ export default function HomeScreen() {
         </PressableScale>
 
         <PressableScale
-          onPress={() => router.push("/(tabs)/profile")}
+          onPress={() => router.push("/camera?intent=interests")}
           haptic="light"
           style={styles.fullWidth}
         >
@@ -173,12 +172,7 @@ export default function HomeScreen() {
                     Your interests
                   </Text>
                   <Text style={[styles.challengeTitle, { color: colors.foreground }]}>
-                    {myVibe.length > 0
-                      ? myVibe
-                          .slice(0, 3)
-                          .map((t) => tagLabel(t))
-                          .join(" · ")
-                      : "Tap to vibe your passion"}
+                    Share your passion.
                   </Text>
                 </View>
               </View>

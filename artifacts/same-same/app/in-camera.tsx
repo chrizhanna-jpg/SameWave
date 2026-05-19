@@ -51,7 +51,10 @@ const PINCH_SCALE_FACTOR = 0.25;
 export default function InCameraScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { from } = useLocalSearchParams<{ from?: string }>();
+  const { from, intent } = useLocalSearchParams<{
+    from?: string;
+    intent?: string;
+  }>();
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<CameraType>("back");
   const [zoom, setZoom] = useState(0); // 0..1
@@ -148,8 +151,12 @@ export default function InCameraScreen() {
       // screen so it can pick up the capture and start the matching flow.
       // When opened from camera.tsx (the normal in-app path), go back so
       // camera.tsx regains focus and its useFocusEffect drains the bus.
-      if (from === "home") {
-        router.replace("/camera?from=home");
+      if (from === "home" || intent) {
+        const q = new URLSearchParams();
+        if (from === "home") q.set("from", "home");
+        if (intent) q.set("intent", intent);
+        const suffix = q.toString();
+        router.replace(suffix ? `/camera?${suffix}` : "/camera");
       } else {
         router.back();
       }

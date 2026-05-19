@@ -17,6 +17,14 @@ export const EXPOSURE_HOT_SEEN_EXTRA_PENALTY = 6;
 export const EXPLORE_MAX_PHOTO_REPEATS = 1;
 
 /**
+ * md5(bytes_base64) of stock uploads that must never surface in feeds again.
+ * Unsplash three-cup toast (photo-1559056199-641a0ac8b55e @ w=400).
+ */
+export const BANNED_PHOTO_B64_MD5 = [
+  "578715bedbb5764e94d092300c6be816",
+] as const;
+
+/**
  * CTE: per-photo exposure tallies from votes + seen ledger.
  * Join as `LEFT JOIN photo_exposure pe ON pe.photo_id = p.id`.
  */
