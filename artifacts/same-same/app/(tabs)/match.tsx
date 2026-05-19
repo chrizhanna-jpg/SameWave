@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Animated,
   Dimensions,
+  InteractionManager,
   Modal,
   PanResponder,
   Platform,
@@ -13,6 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
 import { markTabVisited } from "@/utils/tabVisits";
@@ -77,6 +79,7 @@ import type { Match } from "@/context/AppContext";
 import { photoKey } from "@/utils/photoKey";
 import { stashMatchPhotoUris } from "@/utils/matchPhotoSnapshot";
 import { RIPPLE_CARD_WIDTH } from "@/constants/ripplePhotoFrame";
+import { normalizeUnsplashUri } from "@/utils/unsplashUri";
 
 const { width } = Dimensions.get("window");
 const SWIPE_THRESHOLD = width * 0.28;
@@ -563,6 +566,7 @@ export default function SwipeScreen() {
   // first post-hydration pass bypass the loop-breaker exactly once.
   const postHydrationRecheckedRef = useRef(false);
   useEffect(() => {
+    if (deckInteractionBlocked()) return;
     const currentUri = theirPhotoRef.current?.uri;
     if (!currentUri) return;
     const k = photoKey(currentUri);
@@ -591,7 +595,7 @@ export default function SwipeScreen() {
       setSharedTags(next.sharedTags);
       setNoMore(false);
     }
-  }, [seenSet, buildExcludeKeys, hasHydrated]);
+  }, [seenSet, buildExcludeKeys, hasHydrated, deckInteractionBlocked]);
 
   // Real candidates from the backend. Empty until the first fetch resolves;
   // SwipeScreen still renders something via SAMPLE_PHOTOS in dev / a graceful
@@ -769,6 +773,13 @@ export default function SwipeScreen() {
   const myPhotoUriRef = useRef(myPhotoUri);
   myPhotoUriRef.current = myPhotoUri;
   const isAnimatingOutRef = useRef(false);
+  const flashMatchRef = useRef<Match | null>(null);
+  flashMatchRef.current = flashMatch;
+
+  const deckInteractionBlocked = useCallback(
+    () => isAnimatingOutRef.current || flashMatchRef.current != null,
+    [],
+  );
 
   const pan = useRef(new Animated.ValueXY()).current;
   const cardScale = useRef(new Animated.Value(1)).current;
@@ -909,6 +920,8 @@ export default function SwipeScreen() {
   // advance on focus return, which then triggers the music useEffect
   // to switch to the next card's clip.
   const pendingAdvanceRef = useRef(false);
+  /** True after a Ripple swipe already advanced the deck under MatchFlash. */
+  const deckAdvancedForFlashRef = useRef(false);
   // Latest loadNextCandidate, accessed through a ref so the focus
   // effect below (which is declared before loadNextCandidate) avoids
   // a temporal-dead-zone reference at module evaluation.
@@ -953,6 +966,12 @@ export default function SwipeScreen() {
     Haptics.selectionAsync().catch(() => {});
   }, []);
 
+  const prefetchPhotoUri = useCallback((uri: string) => {
+    const normalized = normalizeUnsplashUri(uri);
+    if (!normalized) return;
+    void Image.prefetch(normalized).catch(() => {});
+  }, []);
+
   const loadNextCandidate = useCallback(() => {
     const currentUri = theirPhotoRef.current.uri;
     const currentKey = photoKey(currentUri);
@@ -967,6 +986,9 @@ export default function SwipeScreen() {
       [],
       mySubjectsRef.current,
     );
+    if (next?.photo.uri) {
+      prefetchPhotoUri(next.photo.uri);
+    }
     // After the swipe-out animation, the native-driven transform is parked
     // off-screen. Calling setValue from JS does NOT reliably propagate back
     // through useNativeDriver — the card stays invisible on subsequent taps.
@@ -985,17 +1007,45 @@ export default function SwipeScreen() {
         useNativeDriver: true,
       }),
     ]).start(() => {
-      if (next) {
-        setTheirPhoto(next.photo);
-        setMatchedTheme(next.matchedTheme);
-        setSharedTags(next.sharedTags);
-        setNoMore(false);
-      } else {
-        setNoMore(true);
-      }
-      isAnimatingOutRef.current = false;
+      InteractionManager.runAfterInteractions(() => {
+        if (next) {
+          setTheirPhoto(next.photo);
+          setMatchedTheme(next.matchedTheme);
+          setSharedTags(next.sharedTags);
+          setNoMore(false);
+        } else {
+          setNoMore(true);
+        }
+        isAnimatingOutRef.current = false;
+      });
     });
-  }, [pan, cardScale, sameOpacity, buildExcludeKeys]);
+  }, [pan, cardScale, sameOpacity, buildExcludeKeys, prefetchPhotoUri]);
+
+  // Warm the next card in the deck so the swap does not flash a blank pane.
+  useEffect(() => {
+    if (noMore || theirPhoto.id === "placeholder") return;
+    const currentKey = photoKey(theirPhoto.uri);
+    const next = getTheirPhoto(
+      activeTheme,
+      myTags,
+      buildExcludeKeys(currentKey),
+      currentKey,
+      realPool,
+      [],
+      mySubjects,
+    );
+    if (next?.photo.uri) prefetchPhotoUri(next.photo.uri);
+  }, [
+    theirPhoto.uri,
+    theirPhoto.id,
+    noMore,
+    activeTheme,
+    myTags,
+    mySubjects,
+    realPool,
+    buildExcludeKeys,
+    prefetchPhotoUri,
+  ]);
 
   const handleSwipe = useCallback(
     (dir: "left" | "right") => {
@@ -1136,6 +1186,11 @@ export default function SwipeScreen() {
           // Show the lightweight in-card flash. It auto-dismisses (or the
           // user can tap "Open" to dive into the full /reveal screen).
           setFlashMatch(matchWithStats);
+          // Advance the deck immediately so the swiped card is not parked
+          // off-screen under the overlay (felt jumpy when dismiss loaded
+          // the next photo).
+          loadNextCandidate();
+          deckAdvancedForFlashRef.current = true;
           // Async-upgrade to live stats if this was a real backend photo.
           // We only swap in the live numbers when there's at least one
           // real "same" vote — otherwise the seeded sample numbers feel
@@ -1177,11 +1232,18 @@ export default function SwipeScreen() {
     loadNextCandidateRef.current = loadNextCandidate;
   }, [loadNextCandidate]);
 
+  const handleSwipeRef = useRef(handleSwipe);
+  handleSwipeRef.current = handleSwipe;
+
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, g) =>
-        Math.abs(g.dx) > 8 && Math.abs(g.dy) < 80,
+        !isAnimatingOutRef.current &&
+        flashMatchRef.current == null &&
+        Math.abs(g.dx) > 8 &&
+        Math.abs(g.dy) < 80,
       onPanResponderMove: (_, g) => {
+        if (isAnimatingOutRef.current || flashMatchRef.current != null) return;
         pan.setValue({ x: g.dx, y: g.dy * 0.08 });
         const progress = Math.abs(g.dx) / SWIPE_THRESHOLD;
         if (g.dx > 0) {
@@ -1191,10 +1253,11 @@ export default function SwipeScreen() {
         }
       },
       onPanResponderRelease: (_, g) => {
+        if (isAnimatingOutRef.current || flashMatchRef.current != null) return;
         if (g.dx > SWIPE_THRESHOLD) {
-          handleSwipe("right");
+          handleSwipeRef.current("right");
         } else if (g.dx < -SWIPE_THRESHOLD) {
-          handleSwipe("left");
+          handleSwipeRef.current("left");
         } else {
           Animated.spring(pan, {
             toValue: { x: 0, y: 0 },
@@ -1205,7 +1268,7 @@ export default function SwipeScreen() {
           sameOpacity.setValue(0);
         }
       },
-    })
+    }),
   ).current;
 
   const rotation = pan.x.interpolate({
@@ -1228,6 +1291,7 @@ export default function SwipeScreen() {
   // returned. Re-pick when the live pool fills or we're on placeholder/empty.
   useEffect(() => {
     if (!hasHydrated || !hasUploadedPhoto) return;
+    if (deckInteractionBlocked()) return;
     const stuck =
       noMore ||
       theirPhotoRef.current.id === "placeholder" ||
@@ -1257,6 +1321,7 @@ export default function SwipeScreen() {
     myTagsKey,
     mySubjectsKey,
     activeTheme,
+    deckInteractionBlocked,
   ]);
 
   return (
@@ -1726,6 +1791,7 @@ export default function SwipeScreen() {
                 uri={theirPhoto.uri}
                 style={styles.fillPhoto}
                 resizeMode="cover"
+                transitionMs={280}
               />
               {isSamplePhoto(theirPhoto.uri) ? (
                 <StockPhotoWatermark size="md" />
@@ -1781,6 +1847,7 @@ export default function SwipeScreen() {
               <TouchableOpacity
                 style={[styles.actionBtn, styles.skipBtn]}
                 onPress={() => handleSwipe("left")}
+                disabled={flashMatch != null}
                 activeOpacity={0.8}
                 accessibilityLabel="Skip"
               >
@@ -1792,6 +1859,7 @@ export default function SwipeScreen() {
               <TouchableOpacity
                 style={[styles.actionBtn, styles.matchBtn, { backgroundColor: colors.teal }]}
                 onPress={() => handleSwipe("right")}
+                disabled={flashMatch != null}
                 activeOpacity={0.85}
                 accessibilityLabel="Send ripple"
                 accessibilityHint="Sends a Ripple on this photo. When they Ripple back, it becomes a Wave."
@@ -1804,8 +1872,7 @@ export default function SwipeScreen() {
         )}
       </View>
 
-      {/* Lightweight in-card celebration. Auto-advances to the next
-          candidate on dismiss; "Open" navigates to the full /reveal. */}
+      {/* Celebration overlay — deck advances under it on Ripple swipe. */}
       {flashMatch && (() => {
         const themeMeta = DAILY_CHALLENGES.find(
           (c) => c.id === flashMatch.theme || c.title.toLowerCase() === flashMatch.theme,
@@ -1825,20 +1892,20 @@ export default function SwipeScreen() {
             theirPhotoMinutesAgo={flashMatch.theirPhotoMinutesAgo}
             onDone={() => {
               setFlashMatch(null);
-              loadNextCandidate();
+              deckAdvancedForFlashRef.current = false;
             }}
             onOpenFull={(action) => {
               const data = flashMatch;
               const matchId = String(data.id);
               stashMatchPhotoUris(matchId, data.myPhoto, data.theirPhoto);
               setFlashMatch(null);
-              // Defer the deck advance until the user returns from /reveal
-              // so the matched card's music keeps playing through the
-              // navigation (audio singleton dedups on URL — same URL =
-              // no restart). The useFocusEffect on this screen runs the
-              // advance on focus return, which then switches the music
-              // to the next card's clip.
-              pendingAdvanceRef.current = true;
+              const alreadyAdvanced = deckAdvancedForFlashRef.current;
+              deckAdvancedForFlashRef.current = false;
+              // If the deck did not advance yet, defer until return from
+              // /reveal so matched-card music can continue through navigation.
+              if (!alreadyAdvanced) {
+                pendingAdvanceRef.current = true;
+              }
               router.push({
                 pathname: "/reveal",
                 params: {

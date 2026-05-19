@@ -10,6 +10,8 @@ type Props = {
   style?: ImageStyle;
   resizeMode?: ImageContentFit;
   accessibilityLabel?: string;
+  /** Crossfade when `uri` changes (ms). 0 disables. */
+  transitionMs?: number;
 };
 
 /**
@@ -21,6 +23,7 @@ export function RemotePhotoImage({
   style,
   resizeMode = "cover",
   accessibilityLabel,
+  transitionMs = 220,
 }: Props) {
   const [src, setSrc] = useState(() => normalizeUnsplashUri(uri));
 
@@ -34,6 +37,8 @@ export function RemotePhotoImage({
       style={style}
       contentFit={resizeMode}
       cachePolicy="memory-disk"
+      recyclingKey={src}
+      transition={transitionMs > 0 ? transitionMs : undefined}
       accessibilityLabel={accessibilityLabel}
       onError={() => {
         setSrc((current) =>
