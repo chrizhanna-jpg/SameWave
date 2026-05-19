@@ -16,7 +16,10 @@ import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+import {
+  SafeAreaProvider,
+  initialWindowMetrics,
+} from "react-native-safe-area-context";
 import {
   ActivityIndicator,
   Alert,
@@ -486,7 +489,7 @@ function RootLayoutWithClerk() {
               AppProvider's first authed effects already see a valid token.
               ClerkTokenBridge renders nothing — it's pure side-effect glue. */}
           <ClerkTokenBridge />
-          <SafeAreaProvider>
+          <SafeAreaProvider initialMetrics={initialWindowMetrics}>
             <QueryClientProvider client={queryClient}>
               <SubscriptionProvider>
                 <AppProvider>

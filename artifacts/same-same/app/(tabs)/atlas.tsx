@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { tabBarTotalHeight } from "@/utils/tabBarSafeArea";
 
 import { useAuth } from "@clerk/expo";
 
@@ -312,7 +313,8 @@ export default function AtlasScreen() {
 
   const outerPad = 16;
   const topPadding = Platform.OS === "web" ? 56 : insets.top;
-  const bottomPad = Platform.OS === "web" ? 28 : insets.bottom;
+  const bottomPad =
+    Platform.OS === "web" ? 28 + 84 : tabBarTotalHeight(insets);
 
   const headerSub = useMemo(() => {
     if (loading) return null;

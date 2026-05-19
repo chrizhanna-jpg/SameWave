@@ -16,6 +16,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
 import { markTabVisited } from "@/utils/tabVisits";
+import { tabBarTotalHeight } from "@/utils/tabBarSafeArea";
 import { Icon } from "@/components/Icon";
 import { MicBadge } from "@/components/MicBadge";
 import { MatchFlash } from "@/components/MatchFlash";
@@ -1215,6 +1216,8 @@ export default function SwipeScreen() {
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
+  const tabBarClearance =
+    Platform.OS === "web" ? 90 : tabBarTotalHeight(insets);
   // Treat the user as "no photo for today" if their last upload is from a
   // previous UTC day — this makes Start Matching prompt for a fresh photo
   // each new daily-challenge cycle instead of recycling yesterday's.
@@ -1337,7 +1340,7 @@ export default function SwipeScreen() {
         );
       })()}
 
-      <View style={styles.cardArea}>
+      <View style={[styles.cardArea, { paddingBottom: tabBarClearance }]}>
         {!hasUploadedPhoto && (
           <View
             style={[

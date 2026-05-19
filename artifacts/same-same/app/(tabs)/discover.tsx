@@ -24,6 +24,7 @@ import {
 import { router, useFocusEffect } from "expo-router";
 import { markTabVisited } from "@/utils/tabVisits";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { tabBarTotalHeight } from "@/utils/tabBarSafeArea";
 import { Icon } from "@/components/Icon";
 import { MicBadge } from "@/components/MicBadge";
 import { OceanShimmer } from "@/components/OceanShimmer";
@@ -634,9 +635,9 @@ export default function DiscoverScreen() {
   // (~80)), then refine once the real layout arrives.
   const estListHeight = useMemo(() => {
     const headerEst = topPadding + 80;
-    const tabBarEst = bottomPadding + 60;
+    const tabBarEst = tabBarTotalHeight(insets);
     return Math.max(300, winDims.height - headerEst - tabBarEst);
-  }, [winDims.height, topPadding, bottomPadding]);
+  }, [winDims.height, topPadding, insets]);
   const effectiveListHeight = listHeight > 0 ? listHeight : estListHeight;
   const centerPad = useMemo(() => {
     const h = estCardHeight > 0 ? estCardHeight : 320;

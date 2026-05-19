@@ -9,9 +9,15 @@ import {
   View,
   useColorScheme,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { onAllTabsVisited } from "@/utils/tabVisits";
+import {
+  TAB_BAR_PADDING_TOP,
+  tabBarBottomInset,
+  tabBarTotalHeight,
+} from "@/utils/tabBarSafeArea";
 import { detectCountryFromGPS } from "@/utils/gpsCountry";
 import { flagFor, nameFor } from "@/data/countries";
 
@@ -65,6 +71,9 @@ export default function TabLayout() {
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
   const isAndroid = Platform.OS === "android";
+  const insets = useSafeAreaInsets();
+  const tabBottomInset = tabBarBottomInset(insets);
+  const tabBarHeight = isWeb ? 84 : tabBarTotalHeight(insets);
   const {
     unreadEchoes,
     myCountryCode,
@@ -137,9 +146,9 @@ export default function TabLayout() {
           shadowOpacity: 0.4,
           shadowRadius: 18,
           shadowOffset: { width: 0, height: -4 },
-          ...(isWeb ? { height: 84 } : { height: 70 }),
-          paddingTop: 6,
-          paddingBottom: 9,
+          height: tabBarHeight,
+          paddingTop: TAB_BAR_PADDING_TOP,
+          paddingBottom: tabBottomInset,
         },
         tabBarBackground: () =>
           isIOS ? (

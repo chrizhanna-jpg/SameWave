@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { scrollPaddingAboveTabBar } from "@/utils/tabBarSafeArea";
 import { router, useFocusEffect } from "expo-router";
 import { useAuth } from "@clerk/expo";
 import { markTabVisited } from "@/utils/tabVisits";
@@ -271,7 +272,7 @@ export default function ProfileScreen() {
   const worldCoverage = getWorldMapCoverage();
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
-  const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
+  const scrollBottomPad = scrollPaddingAboveTabBar(insets, 24);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -333,7 +334,7 @@ export default function ProfileScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: bottomPadding + 24 },
+          { paddingBottom: scrollBottomPad },
         ]}
         showsVerticalScrollIndicator={false}
       >

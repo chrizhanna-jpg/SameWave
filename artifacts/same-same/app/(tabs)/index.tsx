@@ -20,6 +20,7 @@ import { useCountUp } from "@/hooks/useCountUp";
 import { getTodaysChallenge } from "@/data/samplePhotos";
 import { tagLabel } from "@/utils/interests";
 import { RIPPLE_ONE_LINER, WAVE_ONE_LINER } from "@/data/waveRippleGlossary";
+import { scrollPaddingAboveTabBar } from "@/utils/tabBarSafeArea";
 
 export default function HomeScreen() {
   const colors = useColors();
@@ -35,7 +36,7 @@ export default function HomeScreen() {
   );
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
-  const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
+  const scrollBottomPad = scrollPaddingAboveTabBar(insets);
 
   // Only confirmed ("same") swipes count as ripples. Previously this used
   // matches.length, which inflated the number with every "different"
@@ -63,7 +64,7 @@ export default function HomeScreen() {
           styles.content,
           {
             paddingTop: topPadding + 16,
-            paddingBottom: bottomPadding + 110,
+            paddingBottom: scrollBottomPad,
           },
         ]}
       >
