@@ -402,8 +402,8 @@ export default function AtlasScreen() {
             Sign in to open the Atlas
           </Text>
           <Text style={[styles.centreText, { color: colors.mutedForeground }]}>
-            The map loads after sign-in so we can show your ripples and waves
-            with everyone else’s.
+            Sign in to see live Ripples and Waves from everyone on the map.
+            Use Mine only to filter to yours.
           </Text>
           <TouchableOpacity
             accessibilityRole="button"

@@ -24,7 +24,7 @@ export const ATLAS_FILTER_A11Y = {
   wavefire:
     "Wavefire — live clusters of mutual Waves (both Rippled back)",
   ripplefire:
-    "Ripplefire — live clusters of Ripples (not yet reciprocated)",
+    "Ripplefire — all live Ripples worldwide (use Mine only to filter to yours)",
 } as const;
 
 export const ATLAS_FIRE_EMPTY = {

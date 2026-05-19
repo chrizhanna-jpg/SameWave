@@ -84,6 +84,7 @@ import {
 } from "@/utils/atlasArcPath";
 import { centroidLonLatForAtlas } from "@/utils/atlasCountryCentroids";
 import {
+  connectionsInFireWindow,
   detectRipplefireClusters,
   detectWavefireClusters,
   orderWavefireRingCountryCodes,
@@ -534,9 +535,25 @@ export function AtlasGlobeExperience({
 
   const displayConnections = useMemo(() => {
     if (!fireMode) return baseFiltered;
+    // Ripplefire / Wavefire: draw every active arc globally; cluster picker
+    // only chooses which themed group opens in Explore (prev/next).
+    if (fireMode === "ripplefire") {
+      return connectionsInFireWindow(
+        normalized,
+        ATLAS_FIRE_WINDOW_MS,
+        "ripple",
+      );
+    }
+    if (fireMode === "wavefire") {
+      return connectionsInFireWindow(
+        normalized,
+        ATLAS_FIRE_WINDOW_MS,
+        "wave",
+      );
+    }
     if (!fireCluster) return [];
     return fireCluster.connections;
-  }, [fireMode, baseFiltered, fireCluster]);
+  }, [fireMode, baseFiltered, fireCluster, normalized]);
 
   const canvasPixelW = width * ATLAS_MAP_OVERSAMPLE;
   const canvasPixelH = mapPixelH * ATLAS_MAP_OVERSAMPLE;
@@ -781,7 +798,7 @@ export function AtlasGlobeExperience({
 
       {filter === "mine" && !isSignedIn ? (
         <Text style={[styles.mineHint, { color: colors.mutedForeground }]}>
-          Sign in to see only your Ripples and Waves on the map.
+          Sign in to filter the map to Ripples and Waves you are part of.
         </Text>
       ) : null}
 
@@ -1355,7 +1372,12 @@ function AtlasFilterBar(props: {
       filterIconColor: "#FFD166",
       filterA11y: ATLAS_FILTER_A11Y.waves,
     },
-    { id: "mine", label: "My activity", filterA11y: "My activity" },
+    {
+      id: "mine",
+      label: "Mine only",
+      filterA11y:
+        "Mine only — Ripples and Waves you are part of, not everyone else's",
+    },
   ];
   const fireModes = [RIPPLEFIRE_VISUAL, WAVEFIRE_VISUAL] as const;
   const standardChip = (active: boolean) => ({

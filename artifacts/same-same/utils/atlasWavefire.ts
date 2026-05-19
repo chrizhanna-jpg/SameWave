@@ -45,13 +45,23 @@ type ConnFeat = {
 };
 
 function toFeat(c: AtlasConnection): ConnFeat {
-  const theme = (c.theme ?? "").trim().toLowerCase();
+  let theme = (c.theme ?? "").trim().toLowerCase();
   const tags = new Set(
     (c.tags ?? []).map((t) => t.trim().toLowerCase()).filter(Boolean),
   );
   const subjects = new Set(
     (c.subjects ?? []).map((t) => t.trim().toLowerCase()).filter(Boolean),
   );
+  // Ripples without AI metadata still get their own cluster (minEvents=1)
+  // without merging every orphan into one giant "ripple" bucket.
+  if (
+    c.kind === "ripple" &&
+    theme.length < THEME_MIN_LEN &&
+    tags.size === 0 &&
+    subjects.size === 0
+  ) {
+    theme = `__solo_${c.id}`;
+  }
   return { c, theme, tags, subjects };
 }
 
@@ -185,14 +195,7 @@ export function detectAtlasThemeClusters(
     return Number.isFinite(t) && now - t <= windowMs;
   });
 
-  const feats = recentAll
-    .map(toFeat)
-    .filter(
-      (f) =>
-        f.theme.length >= THEME_MIN_LEN ||
-        f.tags.size > 0 ||
-        f.subjects.size > 0,
-    );
+  const feats = recentAll.map(toFeat);
 
   if (feats.length < minEvents) return [];
 
@@ -310,4 +313,18 @@ export function detectRipplefireCluster(
     minEvents,
     minCountries,
   )[0] ?? null;
+}
+
+/** Active arcs of one kind within the Ripplefire / Wavefire time window. */
+export function connectionsInFireWindow(
+  connections: AtlasConnection[],
+  windowMs: number,
+  kind: AtlasConnection["kind"],
+): AtlasConnection[] {
+  const now = Date.now();
+  return connections.filter((c) => {
+    if (c.kind !== kind) return false;
+    const t = Date.parse(c.createdAt);
+    return Number.isFinite(t) && now - t <= windowMs;
+  });
 }
