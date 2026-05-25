@@ -491,41 +491,6 @@ export function AtlasFireExploreModal({
                 }
               }}
             >
-              {photoTiles.length > 1 && photoIndex > 0 ? (
-                <View style={styles.scrollHintTop} pointerEvents="none">
-                  <View
-                    style={[
-                      styles.scrollHintPill,
-                      { borderColor: visual.lineStroke + "88" },
-                    ]}
-                  >
-                    <Icon name="chevron-up" size={14} color={visual.lineStroke} />
-                    <Text style={[styles.scrollHintText, { color: visual.lineStroke }]}>
-                      Earlier photos above
-                    </Text>
-                  </View>
-                </View>
-              ) : null}
-              {photoTiles.length > 1 &&
-              photoIndex < photoTiles.length - 1 ? (
-                <View style={styles.scrollHintBottom} pointerEvents="none">
-                  <View
-                    style={[
-                      styles.scrollHintPill,
-                      { borderColor: visual.lineStroke + "88" },
-                    ]}
-                  >
-                    <Icon
-                      name="chevron-down"
-                      size={14}
-                      color={visual.lineStroke}
-                    />
-                    <Text style={[styles.scrollHintText, { color: visual.lineStroke }]}>
-                      More photos below
-                    </Text>
-                  </View>
-                </View>
-              ) : null}
               {listPagingReady ? (
                 <ScrollView
                   key={`explore-pager-${pageHeight}`}
@@ -669,36 +634,6 @@ const styles = StyleSheet.create({
   listViewport: {
     flex: 1,
     width: "100%",
-  },
-  scrollHintTop: {
-    position: "absolute",
-    top: 8,
-    left: 0,
-    right: 0,
-    alignItems: "center",
-    zIndex: 4,
-  },
-  scrollHintBottom: {
-    position: "absolute",
-    bottom: 12,
-    left: 0,
-    right: 0,
-    alignItems: "center",
-    zIndex: 4,
-  },
-  scrollHintPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-    borderWidth: 1,
-    backgroundColor: "rgba(0, 16, 24, 0.72)",
-  },
-  scrollHintText: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 12,
   },
   pageEdgeBadge: {
     position: "absolute",

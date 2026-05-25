@@ -35,6 +35,7 @@ export type MusicGenre =
   | "elated"
   | "amusement"
   | "cheers"
+  | "yum"
   | "love"
   | "caring"
   | "romance"
@@ -47,6 +48,7 @@ export type MusicGenre =
   | "content"
   | "chilling"
   | "relaxed"
+  | "tired"
   | "nostalgia"
   | "longing"
   | "sad"
@@ -217,6 +219,20 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
     ],
   },
   {
+    // "Yum" — food that makes you grin: plates, bites, kitchen warmth.
+    // Distinct from Cheers (drinks/toast) and Joy (generic bright).
+    id: "yum",
+    label: "Yum",
+    emoji: "😋",
+    vibe: "tasty, satisfied — the bite worth sharing",
+    clips: [
+      { id: "yum-1", label: "First Bite", url: T.happyBoy },
+      { id: "yum-2", label: "Kitchen Warm", url: T.easyLemon },
+      { id: "yum-3", label: "Clean Plate", url: T.lifeOfRiley },
+      { id: "yum-4", label: "Fresh Served", url: T.cheeryMonday },
+    ],
+  },
+  {
     id: "love",
     label: "Love",
     emoji: "💗",
@@ -374,6 +390,22 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
       { id: "relaxed-2", label: "Soft Tide", url: T.localForecast },
       { id: "relaxed-3", label: "Unwind", url: T.healing },
       { id: "relaxed-4", label: "Drift", url: T.pamgaea },
+    ],
+  },
+  {
+    // "Tired" — worn out, sleepy, running on fumes. Distinct from relaxed
+    // (at ease) and chilling (choosing to kick back). This is the
+    // heavy-lid register: late shift, long day, couch crash, almost
+    // bed. Music is slow and weighted without tipping into sad.
+    id: "tired",
+    label: "Tired",
+    emoji: "😴",
+    vibe: "heavy lids, running on empty, bed soon",
+    clips: [
+      { id: "tired-1", label: "Heavy Lids", url: T.dreamer },
+      { id: "tired-2", label: "Late Hour", url: T.achaidh },
+      { id: "tired-3", label: "Slow Blink", url: T.meditation },
+      { id: "tired-4", label: "Almost Bed", url: T.longNoteOne },
     ],
   },
   {
@@ -549,6 +581,7 @@ const VIBE_KEYWORDS: Record<MusicGenre, string[]> = {
   elated: ["summit", "win", "finish", "podium", "medal", "graduation", "first", "achievement", "top", "peak"],
   amusement: ["silly", "funny", "joke", "prank", "goofy", "meme", "weird", "quirky", "lol", "absurd"],
   cheers: ["cheers", "toast", "drink", "drinks", "cocktail", "cocktails", "beer", "beers", "wine", "champagne", "prosecco", "mimosa", "margarita", "martini", "whiskey", "whisky", "bourbon", "gin", "vodka", "rum", "tequila", "sangria", "spritz", "aperol", "negroni", "highball", "lowball", "pint", "pints", "glass", "glasses", "clink", "happy hour", "brunch", "bar", "pub", "tavern", "bistro", "patio", "rooftop", "nightcap", "round", "bartender", "sommelier", "cork", "uncorked", "pour", "bottle", "tumbler", "stein", "tap", "draft", "cellar"],
+  yum: ["yum", "yummy", "delicious", "tasty", "foodie", "food", "meal", "meals", "lunch", "dinner", "breakfast", "brunch", "snack", "bite", "bites", "dish", "dishes", "plate", "plated", "bowl", "feast", "hungry", "appetite", "treat", "treats", "recipe", "cooking", "cooked", "baking", "baked", "kitchen", "restaurant", "diner", "bakery", "deli", "takeaway", "takeout", "homemade", "fresh", "savory", "sweet", "dessert", "pastry", "cake", "cookie", "bread", "pizza", "pasta", "burger", "sushi", "taco", "salad", "soup", "ramen", "noodles", "rice", "steak", "seafood", "fruit", "berries", "chocolate", "ice cream", "cheese", "charcuterie", "spread", "platter", "grill", "grilled", "roast", "roasted", "farm", "table", "fork", "spoon", "chef", "serve", "served"],
   love: ["pet", "hug", "family", "baby", "anniversary", "warm", "soft", "snuggle", "puppy", "kitten"],
   caring: ["care", "caring", "tend", "tending", "nurse", "nursing", "comfort", "comforting", "soothe", "soothing", "lullaby", "bedside", "nurture", "nurturing", "look after", "looking after", "sick", "illness", "ill", "unwell", "recovering", "recovery", "hospital", "clinic", "bandage", "bandaid", "medicine", "soup", "broth", "elderly", "ageing", "aging", "caregiver", "caregiving", "carer", "tucked in", "swaddle", "swaddling", "watering plants", "feeding", "rocking", "soothing voice", "stroking", "patting", "wiping", "cleaning up", "checking on", "wellness check", "supporting", "looking out for"],
   romance: ["kiss", "couple", "wedding", "date", "candle", "flower", "rose", "honeymoon", "proposal"],
@@ -561,6 +594,7 @@ const VIBE_KEYWORDS: Record<MusicGenre, string[]> = {
   content: ["content", "satisfied", "settled", "cozy", "comfy", "couch", "blanket", "fireplace", "full", "happy enough", "peaceful smile", "at ease", "good day", "simple", "homey"],
   chilling: ["chill", "chilling", "chilled", "chillout", "unwind", "unwinding", "lazy", "lounging", "lounge", "hangout", "low key", "lowkey", "idle", "slow day", "easy day", "nothing planned"],
   relaxed: ["relaxed", "relaxing", "relax", "mellow", "laid back", "laidback", "unhurried", "loose", "ease", "at ease", "breathing", "slow down", "wind down", "decompress", "restful"],
+  tired: ["tired", "sleepy", "sleep", "sleeping", "exhausted", "exhaustion", "weary", "fatigued", "drained", "worn out", "worn-out", "burnout", "burned out", "burnt out", "yawn", "yawning", "nap", "napping", "snooze", "bedtime", "bed", "pillow", "blanket", "couch", "crash", "late night", "latenight", "all-nighter", "overtime", "night shift", "nightshift", "shift work", "insomnia", "drowsy", "groggy", "half awake", "half-awake", "running on empty", "no energy", "low energy", "wiped", "beat", "spent", "sluggish"],
   nostalgia: ["old", "vintage", "retro", "polaroid", "childhood", "school", "throwback", "hometown", "grandparent", "attic"],
   longing: ["window", "distant", "far", "missing", "wishing", "absent", "without", "across", "moon", "horizon"],
   sad: ["empty", "rainy", "grey", "ending", "goodbye", "memorial", "tear", "departed"],
@@ -579,12 +613,16 @@ const THEME_HINTS: Record<string, MusicGenre> = {
   morning: "calm",
   coffee: "calm",
   tea: "calm",
-  breakfast: "calm",
-  lunch: "content",
-  dinner: "content",
-  snack: "joy",
-  food: "joy",
-  meal: "joy",
+  breakfast: "yum",
+  lunch: "yum",
+  dinner: "yum",
+  snack: "yum",
+  food: "yum",
+  meal: "yum",
+  cooking: "yum",
+  baking: "yum",
+  dessert: "yum",
+  bread: "yum",
   pet: "love",
   family: "love",
   baby: "love",
@@ -706,6 +744,16 @@ const THEME_HINTS: Record<string, MusicGenre> = {
   chilled: "chilling",
   relaxed: "relaxed",
   relaxing: "relaxed",
+  tired: "tired",
+  sleepy: "tired",
+  sleep: "tired",
+  exhausted: "tired",
+  exhaustion: "tired",
+  nap: "tired",
+  bedtime: "tired",
+  yawn: "tired",
+  burnout: "tired",
+  overtime: "tired",
   unwind: "chilling",
   lounge: "chilling",
   shopping: "joy",
@@ -808,7 +856,7 @@ export function genreSearchMatchScore(genre: GenreMeta, query: string): number {
   return bestTokenMatchScore(query, genreSearchTerms(genre));
 }
 
-/** Resolve a single vibe from typed search text (chip row + submit validation). */
+/** Resolve a single vibe from typed search text (e.g. tests / future autoselect). */
 export function resolveGenreFromSearchQuery(query: string): MusicGenre | null {
   const q = query.trim().toLowerCase();
   if (!q) return null;

@@ -5,7 +5,7 @@
     "version": "1.2.8",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": ["app.echo.samesame", "same-same"],
+    "scheme": ["app.echo.samewave", "same-same"],
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "app.echo.samesame",
+      "bundleIdentifier": "app.echo.samewave",
       "buildNumber": "7",
       "infoPlist": {
         "NSCameraUsageDescription": "SameWave uses your camera to take photos of your day so you can ripple with people sharing similar moments.",
@@ -25,9 +25,9 @@
       }
     },
     "android": {
-      "package": "app.echo.samesame",
+      "package": "app.echo.samewave",
       "softwareKeyboardLayoutMode": "resize",
-      "versionCode": 36,
+      "versionCode": 38,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#166FFC"

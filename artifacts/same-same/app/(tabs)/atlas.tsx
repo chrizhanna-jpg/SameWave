@@ -275,7 +275,14 @@ export default function AtlasScreen() {
     if (isRefresh) setRefreshing(true);
     else if (!atlasHasLoadedOnceRef.current) setLoading(true);
     try {
-      const data = await fetchAtlasSummary();
+      let data = await fetchAtlasSummary({ force: isRefresh });
+      const timedOut =
+        data.loadError === "network" &&
+        (data.loadFailure?.detail?.toLowerCase().includes("timed out") ?? false);
+      if (timedOut && !isRefresh) {
+        await new Promise((r) => setTimeout(r, 2500));
+        data = await fetchAtlasSummary({ force: true });
+      }
       setSummary(data.countries);
       setConnections(data.connections);
       setLoadError(data.loadError ?? null);

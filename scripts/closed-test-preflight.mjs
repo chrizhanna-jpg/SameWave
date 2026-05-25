@@ -54,14 +54,26 @@ const requiredProdKeys = [
   "EXPO_PUBLIC_CLERK_PROXY_URL",
 ];
 for (const key of requiredProdKeys) {
-  if (!prodEnv[key]?.trim()) {
+  const value = prodEnv[key]?.trim();
+  if (!value) {
     failures.push(`eas.json production.env missing ${key}`);
+  }
+  if (
+    key === "EXPO_PUBLIC_CLERK_PROXY_URL" &&
+    value &&
+    !value.startsWith("http") &&
+    value !== "none" &&
+    value !== "off"
+  ) {
+    failures.push(
+      `eas.json EXPO_PUBLIC_CLERK_PROXY_URL must be a URL, "none", or "off" (got "${value}")`,
+    );
   }
 }
 
-if (androidPackage !== "app.echo.samesame") {
+if (androidPackage !== "app.echo.samewave") {
   failures.push(
-    `app.json android.package is ${androidPackage ?? "?"} (expected app.echo.samesame)`,
+    `app.json android.package is ${androidPackage ?? "?"} (expected app.echo.samewave)`,
   );
 }
 
@@ -195,5 +207,5 @@ if (failures.length) {
 
 console.log("Repo + deployed API checks passed.");
 console.log(
-  "\nOnly you can fix (not in git): Play signing SHA in Google Cloud, Clerk allowlist app.echo.samesame://callback, RevenueCat Play credentials, Play tester list, Render cold-start if service sleeps.",
+  "\nOnly you can fix (not in git): Play signing SHA in Google Cloud, Clerk allowlist app.echo.samewave://callback, RevenueCat Play credentials, Play tester list, Render cold-start if service sleeps.",
 );

@@ -8,8 +8,9 @@ Use this checklist before each internal/closed-test rollout.
 
 **What was changed for the current closed-test path (AAB / Play internal):**
 
-- **`eas.json`** — `preview` and **`production`** profiles now point the app at **`samewave.onrender.com`**, use your **Clerk test** publishable key (`pk_test_…`), and set **`EXPO_PUBLIC_CLERK_PROXY_URL`** to **`https://samewave.onrender.com/api/__clerk`**. Fake RevenueCat placeholder strings were **removed** from those profiles so the build does **not** override the app’s built-in RevenueCat public keys (the placeholders would have broken billing).
+- **`eas.json`** — `preview` and **`production`** profiles point at **`samewave.onrender.com`** and **`pk_test_…`**. **`EXPO_PUBLIC_CLERK_PROXY_URL`** is **`none`** for closed test (proxy only works with **`pk_live_…`**; test keys talk to Clerk directly). Fake RevenueCat placeholders were **removed** so builds do not override working RevenueCat fallbacks.
 - **`app.json`** — **`android.versionCode`** was bumped (e.g. to **17**) for the next Play upload; **bump it again by 1** for every later upload Google accepts.
+- **Package id** is **`app.echo.samewave`** — external console steps: [docs/PACKAGE_RENAME_APP_ECHO_SAMEWAVE.md](../../docs/PACKAGE_RENAME_APP_ECHO_SAMEWAVE.md).
 - **API** — `/api/public/clerk-config` is served **before** Clerk middleware so Render health checks and config checks don’t return 500 when Clerk env is still being tuned.
 
 **Pre-launch swap list (do before treating the app as “live” on the store):**
@@ -57,6 +58,7 @@ From workspace root:
 Run on at least one Android physical device and one iOS device/simulator.
 
 - [ ] Cold start loads app, hides splash, and does not stall on black screen.
+- [ ] **Play testers** do not see **"Can't reach SameWave"** after splash (Clerk bootstrap). If they do, follow [docs/PLAY_CLOSED_TEST_AUTH.md](../../docs/PLAY_CLOSED_TEST_AUTH.md) (Play App Signing SHA + Clerk allowlist).
 - [ ] Onboarding flow completes and routes to auth/home correctly.
 - [ ] Auth works (sign in/out, app restart keeps expected state).
 - [ ] Upload flow works (camera + photo library).
@@ -99,7 +101,7 @@ Run on at least one Android physical device and one iOS device/simulator.
 
 - [ ] **Render** environment: `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY` (same `pk_test` / `sk_test` pair as `eas.json`), `DATABASE_URL`, `OPENAI_API_KEY` if using analyze — see `artifacts/api-server/.env.render.example`.
 - [ ] **Google Play** closed track: publish release, add testers.
-- [ ] **Google Sign-In**: Play **App signing** SHA-1 + SHA-256 in Google Cloud Android OAuth client (`app.echo.samesame`); Clerk Native allowlist **`app.echo.samesame://callback`** (same Clerk *instance* as `pk_test` in EAS). Sign-in screen shows **Build … · Android versionCode** — need **≥ 22** after redirect fix.
+- [ ] **Google Sign-In / Clerk boot**: Play **App signing** SHA-1 + SHA-256 in Google Cloud Android OAuth client (`app.echo.samewave`); Clerk Native allowlist **`app.echo.samewave://callback`** (same Clerk *instance* as `pk_test` in EAS). Full steps: [docs/PLAY_CLOSED_TEST_AUTH.md](../../docs/PLAY_CLOSED_TEST_AUTH.md). Sign-in screen shows **Build … · Android versionCode** — ship **≥ 37** for latest Clerk boot fixes.
 - [ ] **RevenueCat** (optional for core app; needed for £1 Pro): Google Play service account + product linked to entitlement `pro`.
 - [ ] **EAS build**: `eas build --platform android --profile production` after bumping `versionCode`.
 

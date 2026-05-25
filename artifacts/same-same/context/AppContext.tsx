@@ -672,6 +672,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ...prev,
           ...parsed,
           appOpenCount: nextOpenCount,
+          // Never downgrade tutorial completion — a slow initial hydrate can
+          // otherwise replay /onboarding after Google OAuth on the live AAB.
+          onboardingComplete:
+            prev.onboardingComplete === true || parsed.onboardingComplete === true,
           myPhotos: migratedPhotos,
           connectRequests: migratedRequests,
           // Echoes always come from the server now — drop any legacy
@@ -1237,10 +1241,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const completeOnboarding = useCallback(async () => {
+    // Patch disk immediately so an OAuth browser hand-off / cold resume
+    // cannot lose the flag if a full saveState is still queued.
+    await mergePersistedPatch({ onboardingComplete: true });
     const snapshot: AppState = {
       ...stateRef.current,
       onboardingComplete: true,
     };
+    stateRef.current = snapshot;
     setState(snapshot);
     await saveState(snapshot);
   }, []);

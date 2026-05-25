@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
-import { ECHOES_SCREEN } from "@/data/waveRippleGlossary";
+import { ECHOES_SCREEN, WAVE_MUTUAL_TAGLINE } from "@/data/waveRippleGlossary";
 import type { EchoCard as EchoCardType } from "@/context/AppContext";
 import { timeAgo } from "@/utils/timeAgo";
 
@@ -265,7 +265,7 @@ function PendingEchoCard({
         >
           <Icon name="wave-glyph" size={20} color={colors.gold} />
           <Text style={[styles.celebrateText, { color: colors.gold }]}>
-            Wave! Two minds, one wavelength.
+            {WAVE_MUTUAL_TAGLINE}
           </Text>
         </View>
       ) : (

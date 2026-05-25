@@ -2,31 +2,18 @@ import { Redirect } from "expo-router";
 import { useAuth } from "@clerk/expo";
 import { useApp } from "@/context/AppContext";
 
-// Show the tutorial automatically on the first cold start (while
-// onboardingComplete is false). After they finish or skip, cold starts
-// go straight to sign-in or tabs. They can replay via the home screen.
-//
-// Show the full tutorial on the first cold start only. If the user
-// kills the app mid-tutorial, open 2 can still show it until they tap
-// "Let's start" / Skip (onboardingComplete is persisted before "/").
-const TUTORIAL_OPENS = 1;
-
 // Single decision point for "where should the user land right now?"
-// Order:
-//   1. Tutorial first — even before sign-in. Skipping the tutorial
-//      counts as completing it (completeOnboarding flips the flag), so
-//      this gate only fires while the user genuinely hasn't seen the
-//      flow yet AND they're inside the first-N-opens window.
-//   2. Required Google sign-in. If the tutorial has been seen but the
-//      user isn't authenticated, send them to the sign-in screen.
-//   3. Otherwise → home tabs.
+// First-time flow (production AAB):
+//   1. Tutorial once (`onboardingComplete` persisted before leaving /onboarding)
+//   2. Google sign-in
+//   3. Home tabs
+// Replay tutorial from Home uses resetOnboarding() — does not affect this gate
+// until the user finishes/skips again.
 //
-// Routing the post-tutorial / post-sign-in transition through here
-// (instead of jumping straight to /(tabs)) keeps the decision in one
-// place: the rest of the app can simply navigate to "/" and trust this
-// gate to land them in the right state.
+// Routing post-tutorial / post-sign-in through "/" keeps the decision in
+// one place instead of hard-coding /(tabs) after OAuth.
 export default function Index() {
-  const { appOpenCount, hasHydrated, onboardingComplete } = useApp();
+  const { hasHydrated, onboardingComplete } = useApp();
   const { isLoaded, isSignedIn } = useAuth();
 
   // Wait for AsyncStorage AND Clerk to hydrate before deciding. Without
@@ -38,7 +25,7 @@ export default function Index() {
     return null;
   }
 
-  if (!onboardingComplete && appOpenCount <= TUTORIAL_OPENS) {
+  if (!onboardingComplete) {
     return <Redirect href="/onboarding" />;
   }
 

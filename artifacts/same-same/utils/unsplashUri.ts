@@ -1,6 +1,6 @@
-/** Known-good Unsplash image used when a stock URL fails to load. */
+/** Neutral cityscape — used when a stock URL fails (not coffee; avoids the old three-cup fallback). */
 export const UNSPLASH_FALLBACK_URI =
-  "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=400&auto=format&fit=crop&q=80";
+  "https://images.unsplash.com/photo-1480714378408-67cf0d13bc1b?w=400&auto=format&fit=crop&q=80";
 
 /** Build a mobile-friendly Unsplash CDN URL from a `timestamp-hash` photo id. */
 export function unsplashPhotoUrl(photoId: string, width = 400): string {

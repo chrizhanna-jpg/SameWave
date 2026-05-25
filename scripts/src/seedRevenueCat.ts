@@ -42,9 +42,9 @@ const PRODUCT_DISPLAY_NAME = "SameWave Pro";
 const PRODUCT_USER_FACING_TITLE = "SameWave Pro";
 
 const APP_STORE_APP_NAME = "SameWave (iOS)";
-const APP_STORE_BUNDLE_ID = "app.echo.samesame";
+const APP_STORE_BUNDLE_ID = "app.echo.samewave";
 const PLAY_STORE_APP_NAME = "SameWave (Android)";
-const PLAY_STORE_PACKAGE_NAME = "app.echo.samesame";
+const PLAY_STORE_PACKAGE_NAME = "app.echo.samewave";
 
 const ENTITLEMENT_IDENTIFIER = "pro";
 const ENTITLEMENT_DISPLAY_NAME = "SameWave Pro";

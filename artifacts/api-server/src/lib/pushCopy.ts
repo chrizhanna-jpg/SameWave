@@ -4,13 +4,13 @@
  */
 export const PUSH_COPY = {
   pending: {
-    title: "New Ripple on your moment",
-    body: "If their photo feels like yours, ripple back to make a Wave.",
+    title: "Someone tapped Ripple",
+    body: "Ripple back if you feel the same — then it's a Wave.",
     categoryId: "ripple_incoming",
   },
   mutual: {
-    title: "You have a Wave! ✨",
-    body: "You both tapped Same — open your Wave reveal to celebrate.",
+    title: "Catch a Wave! ✨",
+    body: "You rippled back! Send a Ripple. Catch a Wave.",
     categoryId: "wave_mutual",
   },
 } as const;

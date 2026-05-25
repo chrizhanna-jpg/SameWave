@@ -5,6 +5,7 @@ import { Icon } from "@/components/Icon";
 import { MicBadge } from "@/components/MicBadge";
 import { useColors } from "@/hooks/useColors";
 import { StockPhotoWatermark } from "@/components/StockPhotoWatermark";
+import { MatchPhotoDevOverlay } from "@/components/MatchPhotoDevOverlay";
 import { isSamplePhoto } from "@/data/samplePhotos";
 import { AiGeneratedBadge } from "@/components/AiGeneratedBadge";
 import { isAiPhoto } from "@/context/AppContext";
@@ -33,6 +34,10 @@ interface Props {
    * their recording.
    */
   audioUrl?: string;
+  /** Expo-only: show sample id + theme on curated stock thumbnails. */
+  devCandidateId?: string | null;
+  devTheme?: string | null;
+  devMatchedTheme?: string | null;
   /**
    * When false, the mic badge is non-interactive — useful when an outer
    * row already owns the tap and calls `togglePreview()` itself.
@@ -49,6 +54,9 @@ export function PhotoCard({
   showAiBadge,
   audioUrl,
   audioInteractive = true,
+  devCandidateId,
+  devTheme,
+  devMatchedTheme,
 }: Props) {
   const colors = useColors();
 
@@ -98,6 +106,13 @@ export function PhotoCard({
           style={{ top: badgeOffset, left: badgeOffset }}
         />
       )}
+      <MatchPhotoDevOverlay
+        uri={uri}
+        candidateId={devCandidateId}
+        theme={devTheme}
+        matchedTheme={devMatchedTheme}
+        style={{ top: badgeOffset + (showSample ? 28 : 0) }}
+      />
       {audioUrl ? (
         <MicBadge
           audioUrl={audioUrl}

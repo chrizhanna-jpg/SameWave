@@ -121,8 +121,8 @@ export default function SignInScreen() {
         // caused an unhandled JS exception after OAuth that triggered
         // Expo's ON_ERROR_RECOVERY update check (and the misleading
         // "Failed to download remote update" error the user sees).
-        // Route through "/" (index.tsx) NOT directly to "/(tabs)" so
-        // the tutorial gate still runs for first-time sign-ins.
+        // Route through "/" so index.tsx lands on tabs when the tutorial
+        // is already complete, or on /onboarding only if it is not.
         await setActive({ session: createdSessionId });
         // #region agent log
         postDebugSessionLog({

@@ -38,11 +38,13 @@ import {
   TAG_LIBRARY,
   generateSyntheticCandidates,
   ENABLE_SYNTHETIC_MATCHES,
+  isBannedStockPhotoUri,
   isSamplePhoto,
   type SamplePhoto,
 } from "@/data/samplePhotos";
 import { AiGeneratedBadge } from "@/components/AiGeneratedBadge";
 import { RemotePhotoImage } from "@/components/RemotePhotoImage";
+import { MatchPhotoDevOverlay } from "@/components/MatchPhotoDevOverlay";
 import { StockPhotoWatermark } from "@/components/StockPhotoWatermark";
 import { ENABLE_STOCK_PHOTO_POOL } from "@/lib/stockPhotos";
 import {
@@ -154,6 +156,7 @@ function scoreCandidates(
     .filter((p) => {
       const k = photoKey(p.uri);
       if (!k) return false;
+      if (isBannedStockPhotoUri(p.uri)) return false;
       if (excludeKeys.has(k)) return false;
       if (seenInPool.has(k)) return false;
       seenInPool.add(k);
@@ -1803,6 +1806,15 @@ export default function SwipeScreen() {
               {isSamplePhoto(theirPhoto.uri) ? (
                 <StockPhotoWatermark size="md" />
               ) : null}
+              <MatchPhotoDevOverlay
+                uri={theirPhoto.uri}
+                candidateId={theirPhoto.id}
+                theme={theirPhoto.theme}
+                matchedTheme={matchedTheme}
+                style={
+                  isSamplePhoto(theirPhoto.uri) ? { top: 54 } : undefined
+                }
+              />
               {/* Mic badge — when the other user attached a custom voice
                   clip to their photo, surface it here so the listener
                   can preview it independently of the auto-play music
@@ -1955,6 +1967,15 @@ export default function SwipeScreen() {
                 <StockPhotoWatermark
                   size="lg"
                   style={{ top: insets.top + 14, left: 16 }}
+                />
+              ) : null}
+              {fullscreenUri && theirPhoto.uri === fullscreenUri ? (
+                <MatchPhotoDevOverlay
+                  uri={fullscreenUri}
+                  candidateId={theirPhoto.id}
+                  theme={theirPhoto.theme}
+                  matchedTheme={matchedTheme}
+                  style={{ top: insets.top + 52 }}
                 />
               ) : null}
             </View>

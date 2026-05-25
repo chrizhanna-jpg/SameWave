@@ -5,8 +5,9 @@ on **free / hobby** tiers. User counts are approximate; upgrade paths are
 noted where the repo calls them out.
 
 **Production API:** `https://samewave.onrender.com`  
-**Android package:** `app.echo.samesame`  
-**iOS bundle:** `app.echo.samesame`
+**Android package:** `app.echo.samewave`  
+**iOS bundle:** `app.echo.samewave`  
+**Package rename checklist:** [PACKAGE_RENAME_APP_ECHO_SAMEWAVE.md](./PACKAGE_RENAME_APP_ECHO_SAMEWAVE.md)
 
 ---
 
@@ -110,7 +111,7 @@ Render (`/api/__clerk` → `frontend-api.clerk.dev`). See
 
 ### Apple App Store / TestFlight
 
-- **Purpose:** iOS distribution; bundle `app.echo.samesame`.
+- **Purpose:** iOS distribution; bundle `app.echo.samewave`.
 - **Capacity:** Store-scale; increment `ios.buildNumber` per upload.
 
 ### EAS (Expo Application Services)
@@ -138,7 +139,7 @@ Render (`/api/__clerk` → `frontend-api.clerk.dev`). See
 ### Google Sign-In (Google Cloud)
 
 - **Purpose:** Android OAuth; Play App Signing SHA-1/256 in Cloud Console.
-- **Allowlist:** `app.echo.samesame://callback` in Clerk.
+- **Allowlist:** `app.echo.samewave://callback` in Clerk.
 
 ---
 

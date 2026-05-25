@@ -61,6 +61,50 @@ export function isSamplePhoto(uri: string | undefined | null): boolean {
   return _sampleKeySet.has(photoKey(uri));
 }
 
+let _sampleByPhotoKey: Map<string, SamplePhoto> | undefined;
+
+/** Resolve curated sample metadata from any URI variant (Expo debug overlays). */
+export function lookupSamplePhotoByUri(
+  uri: string | undefined | null,
+): SamplePhoto | null {
+  if (!uri) return null;
+  if (!_sampleByPhotoKey) {
+    _sampleByPhotoKey = new Map(
+      SAMPLE_PHOTOS.map((p) => [photoKey(p.uri), p]),
+    );
+  }
+  return _sampleByPhotoKey.get(photoKey(uri)) ?? null;
+}
+
+/** True in Expo Go / `expo start` only — never in release AAB bundles. */
+export function isExpoDevBuild(): boolean {
+  return typeof __DEV__ !== "undefined" && __DEV__;
+}
+
+/** Show match debug chrome on Ripple cards in Expo Go only (never release AAB). */
+export function shouldShowExpoMatchPhotoDebug(
+  uri: string | undefined | null,
+  candidateId?: string | null,
+): boolean {
+  if (!isExpoDevBuild() || !uri) return false;
+  const id = (candidateId ?? "").trim();
+  if (!id || id === "placeholder") return false;
+  if (isSamplePhoto(uri)) return true;
+  return id.startsWith("synth-") || id.startsWith("live-");
+}
+
+/** Unsplash photo keys that must never be used as stock or synth (wrong or overused). */
+export const BANNED_STOCK_PHOTO_KEYS = new Set([
+  "photo-1554118811-1e0d58224f24", // three-hand latte toast
+  "photo-1559056199-9c55c27a1e69", // same toast, alternate id
+]);
+
+export function isBannedStockPhotoUri(uri: string | undefined | null): boolean {
+  if (!uri) return false;
+  const key = photoKey(uri);
+  return key ? BANNED_STOCK_PHOTO_KEYS.has(key) : false;
+}
+
 export const SAMPLE_PHOTOS: SamplePhoto[] = [
   {
     id: "1",
@@ -438,25 +482,11 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   { id: "111", uri: "https://images.unsplash.com/photo-1485579149621-3123dd979885?w=400", country: "Italy", countryCode: "IT", countryFlag: "🇮🇹", theme: "music", minutesAgo: 240, tags: ["music","vintage"] },
   { id: "112", uri: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400", country: "Brazil", countryCode: "BR", countryFlag: "🇧🇷", theme: "music", minutesAgo: 47, tags: ["music","party"] },
   // ── Launch moment coverage (30 everyday photo types) ───────────────────
-  // New Unsplash IDs only where the bank had no free URI. Each slot also
-  // maps in STOCK_LAUNCH_SLOTS below (existing photos cover many slots).
-  {
-    id: "113",
-    launchSlot: "selfie",
-    uri: "https://images.unsplash.com/photo-1524504388940-b1c4c055d93c?w=400",
-    country: "Bangladesh",
-    countryCode: "BD",
-    countryFlag: "🇧🇩",
-    theme: "selfie",
-    minutesAgo: 14,
-    tags: ["selfie", "people", "smile"],
-    subjects: ["selfie", "portrait", "face"],
-    musicGenre: "joy",
-  },
+  // STOCK_LAUNCH_SLOTS maps each slot → a proven-loadable SAMPLE_PHOTOS id.
   {
     id: "128",
     launchSlot: "tea_drinks",
-    uri: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=400",
+    uri: "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400",
     country: "Italy",
     countryCode: "IT",
     countryFlag: "🇮🇹",
@@ -468,7 +498,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   },
   {
     id: "129",
-    uri: "https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=400",
+    uri: "https://images.unsplash.com/photo-1544787219-7f47ccb76574?w=400",
     country: "Colombia",
     countryCode: "CO",
     countryFlag: "🇨🇴",
@@ -476,206 +506,6 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     minutesAgo: 42,
     tags: ["coffee", "breakfast", "warm"],
     subjects: ["pour over", "coffee", "ceramic mug"],
-    musicGenre: "calm",
-  },
-  {
-    id: "130",
-    uri: "https://images.unsplash.com/photo-1497935586351-b67a49e012bf?w=400",
-    country: "France",
-    countryCode: "FR",
-    countryFlag: "🇫🇷",
-    theme: "cafe",
-    minutesAgo: 55,
-    tags: ["cafe", "coffee", "drink"],
-    subjects: ["espresso", "coffee cup", "saucer"],
-    musicGenre: "calm",
-  },
-  {
-    id: "131",
-    uri: "https://images.unsplash.com/photo-1542990253-0d0f5be5f0ed?w=400",
-    country: "Japan",
-    countryCode: "JP",
-    countryFlag: "🇯🇵",
-    theme: "coffee",
-    minutesAgo: 28,
-    tags: ["coffee", "tea", "cozy"],
-    subjects: ["tea cup", "coffee", "steam"],
-    musicGenre: "calm",
-  },
-  {
-    id: "132",
-    uri: "https://images.unsplash.com/photo-1497636577773-f1231844b336?w=400",
-    country: "Brazil",
-    countryCode: "BR",
-    countryFlag: "🇧🇷",
-    theme: "morning",
-    minutesAgo: 63,
-    tags: ["coffee", "breakfast", "drink"],
-    subjects: ["coffee beans", "mug", "morning"],
-    musicGenre: "calm",
-  },
-  {
-    id: "133",
-    uri: "https://images.unsplash.com/photo-1466637574441-749b8f19452f?w=400",
-    country: "Spain",
-    countryCode: "ES",
-    countryFlag: "🇪🇸",
-    theme: "food",
-    minutesAgo: 37,
-    tags: ["coffee", "dessert", "cafe"],
-    subjects: ["cappuccino", "pastry", "cafe table"],
-    musicGenre: "calm",
-  },
-  {
-    id: "134",
-    uri: "https://images.unsplash.com/photo-1541167760496-1628856ab772?w=400",
-    country: "United States",
-    countryCode: "US",
-    countryFlag: "🇺🇸",
-    theme: "coffee",
-    minutesAgo: 19,
-    tags: ["coffee", "drink", "warm"],
-    subjects: ["iced coffee", "glass", "ice"],
-    musicGenre: "calm",
-  },
-  {
-    id: "135",
-    uri: "https://images.unsplash.com/photo-1521017432531-fbd92d768814?w=400",
-    country: "Australia",
-    countryCode: "AU",
-    countryFlag: "🇦🇺",
-    theme: "cafe",
-    minutesAgo: 71,
-    tags: ["cafe", "coffee", "cozy"],
-    subjects: ["latte", "coffee shop", "window"],
-    musicGenre: "calm",
-  },
-  {
-    id: "136",
-    uri: "https://images.unsplash.com/photo-1494314671902-399b18174975?w=400",
-    country: "Sweden",
-    countryCode: "SE",
-    countryFlag: "🇸🇪",
-    theme: "morning",
-    minutesAgo: 46,
-    tags: ["coffee", "breakfast", "warm"],
-    subjects: ["french press", "coffee", "kitchen"],
-    musicGenre: "calm",
-  },
-  {
-    id: "137",
-    uri: "https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=400",
-    country: "Vietnam",
-    countryCode: "VN",
-    countryFlag: "🇻🇳",
-    theme: "coffee",
-    minutesAgo: 24,
-    tags: ["coffee", "drink", "warm"],
-    subjects: ["latte art", "coffee cup", "hand"],
-    musicGenre: "calm",
-  },
-  {
-    id: "115",
-    launchSlot: "weather",
-    uri: "https://images.unsplash.com/photo-1519696307457-dfc0c3c74295?w=400",
-    country: "Laos",
-    countryCode: "LA",
-    countryFlag: "🇱🇦",
-    theme: "weather",
-    minutesAgo: 52,
-    tags: ["rain", "clouds", "outdoors"],
-    subjects: ["rain", "window", "clouds"],
-    musicGenre: "calm",
-  },
-  {
-    id: "116",
-    launchSlot: "street_scene",
-    uri: "https://images.unsplash.com/photo-1444723127819-4a371bda1800?w=400",
-    country: "Panama",
-    countryCode: "PA",
-    countryFlag: "🇵🇦",
-    theme: "commute",
-    minutesAgo: 67,
-    tags: ["city", "outdoors", "transit"],
-    subjects: ["street", "pavement", "city"],
-    musicGenre: "stress",
-  },
-  {
-    id: "117",
-    launchSlot: "bed_morning",
-    uri: "https://images.unsplash.com/photo-1522771739844-6a209f3098a7?w=400",
-    country: "Romania",
-    countryCode: "RO",
-    countryFlag: "🇷🇴",
-    theme: "night",
-    minutesAgo: 39,
-    tags: ["home", "cozy", "warm"],
-    subjects: ["bed", "bedroom", "morning light"],
-    musicGenre: "calm",
-  },
-  {
-    id: "118",
-    launchSlot: "shopping_groceries",
-    uri: "https://images.unsplash.com/photo-1542838132-92b533b27a4a?w=400",
-    country: "Ukraine",
-    countryCode: "UA",
-    countryFlag: "🇺🇦",
-    theme: "groceries",
-    minutesAgo: 84,
-    tags: ["grocery", "food", "meal"],
-    subjects: ["groceries", "vegetables", "shopping bag"],
-    musicGenre: "content",
-  },
-  {
-    id: "119",
-    launchSlot: "car_interior",
-    uri: "https://images.unsplash.com/photo-1486224470-ef1db9abe6f6?w=400",
-    country: "Latvia",
-    countryCode: "LV",
-    countryFlag: "🇱🇻",
-    theme: "wheels",
-    minutesAgo: 21,
-    tags: ["transit", "city"],
-    subjects: ["car interior", "dashboard", "steering wheel"],
-    musicGenre: "stress",
-  },
-  {
-    id: "120",
-    launchSlot: "mirror_outfit",
-    uri: "https://images.unsplash.com/photo-1515886652478-2691b5f38025?w=400",
-    country: "Estonia",
-    countryCode: "EE",
-    countryFlag: "🇪🇪",
-    theme: "wearing",
-    minutesAgo: 48,
-    tags: ["mirror", "fashion", "people"],
-    subjects: ["mirror", "outfit", "selfie"],
-    musicGenre: "nostalgia",
-  },
-  {
-    id: "121",
-    launchSlot: "travel_airport",
-    uri: "https://images.unsplash.com/photo-1436491865332-7a61a109bf55?w=400",
-    country: "Ghana",
-    countryCode: "GH",
-    countryFlag: "🇬🇭",
-    theme: "travel",
-    minutesAgo: 156,
-    tags: ["travel", "transit"],
-    subjects: ["airport", "airplane window", "suitcase"],
-    musicGenre: "hope",
-  },
-  {
-    id: "122",
-    launchSlot: "shoes_feet",
-    uri: "https://images.unsplash.com/photo-1460353580275-bcb0bde9a22a?w=400",
-    country: "Pakistan",
-    countryCode: "PK",
-    countryFlag: "🇵🇰",
-    theme: "shoes",
-    minutesAgo: 73,
-    tags: ["outdoors", "city"],
-    subjects: ["shoes", "sneakers", "pavement"],
     musicGenre: "calm",
   },
   {
@@ -691,93 +521,48 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     subjects: ["window view", "city skyline", "desk"],
     musicGenre: "wonder",
   },
-  {
-    id: "124",
-    launchSlot: "food_prep",
-    uri: "https://images.unsplash.com/photo-1516321497487-31a2490a83a6?w=400",
-    country: "Taiwan",
-    countryCode: "TW",
-    countryFlag: "🇹🇼",
-    theme: "food",
-    minutesAgo: 44,
-    tags: ["cooking", "food", "meal"],
-    subjects: ["ingredients", "cutting board", "kitchen"],
-    musicGenre: "content",
-  },
-  {
-    id: "125",
-    launchSlot: "public_cafe",
-    uri: "https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=400",
-    country: "Cuba",
-    countryCode: "CU",
-    countryFlag: "🇨🇺",
-    theme: "cafe",
-    minutesAgo: 58,
-    tags: ["cafe", "coffee", "drink"],
-    subjects: ["cafe", "coffee cup", "table"],
-    musicGenre: "calm",
-  },
-  {
-    id: "126",
-    launchSlot: "funny_unexpected",
-    uri: "https://images.unsplash.com/photo-1583337130417-3346a1be1dee?w=400",
-    country: "Bolivia",
-    countryCode: "BO",
-    countryFlag: "🇧🇴",
-    theme: "joy",
-    minutesAgo: 29,
-    tags: ["dog", "animal", "smile"],
-    subjects: ["dog", "funny face", "pet"],
-    musicGenre: "amusement",
-  },
-  {
-    id: "127",
-    launchSlot: "object_in_hand",
-    uri: "https://images.unsplash.com/photo-1515823064-29ebd4a3294d?w=400",
-    country: "Cambodia",
-    countryCode: "KH",
-    countryFlag: "🇰🇭",
-    theme: "coffee",
-    minutesAgo: 17,
-    tags: ["coffee", "drink", "warm"],
-    subjects: ["coffee cup", "hand", "latte"],
-    musicGenre: "calm",
-  },
 ];
 
 /** Maps launch QA slots → primary stock photo id (existing + new). */
 export const STOCK_LAUNCH_SLOTS: Readonly<Record<string, string>> = {
-  selfie: "113",
+  selfie: "48",
   coffee_tea_drinks: "128",
   breakfast_lunch_dinner: "26",
   pets: "14",
   kids_family: "50",
   desk_work: "30",
   commute: "45",
-  weather: "115",
+  weather: "37",
   window_view: "123",
-  street_scene: "116",
+  street_scene: "45",
   couch_cozy: "77",
   tv_gaming: "89",
   gym_workout: "74",
   cooking: "57",
   hobby: "92",
   garden_plants: "78",
-  shoes_feet: "122",
-  object_in_hand: "127",
+  shoes_feet: "74",
+  object_in_hand: "22",
   social_hangout: "69",
   sunset_sunrise: "63",
-  shopping_groceries: "118",
-  car_interior: "119",
-  mirror_outfit: "120",
+  shopping_groceries: "60",
+  car_interior: "15",
+  mirror_outfit: "108",
   book_reading: "93",
   random_detail: "41",
-  public_cafe: "125",
-  travel_moment: "121",
-  food_prep: "124",
-  bed_morning: "117",
-  funny_unexpected: "126",
+  public_cafe: "56",
+  travel_moment: "80",
+  food_prep: "57",
+  bed_morning: "77",
+  funny_unexpected: "14",
 };
+
+for (const [slot, photoId] of Object.entries(STOCK_LAUNCH_SLOTS)) {
+  const idx = SAMPLE_PHOTOS.findIndex((p) => p.id === photoId);
+  if (idx >= 0 && !SAMPLE_PHOTOS[idx].launchSlot) {
+    SAMPLE_PHOTOS[idx] = { ...SAMPLE_PHOTOS[idx], launchSlot: slot };
+  }
+}
 
 const TAG_SUBJECT_HINTS: Record<string, string[]> = {
   coffee: ["coffee cup", "coffee"],
@@ -960,19 +745,42 @@ const SYNTH_PHOTO_BANK = {
     "1542990253-0d0f5be5f0ed","1497636577773-f1231844b336",
     "1466637574441-749b8f19452f",
   ],
-  // Coffee / café — banned Unsplash 1559056199 (three-cup toast) removed entirely.
+  // Coffee / café — three-cup toast ids (1554118811, 1559056199) banned entirely.
   coffee: [
     "1495474472287-4d71bcdd2085","1509042239860-f550ce710b93","1497935586351-b67a49e012bf",
     "1542990253-0d0f5be5f0ed","1497636577773-f1231844b336","1466637574441-749b8f19452f",
     "1541167760496-1628856ab772","1521017432531-fbd92d768814","1494314671902-399b18174975",
-    "1554118811-1e0d58224f24",
   ],
   cafe: [
     "1495474472287-4d71bcdd2085","1509042239860-f550ce710b93","1497935586351-b67a49e012bf",
-    "1542990253-0d0f5be5f0ed","1521017432531-fbd92d768814","1554118811-1e0d58224f24",
+    "1542990253-0d0f5be5f0ed","1521017432531-fbd92d768814","1466637574441-749b8f19452f",
   ],
   shoes: [
-    "1460353580275-bcb0bde9a22a",
+    "1517836357463-d25dfeac3438","1518611012118-696072aa579a","1545205597-3d9d02c29597",
+  ],
+  weather: [
+    "1559827260-dc66d52bef19","1419833173245-f59e1b93f9ee","1470071459604-3b5ec3a7fe05",
+    "1500530855697-b586d89ba3ee","1532274402911-5a369e4c4bb5","1495344517868-8ebaf0a2044a",
+  ],
+  night: [
+    "1505691938895-1758d7feb511","1462536943532-57a629f6cc60","1416879595882-3373a0480b5b",
+    "1519710164239-da123dc03ef4","1493663284031-b7e3aefcae8e",
+  ],
+  groceries: [
+    "1546069901-ba9599a7e63c","1568901346375-23c9450c58cd","1565299624946-b28f40a0ae38",
+    "1540189549336-e6e99c3679fe","1473093295043-cdd812d0e601",
+  ],
+  wearing: [
+    "1513475382585-d06e58bcb0e0","1507003211169-0a1dd7228f2d","1455390582262-044cdead277a",
+    "1481627834876-b7833e8f5570",
+  ],
+  selfie: [
+    "1530103862676-de8c9debad1d","1488161628813-04466f872be2","1543610892-0b1f7e6d8ac1",
+    "1527525443983-6e60c75fff46",
+  ],
+  wheels: [
+    "1544620347-c4fd4a3d5957","1513635269975-59663e0ac1ad","1518611012118-696072aa579a",
+    "1545205597-3d9d02c29597","1502920917128-1aa500764cbd",
   ],
   food: [
     "1504674900247-0877df9cc836","1476224203421-9ac39bcb3327","1568901346375-23c9450c58cd",
@@ -1109,13 +917,45 @@ const TAG_TO_BUCKET: Record<string, keyof typeof SYNTH_PHOTO_BANK> = {
   // generation still produces something coherent. No new SYNTH buckets
   // — sample-photo IDs for these themes are deliberately skipped per
   // product call (unverified Unsplash IDs would render blank).
-  selfie: "joy", mirror: "joy",
-  shopping: "travel", grocery: "food", parcel: "home",
+  selfie: "selfie", mirror: "wearing",
+  shopping: "groceries", grocery: "groceries", parcel: "home",
+  rain: "weather",
+  outfit: "wearing",
+  bike: "wheels",
   chores: "home", cleaning: "home", laundry: "home",
+};
+
+const THEME_TO_SYNTH_BUCKET: Partial<
+  Record<string, keyof typeof SYNTH_PHOTO_BANK>
+> = {
+  weather: "weather",
+  night: "night",
+  groceries: "groceries",
+  wearing: "wearing",
+  selfie: "selfie",
+  wheels: "wheels",
+  cafe: "cafe",
+  coffee: "coffee",
+  morning: "morning",
+  food: "food",
+  shoes: "shoes",
+  commute: "commute",
+  travel: "travel",
+  view: "travel",
+  sky: "sky",
+  movement: "active",
+  plant: "plants",
+  water: "nature",
+  playing: "games",
+  shopping: "groceries",
+  chores: "home",
+  objects: "creative",
 };
 
 function pickFromTheme(theme: string): keyof typeof SYNTH_PHOTO_BANK {
   if (theme in SYNTH_PHOTO_BANK) return theme as keyof typeof SYNTH_PHOTO_BANK;
+  const mapped = THEME_TO_SYNTH_BUCKET[theme];
+  if (mapped) return mapped;
   return "joy";
 }
 
@@ -1127,6 +967,12 @@ const BUCKET_TAG_POOL: Record<keyof typeof SYNTH_PHOTO_BANK, string[]> = {
   coffee: ["coffee", "tea", "drink", "warm", "cafe", "breakfast"],
   cafe: ["cafe", "coffee", "tea", "drink", "meal", "warm", "cozy"],
   shoes: ["shoes", "sneakers", "boots", "feet", "outdoors", "city"],
+  weather: ["rain", "clouds", "sunset", "outdoors", "sky"],
+  night: ["night", "home", "cozy", "warm"],
+  groceries: ["grocery", "food", "meal", "shopping"],
+  wearing: ["mirror", "fashion", "people", "selfie"],
+  selfie: ["selfie", "people", "smile", "mirror"],
+  wheels: ["transit", "city", "cycling", "outdoors"],
   food: ["meal", "lunch", "dinner", "snack", "bread", "tea", "coffee", "cooking", "baking", "dessert", "drink", "cafe", "food"],
   hands: ["art", "crafts", "people"],
   sky: ["sunset", "clouds", "stars", "night"],
@@ -1181,7 +1027,9 @@ export function generateSyntheticCandidates(
     themeBucket ??
     (myTags.map((t) => TAG_TO_BUCKET[t]).find(Boolean) as keyof typeof SYNTH_PHOTO_BANK | undefined) ??
     pickFromTheme(preferredTheme);
-  const photoIdsAll = SYNTH_PHOTO_BANK[bucketKey];
+  const photoIdsAll = SYNTH_PHOTO_BANK[bucketKey].filter(
+    (id) => !BANNED_STOCK_PHOTO_KEYS.has(`photo-${id}`),
+  );
   // Prefer unseen IDs first. If the bucket is fully exhausted (every ID's
   // key already lives in the ledger), bail — the caller treats [] as
   // "no more matches" and shows the empty state.
@@ -1450,6 +1298,10 @@ export const THEME_ADJACENCY: Record<string, string[]> = {
   movement: ["active", "shoes", "morning"],
   instrument: ["music", "hobbies", "made"],
   view: ["sky", "work", "nature", "home"],
+  weather: ["sky", "nature", "morning"],
+  night: ["morning", "home", "sky"],
+  groceries: ["food", "morning", "shopping"],
+  wheels: ["commute", "movement", "travel"],
 };
 
 export function getThemeChain(theme: string): string[] {

@@ -1116,6 +1116,81 @@ function atlasSanitizeDetail(s: string, max = 200): string {
 /** Atlas aggregates can be slow over LAN / cold Postgres; generous but not indefinite. */
 const ATLAS_FETCH_TIMEOUT_MS = 30_000;
 
+/** In-memory cache so revisiting Atlas in one session is instant. */
+const ATLAS_SUMMARY_CACHE_TTL_MS = 3 * 60 * 1000;
+let atlasSummaryCache: { fetchedAt: number; data: AtlasSummaryResult } | null =
+  null;
+
+/** Cheap liveness ping to wake hosted APIs (e.g. Render cold start) before Atlas opens. */
+const HOSTED_API_WARM_TIMEOUT_MS = 12_000;
+let hostedApiWarmStarted = false;
+
+/** Lets Clerk boot "Try again" re-run API + Clerk warm-up. */
+export function resetLaunchWarmups(): void {
+  hostedApiWarmStarted = false;
+  clerkWarmStarted = false;
+}
+
+function resolveHostedWarmOrigin(): string | null {
+  if (__DEV__) {
+    const staged = getStagedProductionApiOrigin();
+    if (staged && !isLocalDevApiOrigin(staged)) return staged;
+    const base = getPublicApiOrigin();
+    if (!base.includes("__CONFIGURE") && !isLocalDevApiOrigin(base)) return base;
+    return null;
+  }
+  const base = getPublicApiOrigin();
+  if (base.includes("__CONFIGURE") || isLocalDevApiOrigin(base)) return null;
+  return base;
+}
+
+/**
+ * Fire-and-forget GET /api/healthz on app launch when using a hosted API.
+ * Wakes Render without running the heavy `/api/photos/atlas` aggregate.
+ */
+export function warmHostedApiOnLaunch(): void {
+  if (hostedApiWarmStarted) return;
+  hostedApiWarmStarted = true;
+  const origin = resolveHostedWarmOrigin();
+  if (!origin) return;
+  void (async () => {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), HOSTED_API_WARM_TIMEOUT_MS);
+    try {
+      await fetch(`${origin}/api/healthz`, {
+        cache: "no-store",
+        signal: ctrl.signal,
+      });
+    } catch {
+      /* Atlas tab retries; warm-up is best-effort */
+    } finally {
+      clearTimeout(tid);
+    }
+  })();
+}
+
+let clerkWarmStarted = false;
+
+/** Pre-warm Clerk Frontend API TLS while the splash is visible (best-effort). */
+export function warmClerkOnLaunch(publishableKey: string): void {
+  if (clerkWarmStarted || __DEV__) return;
+  const key = publishableKey.trim();
+  if (!key || (!key.startsWith("pk_test_") && !key.startsWith("pk_live_"))) {
+    return;
+  }
+  clerkWarmStarted = true;
+  void import("@/utils/clerkConfig")
+    .then(({ probeClerkBootstrap }) =>
+      probeClerkBootstrap(key, getPublicApiOrigin()),
+    )
+    .catch(() => {});
+}
+
+export type FetchAtlasSummaryOptions = {
+  /** Bypass in-memory cache (pull-to-refresh, retry after timeout). */
+  force?: boolean;
+};
+
 function atlasTimeoutResult(apiHost: string): AtlasSummaryResult {
   return {
     countries: [],
@@ -1131,15 +1206,32 @@ function atlasTimeoutResult(apiHost: string): AtlasSummaryResult {
 }
 
 /** Country counts plus live ripple / wave pairs for the Atlas map. */
-export async function fetchAtlasSummary(): Promise<AtlasSummaryResult> {
+export async function fetchAtlasSummary(
+  options?: FetchAtlasSummaryOptions,
+): Promise<AtlasSummaryResult> {
+  const force = options?.force === true;
+  const now = Date.now();
+  if (
+    !force &&
+    atlasSummaryCache &&
+    now - atlasSummaryCache.fetchedAt < ATLAS_SUMMARY_CACHE_TTL_MS
+  ) {
+    const cached = atlasSummaryCache.data;
+    if (!cached.loadError) return cached;
+  }
+
   const base = getApiBase();
   const apiHost = atlasApiHostForDisplay(base);
-  return Promise.race([
+  const result = await Promise.race([
     fetchAtlasSummaryOnce(base, apiHost),
     new Promise<AtlasSummaryResult>((resolve) => {
       setTimeout(() => resolve(atlasTimeoutResult(apiHost)), ATLAS_FETCH_TIMEOUT_MS);
     }),
   ]);
+  if (!result.loadError) {
+    atlasSummaryCache = { fetchedAt: Date.now(), data: result };
+  }
+  return result;
 }
 
 async function fetchAtlasSummaryOnce(

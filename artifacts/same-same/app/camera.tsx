@@ -38,7 +38,6 @@ import {
   genreMatchesSearchQuery,
   genreSearchMatchScore,
   pickClipForSeed,
-  resolveGenreFromSearchQuery,
   suggestGenreIfMatch,
   type MusicGenre,
 } from "@/data/musicLibrary";
@@ -137,16 +136,13 @@ function hasExplicitPostTheme(themeEdited: boolean, themeText: string): boolean 
   return themeEdited && normalizeTheme(themeText).length > 0;
 }
 
-/** User picked a vibe chip, typed a match, or recorded custom audio — not AI autofill alone. */
+/** User tapped a vibe chip or recorded custom audio (search text alone does not count). */
 function hasExplicitPostVibe(
-  genreEdited: boolean,
   musicGenre: MusicGenre | null,
-  vibeSearchText: string,
   customAudioUrl: string | null,
 ): boolean {
   if (customAudioUrl) return true;
-  if (!genreEdited) return false;
-  return musicGenre !== null || resolveGenreFromSearchQuery(vibeSearchText) !== null;
+  return musicGenre !== null;
 }
 
 function themeSuggestionTerms(s: ThemeSuggestion): string[] {
@@ -995,12 +991,7 @@ export default function CameraScreen() {
     if (!selectedPhoto || submitted) return;
     if (
       !hasExplicitPostTheme(themeEditedRef.current, themeText) ||
-      !hasExplicitPostVibe(
-        genreEditedRef.current,
-        musicGenreRef.current,
-        vibeSearchText,
-        customAudioUrl,
-      )
+      !hasExplicitPostVibe(musicGenreRef.current, customAudioUrl)
     ) {
       return;
     }
@@ -1027,11 +1018,8 @@ export default function CameraScreen() {
     const merged = Array.from(new Set([...selectedTags, ...aiTagsRef.current]));
     const finalTheme = normalizeTheme(themeText);
     if (!finalTheme) return;
-    // User's vibe chip / typed vibe only — no silent calm default on submit.
-    const finalGenre: MusicGenre | undefined =
-      musicGenreRef.current ??
-      resolveGenreFromSearchQuery(vibeSearchText) ??
-      undefined;
+    // Chip-selected library vibe only — typed search text does not assign music.
+    const finalGenre: MusicGenre | undefined = musicGenreRef.current ?? undefined;
     // Snapshot the recorded clip too — addMyPhoto stores the local URL so
     // the user can preview their own vibe from "My photos", and uploadPhoto
     // ships the base64 to the backend so others hear it on match.
@@ -1135,12 +1123,7 @@ export default function CameraScreen() {
   }, []);
 
   const hasExplicitTheme = hasExplicitPostTheme(themeEdited, themeText);
-  const hasExplicitVibe = hasExplicitPostVibe(
-    genreEdited,
-    musicGenre,
-    vibeSearchText,
-    customAudioUrl,
-  );
+  const hasExplicitVibe = hasExplicitPostVibe(musicGenre, customAudioUrl);
   const canSubmitPost = hasExplicitTheme && hasExplicitVibe;
 
   const submitHint = !canSubmitPost
@@ -1148,7 +1131,7 @@ export default function CameraScreen() {
       ? "Pick a theme and vibe to submit"
       : !hasExplicitTheme
         ? "Pick a theme to submit"
-        : "Pick a vibe to submit"
+        : "Tap a vibe chip or record audio to submit"
     : null;
 
   useEffect(() => {
@@ -1506,8 +1489,8 @@ export default function CameraScreen() {
                   onFocus={scrollPostFormInputIntoView}
                   placeholder={
                     Platform.OS === "web"
-                      ? "Tap to type vibe"
-                      : "Hold mic to record, or tap to type"
+                      ? "Search vibes, tap a chip to select"
+                      : "Hold mic to record, or search vibes"
                   }
                   placeholderTextColor={colors.mutedForeground}
                   autoCapitalize="none"
@@ -1521,8 +1504,8 @@ export default function CameraScreen() {
                     onPress={() => {
                       setVibeSearchText("");
                       setMusicGenre(null);
-                      setGenreEdited(true);
-                      genreEditedRef.current = true;
+                      setGenreEdited(false);
+                      genreEditedRef.current = false;
                     }}
                     hitSlop={10}
                     accessibilityLabel="Clear vibe search"

@@ -10,22 +10,44 @@
 
 /** One sentence each — use in tooltips, empty states, accessibility. */
 export const RIPPLE_ONE_LINER =
-  "You tapped Same on their photo — waiting for them to Ripple back.";
+  "Someone tapped Ripple; waiting for them to Ripple back and make a Wave.";
 
-export const WAVE_ONE_LINER =
-  "They Rippled back — you both tapped Same on each other's photos.";
+/** Shown to both people when a Ripple becomes a Wave (push, toast, reveal). */
+export const WAVE_MUTUAL_TAGLINE =
+  "You rippled back! Send a Ripple. Catch a Wave.";
+
+export const WAVE_ONE_LINER = WAVE_MUTUAL_TAGLINE;
 
 export const RIPPLE_WAVE_RULE =
   "Ripple when you tap Same. When they Ripple back, it becomes a Wave.";
 
 export const ATLAS_FILTER_A11Y = {
-  ripples: "Ripples only — one-way; waiting for them to Ripple back",
-  waves: "Waves only — both sides Rippled back",
+  all: "All — every live Ripple and Wave on the map",
+  ripples:
+    "Ripples only — someone tapped Ripple; waiting to Ripple back and make a Wave",
+  waves: `Waves only — ${WAVE_MUTUAL_TAGLINE}`,
+  mine: "Mine only — Ripples and Waves you are part of",
   wavefire:
-    "Wavefire — live clusters of mutual Waves (both Rippled back)",
+    "Wavefire — global fire circle when matching moments connect into a shared campfire",
   ripplefire:
-    "Ripplefire — all live Ripples worldwide (use Mine only to filter to yours)",
+    "Ripplefire — fire circle from Ripples who resonated but have not become a Wave yet",
 } as const;
+
+/** Shown under the Atlas filter bar for the active mode only. */
+export const ATLAS_FILTER_HINT = {
+  all: "All — Every live Ripple and Wave connection on the map.",
+  ripples:
+    "Ripples — Someone tapped Ripple; waiting for them to Ripple back and make a Wave.",
+  waves: "Waves — They rippled back! Send a Ripple. Catch a Wave.",
+  mine: "Mine only — Only Ripples and Waves you are part of.",
+  wavefire:
+    "Wavefire — A global fire circle that lights up when matching moments connect, bringing people on the same wavelength into a shared campfire space.",
+  ripplefire:
+    "Ripplefire — A fire circle formed from Ripples, gathering people who resonated with the same moments but haven't yet connected as a Wave.",
+} as const;
+
+export const ATLAS_FILTER_HINT_MINE_SIGNIN =
+  "Sign in to filter the map to Ripples and Waves you are part of.";
 
 export const ATLAS_FIRE_EMPTY = {
   wavefire: "No Active Wavefire",
@@ -35,7 +57,7 @@ export const ATLAS_FIRE_EMPTY = {
 export const ATLAS_COUNTRY_MODAL = {
   ripplesSent: "Ripples you sent (one-way)",
   ripplesReceived: "Ripples you received (one-way)",
-  wavesMutual: "Waves — both sides Rippled back",
+  wavesMutual: `Waves — ${WAVE_MUTUAL_TAGLINE}`,
 } as const;
 
 export const ECHOES_SCREEN = {
@@ -45,8 +67,8 @@ export const ECHOES_SCREEN = {
   emptyBody:
     "When someone sends you a Ripple, you'll be asked here whether you feel the same. If you Ripple back, it becomes a Wave.",
   pendingSubtitle:
-    "Someone sent you a Ripple. Ripple back if you feel the same — then it's a Wave.",
-  wavesSectionSubtitle: "Both of you Rippled back.",
+    "Someone tapped Ripple. Ripple back if you feel the same — then it's a Wave.",
+  wavesSectionSubtitle: WAVE_MUTUAL_TAGLINE,
 } as const;
 
 export const MATCH_HISTORY_EMPTY =
@@ -63,14 +85,14 @@ export const DISCOVER_A11Y = {
 /** Remote push + in-app toast copy (keep in sync with api-server `pushCopy.ts`). */
 export const PUSH_COPY = {
   pending: {
-    title: "New Ripple on your moment",
-    body: "If their photo feels like yours, ripple back to make a Wave.",
-    actionLabel: "Make a Wave",
+    title: "Someone tapped Ripple",
+    body: "Ripple back if you feel the same — then it's a Wave.",
+    actionLabel: "Ripple back",
   },
   mutual: {
-    title: "You have a Wave! ✨",
-    body: "You both tapped Same — open your Wave reveal to celebrate.",
-    actionLabel: "View Wave",
+    title: "Catch a Wave! ✨",
+    body: WAVE_MUTUAL_TAGLINE,
+    actionLabel: "Catch a Wave",
   },
 } as const;
 
@@ -87,7 +109,7 @@ export const PUSH_ACTION = {
 export function profileEchoBellA11y(unreadRipples: number): string {
   if (unreadRipples > 0) {
     const n = unreadRipples;
-    return `${n} new Ripple${n === 1 ? "" : "s"} waiting for you`;
+    return `${n} Ripple${n === 1 ? "" : "s"} — Ripple back to make a Wave`;
   }
   return "Ripples & Waves — incoming Ripples and mutual Waves";
 }

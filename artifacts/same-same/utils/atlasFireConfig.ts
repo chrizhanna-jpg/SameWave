@@ -22,8 +22,9 @@ export function getAtlasFireWindowMs(): number {
 
 export const ATLAS_FIRE_WINDOW_MS = getAtlasFireWindowMs();
 
-export const WAVEFIRE_MIN_EVENTS = 3;
-export const WAVEFIRE_MIN_COUNTRIES = 3;
+/** One mutual wave can ignite Wavefire (same spirit as Ripplefire min 1). */
+export const WAVEFIRE_MIN_EVENTS = 1;
+export const WAVEFIRE_MIN_COUNTRIES = 2;
 /** One pending ripple can form its own Ripplefire (global map shows every active ripple). */
 export const RIPPLEFIRE_MIN_EVENTS = 1;
 export const RIPPLEFIRE_MIN_COUNTRIES = 2;

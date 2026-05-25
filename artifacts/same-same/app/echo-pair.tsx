@@ -27,6 +27,7 @@ import {
   ShareLayoutModeToggle,
   type ShareLayoutMode,
 } from "@/components/ShareLayoutModeToggle";
+import { WAVE_MUTUAL_TAGLINE } from "@/data/waveRippleGlossary";
 import { useColors } from "@/hooks/useColors";
 import { useProAccess } from "@/hooks/useProAccess";
 import { getTimeTier, getGeoTier } from "@/utils/celebrations";
@@ -286,7 +287,7 @@ export default function EchoPairScreen() {
           >
             <Icon name="wave-glyph" size={22} color={colors.gold} />
             <Text style={[styles.waveRevealBannerText, { color: colors.gold }]}>
-              Wave reveal — you both Rippled back
+              {WAVE_MUTUAL_TAGLINE}
             </Text>
             <Icon name="wave-glyph" size={22} color={colors.gold} />
           </View>
