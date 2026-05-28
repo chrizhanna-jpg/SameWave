@@ -166,6 +166,7 @@ if (-not (Test-Path (Join-Path $patchDir "patch-android-play-abis.ps1"))) {
 & "$patchDir\patch-android-hermes.ps1"
 & "$patchDir\patch-android-signing.ps1"
 & "$patchDir\patch-android-play-abis.ps1"
+& "$patchDir\patch-android-package.ps1"
 if (-not (Test-Path $androidDir)) {
   Write-Error "prebuild did not create android/"
 }
@@ -219,7 +220,8 @@ Write-Host "Running Gradle bundleRelease (workers=$gradleWorkers)..." -Foregroun
 Invoke-NoisyNative { .\gradlew.bat --stop 2>$null | Out-Null } | Out-Null
 $prevEap = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
-.\gradlew.bat clean bundleRelease --stacktrace --info --parallel --build-cache --max-workers=$gradleWorkers 2>&1 |
+# Avoid --parallel: reanimated can configureCMake before worklets prefab is ready.
+.\gradlew.bat clean bundleRelease --stacktrace --info --build-cache --max-workers=$gradleWorkers 2>&1 |
   Tee-Object -FilePath $gradleLog
 $gradleExit = $LASTEXITCODE
 $ErrorActionPreference = $prevEap

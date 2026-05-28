@@ -36,4 +36,5 @@ if (Test-Path $gradle) {
 
 $env:SW_SAME_SAME = $dst
 & (Join-Path $src "scripts\patch-android-play-abis.ps1")
+& (Join-Path $src "scripts\patch-android-package.ps1")
 Write-Host "Deploy tree ready: $dst (versionCode $vc)"
