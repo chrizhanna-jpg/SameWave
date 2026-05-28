@@ -1,0 +1,6 @@
+Backup summary 2026-05-11 — source: artifacts/api-server/src/index.ts
+
+listenHost = process.env.LISTEN_HOST?.trim() || "0.0.0.0"
+app.listen(port, listenHost, ...)
+
+Implication: When server is running, it should accept LAN connections on IPv4 :8787 unless LISTEN_HOST overrides to loopback-only.

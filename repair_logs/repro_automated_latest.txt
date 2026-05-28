@@ -1,0 +1,9 @@
+--- repro automated 2026-05-11T21:34:32+01:00 ---
+1) healthz:
+   OK 200
+2) backend-status:
+   OK 200 {"timestamp":1778531672955,"databaseReachable":false,"databaseError":"Failed query: SELECT 1 params:","clerkSecretConfigured":false,"clerkPublishableConfigured":false,"openAiConfigured":false}
+3) atlas:
+   OK 200 {"countries":[],"connections":[],"meta":{"degraded":true,"reason":"database_unavailable"}}
+4) expo CLI:
+   54.0.24

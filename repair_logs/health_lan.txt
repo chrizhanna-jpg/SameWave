@@ -1,0 +1,7 @@
+When: 2026-05-11T21:18:22+01:00
+URL: http://192.168.1.143:8787/api/healthz
+Method: Invoke-WebRequest -TimeoutSec 8 -UseBasicParsing
+
+Result: ERROR: Unable to connect to the remote server
+
+Note: 192.168.1.143 matches artifacts/same-same/.env EXPO_PUBLIC_* API host. Failure here is consistent with no server on :8787 at capture time, or binding only elsewhere (see api-server src/index.ts — default listen 0.0.0.0 when running).

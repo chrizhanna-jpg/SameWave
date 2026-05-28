@@ -1,0 +1,23 @@
+Backup excerpt 2026-05-11 — source: artifacts/same-same/app/sign-in.tsx
+
+Lines 27–44 (getGoogleSsoRedirectUrl):
+/** Must match Clerk Dashboard → Native applications → “Allowlist for mobile SSO redirect”. */
+function getGoogleSsoRedirectUrl(): string {
+  return AuthSession.makeRedirectUri(
+    Platform.OS === "android"
+      ? { scheme: Constants.expoConfig?.android?.package ?? "app.echo.samesame", path: "callback" }
+      : Platform.OS === "ios"
+        ? { scheme: Constants.expoConfig?.ios?.bundleIdentifier ?? "app.echo.samesame", path: "callback" }
+        : { scheme: "same-same" },
+  );
+}
+
+Lines 139–145 (error handling):
+const isRedirectMismatch =
+  /authorized redirect uri/i.test(base) ||
+  /redirect url.*does not match/i.test(base);
+setError(
+  isRedirectMismatch
+    ? `${base}\n\nAdd this exact URL in Clerk → Native applications → Allowlist for mobile SSO redirect:\n${getGoogleSsoRedirectUrl()}`
+    : base,
+);

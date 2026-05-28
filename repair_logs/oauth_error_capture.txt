@@ -1,0 +1,3 @@
+Not run from automation (2026-05-11): Google / Clerk SSO requires physical device or emulator + user gesture.
+
+Human step: reproduce sign-in, paste full error text here.

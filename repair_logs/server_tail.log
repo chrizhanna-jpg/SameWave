@@ -1,0 +1,7 @@
+Not collected: no local api-server log file path was available in-repo for automated tail during this diagnostic session.
+
+Prior conversation terminal evidence (2026-05-10) showed:
+- With CLERK_SECRET_KEY unset: WARN "CLERK_SECRET_KEY unset — Clerk Express middleware skipped…" then INFO "Server listening" port 8787 listenHost "0.0.0.0"
+- Duplicate start: EADDRINUSE on 0.0.0.0:8787
+
+Action for human repro: reproduce Issue B while `pnpm dev` runs in api-server; copy last ~200 lines of that terminal into this file for correlation with phone timeouts.

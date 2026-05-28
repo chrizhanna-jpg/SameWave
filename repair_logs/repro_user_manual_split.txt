@@ -1,0 +1,11 @@
+﻿--- repro 2026-05-11T21:37:58.2063640+01:00 ---
+netstat :8787
+  TCP    0.0.0.0:8787           0.0.0.0:0              LISTENING       18620
+  TCP    192.168.1.143:8787     192.168.1.14:47040     FIN_WAIT_2      18620
+GET http://127.0.0.1:8787/api/healthz
+  200 {"status":"ok"}
+GET http://127.0.0.1:8787/api/public/backend-status
+  200 {"timestamp":1778531878277,"databaseReachable":false,"databaseError":"Failed query: SELECT 1 params:","clerkSecretConfigured":false,"clerkPublishableConfigured":false,"openAiConfigured":false}
+GET http://127.0.0.1:8787/api/photos/atlas
+  200 {"countries":[],"connections":[],"meta":{"degraded":true,"reason":"database_unavailable"}}
+expo: 54.0.24

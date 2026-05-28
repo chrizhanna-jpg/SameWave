@@ -1,0 +1,20 @@
+﻿--- repro 2026-05-11T21:23:28.3978818+01:00 ---
+--- netstat :8787 ---
+--- health 127.0.0.1 /api/healthz ---
+FAIL: Unable to connect to the remote server
+--- health 192.168.1.143 /api/healthz ---
+FAIL: Unable to connect to the remote server
+--- backend-status 127.0.0.1 ---
+FAIL: Unable to connect to the remote server
+
+--- after pnpm dev (2026-05-11 ~21:24) ---
+--- netstat :8787 ---
+  TCP    0.0.0.0:8787           0.0.0.0:0              LISTENING       4136
+--- health 127.0.0.1 ---
+OK status=200 len=15
+--- health 192.168.1.143 ---
+OK status=200
+--- backend-status ---
+OK status=200 {"timestamp":1778531044104,"databaseReachable":false,"databaseError":"Failed query: SELECT 1 params:","clerkSecretConfigured":false,"clerkPublishableConfigured":false,"openAiConfigured":false}
+--- atlas ---
+FAIL: The remote server returned an error: (500) Internal Server Error.

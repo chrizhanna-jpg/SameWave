@@ -1,0 +1,8 @@
+Command: netstat -ano | findstr ":8787"
+When: 2026-05-11T21:17:37+01:00
+Cwd: D:\OneDrive\SameWave\Global-Unity-Match\Global-Unity-Match (2)\Global-Unity-Match
+
+Result: (no output) — no IPv4 listener on port 8787 observed at capture time.
+Exit code from pipeline: 1 (typical when findstr matches nothing)
+
+Interpretation: api-server was not accepting connections on 8787 when this snapshot ran (not running, crashed, or bound elsewhere).

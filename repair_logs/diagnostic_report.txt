@@ -1,0 +1,113 @@
+SameWave diagnostic report — Issues A (Clerk/Google redirect URI mismatch) & B (Atlas timeout to 192.168.1.143:8787)
+Generated: 2026-05-11 (evidence timestamps in sibling .txt files where noted)
+Scope: repository + local Windows shell checks only. No cloud console changes performed.
+
+================================================================================
+1) ONE-LINE SUMMARY
+================================================================================
+Issue A: Native Google SSO uses `AuthSession.makeRedirectUri` with `app.echo.samesame://callback` (Android/iOS); mismatch is most likely Clerk Dashboard Native SSO allowlist (and/or Expo Go vs dev-client URI drift) vs that exact URI.
+Issue B: At evidence time, nothing accepted TCP :8787 on this PC and health checks failed — Atlas timeouts to 192.168.1.143:8787 are consistent with api-server not running, wrong/stale LAN IP, or device↔PC LAN isolation; firewall rule for 8787 exists (reduces firewall-only suspicion once server listens).
+
+================================================================================
+2) RANKED ROOT-CAUSE HYPOTHESES
+================================================================================
+
+Issue A — Google / Clerk redirect URI mismatch
+--------------------------------------------------------------------------------
+A1 [HIGH] Clerk “Native applications → Allowlist for mobile SSO redirect” does not list the exact redirect URI produced at runtime (e.g. `app.echo.samesame://callback` for release builds, or a different URI under Expo Go / dev client per Expo’s `makeRedirectUri` behavior).
+    Evidence: sign-in.tsx L27–44 builds redirect from android.package / ios.bundleIdentifier + path `callback`; L139–145 explicitly maps Clerk/Google “redirect uri” errors to instructions naming Clerk allowlist. app.json schemes include `same-same` and `app.echo.samesame` but Android branch uses package id as scheme. File: artifacts/same-same/app/sign-in.tsx; artifacts/same-same/app.json.
+
+A2 [MEDIUM] Expo Go or tunnel/dev host rewrites `makeRedirectUri` (code comment L97) so dev URI ≠ production allowlist entries you added for the store bundle id.
+    Evidence: inline comment in sign-in.tsx L91–97. No device log captured here (adb missing on PATH).
+
+A3 [LOW–MEDIUM] Clerk instance / OAuth application in Clerk dashboard tied to different publishable key than `.env` (wrong Clerk “Application” → Google OAuth settings don’t match the app you’re testing).
+    Evidence: .env and .env.example use same `pk_test_…` prefix as eas.json profiles; user must confirm Dashboard instance matches this key.
+
+Issue B — Atlas / local API 192.168.1.143:8787 timeout (~20s reported; see timeout note below)
+--------------------------------------------------------------------------------
+B1 [HIGH] api-server not listening on 8787 at failure time (crashed, never started, or EADDRINUSE duplicate and the “wrong” process died).
+    Evidence (2026-05-11T21:17–21:18+01:00): netstat had no :8787 listener (repair_logs/port8787.txt). Invoke-WebRequest to 127.0.0.1:8787 and 192.168.1.143:8787 /api/healthz both “Unable to connect” (health_local.txt, health_lan.txt). Prior session logs (2026-05-10) showed EADDRINUSE when double-starting.
+
+B2 [MEDIUM] PC LAN IPv4 is not 192.168.1.143 (stale .env after DHCP change) so phone targets wrong host.
+    Evidence: artifacts/same-same/.env sets EXPO_PUBLIC_API_URL and EXPO_PUBLIC_DEV_API_URL to http://192.168.1.143:8787 (repair_logs/env_snapshot.txt). expo config confirms router origin that IP (repair_logs/expo_config_public.txt).
+
+B3 [MEDIUM] Wi‑Fi client isolation / different VLAN / VPN on phone or PC blocks LAN access to :8787 even when server listens.
+    Evidence: none definitive in repo; common failure mode when health from phone fails but localhost works. Needs phone browser test to same URL.
+
+B4 [MEDIUM] Server listens but `/api/photos/atlas` hangs or is extremely slow (e.g. DB unreachable) until client timeout.
+    Evidence: code paths reference DB; prior backend-status showed databaseReachable false in another run — not re-probed here because server was down. api.ts uses Promise.race with ATLAS_FETCH_TIMEOUT_MS = 30000 ms (not 20s) — see timeout note.
+
+B5 [LOW] Windows firewall blocks profile despite named rule — possible if rule is Private-only and network is Public, etc.
+    Evidence: netsh grep shows rule “SameWave API 8787” on LocalPort 8787 (firewall_8787.txt); rule scope not fully dumped.
+
+TIMEOUT NOTE: Current `artifacts/same-same/utils/api.ts` uses 30_000 ms for `fetchAtlasSummary` race and 12_000 ms per diagnostic fetch; `analyzePhoto` uses 22_000 ms. If the user strictly sees “20s” for Atlas, capture exact on-screen string and build id — may be older bundle or different screen.
+
+================================================================================
+3) EXACT EVIDENCE INDEX (paths / artifacts)
+================================================================================
+- OAuth / Clerk code & redirect construction: repair_logs/oauth_search.txt, repair_logs/backups/sign-in.tsx.excerpt.txt
+- No google-client.json in repo: repair_logs/google_client_redirects.txt
+- Env snapshot (redacted): repair_logs/env_snapshot.txt; template backup: repair_logs/backups/.env.example
+- expo public config snapshot: repair_logs/expo_config_public.txt
+- Port / health / firewall / adb: repair_logs/port8787.txt, health_local.txt, health_lan.txt, firewall_8787.txt, device_logs.txt
+- Command transcript: repair_logs/commands_log.txt
+- Server log placeholder: repair_logs/server_tail.log
+- app.json / app.config.js backups: repair_logs/backups/app.json, repair_logs/backups/app.config.js
+
+================================================================================
+4) MINIMAL REPRODUCTION STEPS
+================================================================================
+Issue A (redirect mismatch)
+1. Install/run app (note: Expo Go vs dev client vs release APK changes redirect URI behavior).
+2. Open Sign in → Continue with Google.
+3. Capture full error text (expect substrings matching sign-in.tsx: /authorized redirect uri/i or /redirect url.*does not match/i).
+4. On the same build, log or copy `getGoogleSsoRedirectUrl()` output (app already suggests exact URL in error message per sign-in.tsx L142–145).
+5. In Clerk Dashboard (same instance as EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY): Native applications → Allowlist for mobile SSO redirect → compare character-for-character to step 4.
+
+Issue B (Atlas timeout to LAN API)
+1. Set artifacts/same-same/.env EXPO_PUBLIC_* to intended PC LAN URL (currently 192.168.1.143:8787 in user .env).
+2. Start exactly one api-server: `cd artifacts/api-server && pnpm dev`; confirm log line “Server listening” with port 8787 and listenHost 0.0.0.0 (unless LISTEN_HOST set).
+3. On dev PC: `Invoke-WebRequest http://127.0.0.1:8787/api/healthz` and `Invoke-WebRequest http://<LAN-IP>:8787/api/healthz` (replace LAN-IP).
+4. On phone (same Wi‑Fi): open browser to `http://<LAN-IP>:8787/api/healthz`.
+5. In app, open Atlas; if failure, use in-app diagnostics (fetchAtlasTabDiagnostics) and/or Metro logs.
+
+================================================================================
+5) PRECISE NEXT-CHANGE SUGGESTIONS (DO NOT APPLY AUTOMATICALLY)
+================================================================================
+S1 [Clerk / Google SSO — HIGH confidence if error text matches redirect mismatch]
+   - External: Clerk Dashboard → your application → Native applications → Allowlist for mobile SSO redirect.
+   - Add EXACT URI shown in the app error (expected for Android/iOS native: `app.echo.samesame://callback` per sign-in.tsx + app.json package/bundleIdentifier). If using Expo Go, add the URI Expo produces for that environment (capture from error string).
+   - If Google Cloud Console OAuth client is separately configured for Clerk, align Authorized redirect URIs per Clerk’s documented redirect URLs for your Clerk instance (dashboard-only; not in repo).
+
+S2 [Expo router origin vs API URL — MEDIUM confidence if web/mixed flows misbehave]
+   - File: artifacts/same-same/app.config.js
+   - Today: `origin` defaults from EXPO_PUBLIC_API_URL → currently `http://192.168.1.143:8787` (expo_config_public.txt).
+   - Optional change: set EXPO_PUBLIC_APP_ORIGIN in .env to Metro/dev client origin (e.g. http://<LAN>:8081) if expo-router documentation requires web origin separate from REST API base — evaluate against Expo Router + Clerk docs for your platforms (no change applied here).
+
+S3 [Atlas connectivity — HIGH confidence when health fails from PC]
+   - Operational: ensure single `pnpm dev` listener; resolve EADDRINUSE (kill stray PID on 8787).
+   - File: artifacts/same-same/.env — lines EXPO_PUBLIC_API_URL / EXPO_PUBLIC_DEV_API_URL: update host from `192.168.1.143` to current PC `ipconfig` IPv4 if DHCP moved.
+   - File: artifacts/api-server/.env — DATABASE_URL must allow fast /api/photos/atlas responses; slow DB can approach client timeouts (separate from TCP “connection refused”).
+
+S4 [Client timeout text vs observation — LOW confidence until string captured]
+   - File: artifacts/same-same/utils/api.ts — constants ATLAS_FETCH_TIMEOUT_MS (30000) and ATLAS_DIAG_FETCH_TIMEOUT_MS (12000); align UX copy if user-facing “20s” is stale.
+
+================================================================================
+6) CONFIDENCE TABLE
+================================================================================
+S1 Clerk allowlist exact URI: HIGH (given Issue A symptom matches coded detection).
+S2 app.config origin split: MEDIUM (depends on whether problem is native-only vs web; native SSO primary path is makeRedirectUri).
+S3 Server up + correct LAN IP + DB health: HIGH for “connection failed/timeout to LAN host” class; MEDIUM for isolation without phone browser test.
+
+================================================================================
+7) NEXT RECOMMENDED ACTION
+================================================================================
+- Issue A: Clerk Dashboard change (allowlist URI) using exact string from reproduction error — no repo edit strictly required if URI is correct in code.
+- Issue B: Start api-server, verify health from PC and phone browser, then fix .env LAN IP or network isolation; only then tune DB/Atlas performance if health is fast but atlas slow.
+
+================================================================================
+8) ESCALATIONS / OUTSIDE REPO
+================================================================================
+- Clerk Dashboard: Native SSO allowlist; Google social connection settings for the Clerk instance.
+- Google Cloud Console: OAuth client authorized redirect URIs if Clerk documentation requires matching entries (managed via Clerk in many setups).
+- Network admin: AP isolation, corporate VPN split tunneling.

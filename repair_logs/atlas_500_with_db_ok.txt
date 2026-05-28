@@ -1,0 +1,18 @@
+User screenshot / diagnostics (Expo Go, 2026-05-11):
+
+- apiBase: http://192.168.1.143:8787
+- health: ok true, status 200, bodyPreview {"status":"ok"}
+- backendStatus: databaseReachable true, databaseError null
+- atlas fetch: ok false, status 500, bodyPreview {"error":"atlas summary failed"}
+
+Interpretation:
+- TCP + HTTP to API OK; Neon accepts connections (SELECT 1 path used by backend-status).
+- GET /api/photos/atlas still throws server-side — most commonly **Drizzle schema not applied** on that Neon branch (relation `photos` / `echoes` missing), or a SQL/runtime error other than connectivity.
+
+Code change (api-server photos.ts):
+- Treat PG undefined_table / relation missing style errors as **HTTP 200** empty atlas payload with meta.reason `schema_not_applied` and hint to run `pnpm --filter @workspace/db run push`.
+- In NODE_ENV=development, other atlas 500s include a short `detail` string for debugging.
+
+Post-deploy: restart `pnpm dev` so `dist/` picks up the change; then run `pnpm --filter @workspace/db run push` once against the Neon DATABASE_URL so tables exist (then atlas returns real rows).
+
+Local probe note: after rebuild, existing running node process may still serve old bundle until api-server restart.

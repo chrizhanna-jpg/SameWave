@@ -1,0 +1,8 @@
+Post-fix verification (api-server rebuild + restart)
+Time: 2026-05-11 (after photos.ts degraded Atlas change)
+
+GET http://127.0.0.1:8787/api/photos/atlas
+status=200
+body={"countries":[],"connections":[],"meta":{"degraded":true,"reason":"database_unavailable"}}
+
+Prior failure mode (old build): HTTP 500 {"error":"atlas summary failed"} with _DrizzleQueryError and nested ECONNREFUSED when Postgres unreachable.

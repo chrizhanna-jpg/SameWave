@@ -1,0 +1,7 @@
+Backup excerpt 2026-05-11 — source: artifacts/same-same/utils/api.ts
+
+ATLAS_FETCH_TIMEOUT_MS = 30_000 (main fetchAtlasSummary race timeout; user-facing detail string says "30s")
+ATLAS_DIAG_FETCH_TIMEOUT_MS = 12_000 (fetchAtlasTabDiagnostics per-step fetch)
+ANALYZE_PHOTO_TIMEOUT_MS = 22_000 (separate feature)
+
+If the user observes "20s" for Atlas specifically, possible causes: older app bundle, different code path, or rounding/UX copy not in current atlas.tsx (no literal "20" timeout string found in atlas tab UI grep).

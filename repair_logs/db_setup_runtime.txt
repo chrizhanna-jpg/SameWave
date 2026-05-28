@@ -1,0 +1,9 @@
+2026-05-11 — DATABASE_URL updated to match artifacts/api-server/docker-compose.yml (samesame / samesame_dev / samesame).
+
+docker compose up -d (from artifacts/api-server):
+  FAIL: docker not recognized (Docker Desktop / CLI not on PATH or not installed).
+
+Get-NetTCPConnection LocalPort 5432 Listen:
+  Count = 0 (no local Postgres listening).
+
+Conclusion: databaseReachable stays false until user installs Docker (or Postgres) and runs db:up + drizzle push, or sets DATABASE_URL to a hosted Postgres URL.

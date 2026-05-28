@@ -1,0 +1,9 @@
+Backup summary 2026-05-11 — source: artifacts/same-same/utils/publicEnv.ts
+
+getPublicApiOrigin() in __DEV__:
+1) EXPO_PUBLIC_DEV_API_URL if set
+2) Else infer LAN from Expo manifest / bundle scriptURL / exp links (port 8787)
+3) Else emulator/simulator defaults (10.0.2.2 or 127.0.0.1)
+4) Else on physical device: EXPO_PUBLIC_API_URL, EXPO_PUBLIC_DOMAIN, or warn + http://127.0.0.1:8787
+
+Current .env sets EXPO_PUBLIC_DEV_API_URL and EXPO_PUBLIC_API_URL to http://192.168.1.143:8787 — getPublicApiOrigin returns that origin in dev.

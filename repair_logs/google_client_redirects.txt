@@ -1,0 +1,5 @@
+Repository search: no file named google-client.json (or google_client.json) found under workspace root.
+
+OAuth redirect behavior for Google SSO in this app is implemented in code (expo-auth-session makeRedirectUri + Clerk useSSO), not a checked-in Google OAuth client JSON.
+
+See backups/sign-in.tsx.excerpt.txt and app.json for effective native schemes / bundle IDs.

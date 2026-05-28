@@ -1,0 +1,30 @@
+Evidence collection log (local machine)
+Generated: 2026-05-11T21:17–21:18+01:00 (approx)
+
+Commands executed (PowerShell, cwd noted):
+
+1) Create directories + netstat
+   Set-Location "D:\OneDrive\SameWave\Global-Unity-Match\Global-Unity-Match (2)\Global-Unity-Match"
+   New-Item -ItemType Directory -Force -Path "repair_logs\backups"
+   netstat -ano | findstr ":8787"
+   → Exit code 1, no lines (no process listening on :8787 at capture time)
+
+2) Expo public config
+   Set-Location "...\artifacts\same-same"
+   pnpm exec expo config --type public
+   → Exit 0; output saved to expo_config_public.txt (see file)
+
+3) Health probes (Invoke-WebRequest, 8s timeout)
+   Invoke-WebRequest http://127.0.0.1:8787/api/healthz
+   Invoke-WebRequest http://192.168.1.143:8787/api/healthz
+   → Both: Unable to connect to the remote server (saved health_local.txt / health_lan.txt)
+
+4) adb devices
+   adb devices
+   → adb not in PATH (CommandNotFoundException) — saved device_logs.txt
+
+5) Windows Advanced Firewall rule grep
+   netsh advfirewall firewall show rule name=all | findstr /i "8787"
+   → Matched rule "SameWave API 8787", LocalPort 8787 (saved firewall_8787.txt)
+
+Note: User-requested Linux commands (ss, ufw, iptables) were not run (Windows host).

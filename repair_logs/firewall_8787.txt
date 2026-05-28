@@ -1,0 +1,8 @@
+Command: netsh advfirewall firewall show rule name=all | findstr /i "8787"
+When: 2026-05-11T21:18+01:00
+
+Captured lines:
+Rule Name:                            SameWave API 8787
+LocalPort:                            8787
+
+Interpretation: An inbound Windows firewall rule exists naming SameWave and port 8787 (profile/action not shown in this grep slice). This reduces (but does not eliminate) “blocked by firewall” as sole cause if server is listening and correct profile applies.

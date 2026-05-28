@@ -1,0 +1,21 @@
+﻿--- repro automation 2026-05-11T21:47+01:00 ---
+
+debug-ac992e.log: not present (delete no-op)
+
+docker:
+  docker: not recognized (Docker CLI / Desktop not on PATH or not installed)
+
+5432 listeners (Get-NetTCPConnection Listen): 0
+8787 listeners: 1 (api-server still running)
+
+docker compose up -d: skipped / failed — docker unavailable
+
+pnpm --filter @workspace/db run push (from repo root):
+  Error: connect ECONNREFUSED 127.0.0.1:5432
+  (no Postgres accepting connections at DATABASE_URL host)
+
+GET http://127.0.0.1:8787/api/public/backend-status:
+  databaseReachable: false
+  databaseError: Failed query: SELECT 1 params:
+
+Conclusion: automated steps cannot complete DB bring-up until Docker or another Postgres is installed and listening on 127.0.0.1:5432.

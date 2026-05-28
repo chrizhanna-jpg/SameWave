@@ -1,0 +1,8 @@
+User-reported runtime evidence (2026-05-11):
+
+GET /api/public/backend-status (PC and phone browser, LAN IP):
+- databaseReachable: true
+- databaseError: null
+- clerkSecretConfigured: false, clerkPublishableConfigured: false, openAiConfigured: false
+
+Interpretation: Neon DATABASE_URL is correct; api-server reaches Postgres from host; phone reaches api-server on LAN for this endpoint.

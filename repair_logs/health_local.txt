@@ -1,0 +1,5 @@
+When: 2026-05-11T21:18:22+01:00
+URL: http://127.0.0.1:8787/api/healthz
+Method: Invoke-WebRequest -TimeoutSec 8 -UseBasicParsing
+
+Result: ERROR: Unable to connect to the remote server

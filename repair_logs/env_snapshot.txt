@@ -1,0 +1,11 @@
+Timestamp: 2026-05-11T21:18Z (approx)
+
+Source: artifacts/same-same/.env (REDACTED — publishable keys truncated; no secrets beyond public Clerk test key prefix)
+
+EXPO_PUBLIC_API_URL=http://192.168.1.143:8787
+EXPO_PUBLIC_DEV_API_URL=http://192.168.1.143:8787
+EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_***REDACTED_SUFFIX***
+
+Notes:
+- Both API URL and DEV API URL point at the same LAN origin (expected for physical device → dev PC).
+- EXPO_PUBLIC_CLERK_PROXY_URL is commented out in .env (dev uses undefined proxy in _layout.tsx __DEV__ branch).

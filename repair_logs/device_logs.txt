@@ -1,0 +1,6 @@
+Command: adb devices
+When: 2026-05-11T21:18:22+01:00
+
+Result: adb : The term 'adb' is not recognized (Android platform-tools not on PATH in this shell).
+
+Action: On a machine with adb: run `adb devices` and optionally `adb logcat -d` after reproducing Atlas timeout; append here.

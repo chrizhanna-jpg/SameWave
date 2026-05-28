@@ -1,0 +1,19 @@
+Command: pnpm exec expo config --type public
+Cwd: artifacts/same-same
+When: 2026-05-11T21:17:42+01:00
+
+Key excerpts (stdout was colorized in terminal; values below are literal):
+
+- env: load .env
+- env: export EXPO_PUBLIC_API_URL EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY EXPO_PUBLIC_DEV_API_URL
+
+- scheme: [ 'same-same', 'app.echo.samesame' ]
+- ios.bundleIdentifier: 'app.echo.samesame'
+- android.package: 'app.echo.samesame'
+
+- plugins include expo-router with:
+  origin: 'http://192.168.1.143:8787'
+
+- extra.router.origin: 'http://192.168.1.143:8787'
+
+Source of expo-router origin: app.config.js maps EXPO_PUBLIC_APP_ORIGIN || EXPO_PUBLIC_API_URL || https+EXPO_PUBLIC_DOMAIN → expo-router plugin `origin` field.

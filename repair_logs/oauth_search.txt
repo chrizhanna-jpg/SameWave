@@ -1,0 +1,10 @@
+Static search (workspace grep): redirect|same-same://|CLERK|GOOGLE in *.{ts,tsx,js,jsx,json} under Global-Unity-Match monorepo (excerpt; see repo for full).
+
+Global-Unity-Match (2)/Global-Unity-Match/artifacts/api-server/src/app.ts — CLERK_* env, res.redirect(302, "/api/healthz")
+Global-Unity-Match (2)/Global-Unity-Match/artifacts/same-same/app/_layout.tsx — EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY, CLERK_PROXY_URL, ClerkProvider
+Global-Unity-Match (2)/Global-Unity-Match/artifacts/same-same/app/sign-in.tsx — getGoogleSsoRedirectUrl, startSSOFlow redirectUrl, redirect mismatch regex
+Global-Unity-Match (2)/Global-Unity-Match/artifacts/same-same/eas.json — EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY, EXPO_PUBLIC_CLERK_PROXY_URL
+Global-Unity-Match (2)/Global-Unity-Match/artifacts/api-server/src/middlewares/clerkProxyMiddleware.ts — CLERK_PROXY_PATH /api/__clerk
+Global-Unity-Match (2)/Global-Unity-Match/artifacts/same-same/app.config.js — expo-router origin from EXPO_PUBLIC_API_URL / DOMAIN / APP_ORIGIN
+
+No matches for literal "same-same://" in TS/JSON beyond comments; scheme is configured in app.json "scheme" array.
