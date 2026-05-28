@@ -1212,7 +1212,8 @@ router.get("/photos/atlas", async (req, res) => {
     for (const raw of echoRows.rows as Array<Record<string, unknown>>) {
       const lc = iso2(raw.lc);
       const hc = iso2(raw.hc);
-      if (!lc || !hc || lc === hc) continue;
+      if (!lc || !hc) continue;
+      const sameCountry = lc === hc;
       const state = String(raw.state ?? "");
       const id = String(raw.id ?? "");
       if (!id) continue;
@@ -1236,8 +1237,8 @@ router.get("/photos/atlas", async (req, res) => {
       );
 
       if (state === "mutual") {
-        const from = lc < hc ? lc : hc;
-        const to = lc < hc ? hc : lc;
+        const from = sameCountry ? lc : lc < hc ? lc : hc;
+        const to = sameCountry ? hc : lc < hc ? hc : lc;
         const ul = String(raw.ul ?? "");
         const uh = String(raw.uh ?? "");
         const mine =
@@ -1263,8 +1264,8 @@ router.get("/photos/atlas", async (req, res) => {
       const ul = String(raw.ul ?? "");
       const uh = String(raw.uh ?? "");
       if (!pf || pf !== ul && pf !== uh) continue;
-      const from = pf === ul ? lc : hc;
-      const to = pf === ul ? hc : lc;
+      const from = sameCountry ? lc : pf === ul ? lc : hc;
+      const to = sameCountry ? hc : pf === ul ? hc : lc;
       const created = raw.createdAt ? new Date(String(raw.createdAt)).getTime() : 0;
       const fresh = Number.isFinite(created) && now - created < freshMs;
       const mine =
