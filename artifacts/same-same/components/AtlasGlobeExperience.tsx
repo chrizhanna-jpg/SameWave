@@ -83,6 +83,8 @@ import {
   atlasArcPathD,
   atlasArcPointAt,
   atlasArcSegment,
+  atlasDomesticLoopPathD,
+  atlasDomesticLoopSegment,
   atlasWavefireRingPathD,
   createAtlasProjection,
   type AtlasScreenPoint,
@@ -613,6 +615,13 @@ export function AtlasGlobeExperience({
       const a = centroidLonLatForAtlas(c.from);
       const b = centroidLonLatForAtlas(c.to);
       if (!a || !b) continue;
+      if (c.from === c.to) {
+        const d = atlasDomesticLoopPathD(projection, a);
+        const seg = atlasDomesticLoopSegment(projection, a);
+        if (!d || !seg) continue;
+        items.push({ id: c.id, c, d, seg });
+        continue;
+      }
       const seg = atlasArcSegment(projection, a, b);
       if (!seg) continue;
       const d = atlasArcPathD(projection, a, b);
@@ -684,11 +693,6 @@ export function AtlasGlobeExperience({
   const fireNight = fireMode != null;
   const fireActive = fireNight && fireCluster != null;
   const fireHasArcs = fireNight && displayConnections.length > 0;
-  /**
-   * Standard atlas arcs + travelling dots (per country-pair). Off while a themed
-   * cluster is active so Ripplefire/Wavefire reads as ring + camps, not ripples.
-   */
-  const showPerConnectionLayer = !fireNight || !fireActive;
   /** Ember ring + camp markers (cluster, or preview when ≥2 countries have live arcs). */
   const fireShowRing =
     fireActive ||
@@ -719,6 +723,16 @@ export function AtlasGlobeExperience({
     if (points.length < 2) return null;
     return { points, codes };
   }, [fireShowRing, fireCluster, displayConnections, projection]);
+
+  const fireRingDrawable =
+    fireRing != null && fireRing.points.length >= 2;
+  /**
+   * Per-connection arcs + travelling dots. Hidden only when a multi-country
+   * ember ring is actually drawable; domestic (single-country) Ripplefires
+   * keep arcs visible — otherwise clusters hide all geometry.
+   */
+  const showPerConnectionLayer =
+    !fireNight || !fireActive || !fireRingDrawable;
 
   /** Ember pulse on the glowing ring between countries. */
   const fireArcGlowFlick = useMemo(() => {

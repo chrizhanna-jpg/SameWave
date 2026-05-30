@@ -70,13 +70,21 @@ function mergeLocalSameRippleArcs(
         ((c.from === mine && c.to === to) || (c.from === to && c.to === mine)),
     );
 
+  const hasApiDomesticRipple = () =>
+    api.some((c) => c.kind === "ripple" && c.from === mine && c.to === mine);
+
   const now = Date.now();
   const added: AtlasConnection[] = [];
   for (const m of matches) {
     if (m.verdict !== "same") continue;
     const to = (m.theirCountryCode ?? "").trim().toUpperCase();
-    if (!/^[A-Z]{2}$/.test(to) || to === mine) continue;
-    if (hasApiRippleBetween(to)) continue;
+    if (!/^[A-Z]{2}$/.test(to)) continue;
+    const domestic = to === mine;
+    if (domestic) {
+      if (hasApiDomesticRipple()) continue;
+    } else if (hasApiRippleBetween(to)) {
+      continue;
+    }
     const ts = Date.parse(m.timestamp);
     const fresh = Number.isFinite(ts) && now - ts < RIPPLE_FRESH_MS;
     const theme = (m.theme ?? "").trim();
@@ -84,7 +92,7 @@ function mergeLocalSameRippleArcs(
       id: `local-ripple-${m.id}`,
       kind: "ripple",
       from: mine,
-      to,
+      to: domestic ? mine : to,
       fresh,
       createdAt: m.timestamp,
       theme,

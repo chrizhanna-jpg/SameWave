@@ -251,6 +251,34 @@ export function atlasArcPointAt(
   return quadPoint(seg.sx, seg.sy, seg.cx, seg.cy, seg.ex, seg.ey, t);
 }
 
+/** Visible loop when a ripple/wave is domestic (same ISO2 on both ends). */
+const DOMESTIC_LOOP_RADIUS_PX = 18;
+
+export function atlasDomesticLoopPathD(
+  projection: GeoProjection,
+  lonLat: readonly [number, number],
+  radius = DOMESTIC_LOOP_RADIUS_PX,
+): string {
+  const c = projection(lonLat as [number, number]);
+  if (!c) return "";
+  const [cx, cy] = c;
+  const r = radius;
+  return `M${cx - r},${cy} a${r},${r} 0 1,0 ${r * 2},0 a${r},${r} 0 1,0 ${-r * 2},0`;
+}
+
+/** Segment for travelling dots on a domestic loop (horizontal diameter). */
+export function atlasDomesticLoopSegment(
+  projection: GeoProjection,
+  lonLat: readonly [number, number],
+  radius = DOMESTIC_LOOP_RADIUS_PX,
+): AtlasArcSegment | null {
+  const c = projection(lonLat as [number, number]);
+  if (!c) return null;
+  const [cx, cy] = c;
+  const r = radius;
+  return { mode: "line", x1: cx - r, y1: cy, x2: cx + r, y2: cy };
+}
+
 /** Approximate arc length in pixels (for dash / timing). */
 export function atlasArcLength(seg: AtlasArcSegment): number {
   if (seg.mode === "line") {
