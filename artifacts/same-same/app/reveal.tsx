@@ -40,8 +40,8 @@ import {
   type ShareLayoutMode,
 } from "@/components/ShareLayoutModeToggle";
 import { nameFor } from "@/data/countries";
-import { DAILY_CHALLENGES } from "@/data/samplePhotos";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
+import { formatDualWaveThemes } from "@/utils/shareThemeLabels";
 import { getTimeTier, getGeoTier } from "@/utils/celebrations";
 import { commonInterests, tagEmoji, tagLabel } from "@/utils/interests";
 import type { Match } from "@/context/AppContext";
@@ -69,6 +69,7 @@ export default function RevealScreen() {
     myVibe,
     myCountryCode,
     myCountryFlag,
+    myPhotos,
   } = useApp();
   // Live billing state. We never read the price from a hardcoded
   // string — `priceString` is the localised, store-formatted figure
@@ -405,11 +406,12 @@ export default function RevealScreen() {
   const geoTier = getGeoTier(myCountryCode, match.theirCountryCode);
   const isCelebrated = timeTier.rank >= 1; // anything from week up
 
-  const themeMeta = DAILY_CHALLENGES.find(
-    (c) => c.id === match.theme || c.title.toLowerCase() === match.theme,
+  const myUploadTheme =
+    myPhotos.find((p) => p.uri === match.myPhoto)?.theme ?? match.theme;
+  const { title: themeTitle, emoji: themeEmoji } = formatDualWaveThemes(
+    myUploadTheme,
+    match.theirActualTheme ?? match.theme,
   );
-  const themeTitle = themeMeta?.title ?? match.theme ?? "the same thing";
-  const themeEmoji = themeMeta?.emoji ?? "✨";
   const myCountryName = nameFor(myCountryCode) ?? "You";
 
   // The "same X" chips that summarise WHY this match happened. These ride

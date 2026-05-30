@@ -222,9 +222,9 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     country: "Morocco",
     countryCode: "MA",
     countryFlag: "🇲🇦",
-    theme: "joy",
+    theme: "hands",
     minutesAgo: 153,
-    tags: ["warm","people"],
+    tags: ["warm","people","art"],
     shapes: ["curves","organic","centered"],
   },
   {
@@ -288,9 +288,9 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     country: "Maldives",
     countryCode: "MV",
     countryFlag: "🇲🇻",
-    theme: "sky",
+    theme: "weather",
     minutesAgo: 2160,
-    tags: ["water","clouds","sunset","outdoors"],
+    tags: ["water","clouds","sunset","outdoors","rain"],
     shapes: ["horizontal","layered","minimal"],
   },
   {
@@ -364,8 +364,8 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   // as "hands" — neither image actually shows hands. Reclassified to
   // nature (kayak on water) and joy (toy/figurine) so the "Your hands"
   // theme is honest about what it surfaces.
-  { id: "40", uri: "https://images.unsplash.com/photo-1521336575822-6da63fb45455?w=400", country: "Colombia", countryCode: "CO", countryFlag: "🇨🇴", theme: "nature", minutesAgo: 380, tags: ["water","outdoors"] },
-  { id: "41", uri: "https://images.unsplash.com/photo-1517242810446-cc8951b2be40?w=400", country: "Senegal", countryCode: "SN", countryFlag: "🇸🇳", theme: "joy", minutesAgo: 105, tags: ["art"] },
+  { id: "40", uri: "https://images.unsplash.com/photo-1521336575822-6da63fb45455?w=400", country: "Colombia", countryCode: "CO", countryFlag: "🇨🇴", theme: "water", minutesAgo: 380, tags: ["water","outdoors"] },
+  { id: "41", uri: "https://images.unsplash.com/photo-1517242810446-cc8951b2be40?w=400", country: "Senegal", countryCode: "SN", countryFlag: "🇸🇳", theme: "wall", minutesAgo: 105, tags: ["art","home"] },
   { id: "42", uri: "https://images.unsplash.com/photo-1517423440428-a5a00ad493e8?w=400", country: "Russia", countryCode: "RU", countryFlag: "🇷🇺", theme: "pets", minutesAgo: 60, tags: ["dog","animal","outdoors"] },
   { id: "43", uri: "https://images.unsplash.com/photo-1573865526739-10659fec78a5?w=400", country: "Vietnam", countryCode: "VN", countryFlag: "🇻🇳", theme: "pets", minutesAgo: 240, tags: ["cat","animal"] },
   { id: "44", uri: "https://images.unsplash.com/photo-1592194996308-7b43878e84a6?w=400", country: "Belgium", countryCode: "BE", countryFlag: "🇧🇪", theme: "pets", minutesAgo: 480, tags: ["dog","animal","smile","outdoors"] },
@@ -382,17 +382,17 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   // SYNTH_PHOTO_BANK. Tags are intentionally narrow — only what is
   // visually undeniable in the photo — to keep "Both have …" honest.
   // Coffee / morning
-  { id: "53", uri: "https://images.unsplash.com/photo-1497935586351-b67a49e012bf?w=400", country: "Czechia", countryCode: "CZ", countryFlag: "🇨🇿", theme: "morning", minutesAgo: 19, tags: ["coffee","drink","cafe"] },
-  { id: "54", uri: "https://images.unsplash.com/photo-1542990253-0d0f5be5f0ed?w=400", country: "Denmark", countryCode: "DK", countryFlag: "🇩🇰", theme: "morning", minutesAgo: 92, tags: ["coffee","drink","warm"] },
-  { id: "55", uri: "https://images.unsplash.com/photo-1497636577773-f1231844b336?w=400", country: "Austria", countryCode: "AT", countryFlag: "🇦🇹", theme: "morning", minutesAgo: 250, tags: ["coffee","drink"] },
-  { id: "56", uri: "https://images.unsplash.com/photo-1466637574441-749b8f19452f?w=400", country: "Hungary", countryCode: "HU", countryFlag: "🇭🇺", theme: "morning", minutesAgo: 410, tags: ["coffee","cafe"] },
+  { id: "53", uri: "https://images.unsplash.com/photo-1497935586351-b67a49e012bf?w=400", country: "Czechia", countryCode: "CZ", countryFlag: "🇨🇿", theme: "cafe", minutesAgo: 19, tags: ["coffee","drink","cafe"] },
+  { id: "54", uri: "https://images.unsplash.com/photo-1542990253-0d0f5be5f0ed?w=400", country: "Denmark", countryCode: "DK", countryFlag: "🇩🇰", theme: "cafe", minutesAgo: 92, tags: ["coffee","drink","warm"] },
+  { id: "55", uri: "https://images.unsplash.com/photo-1497636577773-f1231844b336?w=400", country: "Austria", countryCode: "AT", countryFlag: "🇦🇹", theme: "coffee", minutesAgo: 250, tags: ["coffee","drink"] },
+  { id: "56", uri: "https://images.unsplash.com/photo-1466637574441-749b8f19452f?w=400", country: "Hungary", countryCode: "HU", countryFlag: "🇭🇺", theme: "cafe", minutesAgo: 410, tags: ["coffee","cafe"] },
   // Food / meals
   { id: "57", uri: "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?w=400", country: "Israel", countryCode: "IL", countryFlag: "🇮🇱", theme: "food", minutesAgo: 27, tags: ["meal","cooking"] },
   { id: "58", uri: "https://images.unsplash.com/photo-1473093295043-cdd812d0e601?w=400", country: "Lebanon", countryCode: "LB", countryFlag: "🇱🇧", theme: "food", minutesAgo: 105, tags: ["meal","bread"] },
   { id: "59", uri: "https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=400", country: "Sri Lanka", countryCode: "LK", countryFlag: "🇱🇰", theme: "food", minutesAgo: 340, tags: ["meal","cooking","warm"] },
-  { id: "60", uri: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400", country: "Malaysia", countryCode: "MY", countryFlag: "🇲🇾", theme: "food", minutesAgo: 56, tags: ["meal"] },
+  { id: "60", uri: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400", country: "Malaysia", countryCode: "MY", countryFlag: "🇲🇾", theme: "groceries", minutesAgo: 56, tags: ["meal","grocery","food"] },
   // Workspace / desk
-  { id: "61", uri: "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=400", country: "Estonia", countryCode: "EE", countryFlag: "🇪🇪", theme: "work", minutesAgo: 44, tags: ["laptop","desk","study"] },
+  { id: "61", uri: "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=400", country: "Estonia", countryCode: "EE", countryFlag: "🇪🇪", theme: "handwriting", minutesAgo: 44, tags: ["laptop","desk","study","art"] },
   { id: "62", uri: "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=400", country: "Poland", countryCode: "PL", countryFlag: "🇵🇱", theme: "work", minutesAgo: 168, tags: ["laptop","desk","coffee"] },
   // Sky / sunsets
   { id: "63", uri: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=400", country: "Madagascar", countryCode: "MG", countryFlag: "🇲🇬", theme: "sky", minutesAgo: 33, tags: ["sunset","clouds","outdoors"] },
@@ -403,23 +403,23 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   // didn't actually show hands and were reclassified to "nature".
   { id: "66", uri: "https://images.unsplash.com/photo-1531913764164-f85c52e6e654?w=400", country: "Bolivia", countryCode: "BO", countryFlag: "🇧🇴", theme: "nature", minutesAgo: 70, tags: ["outdoors","trees"] },
   { id: "67", uri: "https://images.unsplash.com/photo-1455218873509-8097305ee378?w=400", country: "Ghana", countryCode: "GH", countryFlag: "🇬🇭", theme: "nature", minutesAgo: 290, tags: ["trees","outdoors","water"] },
-  { id: "68", uri: "https://images.unsplash.com/photo-1525373698358-041e3a460346?w=400", country: "Pakistan", countryCode: "PK", countryFlag: "🇵🇰", theme: "made", minutesAgo: 615, tags: ["crafts","people"] },
+  { id: "68", uri: "https://images.unsplash.com/photo-1525373698358-041e3a460346?w=400", country: "Pakistan", countryCode: "PK", countryFlag: "🇵🇰", theme: "objects", minutesAgo: 615, tags: ["crafts","vintage","home"] },
   // Joy / smiles
   { id: "69", uri: "https://images.unsplash.com/photo-1488161628813-04466f872be2?w=400", country: "Ecuador", countryCode: "EC", countryFlag: "🇪🇨", theme: "joy", minutesAgo: 36, tags: ["people","smile","friends"] },
   // Commute / city
   { id: "70", uri: "https://images.unsplash.com/photo-1502920917128-1aa500764cbd?w=400", country: "Taiwan", countryCode: "TW", countryFlag: "🇹🇼", theme: "commute", minutesAgo: 110, tags: ["city","transit","night"] },
   // Pets reused with new countries (these images are well-loved animals)
   // Active / outdoors movement
-  { id: "73", uri: "https://images.unsplash.com/photo-1518611012118-696072aa579a?w=400", country: "Slovenia", countryCode: "SI", countryFlag: "🇸🇮", theme: "nature", minutesAgo: 80, tags: ["hiking","outdoors","mountains"] },
-  { id: "74", uri: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=400", country: "Bulgaria", countryCode: "BG", countryFlag: "🇧🇬", theme: "nature", minutesAgo: 220, tags: ["running","fitness","outdoors"] },
-  { id: "75", uri: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400", country: "Costa Rica", countryCode: "CR", countryFlag: "🇨🇷", theme: "nature", minutesAgo: 460, tags: ["yoga","fitness","outdoors"] },
-  { id: "76", uri: "https://images.unsplash.com/photo-1545205597-3d9d02c29597?w=400", country: "Lithuania", countryCode: "LT", countryFlag: "🇱🇹", theme: "nature", minutesAgo: 700, tags: ["cycling","outdoors"] },
+  { id: "73", uri: "https://images.unsplash.com/photo-1518611012118-696072aa579a?w=400", country: "Slovenia", countryCode: "SI", countryFlag: "🇸🇮", theme: "passions", minutesAgo: 80, tags: ["hiking","outdoors","mountains","fitness"] },
+  { id: "74", uri: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=400", country: "Bulgaria", countryCode: "BG", countryFlag: "🇧🇬", theme: "movement", minutesAgo: 220, tags: ["running","fitness","outdoors"] },
+  { id: "75", uri: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400", country: "Costa Rica", countryCode: "CR", countryFlag: "🇨🇷", theme: "movement", minutesAgo: 460, tags: ["yoga","fitness","outdoors"] },
+  { id: "76", uri: "https://images.unsplash.com/photo-1545205597-3d9d02c29597?w=400", country: "Lithuania", countryCode: "LT", countryFlag: "🇱🇹", theme: "movement", minutesAgo: 700, tags: ["cycling","outdoors"] },
   // Home / cozy
-  { id: "77", uri: "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=400", country: "Norway", countryCode: "NO", countryFlag: "🇳🇴", theme: "morning", minutesAgo: 60, tags: ["home","cozy","plants"] },
+  { id: "77", uri: "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=400", country: "Norway", countryCode: "NO", countryFlag: "🇳🇴", theme: "ritual", minutesAgo: 60, tags: ["home","cozy","plants"] },
   { id: "78", uri: "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=400", country: "Slovakia", countryCode: "SK", countryFlag: "🇸🇰", theme: "morning", minutesAgo: 320, tags: ["plants","home","flowers"] },
-  { id: "79", uri: "https://images.unsplash.com/photo-1462536943532-57a629f6cc60?w=400", country: "Iceland", countryCode: "IS", countryFlag: "🇮🇸", theme: "morning", minutesAgo: 540, tags: ["home","cozy","vintage"] },
+  { id: "79", uri: "https://images.unsplash.com/photo-1462536943532-57a629f6cc60?w=400", country: "Iceland", countryCode: "IS", countryFlag: "🇮🇸", theme: "night", minutesAgo: 540, tags: ["home","cozy","vintage","night"] },
   // Travel / cityscapes
-  { id: "80", uri: "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=400", country: "United Arab Emirates", countryCode: "AE", countryFlag: "🇦🇪", theme: "commute", minutesAgo: 95, tags: ["travel","city"] },
+  { id: "80", uri: "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=400", country: "United Arab Emirates", countryCode: "AE", countryFlag: "🇦🇪", theme: "wheels", minutesAgo: 95, tags: ["travel","city","transit"] },
   { id: "81", uri: "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=400", country: "France", countryCode: "FR", countryFlag: "🇫🇷", theme: "commute", minutesAgo: 260, tags: ["travel","city","outdoors"] },
   { id: "82", uri: "https://images.unsplash.com/photo-1530789253388-582c481c54b0?w=400", country: "Cuba", countryCode: "CU", countryFlag: "🇨🇺", theme: "joy", minutesAgo: 145, tags: ["travel","people","warm"] },
   { id: "83", uri: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400", country: "Maldives", countryCode: "MV", countryFlag: "🇲🇻", theme: "nature", minutesAgo: 380, tags: ["beach","water","outdoors","sunset"] },
@@ -455,8 +455,8 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   // The theme will return only when we have verified rock photos.
   // Plants — close-ups of plants/flowers/garden, distinct from the broader
   // "nature" landscape shots.
-  { id: "102", uri: "https://images.unsplash.com/photo-1497206365907-f5e630693df0?w=400", country: "Thailand", countryCode: "TH", countryFlag: "🇹🇭", theme: "plants", minutesAgo: 150, tags: ["flowers","plants"] },
-  { id: "103", uri: "https://images.unsplash.com/photo-1545241047-6083a3684587?w=400", country: "Vietnam", countryCode: "VN", countryFlag: "🇻🇳", theme: "plants", minutesAgo: 360, tags: ["plants","garden"] },
+  { id: "102", uri: "https://images.unsplash.com/photo-1497206365907-f5e630693df0?w=400", country: "Thailand", countryCode: "TH", countryFlag: "🇹🇭", theme: "plant", minutesAgo: 150, tags: ["flowers","plants"] },
+  { id: "103", uri: "https://images.unsplash.com/photo-1545241047-6083a3684587?w=400", country: "Vietnam", countryCode: "VN", countryFlag: "🇻🇳", theme: "plant", minutesAgo: 360, tags: ["plants","garden"] },
   // ── Padding pass: bring under-represented themes up to ~5 entries each
   // so the discovery feed has real variety. All Unsplash IDs reused below
   // are already proven loadable elsewhere in this file — no new untested
@@ -502,9 +502,9 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     country: "Colombia",
     countryCode: "CO",
     countryFlag: "🇨🇴",
-    theme: "morning",
+    theme: "cafe",
     minutesAgo: 42,
-    tags: ["coffee", "breakfast", "warm"],
+    tags: ["coffee", "breakfast", "warm", "cafe"],
     subjects: ["pour over", "coffee", "ceramic mug"],
     musicGenre: "calm",
   },
@@ -521,6 +521,18 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     subjects: ["window view", "city skyline", "desk"],
     musicGenre: "wonder",
   },
+  // ── Daily theme samples: unique Unsplash IDs for thin / new themes ──
+  { id: "130", uri: unsplashPhotoUrl("1531746020798-e6953c6e8e04"), country: "Jordan", countryCode: "JO", countryFlag: "🇯🇴", theme: "hands", minutesAgo: 44, tags: ["people","art","warm"] },
+  { id: "131", uri: unsplashPhotoUrl("1542291026-7eec264c27ff"), country: "Romania", countryCode: "RO", countryFlag: "🇷🇴", theme: "shoes", minutesAgo: 61, tags: ["shoes","fashion","city"] },
+  { id: "132", uri: unsplashPhotoUrl("1516280440614-37939bbacd81"), country: "Panama", countryCode: "PA", countryFlag: "🇵🇦", theme: "instrument", minutesAgo: 88, tags: ["music","hobby"] },
+  { id: "133", uri: unsplashPhotoUrl("1516321318423-f06f85e504b3"), country: "Laos", countryCode: "LA", countryFlag: "🇱🇦", theme: "listening", minutesAgo: 120, tags: ["music","cozy","hobby"] },
+  { id: "134", uri: unsplashPhotoUrl("1515886657613-9f3515b0c78f"), country: "Latvia", countryCode: "LV", countryFlag: "🇱🇻", theme: "wearing", minutesAgo: 35, tags: ["fashion","people"] },
+  { id: "135", uri: unsplashPhotoUrl("1558618666-fcd25c85cd64"), country: "Ukraine", countryCode: "UA", countryFlag: "🇺🇦", theme: "door", minutesAgo: 210, tags: ["home","city"] },
+  { id: "136", uri: unsplashPhotoUrl("1534528741775-53994a69daeb"), country: "Bangladesh", countryCode: "BD", countryFlag: "🇧🇩", theme: "selfie", minutesAgo: 28, tags: ["selfie","people","smile"] },
+  { id: "137", uri: unsplashPhotoUrl("1438761681033-6461ffad8d80"), country: "Pakistan", countryCode: "PK", countryFlag: "🇵🇰", theme: "selfie", minutesAgo: 95, tags: ["selfie","people"] },
+  { id: "138", uri: unsplashPhotoUrl("1607082349566-187342175e2f"), country: "Romania", countryCode: "RO", countryFlag: "🇷🇴", theme: "shopping", minutesAgo: 52, tags: ["shopping","grocery","city"] },
+  { id: "139", uri: unsplashPhotoUrl("1581578731548-c64695cc6952"), country: "Estonia", countryCode: "EE", countryFlag: "🇪🇪", theme: "chores", minutesAgo: 73, tags: ["chores","cleaning","home"] },
+  { id: "140", uri: unsplashPhotoUrl("1519681393784-d120267933ba"), country: "Sri Lanka", countryCode: "LK", countryFlag: "🇱🇰", theme: "reading", minutesAgo: 140, tags: ["reading","cozy","home"] },
 ];
 
 /** Maps launch QA slots → primary stock photo id (existing + new). */
@@ -1189,9 +1201,7 @@ export const SUGGESTED_TAGS_BY_THEME: Record<string, string[]> = {
   plants: ["plants", "flowers", "garden", "trees"],
   music: ["music", "vintage", "hobby", "cozy", "party"],
   passions: ["music", "fitness", "sports", "dancing", "running", "cycling", "party"],
-  // ── New lifestyle themes — sample photos intentionally skipped, but
-  // tag suggestions still seeded so the camera screen has a sensible
-  // first row when these challenges run.
+  // Lifestyle themes — tag chips for camera when these challenges run.
   selfie: ["selfie", "mirror", "smile", "people", "fashion"],
   shopping: ["shopping", "grocery", "fashion", "parcel", "city"],
   cafe: ["cafe", "coffee", "tea", "drink", "meal", "breakfast", "brunch", "cozy"],
@@ -1251,9 +1261,7 @@ export const DAILY_CHALLENGES = [
   { id: "plants", title: "A plant you noticed", description: "House plant, tree, weed, flower — close-up", emoji: "🪴" },
   { id: "music", title: "Your music", description: "What's playing — vinyl, speaker, headphones, anything", emoji: "🎵" },
   // ── Lifestyle round — selfie / shopping / cafe / objects / chores.
-  // Sample photos deliberately skipped (unverified Unsplash IDs render
-  // blank); production users still get tagged candidates from real
-  // uploads via the matcher.
+  // Stock coverage in SAMPLE_PHOTOS (match / discover pools).
   { id: "selfie", title: "A selfie", description: "Today's you, however you feel", emoji: "🤳" },
   { id: "shopping", title: "What you bought", description: "Today's haul, big or small", emoji: "🛍️" },
   { id: "cafe", title: "Your café", description: "Where you go for a coffee, a drink, a bite", emoji: "☕" },
@@ -1302,6 +1310,20 @@ export const THEME_ADJACENCY: Record<string, string[]> = {
   night: ["morning", "home", "sky"],
   groceries: ["food", "morning", "shopping"],
   wheels: ["commute", "movement", "travel"],
+  made: ["objects", "hands", "joy", "hobbies"],
+  playing: ["games", "hobbies", "joy"],
+  smallthing: ["joy", "objects", "home"],
+  reading: ["hobbies", "work", "home"],
+  listening: ["music", "hobbies"],
+  shoes: ["movement", "wearing", "commute"],
+  door: ["home", "ritual", "wall"],
+  water: ["nature", "sky"],
+  wall: ["art", "home", "objects"],
+  handwriting: ["work", "made", "art"],
+  weather: ["sky", "nature"],
+  ritual: ["morning", "home", "chores"],
+  plant: ["plants", "nature", "home"],
+  hands: ["food", "work", "joy"],
 };
 
 export function getThemeChain(theme: string): string[] {

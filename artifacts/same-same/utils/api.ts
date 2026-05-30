@@ -676,6 +676,7 @@ export interface ServerEchoSide {
   countryCode: string | null;
   country: string;
   countryFlag: string;
+  theme?: string;
   // Data URL (`data:audio/...;base64,...`) for the custom voice clip
   // attached to this photo, if any. The mic badge on the relevant
   // surfaces uses this URL to drive the play/pause preview.
@@ -700,6 +701,7 @@ function decorateSide(side: {
   id: string;
   uri: string;
   countryCode: string | null;
+  theme?: string;
   customAudioBase64?: string | null;
   customAudioMime?: string | null;
 }): ServerEchoSide {
@@ -714,6 +716,7 @@ function decorateSide(side: {
     countryCode: code || null,
     country: code ? nameFor(code) ?? "Somewhere" : "Somewhere",
     countryFlag: code ? flagFor(code) : "🌍",
+    theme: typeof side.theme === "string" ? side.theme : undefined,
     customAudioUrl: audio,
   };
 }
@@ -728,6 +731,7 @@ function decorateEcho(raw: {
     id: string;
     uri: string;
     countryCode: string | null;
+    theme?: string;
     customAudioBase64?: string | null;
     customAudioMime?: string | null;
   };
@@ -735,6 +739,7 @@ function decorateEcho(raw: {
     id: string;
     uri: string;
     countryCode: string | null;
+    theme?: string;
     customAudioBase64?: string | null;
     customAudioMime?: string | null;
   };
@@ -1120,6 +1125,11 @@ const ATLAS_FETCH_TIMEOUT_MS = 30_000;
 const ATLAS_SUMMARY_CACHE_TTL_MS = 3 * 60 * 1000;
 let atlasSummaryCache: { fetchedAt: number; data: AtlasSummaryResult } | null =
   null;
+
+/** Drop cached `/api/photos/atlas` so the next fetch sees new ripples/waves. */
+export function invalidateAtlasSummaryCache(): void {
+  atlasSummaryCache = null;
+}
 
 /** Cheap liveness ping to wake hosted APIs (e.g. Render cold start) before Atlas opens. */
 const HOSTED_API_WARM_TIMEOUT_MS = 12_000;

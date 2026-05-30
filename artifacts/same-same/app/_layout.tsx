@@ -30,6 +30,7 @@ import {
   View,
 } from "react-native";
 import { EchoFlash } from "@/components/EchoFlash";
+import { formatDualWaveThemes } from "@/utils/shareThemeLabels";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ToastHost } from "@/components/ToastHost";
 import { AppProvider, useApp } from "@/context/AppContext";
@@ -461,7 +462,13 @@ function RootLayoutNav() {
         <Stack.Screen name="echoes-theme/[theme]" options={{ headerShown: false }} />
         <Stack.Screen name="photo-viewer" options={{ headerShown: false, presentation: "modal" }} />
       </Stack>
-      {pendingFlashEcho && (
+      {pendingFlashEcho && (() => {
+        const { title: flashThemeTitle, emoji: flashThemeEmoji } =
+          formatDualWaveThemes(
+            pendingFlashEcho.mine.theme ?? pendingFlashEcho.theme,
+            pendingFlashEcho.theirs.theme ?? pendingFlashEcho.theme,
+          );
+        return (
         <EchoFlash
           myPhotoUri={pendingFlashEcho.mine.uri}
           theirPhotoUri={pendingFlashEcho.theirs.uri}
@@ -470,7 +477,8 @@ function RootLayoutNav() {
           theirCountry={pendingFlashEcho.theirs.country}
           theirCountryFlag={pendingFlashEcho.theirs.countryFlag}
           theirCountryCode={pendingFlashEcho.theirs.countryCode ?? undefined}
-          themeTitle={pendingFlashEcho.theme}
+          themeTitle={flashThemeTitle}
+          themeEmoji={flashThemeEmoji}
           onDone={dismissFlashEcho}
           onOpen={() => {
             const a = String(pendingFlashEcho.mine.id);
@@ -482,7 +490,8 @@ function RootLayoutNav() {
             setTimeout(() => dismissFlashEcho(), 400);
           }}
         />
-      )}
+        );
+      })()}
     </>
   );
 }

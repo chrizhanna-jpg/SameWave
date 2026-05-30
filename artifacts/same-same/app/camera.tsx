@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  Pressable,
   TextInput,
   TouchableOpacity,
   View,
@@ -63,6 +64,9 @@ import * as FileSystem from "expo-file-system/legacy";
 // under our 1MB API budget (typically ~80–120KB) and keeps clips snappy
 // in the match feed. We auto-stop at this length so no UI work needed.
 const MAX_RECORD_MS = 10_000;
+
+/** Minimum comfortable tap target for theme/vibe chips (nested scroll views). */
+const TOKEN_CHIP_HIT_SLOP = { top: 10, bottom: 10, left: 8, right: 8 } as const;
 
 // `audio/m4a` reads natively on both iOS and Android in expo-av. Mime is
 // recorded alongside the bytes so the playback `data:` URL works on both.
@@ -1224,6 +1228,7 @@ export default function CameraScreen() {
             bottomOffset={bottomPadding + 12}
             extraKeyboardSpace={72}
             keyboardDismissMode="interactive"
+            keyboardShouldPersistTaps="always"
             showsVerticalScrollIndicator={false}
           >
             <View
@@ -1289,15 +1294,18 @@ export default function CameraScreen() {
                     themeText.trim().toLowerCase() === s.label.toLowerCase() ||
                     (s.tagId != null && selectedTags.includes(s.tagId));
                   return (
-                    <TouchableOpacity
+                    <Pressable
                       key={s.key}
                       onPress={() => applyThemeSuggestion(s)}
-                      activeOpacity={0.85}
-                      style={[
+                      hitSlop={TOKEN_CHIP_HIT_SLOP}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      style={({ pressed }) => [
                         styles.tokenChip,
                         {
                           backgroundColor: active ? colors.primary : colors.card,
                           borderColor: active ? colors.primary : colors.border,
+                          opacity: pressed ? 0.88 : 1,
                         },
                       ]}
                     >
@@ -1314,7 +1322,7 @@ export default function CameraScreen() {
                       >
                         {s.label}
                       </Text>
-                    </TouchableOpacity>
+                    </Pressable>
                   );
                 })}
               </HorizontalTokenScroll>
@@ -1374,20 +1382,23 @@ export default function CameraScreen() {
                 {filteredVibeSuggestions.map((g) => {
                   const active = musicGenre === g.id;
                   return (
-                    <TouchableOpacity
+                    <Pressable
                       key={g.id}
                       onPress={() => handleGenreTap(g.id)}
-                      activeOpacity={0.85}
                       disabled={!!customAudioUrl}
+                      hitSlop={TOKEN_CHIP_HIT_SLOP}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active, disabled: !!customAudioUrl }}
                       onLayout={(e) => {
                         const { x, width } = e.nativeEvent.layout;
                         chipLayoutsRef.current[g.id] = { x, width };
                       }}
-                      style={[
+                      style={({ pressed }) => [
                         styles.tokenChip,
                         {
                           backgroundColor: active ? colors.primary : colors.card,
                           borderColor: active ? colors.primary : colors.border,
+                          opacity: customAudioUrl ? 0.5 : pressed ? 0.88 : 1,
                         },
                       ]}
                     >
@@ -1404,7 +1415,7 @@ export default function CameraScreen() {
                       >
                         {g.label}
                       </Text>
-                    </TouchableOpacity>
+                    </Pressable>
                   );
                 })}
               </HorizontalTokenScroll>
@@ -1993,10 +2004,13 @@ const styles = StyleSheet.create({
   tokenChip: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: 6,
-    height: 36,
-    paddingHorizontal: 12,
-    borderRadius: 18,
+    minHeight: 48,
+    minWidth: 48,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 24,
     borderWidth: 1,
     flexShrink: 0,
   },

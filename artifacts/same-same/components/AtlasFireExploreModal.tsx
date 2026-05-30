@@ -59,19 +59,6 @@ export type ExplorePhotoTile = {
   participant: AtlasFireParticipant;
 };
 
-type PageEdgeLabel = "first" | "last" | "only";
-
-function explorePageEdgeLabel(
-  index: number,
-  total: number,
-): PageEdgeLabel | null {
-  if (total <= 0) return null;
-  if (total === 1) return "only";
-  if (index === 0) return "first";
-  if (index === total - 1) return "last";
-  return null;
-}
-
 function vibeUrl(p: AtlasFireParticipant): string | null {
   return (
     resolveMusicUrl({
@@ -116,7 +103,7 @@ function ExploreAtlasPhoto({ uri }: { uri: string }) {
   if (needsAuth && !headers) {
     return (
       <View style={styles.explorePhotoLoader}>
-        <ActivityIndicator color="#4FD89C" size="large" />
+        <ActivityIndicator color="#E8F4F8" size="large" />
       </View>
     );
   }
@@ -184,11 +171,9 @@ function ImmersivePhotoViewer({
             {flagFor(country)} {nameFor(country) ?? country}
           </Text>
           {clip ? (
-            <View style={[styles.vibePill, { borderColor: accent }]}>
-              <Icon name="play" size={14} color={accent} />
-              <Text style={[styles.vibePillText, { color: accent }]}>
-                Playing this vibe
-              </Text>
+            <View style={styles.vibePill}>
+              <Icon name="play" size={14} color="#E8F4F8" />
+              <Text style={styles.vibePillText}>Playing this vibe</Text>
             </View>
           ) : (
             <Text style={styles.immersiveNoVibe}>No vibe clip for this photo</Text>
@@ -204,8 +189,6 @@ function FullScreenPhotoPage({
   pageWidth,
   pageHeight,
   captionBottomInset,
-  edgeLabel,
-  accent,
   onOpen,
 }: {
   tile: ExplorePhotoTile;
@@ -213,52 +196,21 @@ function FullScreenPhotoPage({
   pageHeight: number;
   /** Safe area + breathing room so caption stays on screen. */
   captionBottomInset: number;
-  edgeLabel: PageEdgeLabel | null;
-  accent: string;
   onOpen: () => void;
 }) {
   const uploadedTheme = (tile.participant.theme || tile.theme).trim();
   const { title, emoji } = resolveThemeDisplay(uploadedTheme);
   const country = tile.participant.countryCode;
-  const edgeText =
-    edgeLabel === "only"
-      ? "Only photo in this cluster"
-      : edgeLabel === "first"
-        ? "First photo — swipe up for more"
-        : edgeLabel === "last"
-          ? "Last photo in this cluster"
-          : null;
 
   return (
     <Pressable
       onPress={onOpen}
       style={[styles.page, { width: pageWidth, height: pageHeight }]}
       accessibilityRole="button"
-      accessibilityLabel={`${title}, ${nameFor(country) ?? country}. ${edgeText ?? "Tap for fullscreen and vibe."}`}
+      accessibilityLabel={`${title}, ${nameFor(country) ?? country}. Tap for fullscreen and vibe.`}
     >
       <ExploreAtlasPhoto uri={tile.participant.uri} />
       <View style={styles.pageScrim} pointerEvents="none" />
-      {edgeText ? (
-        <View
-          style={[styles.pageEdgeBadge, { borderColor: accent }]}
-          pointerEvents="none"
-        >
-          <Icon
-            name={
-              edgeLabel === "last"
-                ? "chevron-down"
-                : edgeLabel === "first"
-                  ? "chevron-up"
-                  : "layers"
-            }
-            size={14}
-            color={accent}
-          />
-          <Text style={[styles.pageEdgeBadgeText, { color: accent }]}>
-            {edgeText}
-          </Text>
-        </View>
-      ) : null}
       <View
         style={[
           styles.pageCaption,
@@ -406,7 +358,7 @@ export function AtlasFireExploreModal({
             style={[
               styles.topBar,
               {
-                paddingTop: insets.top + 8,
+                paddingTop: insets.top + 16,
                 borderBottomColor: colors.border,
               },
             ]}
@@ -422,12 +374,6 @@ export function AtlasFireExploreModal({
                     style={[styles.topBarCounter, { color: colors.mutedForeground }]}
                   >
                     {photoCountLabel}
-                    {photoIndex === 0 && photoTiles.length > 1
-                      ? " · at the start"
-                      : photoIndex === photoTiles.length - 1 &&
-                          photoTiles.length > 1
-                        ? " · at the end"
-                        : ""}
                   </Text>
                 ) : null}
               </View>
@@ -511,8 +457,6 @@ export function AtlasFireExploreModal({
                       pageWidth={width}
                       pageHeight={pageHeight}
                       captionBottomInset={captionBottomInset}
-                      edgeLabel={explorePageEdgeLabel(index, photoTiles.length)}
-                      accent={visual.lineStroke}
                       onOpen={() => setImmersive(tile)}
                     />
                   ))}
@@ -635,27 +579,6 @@ const styles = StyleSheet.create({
     flex: 1,
     width: "100%",
   },
-  pageEdgeBadge: {
-    position: "absolute",
-    top: 14,
-    left: 14,
-    right: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    backgroundColor: "rgba(0, 16, 24, 0.78)",
-    zIndex: 2,
-  },
-  pageEdgeBadgeText: {
-    flex: 1,
-    fontFamily: "Inter_700Bold",
-    fontSize: 13,
-    letterSpacing: 0.15,
-  },
   pageCaption: {
     position: "absolute",
     left: 0,
@@ -736,10 +659,12 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.35)",
     backgroundColor: "rgba(0, 16, 24, 0.45)",
   },
   vibePillText: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 13,
+    color: "#E8F4F8",
   },
 });

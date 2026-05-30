@@ -235,7 +235,7 @@ export function EchoFlash({
           <Text style={styles.headline}>Wave!</Text>
           <Icon name="wave-glyph" size={28} color={colors.gold} />
         </View>
-        <Text style={styles.tagline}>Both of you Rippled back</Text>
+        <Text style={styles.tagline}>They rippled back!</Text>
 
         {(myCountryCode || theirCountryCode) && (
           <ConnectionMapPreview
@@ -299,10 +299,6 @@ export function EchoFlash({
             <Text style={styles.thumbFlag}>{theirCountryFlag || "🌍"}</Text>
           </Animated.View>
         </View>
-
-        <Text style={styles.subline}>
-          You and someone in {theirCountry} are on the same wavelength.
-        </Text>
 
         {themeTitle ? (
           <CelebrationMatchChips
@@ -430,14 +426,6 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
     backgroundColor: "rgba(0,16,24,0.55)",
-  },
-  subline: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#001018",
-    marginBottom: 8,
-    textAlign: "center",
-    paddingHorizontal: 8,
   },
   ctaWrap: {
     width: "100%",

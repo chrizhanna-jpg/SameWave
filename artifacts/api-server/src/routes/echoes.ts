@@ -311,8 +311,8 @@ type EchoCard = {
   theme: string;
   createdAt: string | Date;
   mutualAt: string | Date | null;
-  mine: { id: string; uri: string; countryCode: string | null };
-  theirs: { id: string; uri: string; countryCode: string | null };
+  mine: { id: string; uri: string; countryCode: string | null; theme: string };
+  theirs: { id: string; uri: string; countryCode: string | null; theme: string };
 };
 
 function buildEchoCard(
@@ -324,11 +324,13 @@ function buildEchoCard(
     id: String(row.photoLowId),
     uri: `data:${String(row.lowMime)};base64,${String(row.lowBytes)}`,
     countryCode: (row.lowCountry as string | null) ?? null,
+    theme: String(row.lowTheme ?? ""),
   };
   const highSide = {
     id: String(row.photoHighId),
     uri: `data:${String(row.highMime)};base64,${String(row.highBytes)}`,
     countryCode: (row.highCountry as string | null) ?? null,
+    theme: String(row.highTheme ?? ""),
   };
   const mine = lowId === meId ? lowSide : highSide;
   const theirs = lowId === meId ? highSide : lowSide;
@@ -369,9 +371,11 @@ router.get("/echoes/inbox", async (req, res) => {
         pl.bytes_base64 AS "lowBytes",
         pl.mime_type AS "lowMime",
         pl.country_code AS "lowCountry",
+        pl.theme AS "lowTheme",
         ph.bytes_base64 AS "highBytes",
         ph.mime_type AS "highMime",
-        ph.country_code AS "highCountry"
+        ph.country_code AS "highCountry",
+        ph.theme AS "highTheme"
       FROM echoes e
       JOIN photos pl ON pl.id = e.photo_low_id
       JOIN photos ph ON ph.id = e.photo_high_id
@@ -414,9 +418,11 @@ router.get("/echoes/mine", async (req, res) => {
         pl.bytes_base64 AS "lowBytes",
         pl.mime_type AS "lowMime",
         pl.country_code AS "lowCountry",
+        pl.theme AS "lowTheme",
         ph.bytes_base64 AS "highBytes",
         ph.mime_type AS "highMime",
-        ph.country_code AS "highCountry"
+        ph.country_code AS "highCountry",
+        ph.theme AS "highTheme"
       FROM echoes e
       JOIN photos pl ON pl.id = e.photo_low_id
       JOIN photos ph ON ph.id = e.photo_high_id

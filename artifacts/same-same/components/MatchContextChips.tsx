@@ -232,7 +232,7 @@ export function ShareThemeChip({
           styles.themeText,
           { fontSize: themeFont, color: "#FFFFFF" },
         ]}
-        numberOfLines={1}
+        numberOfLines={2}
       >
         {themeTitle}
       </Text>

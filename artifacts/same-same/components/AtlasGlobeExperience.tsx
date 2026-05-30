@@ -165,7 +165,10 @@ function normalizeConnections(raw: AtlasConnection[]): AtlasConnection[] {
   for (const c of raw) {
     const from = c.from.trim().toUpperCase();
     const to = c.to.trim().toUpperCase();
-    if (from.length !== 2 || to.length !== 2 || from === to) continue;
+    if (from.length !== 2 || to.length !== 2) continue;
+    // Cross-border arcs need distinct endpoints; same-country ripples/waves
+    // use one centroid (short loop) so domestic matches still appear on Atlas.
+    if (from === to && c.kind !== "ripple" && c.kind !== "wave") continue;
     const key = c.id;
     if (seen.has(key)) continue;
     seen.add(key);

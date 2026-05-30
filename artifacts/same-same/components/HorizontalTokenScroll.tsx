@@ -50,7 +50,8 @@ export const HorizontalTokenScroll = React.forwardRef<
         ref={ref}
         horizontal
         showsHorizontalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+        keyboardShouldPersistTaps="always"
+        nestedScrollEnabled
         scrollEventThrottle={16}
         onLayout={(e) => {
           const w = e.nativeEvent.layout.width;
@@ -107,8 +108,10 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: "row",
+    alignItems: "center",
     gap: 8,
-    paddingVertical: 4,
+    minHeight: 52,
+    paddingVertical: 8,
     paddingRight: 8,
   },
   fadeLeft: {

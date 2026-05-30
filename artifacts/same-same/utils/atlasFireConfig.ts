@@ -27,4 +27,5 @@ export const WAVEFIRE_MIN_EVENTS = 1;
 export const WAVEFIRE_MIN_COUNTRIES = 2;
 /** One pending ripple can form its own Ripplefire (global map shows every active ripple). */
 export const RIPPLEFIRE_MIN_EVENTS = 1;
-export const RIPPLEFIRE_MIN_COUNTRIES = 2;
+/** Domestic ripples (one ISO2) still form a Ripplefire cluster for explore. */
+export const RIPPLEFIRE_MIN_COUNTRIES = 1;

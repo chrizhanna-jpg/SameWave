@@ -298,7 +298,7 @@ export default function AtlasScreen() {
     useCallback(() => {
       atlasFocusedRef.current = true;
       markTabVisited("atlas");
-      void load(false);
+      void load(true);
       return () => {
         atlasFocusedRef.current = false;
       };

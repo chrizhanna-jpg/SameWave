@@ -10,7 +10,7 @@ export const PUSH_COPY = {
   },
   mutual: {
     title: "Catch a Wave! ✨",
-    body: "You rippled back! Send a Ripple. Catch a Wave.",
+    body: "They rippled back!",
     categoryId: "wave_mutual",
   },
 } as const;

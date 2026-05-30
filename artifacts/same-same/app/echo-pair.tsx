@@ -31,8 +31,8 @@ import { WAVE_MUTUAL_TAGLINE } from "@/data/waveRippleGlossary";
 import { useColors } from "@/hooks/useColors";
 import { useProAccess } from "@/hooks/useProAccess";
 import { getTimeTier, getGeoTier } from "@/utils/celebrations";
-import { DAILY_CHALLENGES } from "@/data/samplePhotos";
 import { fetchPair, type PhotoPairResult } from "@/utils/api";
+import { formatDualWaveThemes } from "@/utils/shareThemeLabels";
 import { useApp } from "@/context/AppContext";
 import { confirmReportPhoto } from "@/utils/photoModeration";
 import { pausePreview } from "@/utils/audio";
@@ -226,12 +226,10 @@ export default function EchoPairScreen() {
   // Resolve the matched theme to its display title + emoji. Either side's
   // `theme` field is the same value; we prefer `a.theme` and fall back to
   // `b.theme` so a missing field on one side doesn't blank out the chip.
-  const rawTheme = pair.a.theme || pair.b.theme || "the same thing";
-  const themeMeta = DAILY_CHALLENGES.find(
-    (c) => c.id === rawTheme || c.title.toLowerCase() === rawTheme,
+  const { title: themeTitle, emoji: themeEmoji } = formatDualWaveThemes(
+    pair.a.theme,
+    pair.b.theme,
   );
-  const themeTitle = themeMeta?.title ?? rawTheme;
-  const themeEmoji = themeMeta?.emoji ?? "✨";
 
   // Time tier reuses the shared celebrations helper. We feed it `a` as
   // "mine" and convert `b.createdAt` into minutes-ago so the diff math is

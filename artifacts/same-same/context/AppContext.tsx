@@ -196,6 +196,8 @@ export interface PhotoSide {
   countryCode: string | null;
   country: string;
   countryFlag: string;
+  /** Upload theme on this photo (Wave share chip + celebration). */
+  theme?: string;
 }
 
 export interface EchoCard {

@@ -13,8 +13,7 @@ export const RIPPLE_ONE_LINER =
   "Someone tapped Ripple; waiting for them to Ripple back and make a Wave.";
 
 /** Shown to both people when a Ripple becomes a Wave (push, toast, reveal). */
-export const WAVE_MUTUAL_TAGLINE =
-  "You rippled back! Send a Ripple. Catch a Wave.";
+export const WAVE_MUTUAL_TAGLINE = "They rippled back!";
 
 export const WAVE_ONE_LINER = WAVE_MUTUAL_TAGLINE;
 
@@ -38,7 +37,7 @@ export const ATLAS_FILTER_HINT = {
   all: "All — Every live Ripple and Wave connection on the map.",
   ripples:
     "Ripples — Someone tapped Ripple; waiting for them to Ripple back and make a Wave.",
-  waves: "Waves — They rippled back! Send a Ripple. Catch a Wave.",
+  waves: `Waves — ${WAVE_MUTUAL_TAGLINE}`,
   mine: "Mine only — Only Ripples and Waves you are part of.",
   wavefire:
     "Wavefire — A global fire circle that lights up when matching moments connect, bringing people on the same wavelength into a shared campfire space.",
