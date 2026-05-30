@@ -102,6 +102,16 @@ app.get("/privacy", (_req, res) => {
 app.get("/data-deletion", (_req, res) => {
   sendDataDeletionPage(res);
 });
+app.get("/account-deletion", (_req, res) => {
+  sendDataDeletionPage(res);
+});
+app.get("/delete-account-data", (_req, res) => {
+  sendDataDeletionPage(res);
+});
+app.get("/robots.txt", (_req, res) => {
+  res.type("text/plain");
+  res.send("User-agent: *\nAllow: /\n");
+});
 app.get("/terms", (_req, res) => {
   sendTermsPage(res);
 });
@@ -143,6 +153,9 @@ app.use(express.urlencoded({ extended: true, limit: "12mb" }));
 // misconfigured Clerk host/key cannot turn analyze into a generic HTML 500.
 app.use("/api", analyzeRouter);
 
+// Play / store policy pages — before clerkMiddleware so crawlers always get HTML 200.
+app.use("/api", legalRouter);
+
 // Resolve the publishable key from the incoming request host so the same
 // server can serve multiple Clerk custom domains. Falls back to
 // CLERK_PUBLISHABLE_KEY when the host doesn't map to a custom domain.
@@ -176,9 +189,6 @@ if (clerkSecretKey) {
 // Populate req.auth from the Bearer token sent by the Expo client.
 // Routes use resolveUserFromRequest() to translate auth.userId → users row.
 
-// Play / store policy pages — no auth; must stay before clerkMiddleware so a
-// misconfigured Clerk secret does not turn /api/privacy into 500 for crawlers.
-app.use("/api", legalRouter);
 app.use("/api", router);
 
 export default app;

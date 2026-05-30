@@ -40,18 +40,31 @@ const PAGE_CSS = `
   }
 `;
 
-const layout = (title: string, body: string) => `<!doctype html>
+const APP_NAME = "SameWave";
+
+function layout(title: string, body: string, metaDescription?: string): string {
+  const desc = metaDescription ?? `${title} for ${APP_NAME}.`;
+  return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${title} — Echo</title>
+  <meta name="description" content="${desc.replace(/"/g, "&quot;")}" />
+  <meta name="robots" content="index, follow" />
+  <title>${title} — ${APP_NAME}</title>
   <style>${PAGE_CSS}</style>
 </head>
 <body>
 ${body}
 </body>
 </html>`;
+}
+
+function sendPublicHtml(res: Response, html: string): void {
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Cache-Control", "public, max-age=300");
+  res.send(html);
+}
 
 const PRIVACY_HTML = layout(
   "Privacy Policy",
@@ -250,61 +263,62 @@ const CSAE_HTML = layout(
   `,
 );
 
-// Play Console "Data safety" → account / data deletion URL must return 200 HTML.
-// SameWave: deletion is email-led + in-app photo deletion (see Privacy Policy).
+// Play Console "Data safety" → deletion URL must return 200 HTML without sign-in.
+const DATA_DELETION_MAILTO = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent("SameWave data deletion request")}`;
+
 const DATA_DELETION_HTML = layout(
-  "Account & data deletion",
+  "Delete your data",
   `
-  <h1>Account &amp; data deletion</h1>
-  <p class="meta">SameWave (the "App"). Last updated: May 2026.</p>
+  <h1>Request deletion of your SameWave account and data</h1>
+  <p class="meta">${APP_NAME} (Android package <code>app.echo.samewave</code>). Last updated: May 2026.</p>
 
-  <p>This page explains how to request deletion of your account data. It is
-  published at a stable URL for Google Play and other store listings.</p>
+  <p>Use this page to request deletion of your <strong>SameWave</strong> account
+  and associated personal data (photos, ripples/waves, votes, country, sign-in
+  linkage, and push tokens). You do not need to stay signed in to read this page.</p>
 
-  <h2>Delete your photos inside the App</h2>
-  <p>Signed-in users can remove individual photos from <strong>My photos</strong>
-  in the App. Removing a photo deletes it from our servers according to the
-  retention rules in our <a href="/api/privacy">Privacy Policy</a>.</p>
+  <h2>Option 1 — Delete some data (keep your account)</h2>
+  <p>Signed-in users can remove individual photos in the App under
+  <strong>My photos</strong>. That deletes those photos from our servers without
+  closing your account. See our <a href="/api/privacy">Privacy Policy</a>.</p>
 
-  <h2>Request full account deletion</h2>
-  <p>To delete <strong>all</strong> data associated with your account (photos,
-  matches, votes, device linkage, and notification tokens), email us from the
-  address you use with the App (if applicable) or describe your account so we
-  can locate it:</p>
-  <p><a href="mailto:${CONTACT_EMAIL}?subject=SameWave%20data%20deletion%20request">${CONTACT_EMAIL}</a>
-  — please use subject line <code>SameWave data deletion request</code>.</p>
-  <p>We will confirm receipt and process verifiable requests within a reasonable
-  time, usually within <strong>30 days</strong>, unless a longer period is
-  required by law. We may ask for a brief verification step to prevent
-  fraudulent deletion requests.</p>
+  <h2>Option 2 — Delete your account and all associated data</h2>
+  <p>Email us to request complete deletion of your account and all data we hold
+  about you:</p>
+  <p><strong><a href="${DATA_DELETION_MAILTO}">${CONTACT_EMAIL}</a></strong></p>
+  <p>Please use the subject line: <code>SameWave data deletion request</code>.
+  Include the Google account email you use to sign in (if helpful) so we can
+  locate your account.</p>
+  <p>We confirm receipt and complete verifiable requests within
+  <strong>30 days</strong> (or longer only where the law requires). We may ask a
+  short verification step to prevent fraudulent requests.</p>
 
   <h2>After deletion</h2>
-  <p>Once deletion is complete, your data will not be restored. Some
-  aggregated or de-identified analytics may be retained where permitted by law.</p>
+  <p>Deleted data cannot be restored. We may retain minimal records where the law
+  requires (for example safety or fraud investigations).</p>
+
+  <h2>Contact</h2>
+  <p>Questions: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
 
   <hr />
   <p class="meta"><a href="/api/privacy">Privacy Policy</a> · <a href="/api/terms">Terms of Service</a></p>
   `,
+  "How to request deletion of your SameWave account and associated data.",
 );
 
 export function sendPrivacyPage(res: Response): void {
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.send(PRIVACY_HTML);
+  sendPublicHtml(res, PRIVACY_HTML);
 }
 
 export function sendDataDeletionPage(res: Response): void {
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.send(DATA_DELETION_HTML);
+  sendPublicHtml(res, DATA_DELETION_HTML);
 }
 
 export function sendTermsPage(res: Response): void {
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.send(TERMS_HTML);
+  sendPublicHtml(res, TERMS_HTML);
 }
 
 export function sendCsaePage(res: Response): void {
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.send(CSAE_HTML);
+  sendPublicHtml(res, CSAE_HTML);
 }
 
 router.get("/privacy", (_req, res) => {
@@ -320,6 +334,14 @@ router.get("/csae", (_req, res) => {
 });
 
 router.get("/data-deletion", (_req, res) => {
+  sendDataDeletionPage(res);
+});
+
+// Play Console aliases — same HTML, stable for store crawlers.
+router.get("/account-deletion", (_req, res) => {
+  sendDataDeletionPage(res);
+});
+router.get("/delete-account-data", (_req, res) => {
   sendDataDeletionPage(res);
 });
 
