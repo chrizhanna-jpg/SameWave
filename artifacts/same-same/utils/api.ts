@@ -1409,7 +1409,11 @@ async function fetchAtlasSummaryOnce(
 
 const ATLAS_DIAG_FETCH_TIMEOUT_MS = 12_000;
 
-async function atlasDiagFetch(url: string, timeoutMs: number): Promise<{
+async function atlasDiagFetch(
+  url: string,
+  timeoutMs: number,
+  headers?: Record<string, string>,
+): Promise<{
   ms: number;
   ok: boolean;
   status: number;
@@ -1420,7 +1424,11 @@ async function atlasDiagFetch(url: string, timeoutMs: number): Promise<{
   const controller = new AbortController();
   const tid = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers,
+      cache: "no-store",
+    });
     const text = await res.text();
     return {
       ms: Date.now() - t0,
@@ -1459,7 +1467,12 @@ export interface BackendStatusPayload {
 /**
  * Lightweight checks Atlas tab can show when loading fails — no tokens/keys echoed.
  */
-export async function fetchAtlasTabDiagnostics(): Promise<{
+export async function fetchAtlasTabDiagnostics(options?: {
+  /** Merged connections currently shown on the globe (API + local). */
+  globeConnections?: AtlasConnection[];
+  viewerCountryCode?: string;
+  localRippleMergeCount?: number;
+}): Promise<{
   apiBase: string;
   health?: { ms: number; ok: boolean; status: number; bodyPreview?: string };
   backendStatus?: BackendStatusPayload;
@@ -1476,7 +1489,11 @@ export async function fetchAtlasTabDiagnostics(): Promise<{
     status: number;
     bodyPreview: string;
     aborted?: boolean;
+    connectionCount?: number;
+    rippleCount?: number;
+    waveCount?: number;
   };
+  ripplefire?: import("@/utils/atlasRipplefireDiagnostics").RipplefireDiagnosticsReport;
 }> {
   const apiBase = getApiBase();
 
@@ -1502,7 +1519,49 @@ export async function fetchAtlasTabDiagnostics(): Promise<{
   const atlas = await atlasDiagFetch(
     `${apiBase}/api/photos/atlas`,
     ATLAS_DIAG_FETCH_TIMEOUT_MS,
+    await authedHeaders(),
   );
+
+  let ripplefire:
+    | import("@/utils/atlasRipplefireDiagnostics").RipplefireDiagnosticsReport
+    | undefined;
+  if (options?.globeConnections != null) {
+    const { buildRipplefireDiagnosticsReport } = await import(
+      "@/utils/atlasRipplefireDiagnostics"
+    );
+    ripplefire = buildRipplefireDiagnosticsReport(options.globeConnections, {
+      viewerCountryCode: options.viewerCountryCode,
+      localRippleMergeCount: options.localRippleMergeCount,
+    });
+  } else if (atlas.ok && atlas.text) {
+    try {
+      const json = JSON.parse(atlas.text) as { connections?: AtlasConnection[] };
+      const connections = Array.isArray(json.connections) ? json.connections : [];
+      const { buildRipplefireDiagnosticsReport } = await import(
+        "@/utils/atlasRipplefireDiagnostics"
+      );
+      ripplefire = buildRipplefireDiagnosticsReport(connections, {
+        viewerCountryCode: options?.viewerCountryCode,
+      });
+    } catch {
+      /* ignore parse */
+    }
+  }
+
+  let connectionCount: number | undefined;
+  let rippleCount: number | undefined;
+  let waveCount: number | undefined;
+  if (atlas.ok && atlas.text) {
+    try {
+      const json = JSON.parse(atlas.text) as { connections?: AtlasConnection[] };
+      const list = Array.isArray(json.connections) ? json.connections : [];
+      connectionCount = list.length;
+      rippleCount = list.filter((c) => c.kind === "ripple").length;
+      waveCount = list.filter((c) => c.kind === "wave").length;
+    } catch {
+      /* ignore */
+    }
+  }
 
   return {
     apiBase,
@@ -1526,7 +1585,11 @@ export async function fetchAtlasTabDiagnostics(): Promise<{
       status: atlas.status,
       bodyPreview: atlas.text.slice(0, 700),
       aborted: atlas.aborted,
+      connectionCount,
+      rippleCount,
+      waveCount,
     },
+    ripplefire,
   };
 }
 

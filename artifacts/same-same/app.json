@@ -27,7 +27,7 @@
     "android": {
       "package": "app.echo.samewave",
       "softwareKeyboardLayoutMode": "resize",
-      "versionCode": 40,
+      "versionCode": 41,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#166FFC"

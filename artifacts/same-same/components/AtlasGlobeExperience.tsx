@@ -697,8 +697,8 @@ export function AtlasGlobeExperience({
   const fireShowRing =
     fireActive ||
     (fireNight && fireHasArcs && mapCountryCodes.length >= 2);
-  const fireAmbienceOn =
-    fireMode === "wavefire" && atlasTabFocused;
+  /** Campfire loop only while Explore modal is open (not on filter tap). */
+  const fireAmbienceOn = fireExploreOpen && atlasTabFocused;
   const fireAmbienceOnRef = useRef(fireAmbienceOn);
   fireAmbienceOnRef.current = fireAmbienceOn;
 
@@ -835,7 +835,13 @@ export function AtlasGlobeExperience({
   const openFireExplore = useCallback(() => {
     if (!fireActive || !fireCluster || !fireVisual) return;
     setFireExploreOpen(true);
+    void startWavefireAmbience();
   }, [fireActive, fireCluster, fireVisual]);
+
+  const closeFireExplore = useCallback(() => {
+    setFireExploreOpen(false);
+    void stopWavefireAmbience();
+  }, []);
 
   const stepFireCluster = useCallback(
     (delta: number) => {
@@ -850,7 +856,10 @@ export function AtlasGlobeExperience({
   );
 
   useEffect(() => {
-    if (!fireMode) setFireExploreOpen(false);
+    if (!fireMode) {
+      setFireExploreOpen(false);
+      void stopWavefireAmbience();
+    }
   }, [fireMode]);
 
   return (
@@ -1265,7 +1274,7 @@ export function AtlasGlobeExperience({
       {fireActive && fireCluster && fireVisual ? (
         <AtlasFireExploreModal
           visible={fireExploreOpen}
-          onClose={() => setFireExploreOpen(false)}
+          onClose={closeFireExplore}
           fireMode={fireMode}
           visual={fireVisual}
           cluster={fireCluster}

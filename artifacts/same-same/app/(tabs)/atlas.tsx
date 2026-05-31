@@ -252,10 +252,20 @@ export default function AtlasScreen() {
       }));
   }, [mutualEchoes, myCountryCode, matches]);
 
+  const localRippleMergeCount = useMemo(
+    () =>
+      globeConnections.filter((c) => c.id.startsWith("local-ripple-")).length,
+    [globeConnections],
+  );
+
   const runConnectivityDiagnostics = useCallback(async () => {
     setDiagBusy(true);
     try {
-      const d = await fetchAtlasTabDiagnostics();
+      const d = await fetchAtlasTabDiagnostics({
+        globeConnections,
+        viewerCountryCode: myCountryCode,
+        localRippleMergeCount,
+      });
       setDiagJson(JSON.stringify(d, null, 2));
       if (__DEV__) {
         console.warn("[Atlas diagnostics]", d);
@@ -271,7 +281,7 @@ export default function AtlasScreen() {
     } finally {
       setDiagBusy(false);
     }
-  }, []);
+  }, [globeConnections, myCountryCode, localRippleMergeCount]);
 
   const totalCountries = summary.length;
   const totalPhotos = useMemo(

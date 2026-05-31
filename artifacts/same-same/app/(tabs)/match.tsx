@@ -877,6 +877,8 @@ export default function SwipeScreen() {
   const playLeaseRef = useRef<number>(0);
   useEffect(() => {
     if (!theirPhoto?.uri) return;
+    // Keep the matched card's vibe during the Ripple celebration overlay.
+    if (flashMatchRef.current) return;
     // Don't play over the placeholder card (which is just the user's
     // own photo as a backdrop) or once the deck is exhausted.
     if (theirPhoto.id === "placeholder" || noMore) {
@@ -910,6 +912,7 @@ export default function SwipeScreen() {
     theirPhoto.theme,
     noMore,
     fullscreenUri,
+    flashMatch,
   ]);
 
   // Stop audio when the screen unmounts (tab switch, navigation
@@ -978,9 +981,34 @@ export default function SwipeScreen() {
 
   const prefetchPhotoUri = useCallback((uri: string) => {
     const normalized = normalizeUnsplashUri(uri);
-    if (!normalized) return;
-    void Image.prefetch(normalized).catch(() => {});
+    if (!normalized) return Promise.resolve();
+    return Image.prefetch(normalized).catch(() => {});
   }, []);
+
+  const prefetchDeckAhead = useCallback(
+    (count: number, afterUri?: string) => {
+      let skipKey = afterUri
+        ? photoKey(afterUri)
+        : photoKey(theirPhotoRef.current.uri);
+      let exclude = buildExcludeKeys(skipKey);
+      for (let i = 0; i < count; i++) {
+        const pick = getTheirPhoto(
+          activeThemeRef.current,
+          myTagsRef.current,
+          exclude,
+          skipKey,
+          realPoolRef.current,
+          [],
+          mySubjectsRef.current,
+        );
+        if (!pick?.photo.uri) break;
+        void prefetchPhotoUri(pick.photo.uri);
+        skipKey = photoKey(pick.photo.uri);
+        exclude = buildExcludeKeys(skipKey);
+      }
+    },
+    [buildExcludeKeys, prefetchPhotoUri],
+  );
 
   const loadNextCandidate = useCallback(() => {
     const currentUri = theirPhotoRef.current.uri;
@@ -1017,19 +1045,34 @@ export default function SwipeScreen() {
         useNativeDriver: true,
       }),
     ]).start(() => {
-      InteractionManager.runAfterInteractions(() => {
+      const applyNext = () => {
         if (next) {
           setTheirPhoto(next.photo);
           setMatchedTheme(next.matchedTheme);
           setSharedTags(next.sharedTags);
           setNoMore(false);
+          prefetchDeckAhead(2, next.photo.uri);
         } else {
           setNoMore(true);
         }
         isAnimatingOutRef.current = false;
-      });
+      };
+      if (next?.photo.uri) {
+        void prefetchPhotoUri(next.photo.uri).finally(() => {
+          InteractionManager.runAfterInteractions(applyNext);
+        });
+      } else {
+        InteractionManager.runAfterInteractions(applyNext);
+      }
     });
-  }, [pan, cardScale, sameOpacity, buildExcludeKeys, prefetchPhotoUri]);
+  }, [
+    pan,
+    cardScale,
+    sameOpacity,
+    buildExcludeKeys,
+    prefetchPhotoUri,
+    prefetchDeckAhead,
+  ]);
 
   // Warm the next card in the deck so the swap does not flash a blank pane.
   useEffect(() => {
@@ -1044,7 +1087,8 @@ export default function SwipeScreen() {
       [],
       mySubjects,
     );
-    if (next?.photo.uri) prefetchPhotoUri(next.photo.uri);
+    if (next?.photo.uri) void prefetchPhotoUri(next.photo.uri);
+    prefetchDeckAhead(2);
   }, [
     theirPhoto.uri,
     theirPhoto.id,
@@ -1055,6 +1099,7 @@ export default function SwipeScreen() {
     realPool,
     buildExcludeKeys,
     prefetchPhotoUri,
+    prefetchDeckAhead,
   ]);
 
   const handleSwipe = useCallback(
@@ -1081,6 +1126,8 @@ export default function SwipeScreen() {
       const snapshotMyUri = myPhotoUriRef.current;
       const snapshotTheme = activeThemeRef.current;
       const snapshotMyUploadedAt = myPhotoData.uploadedAt;
+
+      prefetchDeckAhead(2, snapshotPhoto.uri);
 
       Animated.parallel([
         Animated.timing(pan.x, {
@@ -1193,14 +1240,25 @@ export default function SwipeScreen() {
             .catch(() => {});
         }
         if (dir === "right") {
-          // Show the lightweight in-card flash. It auto-dismisses (or the
-          // user can tap "Open" to dive into the full /reveal screen).
+          // Celebration overlay — keep this card + its vibe until dismiss or
+          // navigation to /reveal; load the next candidate only after dismiss.
           setFlashMatch(matchWithStats);
-          // Advance the deck immediately so the swiped card is not parked
-          // off-screen under the overlay (felt jumpy when dismiss loaded
-          // the next photo).
-          loadNextCandidate();
-          deckAdvancedForFlashRef.current = true;
+          deckAdvancedForFlashRef.current = false;
+          sameOpacity.setValue(0);
+          Animated.parallel([
+            Animated.timing(pan, {
+              toValue: { x: 0, y: 0 },
+              duration: 0,
+              useNativeDriver: true,
+            }),
+            Animated.timing(cardScale, {
+              toValue: 1,
+              duration: 0,
+              useNativeDriver: true,
+            }),
+          ]).start(() => {
+            isAnimatingOutRef.current = false;
+          });
           // Async-upgrade to live stats if this was a real backend photo.
           // We only swap in the live numbers when there's at least one
           // real "same" vote — otherwise the seeded sample numbers feel
@@ -1233,6 +1291,7 @@ export default function SwipeScreen() {
       myCountryName,
       todaysPhoto?.backendId,
       runEchoVoteRetry,
+      prefetchDeckAhead,
     ]
   );
 
@@ -1400,20 +1459,6 @@ export default function SwipeScreen() {
           </Text>
         </View>
       ) : null}
-
-      {hasUploadedPhoto && matchedTheme !== activeTheme && (() => {
-        const nearby = DAILY_CHALLENGES.find((c) => c.id === matchedTheme);
-        if (!nearby) return null;
-        return (
-          <View style={[styles.nearbyBar, { backgroundColor: colors.gold + "1a", borderColor: colors.gold + "55" }]}>
-            <Text style={styles.nearbyEmoji}>{nearby.emoji}</Text>
-            <Text style={[styles.nearbyText, { color: colors.foreground }]}>
-              Trying theme:{" "}
-              <Text style={{ fontFamily: "Inter_600SemiBold" }}>{nearby.title}</Text>
-            </Text>
-          </View>
-        );
-      })()}
 
       <View style={[styles.cardArea, { paddingBottom: tabBarClearance }]}>
         {!hasUploadedPhoto && (
@@ -1801,7 +1846,7 @@ export default function SwipeScreen() {
                 uri={theirPhoto.uri}
                 style={styles.fillPhoto}
                 resizeMode="cover"
-                transitionMs={280}
+                transitionMs={flashMatch ? 0 : 80}
               />
               {isSamplePhoto(theirPhoto.uri) ? (
                 <StockPhotoWatermark size="md" />
@@ -1911,6 +1956,7 @@ export default function SwipeScreen() {
             theirPhotoMinutesAgo={flashMatch.theirPhotoMinutesAgo}
             onDone={() => {
               setFlashMatch(null);
+              loadNextCandidate();
               deckAdvancedForFlashRef.current = false;
             }}
             onOpenFull={(action) => {

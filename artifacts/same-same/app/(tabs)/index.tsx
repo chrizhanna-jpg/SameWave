@@ -41,8 +41,9 @@ export default function HomeScreen() {
   // matches.length, which inflated the number with every "different"
   // verdict — making the home screen disagree with My Journey. Waves use
   // server-backed mutual echoes (`mutualEchoes`), same as match-history.
+  // Count ripples: confirmed swipes + legacy rows without a verdict (pre-filter).
   const totalMatches = React.useMemo(
-    () => matches.filter((m) => m.verdict === "same").length,
+    () => matches.filter((m) => m.verdict !== "different").length,
     [matches],
   );
 
