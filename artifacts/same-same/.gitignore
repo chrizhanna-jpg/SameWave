@@ -7,7 +7,6 @@ node_modules/
 .expo/
 dist/
 dist-android-test/
-release/
 web-build/
 expo-env.d.ts
 

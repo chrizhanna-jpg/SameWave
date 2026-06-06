@@ -1081,6 +1081,8 @@ export interface AtlasConnection {
   /** Optional — same-origin thumbnail for Wavefire Firecircle tiles. */
   userId?: string;
   thumbnailUrl?: string;
+  /** Remote echo photo id (the spotlight side of the arc). */
+  spotlightPhotoId?: string;
 }
 
 export interface AtlasSummaryPayload {
@@ -1352,6 +1354,11 @@ async function fetchAtlasSummaryOnce(
         thumbnailUrl:
           typeof c.thumbnailUrl === "string" && c.thumbnailUrl.trim().length > 0
             ? c.thumbnailUrl.trim()
+            : undefined,
+        spotlightPhotoId:
+          typeof c.spotlightPhotoId === "string" &&
+          c.spotlightPhotoId.trim().length > 0
+            ? c.spotlightPhotoId.trim()
             : undefined,
       }));
     // #region agent log

@@ -33,7 +33,7 @@ function hashHue(userId: string): number {
 function FirecircleTile(props: {
   slot: FirecircleTileModel;
   mapScale: SharedValue<number>;
-  onPressCountry: (code: string) => void;
+  onPressCountry: (tile: FirecircleTileModel) => void;
 }) {
   const slotIndex = props.slot.slotIndex;
   const mapScale = props.mapScale;
@@ -68,10 +68,13 @@ function FirecircleTile(props: {
     };
   });
 
+  const rawThumb = props.slot.thumbnailUrl?.trim() ?? "";
   const thumb =
-    props.slot.thumbnailUrl && isTrustedFirecircleThumbUrl(props.slot.thumbnailUrl)
-      ? resolveFirecircleThumbUri(props.slot.thumbnailUrl)
-      : null;
+    rawThumb.startsWith("data:") || rawThumb.startsWith("http")
+      ? rawThumb
+      : rawThumb && isTrustedFirecircleThumbUrl(rawThumb)
+        ? resolveFirecircleThumbUri(rawThumb)
+        : null;
   const hue = hashHue(props.slot.userId);
 
   return (
@@ -86,7 +89,7 @@ function FirecircleTile(props: {
         style={styles.tileHit}
         accessibilityRole="button"
         accessibilityLabel={`Full screen photo for ${nameFor(props.slot.countryCode) ?? props.slot.countryCode}`}
-        onPress={() => props.onPressCountry(props.slot.countryCode)}
+        onPress={() => props.onPressCountry(props.slot)}
       >
         <View style={styles.glowRing}>
           {thumb ? (
@@ -124,27 +127,27 @@ function FirecircleTile(props: {
 export function FirecircleOrbit(props: {
   tiles: FirecircleTileModel[];
   mapScale: SharedValue<number>;
-  onSelectCountry: (code: string) => void;
+  onSelectTile: (tile: FirecircleTileModel) => void;
 }) {
   useEffect(() => {
     setFirecircleFocusSlot(0);
     let i = 0;
     const id = setInterval(() => {
-      i = (i + 1) % 7;
+      i = (i + 1) % Math.max(1, props.tiles.length);
       setFirecircleFocusSlot(i);
     }, 4200);
     return () => clearInterval(id);
-  }, []);
+  }, [props.tiles.length]);
 
   if (props.tiles.length === 0) return null;
   return (
     <>
       {props.tiles.map((slot) => (
         <FirecircleTile
-          key={`${slot.countryCode}-${slot.slotIndex}`}
+          key={`${slot.spotlightPhotoId ?? slot.countryCode}-${slot.slotIndex}`}
           slot={slot}
           mapScale={props.mapScale}
-          onPressCountry={props.onSelectCountry}
+          onPressCountry={props.onSelectTile}
         />
       ))}
     </>

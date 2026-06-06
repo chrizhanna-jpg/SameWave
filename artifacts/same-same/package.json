@@ -21,10 +21,7 @@
     "gen:firecircle": "node ./scripts/gen-firecircle-assets.mjs",
     "setup:android-env": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-android-build-env.ps1",
     "download:android-credentials": "powershell -ExecutionPolicy Bypass -File ./scripts/download-android-credentials.ps1",
-    "build:aab:local": "powershell -ExecutionPolicy Bypass -File ./scripts/build-android-aab.ps1",
-    "oauth:fingerprints": "powershell -ExecutionPolicy Bypass -File ./scripts/print-android-oauth-fingerprints.ps1",
-    "setup:short-path": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-short-path-build.ps1",
-    "ios": "expo run:ios"
+    "build:aab:local": "powershell -ExecutionPolicy Bypass -File ./scripts/build-android-aab.ps1"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
@@ -97,9 +94,6 @@
     "react-native-purchases": "9.7.2",
     "react-native-view-shot": "^4.0.3",
     "topojson-client": "^3.1.0",
-    "world-atlas": "^2.0.2",
-    "expo": "~54.0.34",
-    "react": "19.1.0",
-    "react-native": "0.81.5"
+    "world-atlas": "^2.0.2"
   }
 }

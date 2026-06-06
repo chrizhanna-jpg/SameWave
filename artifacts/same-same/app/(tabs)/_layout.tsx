@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
+import { SHOW_DISCOVER_TAB } from "@/constants/featureFlags";
 import { useApp } from "@/context/AppContext";
 import { onAllTabsVisited } from "@/utils/tabVisits";
 import {
@@ -222,6 +223,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="discover"
         options={{
+          href: SHOW_DISCOVER_TAB ? undefined : null,
           title: "Discover",
           tabBarIcon: ({ color, focused }) => (
             <TabIcon

@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
   AppState,
+  Easing,
   Platform,
   ScrollView,
   StyleSheet,
@@ -12,7 +14,6 @@ import {
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { tabBarTotalHeight } from "@/utils/tabBarSafeArea";
 
 import { useAuth } from "@clerk/expo";
 
@@ -21,8 +22,7 @@ import { Icon } from "@/components/Icon";
 import { OceanShimmer } from "@/components/OceanShimmer";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
-import type { EchoCard, Match } from "@/context/AppContext";
-import type { LocalWaveExploreEcho } from "@/utils/api";
+import type { Match } from "@/context/AppContext";
 import {
   fetchAtlasSummary,
   fetchAtlasTabDiagnostics,
@@ -32,6 +32,7 @@ import {
   type AtlasSummaryLoadFailure,
 } from "@/utils/api";
 import { registerAtlasRefreshListener } from "@/utils/atlasHub";
+import { loadAtlasCache, saveAtlasCache } from "@/utils/syncCache";
 import { markTabVisited } from "@/utils/tabVisits";
 import { COUNTRIES } from "@/data/countries";
 
@@ -70,21 +71,13 @@ function mergeLocalSameRippleArcs(
         ((c.from === mine && c.to === to) || (c.from === to && c.to === mine)),
     );
 
-  const hasApiDomesticRipple = () =>
-    api.some((c) => c.kind === "ripple" && c.from === mine && c.to === mine);
-
   const now = Date.now();
   const added: AtlasConnection[] = [];
   for (const m of matches) {
     if (m.verdict !== "same") continue;
     const to = (m.theirCountryCode ?? "").trim().toUpperCase();
-    if (!/^[A-Z]{2}$/.test(to)) continue;
-    const domestic = to === mine;
-    if (domestic) {
-      if (hasApiDomesticRipple()) continue;
-    } else if (hasApiRippleBetween(to)) {
-      continue;
-    }
+    if (!/^[A-Z]{2}$/.test(to) || to === mine) continue;
+    if (hasApiRippleBetween(to)) continue;
     const ts = Date.parse(m.timestamp);
     const fresh = Number.isFinite(ts) && now - ts < RIPPLE_FRESH_MS;
     const theme = (m.theme ?? "").trim();
@@ -92,7 +85,7 @@ function mergeLocalSameRippleArcs(
       id: `local-ripple-${m.id}`,
       kind: "ripple",
       from: mine,
-      to: domestic ? mine : to,
+      to,
       fresh,
       createdAt: m.timestamp,
       theme,
@@ -100,54 +93,12 @@ function mergeLocalSameRippleArcs(
       subjects: [],
       color: "#4FD89C",
       mine: true,
+      spotlightPhotoId: m.theirPhotoId,
+      thumbnailUrl: m.theirPhoto,
     });
   }
   if (added.length === 0) return api;
 
-  return [...api, ...added];
-}
-
-/** Mutual Waves on device before the server arc appears on Atlas. */
-function mergeLocalWaveArcs(
-  api: AtlasConnection[],
-  mutualEchoes: EchoCard[],
-  myCountryCode: string | undefined,
-  matches: Match[],
-  isSignedIn: boolean,
-): AtlasConnection[] {
-  if (!isSignedIn) return api;
-  const mine = resolveViewerIso2(myCountryCode, matches);
-  if (!mine) return api;
-
-  const hasApiWaveBetween = (to: string) =>
-    api.some(
-      (c) =>
-        c.kind === "wave" &&
-        ((c.from === mine && c.to === to) || (c.from === to && c.to === mine)),
-    );
-
-  const added: AtlasConnection[] = [];
-  for (const e of mutualEchoes) {
-    if (e.state !== "mutual") continue;
-    const to = (e.theirs.countryCode ?? "").trim().toUpperCase();
-    if (!/^[A-Z]{2}$/.test(to) || to === mine) continue;
-    if (hasApiWaveBetween(to)) continue;
-    const theme = (e.theme ?? "").trim();
-    added.push({
-      id: `local-wave-${e.id}`,
-      kind: "wave",
-      from: mine,
-      to,
-      fresh: true,
-      createdAt: e.mutualAt ?? e.createdAt,
-      theme,
-      tags: [],
-      subjects: [],
-      color: "#D4AF37",
-      mine: true,
-    });
-  }
-  if (added.length === 0) return api;
   return [...api, ...added];
 }
 
@@ -165,107 +116,32 @@ export default function AtlasScreen() {
   );
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [hasCachedData, setHasCachedData] = useState(false);
   const atlasHasLoadedOnceRef = useRef(false);
   const atlasFocusedRef = useRef(false);
+  const refreshSpin = useRef(new Animated.Value(0)).current;
+  const refreshLoopRef = useRef<Animated.CompositeAnimation | null>(null);
 
   const [diagBusy, setDiagBusy] = useState(false);
   const [diagJson, setDiagJson] = useState<string | null>(null);
 
-  const { matches, myCountryCode, mutualEchoes, myPhotos } = useApp();
+  const { matches, myCountryCode } = useApp();
 
   const globeConnections = useMemo(
     () =>
-      mergeLocalWaveArcs(
-        mergeLocalSameRippleArcs(
-          connections,
-          matches,
-          myCountryCode,
-          !!isSignedIn,
-        ),
-        mutualEchoes,
-        myCountryCode,
+      mergeLocalSameRippleArcs(
+        connections,
         matches,
+        myCountryCode,
         !!isSignedIn,
       ),
-    [connections, matches, mutualEchoes, myCountryCode, isSignedIn],
-  );
-
-  const viewerExplorePhotos = useMemo(
-    () =>
-      myPhotos.map((p) => ({
-        uri: p.uri,
-        backendId: p.backendId,
-        theme: p.theme,
-        tags: p.tags,
-        subjects: p.subjects,
-        musicGenre: p.musicGenre,
-        customAudioUrl: p.customAudioUrl,
-      })),
-    [myPhotos],
-  );
-
-  const localRippleMatches = useMemo(
-    () =>
-      matches
-        .filter((m) => m.verdict === "same")
-        .map((m) => {
-          const mine = myPhotos.find((p) => p.uri === m.myPhoto);
-          return {
-            id: m.id,
-            verdict: m.verdict,
-            myPhoto: m.myPhoto,
-            theirPhoto: m.theirPhoto,
-            theirPhotoId: m.theirPhotoId,
-            myPhotoId: mine?.backendId,
-            theirCountryCode: m.theirCountryCode,
-            myCountry: m.myCountry,
-            theme: m.theme,
-            theirActualTheme: m.theme,
-            theirTags: m.sharedTags,
-            sharedTags: m.sharedTags,
-            theirMusicGenre: undefined,
-            theirCustomAudioUrl: undefined,
-            myMusicGenre: mine?.musicGenre,
-            myCustomAudioUrl: mine?.customAudioUrl,
-            timestamp: m.timestamp,
-          };
-        }),
-    [matches, myPhotos],
-  );
-
-  const localWaveEchoes = useMemo((): LocalWaveExploreEcho[] => {
-    const mine = resolveViewerIso2(myCountryCode, matches);
-    return mutualEchoes
-      .filter((e) => e.state === "mutual")
-      .map((e) => ({
-        id: e.id,
-        theme: (e.theme ?? "").trim(),
-        myPhoto: e.mine.uri,
-        myPhotoId: e.mine.id,
-        theirPhoto: e.theirs.uri,
-        theirPhotoId: e.theirs.id,
-        theirCountryCode: (e.theirs.countryCode ?? "").trim().toUpperCase(),
-        myCountryCode: mine,
-        myMusicGenre: undefined,
-        theirMusicGenre: undefined,
-        mutualAt: e.mutualAt,
-      }));
-  }, [mutualEchoes, myCountryCode, matches]);
-
-  const localRippleMergeCount = useMemo(
-    () =>
-      globeConnections.filter((c) => c.id.startsWith("local-ripple-")).length,
-    [globeConnections],
+    [connections, matches, myCountryCode, isSignedIn],
   );
 
   const runConnectivityDiagnostics = useCallback(async () => {
     setDiagBusy(true);
     try {
-      const d = await fetchAtlasTabDiagnostics({
-        globeConnections,
-        viewerCountryCode: myCountryCode,
-        localRippleMergeCount,
-      });
+      const d = await fetchAtlasTabDiagnostics();
       setDiagJson(JSON.stringify(d, null, 2));
       if (__DEV__) {
         console.warn("[Atlas diagnostics]", d);
@@ -281,7 +157,7 @@ export default function AtlasScreen() {
     } finally {
       setDiagBusy(false);
     }
-  }, [globeConnections, myCountryCode, localRippleMergeCount]);
+  }, []);
 
   const totalCountries = summary.length;
   const totalPhotos = useMemo(
@@ -291,36 +167,69 @@ export default function AtlasScreen() {
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
-    else if (!atlasHasLoadedOnceRef.current) setLoading(true);
+    else if (!atlasHasLoadedOnceRef.current && !hasCachedData) setLoading(true);
     try {
-      let data = await fetchAtlasSummary({ force: isRefresh });
-      const timedOut =
-        data.loadError === "network" &&
-        (data.loadFailure?.detail?.toLowerCase().includes("timed out") ?? false);
-      if (timedOut && !isRefresh) {
-        await new Promise((r) => setTimeout(r, 2500));
-        data = await fetchAtlasSummary({ force: true });
-      }
+      const data = await fetchAtlasSummary();
       setSummary(data.countries);
       setConnections(data.connections);
       setLoadError(data.loadError ?? null);
       setLoadFailure(data.loadFailure ?? null);
       atlasHasLoadedOnceRef.current = true;
+      if (data.loadError == null) {
+        await saveAtlasCache(data.countries, data.connections);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
+  }, [hasCachedData]);
+
+  useEffect(() => {
+    let alive = true;
+    void loadAtlasCache().then((cached) => {
+      if (!alive || !cached) return;
+      setSummary(cached.countries);
+      setConnections(cached.connections);
+      setHasCachedData(true);
+      atlasHasLoadedOnceRef.current = true;
+      setLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
   }, []);
+
+  useEffect(() => {
+    if (refreshing) {
+      refreshLoopRef.current?.stop();
+      refreshSpin.setValue(0);
+      refreshLoopRef.current = Animated.loop(
+        Animated.timing(refreshSpin, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+      );
+      refreshLoopRef.current.start();
+      return () => {
+        refreshLoopRef.current?.stop();
+      };
+    }
+    refreshLoopRef.current?.stop();
+    refreshSpin.setValue(0);
+    return undefined;
+  }, [refreshing, refreshSpin]);
 
   useFocusEffect(
     useCallback(() => {
       atlasFocusedRef.current = true;
       markTabVisited("atlas");
-      void load(true);
+      void load(hasCachedData || atlasHasLoadedOnceRef.current);
       return () => {
         atlasFocusedRef.current = false;
       };
-    }, [load]),
+    }, [load, hasCachedData]),
   );
 
   useEffect(() => {
@@ -338,11 +247,10 @@ export default function AtlasScreen() {
 
   const outerPad = 16;
   const topPadding = Platform.OS === "web" ? 56 : insets.top;
-  const bottomPad =
-    Platform.OS === "web" ? 28 + 84 : tabBarTotalHeight(insets);
+  const bottomPad = Platform.OS === "web" ? 28 : insets.bottom;
 
   const headerSub = useMemo(() => {
-    if (loading) return null;
+    if (loading && !hasCachedData) return null;
     if (loadError === "unauthorized" && totalCountries === 0 && connections.length === 0) {
       return "Sign in to load the map";
     }
@@ -358,20 +266,33 @@ export default function AtlasScreen() {
     return `${totalCountries} ${totalCountries === 1 ? "country" : "countries"} · ${totalPhotos} ${totalPhotos === 1 ? "photo" : "photos"}`;
   }, [
     loading,
+    hasCachedData,
     loadError,
     totalCountries,
     globeConnections.length,
     totalPhotos,
   ]);
 
-  const showGlobe = !loading && loadError === null;
+  const showGlobe =
+    (!loading || hasCachedData) && loadError === null;
   const showRefresh =
-    !loading &&
+    (!loading || hasCachedData) &&
     !(
       loadError === "unauthorized" &&
       totalCountries === 0 &&
       globeConnections.length === 0
     );
+
+  const refreshSpinStyle = {
+    transform: [
+      {
+        rotate: refreshSpin.interpolate({
+          inputRange: [0, 1],
+          outputRange: ["0deg", "360deg"],
+        }),
+      },
+    ],
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -399,16 +320,18 @@ export default function AtlasScreen() {
             onPress={() => void load(true)}
             style={styles.refreshBtn}
           >
-            <Icon
-              name="refresh-cw"
-              size={22}
-              color={refreshing ? colors.mutedForeground : colors.primary}
-            />
+            <Animated.View style={refreshSpinStyle}>
+              <Icon
+                name="refresh-cw"
+                size={22}
+                color={refreshing ? colors.mutedForeground : colors.primary}
+              />
+            </Animated.View>
           </TouchableOpacity>
         ) : null}
       </View>
 
-      {loading ? (
+      {loading && !hasCachedData ? (
         <View style={styles.flexCentre}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={[styles.centreText, { color: colors.mutedForeground }]}>
@@ -427,8 +350,8 @@ export default function AtlasScreen() {
             Sign in to open the Atlas
           </Text>
           <Text style={[styles.centreText, { color: colors.mutedForeground }]}>
-            Sign in to see live Ripples and Waves from everyone on the map.
-            Use Mine only to filter to yours.
+            The map loads after sign-in so we can show your ripples and waves
+            with everyone else’s.
           </Text>
           <TouchableOpacity
             accessibilityRole="button"
@@ -460,10 +383,6 @@ export default function AtlasScreen() {
             connections={globeConnections}
             countries={summary}
             isSignedIn={!!isSignedIn}
-            localRippleMatches={localRippleMatches}
-            localWaveEchoes={localWaveEchoes}
-            viewerCountryCode={myCountryCode}
-            viewerMyPhotos={viewerExplorePhotos}
           />
         </View>
       ) : null}

@@ -9,8 +9,14 @@
 // every JS reload (cold start), which is the right cadence for a
 // "first run after install" check.
 
-const REQUIRED = ["home", "match", "discover", "atlas", "profile"] as const;
-export type TabName = (typeof REQUIRED)[number];
+import { SHOW_DISCOVER_TAB } from "@/constants/featureFlags";
+
+const ALL_TABS = ["home", "match", "discover", "atlas", "profile"] as const;
+export type TabName = (typeof ALL_TABS)[number];
+
+const REQUIRED: readonly TabName[] = SHOW_DISCOVER_TAB
+  ? ALL_TABS
+  : ["home", "match", "atlas", "profile"];
 
 const visited = new Set<TabName>();
 const listeners = new Set<() => void>();

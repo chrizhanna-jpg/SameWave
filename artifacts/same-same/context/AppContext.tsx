@@ -8,20 +8,24 @@ import React, {
   useState,
 } from "react";
 import {
-  deleteMyPhoto,
   fetchEchoesInbox,
   fetchEchoesMine,
-  fetchMyCountryCode,
   fetchSeenPhotoIds,
   respondEcho as respondEchoApi,
   unvotePhoto,
-  updateMyCountryCode,
   type ServerEcho,
 } from "@/utils/api";
-import { nameFor, flagFor } from "@/data/countries";
 import { requestAtlasRefresh } from "@/utils/atlasHub";
 import { photoKey } from "@/utils/photoKey";
-import { stashMatchPhotoUris } from "@/utils/matchPhotoSnapshot";
+import {
+  hydrateCelebratedEchoIds,
+  hydrateEchoFromCache,
+  loadEchoCache,
+  markEchoCelebrated,
+  markEchoesCelebrated,
+  saveEchoCache,
+  shouldCelebrateMutualEcho,
+} from "@/utils/syncCache";
 
 export interface MatchedCountry {
   code: string;
@@ -45,15 +49,16 @@ export interface MyPhoto {
    */
   subjects?: string[];
   /**
-   * Marked true when EXIF inspection suggests the image is AI-generated.
-   * Shown with an "AI generated" badge; still uploads and can form Waves.
+   * Marked true when the photo failed our EXIF authenticity check
+   * (no camera metadata, AI software signature, etc). AI photos are
+   * shown with an "AI" badge and excluded from echo connections.
    */
   isAI?: boolean;
   /**
    * Backend ID returned from the photos upload API once the photo lands
    * on the server. Needed when this photo participates in an echo offer
    * (the vote endpoint pairs the candidate photo with this ID). Absent
-   * while an upload is still in flight or if upload never succeeded.
+   * for AI photos (never uploaded) or while an upload is still in flight.
    */
   backendId?: string;
   /**
@@ -61,7 +66,8 @@ export interface MyPhoto {
    * "still uploading" from "upload failed" — before this field, both
    * looked identical (no backendId), and a silent failure left the user
    * stuck with a perpetual "still uploading" message and no way to know
-   * the post never reached the server.
+   * the post never reached the server. Only set for real (non-AI) user
+   * uploads:
    *   • "pending" — POST /photos in flight, no response yet
    *   • "ok"      — POST /photos returned an id (also implies backendId)
    *   • "failed"  — POST /photos errored or returned a malformed body
@@ -96,8 +102,8 @@ export interface MyPhotoUploadAck {
 }
 
 // Module-scoped registry of URIs flagged as AI. Kept in sync with the
-// `myPhotos` slice so any PhotoCard / match view can show the badge
-// without prop drilling.
+// `myPhotos` slice so any PhotoCard rendering one of these URIs can show
+// the AI badge without prop drilling. Sample photos use the same pattern.
 const AI_PHOTO_URIS: Set<string> = new Set();
 export function isAiPhoto(uri: string): boolean {
   return AI_PHOTO_URIS.has(uri);
@@ -196,8 +202,6 @@ export interface PhotoSide {
   countryCode: string | null;
   country: string;
   countryFlag: string;
-  /** Upload theme on this photo (Wave share chip + celebration). */
-  theme?: string;
 }
 
 export interface EchoCard {
@@ -281,7 +285,7 @@ interface AppContextValue extends AppState {
    * Returns the updated match (with any newly-earned badges) or null.
    */
   changeVerdict: (id: string, newVerdict: "same" | "different") => Match | null;
-  setMyCountry: (code: string, name: string, flag: string) => Promise<void>;
+  setMyCountry: (code: string, name: string, flag: string) => void;
   addMyPhoto: (
     uri: string,
     theme: string,
@@ -319,27 +323,8 @@ interface AppContextValue extends AppState {
     uri: string,
     state: NonNullable<MyPhoto["uploadState"]>,
   ) => void;
-  /**
-   * Remove one of the user's posted photos from device state and, when
-   * `backendId` is known, DELETE it on the server.
-   */
-  removeMyPhoto: (uri: string) => Promise<boolean>;
-  /**
-   * Promote an existing local photo to "today's match" without duplicating
-   * the myPhotos list. Used when reusing a prior upload from the camera tab.
-   */
-  activateMyPhotoForMatch: (
-    uri: string,
-    patch: {
-      theme: string;
-      tags?: string[];
-      musicGenre?: string;
-      customAudioUrl?: string;
-      subjects?: string[];
-    },
-  ) => void;
-  completeOnboarding: () => Promise<void>;
-  resetOnboarding: () => Promise<void>;
+  completeOnboarding: () => void;
+  resetOnboarding: () => void;
   unlockPro: () => void;
   setProUnlocked: (value: boolean) => void;
   getWorldMapCoverage: () => number;
@@ -457,13 +442,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // never celebrate something the user has had for days. After that,
   // any new ID showing up in the mutual list gets enqueued.
   const flashEnqueuedRef = useRef<Set<string>>(new Set());
-  const flashSeededRef = useRef(false);
   // Enqueue a freshly-mutual echo. If nothing is on screen, show it
   // immediately; otherwise tuck it into the FIFO and let the dismiss
   // handler drain it.
   const enqueueFlashEcho = useCallback((echo: EchoCard) => {
     if (flashEnqueuedRef.current.has(echo.id)) return;
     flashEnqueuedRef.current.add(echo.id);
+    void markEchoCelebrated(echo.id);
     setPendingFlashEcho((cur) => {
       if (cur) {
         flashQueueRef.current.push(echo);
@@ -483,9 +468,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // the full persisted ledger and any pre-hydration picks should be
   // re-evaluated.
   const [hasHydrated, setHasHydrated] = useState(false);
-  // Serializes AsyncStorage writes so a slower earlier save cannot
-  // overwrite onboardingComplete or country after a later save finishes.
-  const persistQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     loadState().finally(() => setHasHydrated(true));
@@ -551,22 +533,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state.myPhotos]);
 
-  const mergePersistedPatch = async (patch: Record<string, unknown>) => {
-    try {
-      const raw = await AsyncStorage.getItem("samesame_state");
-      const latest =
-        raw && typeof raw === "string"
-          ? (JSON.parse(raw) as Record<string, unknown>)
-          : {};
-      await AsyncStorage.setItem(
-        "samesame_state",
-        JSON.stringify({ ...latest, ...patch }),
-      );
-    } catch {}
-  };
-
   const loadState = async () => {
     try {
+      const [echoCache, celebratedIds] = await Promise.all([
+        loadEchoCache(),
+        hydrateCelebratedEchoIds(),
+      ]);
+      flashEnqueuedRef.current = new Set(celebratedIds);
+      const cachedPending = echoCache?.inbox.map(hydrateEchoFromCache) ?? [];
+      const cachedMutual = echoCache?.mine.map(hydrateEchoFromCache) ?? [];
+      for (const e of cachedMutual) {
+        if (e.state === "mutual") flashEnqueuedRef.current.add(e.id);
+      }
+
       const stored = await AsyncStorage.getItem("samesame_state");
       if (!stored) {
         // First-ever launch — no persisted state. We still have to bump
@@ -576,8 +555,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         // Persist immediately so even an instant kill-and-relaunch
         // counts as an opened session.
         const fresh = { appOpenCount: 1 };
-        await mergePersistedPatch(fresh);
-        setState((prev) => ({ ...prev, appOpenCount: 1 }));
+        AsyncStorage.setItem("samesame_state", JSON.stringify(fresh)).catch(() => {});
+        setState((prev) => ({
+          ...prev,
+          appOpenCount: 1,
+          pendingEchoes: cachedPending,
+          mutualEchoes: cachedMutual,
+        }));
         return;
       }
       if (stored) {
@@ -667,23 +651,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               ? 999
               : 0;
         const nextOpenCount = priorOpenCount + 1;
-        // Merge the open-count bump into whatever is on disk *now* so a
-        // concurrent save (country pick, onboardingComplete) is not wiped.
-        await mergePersistedPatch({ appOpenCount: nextOpenCount });
+        // Persist the bumped count immediately so it survives a quick
+        // app close before any other state mutation triggers a save —
+        // otherwise the user could see the tutorial more than the
+        // intended N times if they kill the app fast.
+        AsyncStorage.setItem(
+          "samesame_state",
+          JSON.stringify({ ...parsed, appOpenCount: nextOpenCount }),
+        ).catch(() => {});
         setState((prev) => ({
           ...prev,
           ...parsed,
           appOpenCount: nextOpenCount,
-          // Never downgrade tutorial completion — a slow initial hydrate can
-          // otherwise replay /onboarding after Google OAuth on the live AAB.
-          onboardingComplete:
-            prev.onboardingComplete === true || parsed.onboardingComplete === true,
           myPhotos: migratedPhotos,
           connectRequests: migratedRequests,
-          // Echoes always come from the server now — drop any legacy
-          // locally-simulated entries from older app versions.
-          pendingEchoes: [],
-          mutualEchoes: [],
+          pendingEchoes: cachedPending,
+          mutualEchoes: cachedMutual,
           echoesSeenAt: typeof parsed.echoesSeenAt === "string" ? parsed.echoesSeenAt : undefined,
           badges: defaultBadges.map((b) => {
             const stored = parsed.badges?.find((sb: Badge) => sb.id === b.id);
@@ -706,43 +689,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   };
 
-  const saveState = (newState: AppState): Promise<void> => {
-    stateRef.current = newState;
-    persistQueueRef.current = persistQueueRef.current
-      .then(async () => {
-        await AsyncStorage.setItem(
-          "samesame_state",
-          JSON.stringify(newState),
-        );
-      })
-      .catch(() => {});
-    return persistQueueRef.current;
+  const saveState = async (newState: AppState) => {
+    try {
+      await AsyncStorage.setItem("samesame_state", JSON.stringify(newState));
+    } catch {}
   };
-
-  // After sign-in, pull country from the server when local storage is empty.
-  useEffect(() => {
-    if (!hasHydrated || state.myCountryCode) return;
-    let cancelled = false;
-    fetchMyCountryCode()
-      .then((code) => {
-        if (cancelled || !code) return;
-        setState((prev) => {
-          if (prev.myCountryCode) return prev;
-          const newState: AppState = {
-            ...prev,
-            myCountryCode: code,
-            myCountryName: nameFor(code) ?? code,
-            myCountryFlag: flagFor(code),
-          };
-          void saveState(newState);
-          return newState;
-        });
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [hasHydrated, state.myCountryCode]);
 
   // Pure helper: compute country list + badges given the set of all
   // CONFIRMED ("same") matches. Used by addMatch / removeMatch /
@@ -793,7 +744,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const addMatch = useCallback((match: Match) => {
-    stashMatchPhotoUris(match.id, match.myPhoto, match.theirPhoto);
     setState((prev) => {
       const allMatches = [match, ...prev.matches];
       const confirmed = allMatches.filter((m) => m.verdict === "same");
@@ -1046,16 +996,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const setMyCountry = useCallback(
-    async (code: string, name: string, flag: string) => {
-      const newState: AppState = {
-        ...stateRef.current,
-        myCountryCode: code,
-        myCountryName: name,
-        myCountryFlag: flag,
-      };
-      setState(newState);
-      await saveState(newState);
-      void updateMyCountryCode(code);
+    (code: string, name: string, flag: string) => {
+      setState((prev) => {
+        const newState: AppState = {
+          ...prev,
+          myCountryCode: code,
+          myCountryName: name,
+          myCountryFlag: flag,
+        };
+        saveState(newState);
+        return newState;
+      });
     },
     [],
   );
@@ -1069,24 +1020,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     customAudioUrl?: string,
     subjects?: string[],
   ) => {
+    const photo: MyPhoto = {
+      uri,
+      uploadedAt: new Date().toISOString(),
+      theme,
+      tags: tags ?? [],
+      // Persist subjects on the local record. Empty array (rather than
+      // undefined) keeps the match screen's `mySubjects ?? []` paths
+      // simple and matches the server-side `default ARRAY[]::text[]`.
+      subjects: subjects ?? [],
+      isAI: isAI ?? false,
+      musicGenre: musicGenre,
+      customAudioUrl,
+      // Real (non-AI) photos start as "pending" — the camera screen
+      // fires the POST /photos call and will patch this to "ok" or
+      // "failed" once the network round-trip resolves. AI photos are
+      // never uploaded, so leave the field undefined for them.
+      uploadState: isAI ? undefined : "pending",
+    };
     setState((prev) => {
-      const existing = prev.myPhotos.find((p) => p.uri === uri);
-      const photo: MyPhoto = {
-        uri,
-        uploadedAt: new Date().toISOString(),
-        theme,
-        tags: tags ?? [],
-        subjects: subjects ?? [],
-        isAI: isAI ?? existing?.isAI ?? false,
-        musicGenre: musicGenre ?? existing?.musicGenre,
-        customAudioUrl: customAudioUrl ?? existing?.customAudioUrl,
-        backendId: existing?.backendId,
-        uploadState: existing?.backendId ? "ok" : "pending",
-      };
-      const rest = prev.myPhotos.filter((p) => p.uri !== uri);
+      // Adding a new photo is a "fresh chance" moment: this new
+      // photo may match candidates the user already saw (and
+      // dismissed without voting) for previous photos. Clear the
+      // local seen ledger so the next /candidates fetch doesn't
+      // re-send those IDs as excludeIds. The server independently
+      // wipes its seen_photos table on POST /photos for the same
+      // reason. The votes table is untouched on both sides — past
+      // explicit same/no decisions still stand.
       const newState = {
         ...prev,
-        myPhotos: [photo, ...rest],
+        myPhotos: [photo, ...prev.myPhotos],
         seenPhotoKeys: [],
         seenPhotoIds: [],
       };
@@ -1094,44 +1057,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return newState;
     });
   }, []);
-
-  const activateMyPhotoForMatch = useCallback(
-    (
-      uri: string,
-      patch: {
-        theme: string;
-        tags?: string[];
-        musicGenre?: string;
-        customAudioUrl?: string;
-        subjects?: string[];
-      },
-    ) => {
-      setState((prev) => {
-        const existing = prev.myPhotos.find((p) => p.uri === uri);
-        if (!existing) return prev;
-        const updated: MyPhoto = {
-          ...existing,
-          uploadedAt: new Date().toISOString(),
-          theme: patch.theme,
-          tags: patch.tags ?? existing.tags ?? [],
-          subjects: patch.subjects ?? existing.subjects ?? [],
-          musicGenre: patch.musicGenre ?? existing.musicGenre,
-          customAudioUrl: patch.customAudioUrl ?? existing.customAudioUrl,
-          uploadState: existing.backendId ? "ok" : existing.uploadState,
-        };
-        const rest = prev.myPhotos.filter((p) => p.uri !== uri);
-        const newState = {
-          ...prev,
-          myPhotos: [updated, ...rest],
-          seenPhotoKeys: [],
-          seenPhotoIds: [],
-        };
-        saveState(newState);
-        return newState;
-      });
-    },
-    [],
-  );
 
   const setMyPhotoBackendId = useCallback((uri: string, ack: MyPhotoUploadAck) => {
     setState((prev) => {
@@ -1214,54 +1139,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
-  const removeMyPhoto = useCallback(async (uri: string): Promise<boolean> => {
-    const target = stateRef.current.myPhotos.find((p) => p.uri === uri);
-    if (!target) return false;
-
-    if (target.backendId) {
-      const ok = await deleteMyPhoto(target.backendId);
-      if (!ok) return false;
-    }
-
+  const completeOnboarding = useCallback(() => {
     setState((prev) => {
-      const nextPhotos = prev.myPhotos.filter((p) => p.uri !== uri);
-      if (nextPhotos.length === prev.myPhotos.length) return prev;
-      const removedId = target.backendId;
-      const newState = {
-        ...prev,
-        myPhotos: nextPhotos,
-        seenPhotoIds: removedId
-          ? prev.seenPhotoIds.filter((id) => id !== removedId)
-          : prev.seenPhotoIds,
-      };
+      const newState = { ...prev, onboardingComplete: true };
       saveState(newState);
       return newState;
     });
-    AI_PHOTO_URIS.delete(uri);
-    requestAtlasRefresh();
-    return true;
   }, []);
 
-  const completeOnboarding = useCallback(async () => {
-    // Patch disk immediately so an OAuth browser hand-off / cold resume
-    // cannot lose the flag if a full saveState is still queued.
-    await mergePersistedPatch({ onboardingComplete: true });
-    const snapshot: AppState = {
-      ...stateRef.current,
-      onboardingComplete: true,
-    };
-    stateRef.current = snapshot;
-    setState(snapshot);
-    await saveState(snapshot);
-  }, []);
-
-  const resetOnboarding = useCallback(async () => {
-    let snapshot: AppState | undefined;
+  const resetOnboarding = useCallback(() => {
     setState((prev) => {
-      snapshot = { ...prev, onboardingComplete: false };
-      return snapshot;
+      const newState = { ...prev, onboardingComplete: false };
+      saveState(newState);
+      return newState;
     });
-    if (snapshot) await saveState(snapshot);
   }, []);
 
   const unlockPro = useCallback(() => {
@@ -1351,14 +1242,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           if (!live || live.status !== "pending") return;
           const accepted = Math.random() < 0.7;
           // Pick a fake handle for the simulated counterpart
-          const platforms = [
-            "instagram",
-            "facebook",
-            "tiktok",
-            "snapchat",
-            "x",
-            "threads",
-          ];
+          const platforms = ["instagram", "tiktok", "snapchat", "x", "threads"];
           const theirPlatform = platforms[Math.floor(Math.random() * platforms.length)];
           const adjectives = ["wandering", "sunny", "quiet", "wild", "tiny", "loud", "soft", "lucky"];
           const nouns = ["fern", "lantern", "river", "moth", "cloud", "atlas", "echo", "mango"];
@@ -1479,26 +1363,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         fetchEchoesInbox(),
         fetchEchoesMine(),
       ]);
-      // Detect mutual echoes that weren't here last time. On the very
-      // first refresh we silently seed the "shown" set so old echoes
-      // don't all flash at once. After that, the freshest unseen one
-      // wins the celebration overlay (the polling cadence is 30s, so
-      // typically there's only zero or one new entry per tick).
-      if (!flashSeededRef.current) {
-        for (const e of mine) {
-          if (e.state === "mutual") flashEnqueuedRef.current.add(e.id);
-        }
-        flashSeededRef.current = true;
-      } else {
-        // Enqueue every freshly-mutual echo we haven't seen yet so a
-        // burst of new mutuals (or one arriving while another flash is
-        // open) all get celebrated in turn.
-        for (const e of mine) {
-          if (e.state === "mutual" && !flashEnqueuedRef.current.has(e.id)) {
-            enqueueFlashEcho(e);
-          }
+      const celebratedIds = await hydrateCelebratedEchoIds();
+      const toMarkSeen: string[] = [];
+      for (const e of mine) {
+        if (e.state !== "mutual") continue;
+        if (flashEnqueuedRef.current.has(e.id)) continue;
+        if (shouldCelebrateMutualEcho(e, celebratedIds)) {
+          enqueueFlashEcho(e);
+        } else {
+          flashEnqueuedRef.current.add(e.id);
+          toMarkSeen.push(e.id);
         }
       }
+      if (toMarkSeen.length > 0) {
+        await markEchoesCelebrated(toMarkSeen);
+      }
+      await saveEchoCache(inbox, mine);
       setState((prev) => {
         const newState: AppState = {
           ...prev,
@@ -1512,7 +1392,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // Network failure — leave existing lists in place. The inbox screen
       // shows an empty state when both lists are empty, which is fine.
     }
-  }, []);
+  }, [enqueueFlashEcho]);
 
   // First load + lightweight 30s poll. We don't need push notifications
   // for MVP; the user will see new offers when they next foreground the
@@ -1636,8 +1516,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addMyPhoto,
         setMyPhotoBackendId,
         setMyPhotoUploadState,
-        removeMyPhoto,
-        activateMyPhotoForMatch,
         completeOnboarding,
         resetOnboarding,
         unlockPro,

@@ -1,6 +1,5 @@
 # Re-apply after expo prebuild (prebuild regenerates android/app/build.gradle).
-$sameSame = if ($env:SW_SAME_SAME) { $env:SW_SAME_SAME } else { Join-Path $PSScriptRoot ".." }
-$buildGradle = Join-Path $sameSame "android\app\build.gradle"
+$buildGradle = Join-Path $PSScriptRoot "..\android\app\build.gradle"
 if (-not (Test-Path $buildGradle)) { exit 0 }
 
 $content = Get-Content $buildGradle -Raw

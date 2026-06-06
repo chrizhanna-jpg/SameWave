@@ -1165,6 +1165,8 @@ router.get("/photos/atlas", async (req, res) => {
           nullif(trim(both from ph.country_code), ''),
           nullif(trim(both from u_ph.country_code), '')
         ))) AS hc,
+        pl.id::text AS "photoLowId",
+        ph.id::text AS "photoHighId",
         e.pending_from_user_id AS pf,
         e.user_low_id AS ul,
         e.user_high_id AS uh
@@ -1191,6 +1193,19 @@ router.get("/photos/atlas", async (req, res) => {
       return /^[A-Z]{2}$/.test(u) ? u : null;
     };
 
+    const spotlightPhotoAt = (
+      to: string,
+      lc: string,
+      hc: string,
+      raw: Record<string, unknown>,
+    ) => {
+      const lowId = String(raw.photoLowId ?? "").trim();
+      const highId = String(raw.photoHighId ?? "").trim();
+      if (to === lc && lowId) return lowId;
+      if (to === hc && highId) return highId;
+      return lowId || highId || undefined;
+    };
+
     const connections: Array<{
       id: string;
       kind: "ripple" | "wave";
@@ -1204,6 +1219,7 @@ router.get("/photos/atlas", async (req, res) => {
       color: string;
       /** Present when the request is authenticated; true if this row involves the viewer (either side of a ripple or wave). */
       mine?: boolean;
+      spotlightPhotoId?: string;
     }> = [];
 
     const now = Date.now();
@@ -1254,6 +1270,7 @@ router.get("/photos/atlas", async (req, res) => {
           tags,
           subjects,
           color: atlasConnectionColor(themeRaw, "wave", false),
+          spotlightPhotoId: spotlightPhotoAt(to, lc, hc, raw),
           ...(viewerId != null ? { mine } : {}),
         });
         continue;
@@ -1281,6 +1298,7 @@ router.get("/photos/atlas", async (req, res) => {
         tags,
         subjects,
         color: atlasConnectionColor(themeRaw, "ripple", fresh),
+        spotlightPhotoId: spotlightPhotoAt(to, lc, hc, raw),
         ...(viewerId != null ? { mine } : {}),
       });
     }

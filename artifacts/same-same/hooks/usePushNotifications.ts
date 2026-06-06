@@ -5,10 +5,10 @@ import { router } from "expo-router";
 import { registerPushToken } from "@/utils/api";
 import { useToast } from "@/components/ToastHost";
 import {
-  PUSH_ACTION,
-  PUSH_CATEGORY,
-  PUSH_COPY,
-} from "@/data/waveRippleGlossary";
+  getCelebratedEchoIdsSync,
+  hydrateCelebratedEchoIds,
+  shouldSuppressEchoNotification,
+} from "@/utils/syncCache";
 // Type-only import — never loads the native module at runtime, so it
 // can't trigger the Expo Go SDK 53 "remote push removed" exception.
 import type * as NotificationsType from "expo-notifications";
@@ -65,110 +65,42 @@ if (Notifications) {
   }
 }
 
-async function registerNotificationCategories(
-  N: typeof NotificationsType,
-): Promise<void> {
+// Map a notification's `data.deepLink` into an in-app navigation. The
+// server sends `/echoes` for pending offers and `/echo-pair?a=&b=` for
+// mutual matches.
+function navigateFromData(data: Record<string, unknown> | undefined) {
+  if (!data) return;
+  const deepLink = typeof data.deepLink === "string" ? data.deepLink : null;
+  if (!deepLink) return;
   try {
-    await N.setNotificationCategoryAsync(PUSH_CATEGORY.rippleIncoming, [
-      {
-        identifier: PUSH_ACTION.makeWave,
-        buttonTitle: PUSH_COPY.pending.actionLabel,
-        options: { opensAppToForeground: true },
-      },
-    ]);
-    await N.setNotificationCategoryAsync(PUSH_CATEGORY.waveMutual, [
-      {
-        identifier: PUSH_ACTION.viewWave,
-        buttonTitle: PUSH_COPY.mutual.actionLabel,
-        options: { opensAppToForeground: true },
-      },
-    ]);
-  } catch {
-    // Categories are optional on unsupported platforms.
-  }
-}
-
-function navigateToEchoes(focusEchoId?: string) {
-  try {
-    if (focusEchoId) {
-      router.push({
-        pathname: "/echoes",
-        params: { focus: focusEchoId },
-      });
-    } else {
+    if (deepLink === "/echoes") {
       router.push("/echoes");
-    }
-  } catch {
-    // Router not ready.
-  }
-}
-
-function navigateToWaveReveal(deepLink: string) {
-  try {
-    if (deepLink.startsWith("/echo-pair")) {
-      const celebrateLink = deepLink.includes("?")
-        ? `${deepLink}&celebrate=1`
-        : `${deepLink}?celebrate=1`;
-      router.push(celebrateLink as never);
+    } else if (deepLink.startsWith("/echo-pair")) {
+      router.push(deepLink as never);
     } else if (deepLink.startsWith("/")) {
       router.push(deepLink as never);
     }
   } catch {
-    // Router not ready.
-  }
-}
-
-/** Map notification data + optional action button into navigation. */
-function navigateFromNotification(
-  data: Record<string, unknown> | undefined,
-  actionIdentifier?: string,
-) {
-  if (!data) return;
-  const state = typeof data.state === "string" ? data.state : null;
-  const deepLink = typeof data.deepLink === "string" ? data.deepLink : null;
-  const echoId = typeof data.echoId === "string" ? data.echoId : undefined;
-
-  if (
-    state === "pending" ||
-    actionIdentifier === PUSH_ACTION.makeWave
-  ) {
-    navigateToEchoes(echoId);
-    return;
-  }
-
-  if (
-    state === "mutual" ||
-    actionIdentifier === PUSH_ACTION.viewWave
-  ) {
-    if (deepLink) navigateToWaveReveal(deepLink);
-    return;
-  }
-
-  if (deepLink === "/echoes") {
-    navigateToEchoes(echoId);
-  } else if (deepLink?.startsWith("/echo-pair")) {
-    navigateToWaveReveal(deepLink);
-  } else if (deepLink?.startsWith("/")) {
-    try {
-      router.push(deepLink as never);
-    } catch {
-      // Router not ready.
-    }
+    // Router not ready yet — silently drop. The notification system
+    // also exposes getLastNotificationResponseAsync for cold-start
+    // taps; we handle that below.
   }
 }
 
 async function registerForPushAsync(): Promise<string | null> {
   if (!Notifications || !Device) return null;
+  // Only physical devices can get an Expo push token; emulators and
+  // the web preview return null and we just skip registration.
   if (!Device.isDevice) return null;
 
   if (Platform.OS === "android") {
     try {
       await Notifications.setNotificationChannelAsync("echoes", {
-        name: "Ripples & Waves",
+        name: "Waves",
         importance: Notifications.AndroidImportance.HIGH,
         sound: "default",
         vibrationPattern: [0, 250, 250, 250],
-        lightColor: "#FFD166",
+        lightColor: "#FF7AA2",
       });
     } catch {}
   }
@@ -181,6 +113,9 @@ async function registerForPushAsync(): Promise<string | null> {
   }
   if (status !== "granted") return null;
 
+  // EAS / Expo Go both stash the projectId on Constants. Without it the
+  // call will throw on a development build, so we feed it through
+  // explicitly when available.
   const projectId =
     (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)
       ?.eas?.projectId ||
@@ -212,75 +147,63 @@ export function usePushNotifications() {
   const { showToast } = useToast();
 
   useEffect(() => {
+    // Expo Go can't subscribe to remote pushes — bail.
     if (!Notifications) return;
     const N = Notifications;
     let cancelled = false;
 
-    void registerNotificationCategories(N);
-
     (async () => {
+      await hydrateCelebratedEchoIds();
       const token = await registerForPushAsync();
       if (cancelled || !token) return;
       const platform: "ios" | "android" | "web" =
         Platform.OS === "ios"
           ? "ios"
           : Platform.OS === "android"
-            ? "android"
-            : "web";
+          ? "android"
+          : "web";
       await registerPushToken({ token, platform });
     })();
 
+    // Tap on a notification while the app is foregrounded or
+    // backgrounded → deep link.
     responseSub.current = N.addNotificationResponseReceivedListener(
       (response) => {
         const data = response.notification.request.content.data as
           | Record<string, unknown>
           | undefined;
-        navigateFromNotification(data, response.actionIdentifier);
+        navigateFromData(data);
       },
     );
 
+    // A notification arrived while the app is foregrounded. The OS
+    // banner is suppressed (see setNotificationHandler above) so we show
+    // our own in-app toast that deep-links the same way the push tap
+    // would.
     receivedSub.current = N.addNotificationReceivedListener((notification) => {
       const content = notification.request.content;
       const data = content.data as Record<string, unknown> | undefined;
+      const celebratedIds = getCelebratedEchoIdsSync();
+      if (shouldSuppressEchoNotification(data, celebratedIds)) return;
+      // The toast is a one-of-a-kind surface reserved for the echo
+      // loop, so the title is always branded with the word "Echo"
+      // (mutual vs incoming offer) regardless of the server-side copy.
       const state = typeof data?.state === "string" ? data.state : null;
-      const echoId = typeof data?.echoId === "string" ? data.echoId : undefined;
-
-      if (state === "mutual") {
-        showToast({
-          title: PUSH_COPY.mutual.title,
-          body: content.body ?? PUSH_COPY.mutual.body,
-          onPress: () => {
-            const deepLink =
-              typeof data?.deepLink === "string" ? data.deepLink : null;
-            if (deepLink) navigateToWaveReveal(deepLink);
-          },
-          action: {
-            label: PUSH_COPY.mutual.actionLabel,
-            icon: "wave-glyph",
-            onPress: () => {
-              const deepLink =
-                typeof data?.deepLink === "string" ? data.deepLink : null;
-              if (deepLink) navigateToWaveReveal(deepLink);
-            },
-          },
-          durationMs: 6000,
-        });
-        return;
-      }
-
+      const brandedTitle =
+        state === "mutual" ? "Wave! ✨" : "A new ripple 💫";
+      const body =
+        content.body ?? "Someone just rippled your photo — tap to view.";
       showToast({
-        title: PUSH_COPY.pending.title,
-        body: content.body ?? PUSH_COPY.pending.body,
-        onPress: () => navigateToEchoes(echoId),
-        action: {
-          label: PUSH_COPY.pending.actionLabel,
-          icon: "wave-glyph",
-          onPress: () => navigateToEchoes(echoId),
-        },
-        durationMs: 6000,
+        title: brandedTitle,
+        body,
+        onPress: () => navigateFromData(data),
       });
     });
 
+    // Cold-start tap: app was killed and the user opened it FROM a
+    // notification. The response is captured before any listener is
+    // attached, so we have to read it explicitly. Defer slightly so
+    // expo-router's root navigator has mounted before we navigate.
     (async () => {
       try {
         const last = await N.getLastNotificationResponseAsync();
@@ -288,10 +211,9 @@ export function usePushNotifications() {
         const data = last.notification.request.content.data as
           | Record<string, unknown>
           | undefined;
-        setTimeout(
-          () => navigateFromNotification(data, last.actionIdentifier),
-          250,
-        );
+        // 250ms is enough on every device we've tried for the root
+        // <Stack> to be ready to receive a push().
+        setTimeout(() => navigateFromData(data), 250);
       } catch {}
     })();
 
