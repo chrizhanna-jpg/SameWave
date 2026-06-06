@@ -10,8 +10,40 @@ $env:JAVA_HOME = $JBR
 $env:ANDROID_HOME = $SDK
 $env:PATH = "$JBR\bin;$SDK\platform-tools;$env:PATH"
 
-$sameSame = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$appRoot = (Resolve-Path (Join-Path $sameSame "..\..")).Path
+$origSameSame = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$origAppRoot = (Resolve-Path (Join-Path $origSameSame "..\..")).Path
+$substLetter = $null
+
+function Enter-ShortBuildRoot([string]$root) {
+  if ($root -notmatch '[\(\)\s]') { return $root }
+  foreach ($letter in @('S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z')) {
+    $drive = "${letter}:"
+    if (Test-Path $drive) { continue }
+    cmd /c "subst $drive `"$root`"" | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+      Write-Host "Using SUBST $drive -> $root (avoids spaces/parentheses in native builds)" -ForegroundColor Yellow
+      $script:substLetter = $letter
+      return "$letter\"
+    }
+  }
+  Write-Error "No free drive letter for SUBST. Move the repo to a path without spaces or parentheses."
+}
+
+function Exit-ShortBuildRoot {
+  if ($script:substLetter) {
+    cmd /c "subst $($script:substLetter): /D" 2>$null | Out-Null
+    $script:substLetter = $null
+  }
+}
+
+try {
+$appRoot = Enter-ShortBuildRoot $origAppRoot
+$sameSame = if ($appRoot -match '^[A-Z]:\\$') {
+  Join-Path $appRoot "artifacts\same-same"
+} else {
+  $origSameSame
+}
+$scriptRoot = Join-Path $sameSame "scripts"
 $credentialsJson = Join-Path $sameSame "credentials.json"
 
 function Test-Command($name) {
@@ -80,24 +112,15 @@ if ($skipPrebuild -and (Test-Path $androidDir)) {
     pnpm exec expo prebuild --platform android --no-install
   }
 }
-& (Join-Path $PSScriptRoot "patch-android-react-root.ps1")
-& (Join-Path $PSScriptRoot "patch-android-hermes.ps1")
+& (Join-Path $scriptRoot "patch-android-react-root.ps1")
+& (Join-Path $scriptRoot "patch-android-package.ps1")
+& (Join-Path $scriptRoot "patch-android-hermes.ps1")
+& (Join-Path $scriptRoot "patch-android-architectures.ps1")
 if (-not (Test-Path $androidDir)) {
   Write-Error "prebuild did not create android/"
 }
 
-# Junction avoids spaces/parentheses in paths (SUBST breaks mixed drive roots with Metro).
-$junctionRoot = "C:\gw-samewave"
 $gradleRoot = $androidDir
-if ($appRoot -match '[\(\)\s]') {
-  if (-not (Test-Path $junctionRoot)) {
-    cmd /c "mklink /J `"$junctionRoot`" `"$appRoot`"" | Out-Null
-    if ($LASTEXITCODE -ne 0) { Write-Warning "mklink failed; build may fail on paths with spaces." }
-  }
-  if (Test-Path $junctionRoot) {
-    $gradleRoot = Join-Path $junctionRoot "artifacts\same-same\android"
-  }
-}
 
 # Metro: bundle from artifacts/same-same, not pnpm workspace root.
 $env:EXPO_NO_METRO_WORKSPACE_ROOT = "1"
@@ -123,4 +146,7 @@ if (-not $aab) {
 Write-Host ""
 Write-Host "AAB built:" -ForegroundColor Green
 Write-Host $aab.FullName
-Write-Host "Upload this file in Play Console â†’ Closed testing."
+Write-Host "Upload this file in Play Console -> Closed testing."
+} finally {
+  Exit-ShortBuildRoot
+}
