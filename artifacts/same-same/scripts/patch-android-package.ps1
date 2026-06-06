@@ -42,8 +42,8 @@ $javaRoot = Join-Path $sameSame "android\app\src\main\java"
 if (Test-Path $javaRoot) {
   Get-ChildItem $javaRoot -Recurse -Filter "*.kt" -ErrorAction SilentlyContinue | ForEach-Object {
     $kt = Get-Content $_.FullName -Raw
-    if ($kt -match "package app\.echo\.samesame") {
-      $kt2 = $kt -replace "package app\.echo\.samesame", "package $pkg"
+    if ($kt -match "package (app\.echo\.(?:samesame|samewave)|echo\.samewaveripple\.app)") {
+      $kt2 = $kt -replace "package (app\.echo\.(?:samesame|samewave)|echo\.samewaveripple\.app)", "package $pkg"
       Set-Content $_.FullName $kt2 -NoNewline
       Write-Host "Patched $($_.FullName): package declaration" -ForegroundColor DarkYellow
     }

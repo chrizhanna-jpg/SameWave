@@ -2,7 +2,7 @@
  * Google SSO redirect URIs for Clerk `startSSOFlow({ redirectUrl })`.
  *
  * Clerk production default: `{bundleIdentifier}://callback` — for SameWave that is
- * `app.echo.samewave://callback` (see Clerk Expo deployment docs).
+ * `echo.samewaveripple.app://callback` (see Clerk Expo deployment docs).
  *
  * Must match Clerk Dashboard → Native applications →
  * “Allowlist for mobile SSO redirect” (character-for-character).
@@ -15,10 +15,10 @@ import { Platform } from "react-native";
 export const SAMEWAVE_APP_SCHEME = "same-same";
 
 export const SAMEWAVE_ANDROID_PACKAGE =
-  Constants.expoConfig?.android?.package ?? "app.echo.samewave";
+  Constants.expoConfig?.android?.package ?? "echo.samewaveripple.app";
 
 export const SAMEWAVE_IOS_BUNDLE_ID =
-  Constants.expoConfig?.ios?.bundleIdentifier ?? "app.echo.samewave";
+  Constants.expoConfig?.ios?.bundleIdentifier ?? "echo.samewaveripple.app";
 
 export const SAMEWAVE_SSO_CALLBACK_PATH = "callback";
 

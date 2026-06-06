@@ -13,7 +13,7 @@ if (-not (Test-Path $keytool)) {
 }
 
 Write-Host "=== SameWave Android OAuth fingerprints ===" -ForegroundColor Cyan
-Write-Host "Package: app.echo.samewave"
+Write-Host "Package: echo.samewaveripple.app"
 Write-Host ""
 
 if ((Test-Path $credentialsJson) -and (Test-Path $jks)) {
@@ -36,7 +36,7 @@ Write-Host "You MUST also add SHA-1 and SHA-256 from:" -ForegroundColor Green
 Write-Host "  Play Console -> Your app -> Setup -> App signing -> App signing key certificate"
 Write-Host ""
 Write-Host "Google Cloud -> Credentials -> OAuth client ID -> Android:" -ForegroundColor Cyan
-Write-Host "  Package name: app.echo.samewave"
+Write-Host "  Package name: echo.samewaveripple.app"
 Write-Host "  SHA-1: (from Play App signing key certificate)"
 Write-Host ""
 Write-Host "Clerk Dashboard -> Google: Web client ID + secret; redirect URIs from Clerk." -ForegroundColor Cyan

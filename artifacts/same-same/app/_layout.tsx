@@ -247,10 +247,10 @@ function ClerkBootGate({
       <Text style={bootGateStyles.body}>
         Play closed-test: add Google Play App Signing SHA-1/256 to your Android
         OAuth client (package{" "}
-        <Text style={bootGateStyles.monoInline}>app.echo.samewave</Text>). In
+        <Text style={bootGateStyles.monoInline}>echo.samewaveripple.app</Text>). In
         Clerk → Native applications → allowlist add{" "}
         <Text style={bootGateStyles.monoInline}>{ssoRedirect}</Text> (expected:{" "}
-        <Text style={bootGateStyles.monoInline}>app.echo.samewave://callback</Text>
+        <Text style={bootGateStyles.monoInline}>echo.samewaveripple.app://callback</Text>
         ).
       </Text>
       <Text style={bootGateStyles.body}>
