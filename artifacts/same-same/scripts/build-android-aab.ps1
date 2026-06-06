@@ -1,4 +1,4 @@
-# Build a Play-ready .aab on Windows (no EAS cloud quota).
+﻿# Build a Play-ready .aab on Windows (no EAS cloud quota).
 # Prereqs: Android Studio + SDK, run setup-android-build-env.ps1 once, eas login,
 # and download signing credentials (see below).
 
@@ -23,7 +23,10 @@ Write-Host "=== SameWave local Android AAB (Windows) ===" -ForegroundColor Cyan
 if (-not (Test-Path "$JBR\bin\java.exe")) {
   Write-Error "JAVA_HOME invalid. Run: pnpm run setup:android-env"
 }
-java -version
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+java -version 2>&1 | Out-Host
+$ErrorActionPreference = $prevEap
 
 if (-not (Test-Path $SDK)) {
   Write-Error "ANDROID_HOME missing. Install SDK via Android Studio."
@@ -41,7 +44,10 @@ if (-not (Test-Path "node_modules")) {
 
 Set-Location $sameSame
 
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
 pnpm exec eas whoami *> $null
+$ErrorActionPreference = $prevEap
 if ($LASTEXITCODE -ne 0) {
   Write-Error "Not logged in to Expo. Run: pnpm exec eas login"
 }
@@ -117,4 +123,4 @@ if (-not $aab) {
 Write-Host ""
 Write-Host "AAB built:" -ForegroundColor Green
 Write-Host $aab.FullName
-Write-Host "Upload this file in Play Console → Closed testing."
+Write-Host "Upload this file in Play Console â†’ Closed testing."
