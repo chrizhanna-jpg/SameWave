@@ -51,6 +51,7 @@ import {
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { Image } from "expo-image";
+import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
   runOnJS,
@@ -73,24 +74,25 @@ import type { GeoProjection } from "d3-geo";
 
 import {
   fetchAtlasCountryPhotos,
-  fetchAtlasFireExplore,
-  flattenAtlasFireExplorePhotos,
   type AtlasConnection,
   type AtlasCountry,
-  type AtlasFireExploreOptions,
+  type LocalRippleExploreMatch,
+  type LocalWaveExploreEcho,
+  type ViewerExplorePhoto,
 } from "@/utils/api";
 import { flagFor, nameFor } from "@/data/countries";
-import { FirecircleCenterTheme } from "@/components/FirecircleCenterTheme";
+import { AtlasFireExploreModal } from "@/components/AtlasFireExploreModal";
 import { FirecircleOrbit } from "@/components/FirecircleOrbit";
+import { PressableScale } from "@/components/PressableScale";
 import { Icon, type IconName } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
 import {
   atlasArcPathD,
   atlasArcPointAt,
   atlasArcSegment,
-  atlasDomesticLoopPathD,
-  atlasDomesticLoopSegment,
+  atlasWavefireRingPathD,
   createAtlasProjection,
+  type AtlasScreenPoint,
 } from "@/utils/atlasArcPath";
 import { centroidLonLatForAtlas } from "@/utils/atlasCountryCentroids";
 import {
@@ -99,24 +101,27 @@ import {
   RIPPLEFIRE_MIN_EVENTS,
 } from "@/utils/atlasFireConfig";
 import {
+  ATLAS_COUNTRY_MODAL,
+  ATLAS_FILTER_A11Y,
+  ATLAS_FILTER_HINT,
+  ATLAS_FILTER_HINT_MINE_SIGNIN,
+} from "@/data/waveRippleGlossary";
+import {
   atlasFireVisual,
+  type AtlasFireMode,
   type AtlasFireVisual,
 } from "@/utils/atlasFireVisuals";
 import {
-  detectRipplefireCluster,
-  detectWavefireCluster,
+  detectRipplefireClusters,
+  detectWavefireClusters,
   orderWavefireRingCountryCodes,
+  type AtlasThemeCluster,
 } from "@/utils/atlasWavefire";
 import { atlasLandPathD } from "@/utils/atlasWorldLand";
 import {
   duckFirecircleActivity,
   setFirecircleMapScale,
 } from "@/utils/firecircleAudio";
-import { subscribeFirecircleFocus } from "@/utils/firecircleFocus";
-import {
-  buildWavefireThemeCaptions,
-  type WavefireThemeCaption,
-} from "@/utils/wavefireThemeQueue";
 import { buildFirecircleTiles, type FirecircleTileModel } from "@/utils/firecircleLayout";
 import {
   isTrustedFirecircleThumbUrl,
@@ -139,6 +144,15 @@ function isFireFilter(
   mode: AtlasFilterMode,
 ): mode is "ripplefire" | "wavefire" {
   return mode === "ripplefire" || mode === "wavefire";
+}
+
+const EMPTY_FIRE_CLUSTERS: AtlasThemeCluster[] = [];
+
+function atlasFireModeFromFilter(
+  mode: AtlasFilterMode,
+): AtlasFireMode | null {
+  if (mode === "wavefire" || mode === "ripplefire") return mode;
+  return null;
 }
 
 const ATLAS_MAP_ANIM_BASE_MS = 14_000;
@@ -266,7 +280,7 @@ function normalizeConnections(raw: AtlasConnection[]): AtlasConnection[] {
   for (const c of raw) {
     const from = c.from.trim().toUpperCase();
     const to = c.to.trim().toUpperCase();
-    if (from.length !== 2 || to.length !== 2) continue;
+    if (from.length !== 2 || to.length !== 2 || from === to) continue;
     const key = c.id;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -281,7 +295,7 @@ function filterConnections(
   isSignedIn: boolean,
 ): AtlasConnection[] {
   if (mode === "all") return list;
-  /** Globe draws only the active fire cluster; keep base empty so nothing leaks. */
+  /** Globe draws only `fireCluster.connections`; keep base empty so nothing leaks. */
   if (isFireFilter(mode)) return [];
   if (mode === "ripples") return list.filter((c) => c.kind === "ripple");
   if (mode === "waves") return list.filter((c) => c.kind === "wave");
@@ -379,10 +393,12 @@ interface Props {
   connections: AtlasConnection[];
   countries: AtlasCountry[];
   isSignedIn: boolean;
-  /** On-device explore fallback for Wavefire theme carousel. */
-  fireExploreOptions?: AtlasFireExploreOptions;
   /** When set, country modal shows "View moments". */
   onOpenCountryPhotos?: (code: string) => void;
+  localRippleMatches?: LocalRippleExploreMatch[];
+  localWaveEchoes?: LocalWaveExploreEcho[];
+  viewerCountryCode?: string;
+  viewerMyPhotos?: ViewerExplorePhoto[];
   style?: StyleProp<ViewStyle>;
 }
 
@@ -391,8 +407,11 @@ export function AtlasGlobeExperience({
   connections,
   countries,
   isSignedIn,
-  fireExploreOptions,
   onOpenCountryPhotos,
+  localRippleMatches,
+  localWaveEchoes,
+  viewerCountryCode,
+  viewerMyPhotos,
   style,
 }: Props) {
   const colors = useColors();
@@ -401,10 +420,6 @@ export function AtlasGlobeExperience({
   const [wfPhotoTile, setWfPhotoTile] = useState<FirecircleTileModel | null>(null);
   const [wfPhotoUri, setWfPhotoUri] = useState<string | null>(null);
   const [wfPhotoLoading, setWfPhotoLoading] = useState(false);
-  const [wavefireThemeCaptions, setWavefireThemeCaptions] = useState<
-    WavefireThemeCaption[]
-  >([]);
-  const [firecircleFocusIndex, setFirecircleFocusIndex] = useState(0);
 
   const mapW = useSharedValue(width);
   const mapH = useSharedValue(ATLAS_MAP_FALLBACK_H);
@@ -554,6 +569,8 @@ export function AtlasGlobeExperience({
 
   const [filter, setFilter] = useState<AtlasFilterMode>("ripplefire");
   const [modalCode, setModalCode] = useState<string | null>(null);
+  const [fireExploreOpen, setFireExploreOpen] = useState(false);
+  const [fireClusterIndex, setFireClusterIndex] = useState(0);
 
   const timeRef = useRef(Date.now());
   const [, rafPulse] = useReducer((x: number) => x + 1, 0);
@@ -574,20 +591,9 @@ export function AtlasGlobeExperience({
     [connections],
   );
 
-  const wavefireCluster = useMemo(
+  const ripplefireClusters = useMemo(
     () =>
-      detectWavefireCluster(
-        normalized,
-        WAVEFIRE_WINDOW_MS,
-        WAVEFIRE_MIN_EVENTS,
-        WAVEFIRE_MIN_COUNTRIES,
-      ),
-    [normalized],
-  );
-
-  const ripplefireCluster = useMemo(
-    () =>
-      detectRipplefireCluster(
+      detectRipplefireClusters(
         normalized,
         ATLAS_FIRE_WINDOW_MS,
         RIPPLEFIRE_MIN_EVENTS,
@@ -596,15 +602,39 @@ export function AtlasGlobeExperience({
     [normalized],
   );
 
-  const activeFireCluster = useMemo(() => {
-    if (filter === "ripplefire") return ripplefireCluster;
-    if (filter === "wavefire") return wavefireCluster;
-    return null;
-  }, [filter, ripplefireCluster, wavefireCluster]);
+  const wavefireClusters = useMemo(
+    () =>
+      detectWavefireClusters(
+        normalized,
+        WAVEFIRE_WINDOW_MS,
+        WAVEFIRE_MIN_EVENTS,
+        WAVEFIRE_MIN_COUNTRIES,
+      ),
+    [normalized],
+  );
 
-  const fireVisual: AtlasFireVisual | null = isFireFilter(filter)
-    ? atlasFireVisual(filter)
-    : null;
+  const fireMode = atlasFireModeFromFilter(filter);
+  const fireVisual = fireMode ? atlasFireVisual(fireMode) : null;
+  const fireClusters = useMemo(() => {
+    if (fireMode === "wavefire") return wavefireClusters;
+    if (fireMode === "ripplefire") return ripplefireClusters;
+    return EMPTY_FIRE_CLUSTERS;
+  }, [fireMode, wavefireClusters, ripplefireClusters]);
+
+  useEffect(() => {
+    setFireClusterIndex(0);
+  }, [filter]);
+
+  useEffect(() => {
+    setFireClusterIndex((idx) => {
+      const n = fireClusters.length;
+      if (n === 0) return 0;
+      return Math.min(idx, n - 1);
+    });
+  }, [fireClusters.length]);
+
+  const fireCluster = fireClusters[fireClusterIndex] ?? null;
+  const wavefireCluster = filter === "wavefire" ? fireCluster : null;
 
   const baseFiltered = useMemo(
     () => filterConnections(normalized, filter, isSignedIn),
@@ -612,10 +642,11 @@ export function AtlasGlobeExperience({
   );
 
   const displayConnections = useMemo(() => {
-    if (!isFireFilter(filter)) return baseFiltered;
-    if (!activeFireCluster) return [];
-    return activeFireCluster.connections;
-  }, [filter, baseFiltered, activeFireCluster]);
+    if (filter === "ripplefire" || filter === "wavefire") {
+      return fireCluster?.connections ?? [];
+    }
+    return baseFiltered;
+  }, [filter, baseFiltered, fireCluster]);
 
   const canvasPixelW = width * ATLAS_MAP_OVERSAMPLE;
   const canvasPixelH = mapPixelH * ATLAS_MAP_OVERSAMPLE;
@@ -634,15 +665,6 @@ export function AtlasGlobeExperience({
   const prepared = useMemo(() => {
     const items: PreparedArc[] = [];
     for (const c of displayConnections) {
-      if (c.from === c.to) {
-        const domestic = centroidLonLatForAtlas(c.from);
-        if (!domestic) continue;
-        const d = atlasDomesticLoopPathD(projection, domestic);
-        const seg = atlasDomesticLoopSegment(projection, domestic);
-        if (!d || !seg) continue;
-        items.push({ id: c.id, c, d, seg });
-        continue;
-      }
       const a = centroidLonLatForAtlas(c.from);
       const b = centroidLonLatForAtlas(c.to);
       if (!a || !b) continue;
@@ -693,10 +715,10 @@ export function AtlasGlobeExperience({
 
   const mapCountryCodes = useMemo(() => {
     if (isFireFilter(filter)) {
-      return activeFireCluster?.countryCodes ?? [];
+      return fireCluster?.countryCodes ?? [];
     }
     return countryCodesOnMap;
-  }, [filter, activeFireCluster, countryCodesOnMap]);
+  }, [filter, fireCluster, countryCodesOnMap]);
 
   const centroidHits = useMemo(() => {
     return mapCountryCodes
@@ -712,12 +734,70 @@ export function AtlasGlobeExperience({
 
   const now = timeRef.current;
   const fireNight = isFireFilter(filter);
-  const fireActive = fireNight && activeFireCluster != null;
+  const fireActive = fireNight && fireCluster != null;
+  const wavefireActive = filter === "wavefire" && wavefireCluster != null;
+  const ripplefireActive = filter === "ripplefire" && fireCluster != null;
+
+  /**
+   * Ripplefire map = closed ring through themed cluster countries (not arc lines).
+   * Needs multiple ripples and at least two countries on the ring.
+   */
+  const ripplefireRingEligible = useMemo(() => {
+    if (!ripplefireActive || !fireCluster) return false;
+    return (
+      fireCluster.connections.length >= 2 &&
+      fireCluster.countryCodes.length >= 2
+    );
+  }, [ripplefireActive, fireCluster]);
+
+  const ripplefireRing = useMemo((): {
+    points: AtlasScreenPoint[];
+    codes: string[];
+  } | null => {
+    if (!ripplefireRingEligible || !fireCluster) return null;
+    const codes = orderWavefireRingCountryCodes(
+      fireCluster.countryCodes,
+      projection,
+    );
+    const points: AtlasScreenPoint[] = [];
+    for (const code of codes) {
+      const ll = centroidLonLatForAtlas(code);
+      if (!ll) continue;
+      const p = projection([ll[0], ll[1]]);
+      if (!p) continue;
+      points.push({ x: p[0], y: p[1] });
+    }
+    if (points.length < 2) return null;
+    return { points, codes };
+  }, [ripplefireRingEligible, fireCluster, projection]);
+
+  const ripplefireRingD = useMemo(() => {
+    if (!ripplefireRing) return null;
+    return atlasWavefireRingPathD(ripplefireRing.points, now * 0.0028);
+  }, [ripplefireRing, now]);
+
+  const ripplefireRingGlowFlick = useMemo(() => {
+    if (!ripplefireRingD) return 1;
+    const t = now * 0.004;
+    return (
+      0.78 +
+      0.17 * (0.5 + 0.5 * Math.sin(t)) +
+      0.05 * Math.sin(now * 0.019)
+    );
+  }, [ripplefireRingD, now]);
+
+  /** Fire tabs draw only the selected cluster — never the full ripple/wave feed. */
+  const showConnectionArcs = useMemo(() => {
+    if (filter === "wavefire" && wavefireActive) return false;
+    if (filter === "ripplefire") return false;
+    if (isFireFilter(filter)) return fireActive;
+    return true;
+  }, [filter, wavefireActive, fireActive]);
 
   const wavefireRingSegments = useMemo(() => {
-    if (!fireActive || !activeFireCluster) return [];
+    if (!wavefireActive || !wavefireCluster) return [];
     const ordered = orderWavefireRingCountryCodes(
-      activeFireCluster.countryCodes,
+      wavefireCluster.countryCodes,
       projection,
     );
     if (ordered.length < 3) return [];
@@ -730,24 +810,24 @@ export function AtlasGlobeExperience({
       if (d) parts.push(d);
     }
     return parts;
-  }, [fireActive, activeFireCluster, projection]);
+  }, [wavefireActive, wavefireCluster, projection]);
 
-  /** Single closed loop through fire-cluster countries (wavy screen-space offset). */
+  /** Single closed loop through Wavefire countries (wavy screen-space offset). */
   const wavefireWavyRingD = useMemo(() => {
-    if (!fireActive || !activeFireCluster) return null;
+    if (!wavefireActive || !wavefireCluster) return null;
     return buildWavefireWavyRingPathD(
       projection,
-      activeFireCluster.countryCodes,
-      activeFireCluster.theme,
+      wavefireCluster.countryCodes,
+      wavefireCluster.theme,
       now,
     );
-  }, [fireActive, activeFireCluster, projection, now]);
+  }, [wavefireActive, wavefireCluster, projection, now]);
 
-  /** Geometric centre of the fire country ring (projected px) + mean radius. */
+  /** Geometric centre of the Wavefire country ring (projected px) + mean radius. */
   const wavefireRingCentroid = useMemo(() => {
-    if (!activeFireCluster) return null;
+    if (!wavefireCluster) return null;
     const ordered = orderWavefireRingCountryCodes(
-      activeFireCluster.countryCodes,
+      wavefireCluster.countryCodes,
       projection,
     );
     if (ordered.length < 2) return null;
@@ -766,14 +846,14 @@ export function AtlasGlobeExperience({
       pts.reduce((s, q) => s + Math.hypot(q.x - mx, q.y - my), 0) /
       Math.max(1, pts.length);
     return { x: mx, y: my, ringR: Math.max(24, ringR) };
-  }, [activeFireCluster, projection]);
+  }, [wavefireCluster, projection]);
 
   /**
-   * Soft ember stroke glow along the fire ring path (`strokeWidth` scales from
+   * Soft ember stroke glow along the Wavefire ring path (`strokeWidth` scales from
    * `ringR`, comparable bulk to the former radial core ~`ringR * 0.72`).
    */
   const wavefirePathGlow = useMemo(() => {
-    if (!fireActive || !wavefireRingCentroid || !fireVisual) return null;
+    if (!wavefireActive || !wavefireRingCentroid) return null;
     const { ringR } = wavefireRingCentroid;
     const t = now * 0.004;
     const flick =
@@ -782,73 +862,29 @@ export function AtlasGlobeExperience({
       0.12 * Math.sin(t * 3.2 + 0.5) +
       0.08 * Math.sin(now * 0.019);
     const baseW = Math.max(20, ringR * 0.72);
-    const raw = fireVisual.arcGlowLayers.map((L) => ({
-      w: L.w * (baseW / 12),
-      color: L.color,
-      o: L.o,
-    }));
+    const raw: { w: number; color: string; o: number }[] = [
+      { w: baseW * 1.25, color: "#7c2d12", o: 0.075 },
+      { w: baseW * 0.98, color: "#ea580c", o: 0.095 },
+      { w: baseW * 0.74, color: "#ea580c", o: 0.12 },
+      { w: baseW * 0.52, color: "#fb923c", o: 0.15 },
+      { w: baseW * 0.34, color: "#fb923c", o: 0.19 },
+      { w: baseW * 0.18, color: "#fde68a", o: 0.24 },
+    ];
     const layers = raw.map((L) => ({
       w: L.w,
       color: L.color,
       opacity: Math.min(0.92, Math.max(0.04, L.o * flick)),
     }));
     return { flick, layers };
-  }, [fireActive, wavefireRingCentroid, fireVisual, now]);
+  }, [wavefireActive, wavefireRingCentroid, now]);
 
   const firecircleTiles = useMemo(() => {
-    if (!fireActive || !activeFireCluster) return [];
-    return buildFirecircleTiles(projection, activeFireCluster.connections);
-  }, [fireActive, activeFireCluster, projection]);
-
-  useEffect(() => subscribeFirecircleFocus(setFirecircleFocusIndex), []);
-
-  const fireConnectionKey = useMemo(
-    () =>
-      activeFireCluster?.connections.map((c) => c.id).join("\0") ?? "",
-    [activeFireCluster?.connections],
-  );
-
-  const fireExploreOptionsRef = useRef(fireExploreOptions);
-  fireExploreOptionsRef.current = fireExploreOptions;
+    if (!wavefireActive || !wavefireCluster) return [];
+    return buildFirecircleTiles(projection, wavefireCluster.connections);
+  }, [wavefireActive, wavefireCluster, projection]);
 
   useEffect(() => {
-    if (!fireActive || !activeFireCluster || !isFireFilter(filter)) {
-      setWavefireThemeCaptions([]);
-      return;
-    }
-    let cancelled = false;
-    const ids = activeFireCluster.connections.map((c) => c.id);
-    const clusterContext = {
-      kind: filter === "ripplefire" ? ("ripple" as const) : ("wave" as const),
-      countryCodes: activeFireCluster.countryCodes,
-      displayTheme: activeFireCluster.displayTheme,
-    };
-    void fetchAtlasFireExplore(
-      ids,
-      clusterContext,
-      fireExploreOptionsRef.current,
-    ).then(({ moments }) => {
-        if (cancelled) return;
-        const tiles = flattenAtlasFireExplorePhotos(
-          moments,
-          activeFireCluster.displayTheme,
-        );
-        setWavefireThemeCaptions(
-          buildWavefireThemeCaptions(
-            tiles,
-            activeFireCluster.connections,
-            activeFireCluster.displayTheme,
-          ),
-        );
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [fireActive, activeFireCluster, fireConnectionKey, filter]);
-
-  useEffect(() => {
-    if (!fireActive) {
+    if (!wavefireActive) {
       void stopWavefireAmbience();
       return;
     }
@@ -858,7 +894,7 @@ export function AtlasGlobeExperience({
         void stopWavefireAmbience();
         return;
       }
-      if (s === "active" && isFireFilter(filter) && activeFireCluster) {
+      if (s === "active" && filter === "wavefire" && wavefireCluster) {
         void startWavefireAmbience();
       }
     });
@@ -866,7 +902,7 @@ export function AtlasGlobeExperience({
       sub.remove();
       void stopWavefireAmbience();
     };
-  }, [fireActive, filter, activeFireCluster]);
+  }, [wavefireActive, filter, wavefireCluster]);
 
   useEffect(() => {
     if (!wfPhotoTile) {
@@ -904,11 +940,11 @@ export function AtlasGlobeExperience({
 
   const prevClusterConnRef = useRef<number | null>(null);
   useEffect(() => {
-    if (!fireActive || !activeFireCluster) {
+    if (!wavefireActive || !wavefireCluster) {
       prevClusterConnRef.current = null;
       return;
     }
-    const n = activeFireCluster.connections.length;
+    const n = wavefireCluster.connections.length;
     if (
       prevClusterConnRef.current !== null &&
       n !== prevClusterConnRef.current
@@ -916,7 +952,7 @@ export function AtlasGlobeExperience({
       duckFirecircleActivity();
     }
     prevClusterConnRef.current = n;
-  }, [fireActive, activeFireCluster]);
+  }, [wavefireActive, wavefireCluster]);
 
   const stats = useMemo(() => {
     let ripples = 0;
@@ -973,11 +1009,41 @@ export function AtlasGlobeExperience({
   const landPathD = useMemo(() => atlasLandPathD(projection), [projection]);
 
   const continentFill = fireNight
-    ? fireVisual?.continentFill ?? "rgba(22, 60, 126, 0.92)"
+    ? (fireVisual?.continentFill ?? "rgba(22, 60, 126, 0.92)")
     : "rgba(232, 244, 248, 0.93)";
   const continentStroke = fireNight
-    ? fireVisual?.continentStroke ?? "rgba(255, 209, 102, 0.32)"
+    ? (fireVisual?.continentStroke ?? "rgba(255, 209, 102, 0.32)")
     : "rgba(31, 169, 240, 0.15)";
+
+  const openFireExplore = useCallback(() => {
+    if (!fireActive || !fireCluster || !fireVisual) return;
+    setFireExploreOpen(true);
+    void startWavefireAmbience();
+  }, [fireActive, fireCluster, fireVisual]);
+
+  const closeFireExplore = useCallback(() => {
+    setFireExploreOpen(false);
+    void stopWavefireAmbience();
+  }, []);
+
+  const stepFireCluster = useCallback(
+    (delta: number) => {
+      if (fireClusters.length <= 1) return;
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setFireClusterIndex((idx) => {
+        const n = fireClusters.length;
+        return (idx + delta + n) % n;
+      });
+    },
+    [fireClusters.length],
+  );
+
+  useEffect(() => {
+    if (!fireMode) {
+      setFireExploreOpen(false);
+      void stopWavefireAmbience();
+    }
+  }, [fireMode]);
 
   return (
     <View style={[styles.card, { borderColor: colors.border }, style]}>
@@ -988,18 +1054,11 @@ export function AtlasGlobeExperience({
         colors={colors}
       />
 
-      {filter === "mine" && isSignedIn && displayConnections.length === 0 ? (
-        <Text style={[styles.mineHint, { color: colors.mutedForeground }]}>
-          No ripples or waves on the map yet. Send a Same swipe on Ripple, or
-          check All / Ripplefire for global activity.
-        </Text>
-      ) : null}
-
-      {filter === "mine" && !isSignedIn ? (
-        <Text style={[styles.mineHint, { color: colors.mutedForeground }]}>
-          Sign in to see only your ripples and waves on the map.
-        </Text>
-      ) : null}
+      <Text style={[styles.filterHint, { color: colors.mutedForeground }]}>
+        {filter === "mine" && !isSignedIn
+          ? ATLAS_FILTER_HINT_MINE_SIGNIN
+          : ATLAS_FILTER_HINT[filter]}
+      </Text>
 
       <View
         style={styles.mapArea}
@@ -1086,7 +1145,7 @@ export function AtlasGlobeExperience({
               ) : null}
 
               <G>
-                {!fireActive
+                {showConnectionArcs
                   ? prepared.map((p) => {
                   const age = now - parseCreatedMs(p.c);
                   const lineOp =
@@ -1108,6 +1167,7 @@ export function AtlasGlobeExperience({
               </G>
 
               {wavefirePathGlow &&
+              filter === "wavefire" &&
               (wavefireWavyRingD || wavefireRingSegments.length > 0) ? (
                 <G pointerEvents="none">
                   {wavefireWavyRingD
@@ -1140,7 +1200,7 @@ export function AtlasGlobeExperience({
                 </G>
               ) : null}
 
-              {wavefireWavyRingD ? (
+              {filter === "wavefire" && wavefireWavyRingD ? (
                 <G pointerEvents="none">
                   <Path
                     d={wavefireWavyRingD}
@@ -1179,7 +1239,7 @@ export function AtlasGlobeExperience({
                     opacity={0.55}
                   />
                 </G>
-              ) : wavefireRingSegments.length > 0 ? (
+              ) : filter === "wavefire" && wavefireRingSegments.length > 0 ? (
                 <G pointerEvents="none">
                   {wavefireRingSegments.map((d, i) => (
                     <G key={`wf-ring-${i}`}>
@@ -1206,8 +1266,94 @@ export function AtlasGlobeExperience({
                 </G>
               ) : null}
 
+              {filter === "ripplefire" &&
+              ripplefireRingD &&
+              fireVisual &&
+              ripplefireRingEligible ? (
+                <G pointerEvents="none">
+                  {fireVisual.arcGlowLayers.map((layer, li) => (
+                    <Path
+                      key={`rf-ring-glow-${li}`}
+                      d={ripplefireRingD}
+                      fill="none"
+                      stroke={layer.color}
+                      strokeWidth={layer.w}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      opacity={Math.min(
+                        0.95,
+                        layer.o * ripplefireRingGlowFlick,
+                      )}
+                    />
+                  ))}
+                  <Path
+                    d={ripplefireRingD}
+                    fill="none"
+                    stroke={fireVisual.lineStroke}
+                    strokeWidth={2.15}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    opacity={0.9 * ripplefireRingGlowFlick}
+                  />
+                  <Path
+                    d={ripplefireRingD}
+                    fill="none"
+                    stroke={fireVisual.campSpark}
+                    strokeWidth={0.9}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    opacity={0.48 * ripplefireRingGlowFlick}
+                  />
+                </G>
+              ) : null}
+
+              {filter === "ripplefire" && ripplefireActive && fireVisual
+                ? centroidHits.map((h) => {
+                    const flick =
+                      0.84 +
+                      0.16 *
+                        (0.5 +
+                          0.5 *
+                            Math.sin(
+                              now * 0.011 + h.code.charCodeAt(0) * 0.07,
+                            ));
+                    return (
+                      <G key={`rf-camp-${h.code}`} pointerEvents="none">
+                        <Circle
+                          cx={h.cx}
+                          cy={h.cy}
+                          r={3.8}
+                          fill={fireVisual.campGlow}
+                          opacity={0.12 * flick}
+                        />
+                        <Circle
+                          cx={h.cx}
+                          cy={h.cy}
+                          r={2.2}
+                          fill={fireVisual.campMid}
+                          opacity={0.5 * flick}
+                        />
+                        <Circle
+                          cx={h.cx}
+                          cy={h.cy}
+                          r={1.35}
+                          fill={fireVisual.campHot}
+                          opacity={0.92 * flick}
+                        />
+                        <Circle
+                          cx={h.cx}
+                          cy={h.cy - 0.25}
+                          r={0.55}
+                          fill={fireVisual.campSpark}
+                          opacity={0.88 * flick}
+                        />
+                      </G>
+                    );
+                  })
+                : null}
+
               <G>
-                {!fireActive
+                {showConnectionArcs
                   ? animatedSlice.map((p) => {
                   const age = now - parseCreatedMs(p.c);
                   if (age < 0) return null;
@@ -1244,22 +1390,11 @@ export function AtlasGlobeExperience({
               </G>
             </Svg>
 
-            {fireActive && firecircleTiles.length > 0 ? (
+            {wavefireActive && firecircleTiles.length > 0 ? (
               <FirecircleOrbit
                 tiles={firecircleTiles}
                 mapScale={scale}
                 onSelectTile={(tile) => setWfPhotoTile(tile)}
-              />
-            ) : null}
-
-            {fireActive &&
-            wavefireRingCentroid &&
-            wavefireThemeCaptions.length > 0 ? (
-              <FirecircleCenterTheme
-                centroid={wavefireRingCentroid}
-                captions={wavefireThemeCaptions}
-                focusIndex={firecircleFocusIndex}
-                mapScale={scale}
               />
             ) : null}
 
@@ -1285,53 +1420,76 @@ export function AtlasGlobeExperience({
         </GestureDetector>
       </View>
 
-      <View style={styles.statRow}>
-        <StatPill
-          accessibilityLabel="Countries on map"
-          value={stats.countries}
-          fg={colors.foreground}
-          icon="globe"
-          iconColor={colors.primary}
-        />
-        <StatPill
-          accessibilityLabel="Ripples"
-          value={stats.ripples}
-          fg={colors.foreground}
-          icon="ripple"
-          iconColor="#4FD89C"
-        />
-        <StatPill
-          accessibilityLabel="Waves"
-          value={stats.waves}
-          fg={colors.foreground}
-          icon="wave-glyph"
-          iconColor="#FFD166"
-        />
-        {fireNight && fireVisual ? (
+      <View style={styles.atlasFooter}>
+        <View style={styles.statRow}>
           <StatPill
-            accessibilityLabel={fireVisual.statA11y}
-            value={fireActive ? 1 : 0}
+            accessibilityLabel="Countries on map"
+            value={stats.countries}
             fg={colors.foreground}
-            icon="campfire"
-            iconColor={fireVisual.lineStroke}
+            icon="globe"
+            iconColor={colors.primary}
           />
-        ) : null}
+          <StatPill
+            accessibilityLabel={ATLAS_FILTER_A11Y.ripples}
+            value={stats.ripples}
+            fg={colors.foreground}
+            icon="ripple"
+            iconColor="#4FD89C"
+          />
+          <StatPill
+            accessibilityLabel={ATLAS_FILTER_A11Y.waves}
+            value={stats.waves}
+            fg={colors.foreground}
+            icon="wave-glyph"
+            iconColor="#FFD166"
+          />
+          {fireNight && fireVisual ? (
+            <StatPill
+              accessibilityLabel={fireVisual.statA11y}
+              value={fireClusters.length}
+              fg={colors.foreground}
+              icon={fireVisual.filterIcon}
+              iconColor={fireVisual.lineStroke}
+              onPress={fireActive ? openFireExplore : undefined}
+            />
+          ) : (
+            <View style={styles.statPillSpacer} accessibilityElementsHidden />
+          )}
+        </View>
+
+        <View style={styles.fireExploreSlot}>
+          {fireActive && fireVisual && fireCluster ? (
+            <FireClusterExploreBar
+              visual={fireVisual}
+              cluster={fireCluster}
+              clusterIndex={fireClusterIndex}
+              clusterCount={fireClusters.length}
+              foreground={colors.foreground}
+              muted={colors.mutedForeground}
+              onExplore={openFireExplore}
+              onPrev={() => stepFireCluster(-1)}
+              onNext={() => stepFireCluster(1)}
+            />
+          ) : fireNight && fireVisual && !fireCluster ? (
+            <Text style={[styles.wfHint, { color: colors.mutedForeground }]}>
+              {fireVisual.emptyHint}
+            </Text>
+          ) : null}
+        </View>
       </View>
 
-      {fireNight && fireActive && activeFireCluster ? (
-        <Text style={[styles.wfThemeMeta, { color: colors.mutedForeground, marginHorizontal: 16 }]}>
-          {activeFireCluster.connections.length} moments ·{" "}
-          {activeFireCluster.countryCodes.length} countries
-          {wavefireThemeCaptions.length > 0
-            ? ` · ${wavefireThemeCaptions.length} themes`
-            : ""}
-        </Text>
-      ) : null}
-
-      {fireNight && !activeFireCluster && fireVisual ? (
-        <Text style={[styles.wfHint, { color: colors.mutedForeground }]}>
-          {fireVisual.emptyHint}
-        </Text>
+      {fireActive && fireCluster && fireVisual ? (
+        <AtlasFireExploreModal
+          visible={fireExploreOpen}
+          onClose={closeFireExplore}
+          fireMode={fireMode}
+          visual={fireVisual}
+          cluster={fireCluster}
+          localRippleMatches={localRippleMatches}
+          localWaveEchoes={localWaveEchoes}
+          viewerCountryCode={viewerCountryCode}
+          viewerMyPhotos={viewerMyPhotos}
+        />
       ) : null}
 
       <Modal
@@ -1353,13 +1511,14 @@ export function AtlasGlobeExperience({
                 {modalStats ? (
                   <>
                     <Text style={[styles.modalLine, { color: colors.mutedForeground }]}>
-                      Ripples sent: {modalStats.ripplesSent}
+                      {ATLAS_COUNTRY_MODAL.ripplesSent}: {modalStats.ripplesSent}
                     </Text>
                     <Text style={[styles.modalLine, { color: colors.mutedForeground }]}>
-                      Ripples received: {modalStats.ripplesReceived}
+                      {ATLAS_COUNTRY_MODAL.ripplesReceived}:{" "}
+                      {modalStats.ripplesReceived}
                     </Text>
                     <Text style={[styles.modalLine, { color: colors.mutedForeground }]}>
-                      Waves (mutual): {modalStats.waves}
+                      {ATLAS_COUNTRY_MODAL.wavesMutual}: {modalStats.waves}
                     </Text>
                     <Text style={[styles.modalLine, { color: colors.mutedForeground }]}>
                       Most recent: {formatShort(modalStats.lastMs)}
@@ -1457,13 +1616,153 @@ export function AtlasGlobeExperience({
   );
 }
 
+function FireClusterExploreBar({
+  visual,
+  cluster,
+  clusterIndex,
+  clusterCount,
+  foreground,
+  muted,
+  onExplore,
+  onPrev,
+  onNext,
+}: {
+  visual: AtlasFireVisual;
+  cluster: AtlasThemeCluster;
+  clusterIndex: number;
+  clusterCount: number;
+  foreground: string;
+  muted: string;
+  onExplore: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  const multi = clusterCount > 1;
+  const themeLabel = cluster.displayTheme.trim();
+  const counter = `${clusterIndex + 1} / ${clusterCount}`;
+
+  return (
+    <View style={styles.fireExploreRow}>
+      {multi ? (
+        <PressableScale
+          onPress={onPrev}
+          haptic="light"
+          android_ripple={{ color: "transparent" }}
+          accessibilityRole="button"
+          accessibilityLabel={`Previous ${visual.label}`}
+          style={[
+            styles.fireNavBtn,
+            {
+              backgroundColor: visual.chipActiveBg,
+              borderColor: visual.lineStroke,
+            },
+          ]}
+        >
+          <Icon name="chevron-left" size={22} color={visual.lineStroke} />
+        </PressableScale>
+      ) : (
+        <View style={styles.fireNavSpacer} />
+      )}
+
+      <PressableScale
+        onPress={onExplore}
+        haptic="medium"
+        accessibilityRole="button"
+        accessibilityLabel={
+          multi
+            ? `Explore ${visual.label}, ${themeLabel || "cluster"}, ${counter}`
+            : `Explore ${visual.label}`
+        }
+        android_ripple={{ color: "transparent" }}
+        style={[
+          styles.fireExploreCta,
+          {
+            backgroundColor: visual.chipActiveBg,
+            borderColor: visual.lineStroke,
+          },
+        ]}
+      >
+        <View style={styles.fireExploreCtaTop}>
+          <Icon name={visual.filterIcon} size={18} color={visual.lineStroke} />
+          <Text style={[styles.fireExploreCtaTitle, { color: foreground }]}>
+            Explore {visual.label}
+          </Text>
+          <Icon name="chevron-right" size={18} color={visual.lineStroke} />
+        </View>
+        {themeLabel ? (
+          <Text
+            style={[styles.fireExploreCtaTheme, { color: muted }]}
+            numberOfLines={1}
+          >
+            {themeLabel}
+          </Text>
+        ) : null}
+        {multi ? (
+          <View
+            style={[
+              styles.fireExploreCounter,
+              { borderColor: visual.lineStroke + "88" },
+            ]}
+          >
+            <Text
+              style={[styles.fireExploreCounterText, { color: visual.lineStroke }]}
+            >
+              {counter}
+            </Text>
+          </View>
+        ) : null}
+      </PressableScale>
+
+      {multi ? (
+        <PressableScale
+          onPress={onNext}
+          haptic="light"
+          android_ripple={{ color: "transparent" }}
+          accessibilityRole="button"
+          accessibilityLabel={`Next ${visual.label}`}
+          style={[
+            styles.fireNavBtn,
+            {
+              backgroundColor: visual.chipActiveBg,
+              borderColor: visual.lineStroke,
+            },
+          ]}
+        >
+          <Icon name="chevron-right" size={22} color={visual.lineStroke} />
+        </PressableScale>
+      ) : (
+        <View style={styles.fireNavSpacer} />
+      )}
+    </View>
+  );
+}
+
 function StatPill(props: {
   value: number;
   fg: string;
   accessibilityLabel: string;
   icon: IconName;
   iconColor: string;
+  onPress?: () => void;
 }) {
+  const inner = (
+    <>
+      <Icon name={props.icon} size={14} color={props.iconColor} />
+      <Text style={[styles.statVal, { color: props.fg }]}>{props.value}</Text>
+    </>
+  );
+  if (props.onPress) {
+    return (
+      <Pressable
+        onPress={props.onPress}
+        style={styles.statPill}
+        accessibilityRole="button"
+        accessibilityLabel={`${props.accessibilityLabel}: ${props.value}. Open explorer.`}
+      >
+        {inner}
+      </Pressable>
+    );
+  }
   return (
     <View
       style={styles.statPill}
@@ -1471,8 +1770,7 @@ function StatPill(props: {
       accessibilityRole="text"
       accessibilityLabel={`${props.accessibilityLabel}: ${props.value}`}
     >
-      <Icon name={props.icon} size={14} color={props.iconColor} />
-      <Text style={[styles.statVal, { color: props.fg }]}>{props.value}</Text>
+      {inner}
     </View>
   );
 }
@@ -1529,55 +1827,15 @@ function AtlasFilterBar(props: {
     borderColor: active ? visual.chipActiveBorder : visual.chipIdleBorder,
     borderWidth: active ? 2 : 1,
   });
-  const renderFireChip = (mode: typeof rf | typeof wf) => {
-    const active = props.filter === mode.id;
-    return (
-      <View
-        key={mode.id}
-        style={[
-          styles.wavefireEmberGlowWrap,
-          active
-            ? styles.wavefireEmberGlowWrapActive
-            : styles.wavefireEmberGlowWrapIdle,
-          Platform.OS === "ios"
-            ? active
-              ? {
-                  shadowColor: mode.visual.chipShadowColor,
-                  shadowOffset: { width: 0, height: 0 },
-                  shadowOpacity: 0.72,
-                  shadowRadius: 16,
-                }
-              : {
-                  shadowColor: mode.visual.chipShadowColor,
-                  shadowOffset: { width: 0, height: 0 },
-                  shadowOpacity: 0.45,
-                  shadowRadius: 10,
-                }
-            : null,
-        ]}
-      >
-        <Pressable
-          onPress={() => props.onChange(mode.id)}
-          style={[
-            styles.filterWavefireChip,
-            fireChip(active, mode.visual),
-          ]}
-        >
-          <Text
-            style={[
-              styles.filterChipText,
-              styles.filterWavefireChipText,
-              {
-                color: active ? "#fff" : props.colors.foreground,
-              },
-            ]}
-          >
-            {mode.label}
-          </Text>
-        </Pressable>
-      </View>
-    );
-  };
+  const fireChipShadow = (active: boolean, visual: AtlasFireVisual) =>
+    Platform.OS === "ios"
+      ? {
+          shadowColor: visual.chipShadowColor,
+          shadowOffset: { width: 0, height: 0 },
+          shadowOpacity: active ? 0.72 : 0.45,
+          shadowRadius: active ? 16 : 10,
+        }
+      : null;
   return (
     <View style={styles.filterRow}>
       <View style={styles.filterChipsLeft}>
@@ -1624,8 +1882,51 @@ function AtlasFilterBar(props: {
         })}
       </View>
       <View style={styles.fireChipsRight}>
-        {renderFireChip(rf)}
-        {renderFireChip(wf)}
+        {[rf, wf].map((chip) => {
+          const active = props.filter === chip.id;
+          return (
+            <View
+              key={chip.id}
+              style={[
+                styles.wavefireEmberGlowWrap,
+                active
+                  ? styles.wavefireEmberGlowWrapActive
+                  : styles.wavefireEmberGlowWrapIdle,
+                {
+                  backgroundColor: active
+                    ? chip.visual.chipActiveBg
+                    : chip.visual.chipIdleBg,
+                  borderColor: active
+                    ? chip.visual.chipActiveBorder
+                    : chip.visual.chipIdleBorder,
+                },
+                fireChipShadow(active, chip.visual),
+              ]}
+            >
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={chip.visual.statA11y}
+                onPress={() => props.onChange(chip.id)}
+                style={[
+                  styles.filterWavefireChip,
+                  fireChip(active, chip.visual),
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    styles.filterWavefireChipText,
+                    {
+                      color: active ? "#fff" : props.colors.foreground,
+                    },
+                  ]}
+                >
+                  {chip.label}
+                </Text>
+              </Pressable>
+            </View>
+          );
+        })}
       </View>
     </View>
   );
@@ -1674,6 +1975,87 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     paddingHorizontal: 16,
     marginBottom: 8,
+  },
+  filterHint: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    lineHeight: 17,
+    paddingHorizontal: 16,
+    marginBottom: 8,
+    minHeight: 68,
+  },
+  atlasFooter: {
+    flexShrink: 0,
+  },
+  fireExploreSlot: {
+    minHeight: 88,
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    marginTop: 4,
+  },
+  fireExploreRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  fireNavSpacer: {
+    width: 44,
+    height: 44,
+  },
+  fireNavBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  fireExploreCta: {
+    flex: 1,
+    minHeight: 52,
+    borderRadius: 16,
+    borderWidth: 2,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    gap: 4,
+    overflow: "hidden",
+  },
+  fireExploreCtaTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  fireExploreCtaTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 15,
+    flexShrink: 1,
+    textAlign: "center",
+  },
+  fireExploreCtaTheme: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 12,
+    textAlign: "center",
+    paddingHorizontal: 4,
+  },
+  fireExploreCounter: {
+    alignSelf: "center",
+    marginTop: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 2,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  fireExploreCounterText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 11,
+    letterSpacing: 0.3,
+  },
+  statPillSpacer: {
+    minWidth: 88,
+    height: 32,
+    opacity: 0,
   },
   filterChip: {
     flexDirection: "row",

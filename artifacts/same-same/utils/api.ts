@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { postDebugSessionLog } from "@/utils/debugSessionLog";
 import { resolveMatchPhotoUris } from "@/utils/matchPhotoSnapshot";
+import { photoKey } from "@/utils/photoKey";
 import {
   getPublicApiOrigin,
   getStagedProductionApiOrigin,
@@ -770,35 +771,42 @@ function decorateEcho(raw: {
   };
 }
 
-export async function fetchEchoesInbox(): Promise<ServerEcho[]> {
+export type EchoListFetchResult = {
+  ok: boolean;
+  echoes: ServerEcho[];
+};
+
+export async function fetchEchoesInbox(): Promise<EchoListFetchResult> {
   try {
     const base = getApiBase();
     const res = await fetch(`${base}/api/echoes/inbox`, {
       headers: await authedHeaders(),
     });
-    if (!res.ok) return [];
+    if (!res.ok) return { ok: false, echoes: [] };
     const json = (await res.json()) as { echoes?: unknown[] };
-    return Array.isArray(json.echoes)
+    const echoes = Array.isArray(json.echoes)
       ? json.echoes.map((e) => decorateEcho(e as Parameters<typeof decorateEcho>[0]))
       : [];
+    return { ok: true, echoes };
   } catch {
-    return [];
+    return { ok: false, echoes: [] };
   }
 }
 
-export async function fetchEchoesMine(): Promise<ServerEcho[]> {
+export async function fetchEchoesMine(): Promise<EchoListFetchResult> {
   try {
     const base = getApiBase();
     const res = await fetch(`${base}/api/echoes/mine`, {
       headers: await authedHeaders(),
     });
-    if (!res.ok) return [];
+    if (!res.ok) return { ok: false, echoes: [] };
     const json = (await res.json()) as { echoes?: unknown[] };
-    return Array.isArray(json.echoes)
+    const echoes = Array.isArray(json.echoes)
       ? json.echoes.map((e) => decorateEcho(e as Parameters<typeof decorateEcho>[0]))
       : [];
+    return { ok: true, echoes };
   } catch {
-    return [];
+    return { ok: false, echoes: [] };
   }
 }
 
@@ -1250,18 +1258,38 @@ export async function fetchAtlasSummary(
     if (!cached.loadError) return cached;
   }
 
-  const base = getApiBase();
-  const apiHost = atlasApiHostForDisplay(base);
-  const result = await Promise.race([
-    fetchAtlasSummaryOnce(base, apiHost),
-    new Promise<AtlasSummaryResult>((resolve) => {
-      setTimeout(() => resolve(atlasTimeoutResult(apiHost)), ATLAS_FETCH_TIMEOUT_MS);
-    }),
-  ]);
-  if (!result.loadError) {
-    atlasSummaryCache = { fetchedAt: Date.now(), data: result };
+  const bases = exploreApiBases();
+  let lastResult: AtlasSummaryResult | null = null;
+
+  for (let i = 0; i < bases.length; i++) {
+    const base = bases[i]!;
+    const apiHost = atlasApiHostForDisplay(base);
+    const result = await Promise.race([
+      fetchAtlasSummaryOnce(base, apiHost),
+      new Promise<AtlasSummaryResult>((resolve) => {
+        setTimeout(
+          () => resolve(atlasTimeoutResult(apiHost)),
+          ATLAS_FETCH_TIMEOUT_MS,
+        );
+      }),
+    ]);
+    if (!result.loadError) {
+      atlasSummaryCache = { fetchedAt: Date.now(), data: result };
+      return result;
+    }
+    lastResult = result;
+    if (result.loadError === "unauthorized") break;
+    if (__DEV__ && i < bases.length - 1) {
+      console.warn(
+        `[fetchAtlasSummary] ${apiHost} failed — retrying ${bases[i + 1]}`,
+      );
+    }
   }
-  return result;
+
+  return (
+    lastResult ??
+    atlasTimeoutResult(atlasApiHostForDisplay(bases[0] ?? getApiBase()))
+  );
 }
 
 async function fetchAtlasSummaryOnce(
@@ -1820,14 +1848,13 @@ function viewerExploreParticipant(
   photo: ViewerExplorePhoto,
   countryCode: string,
   fallbackTheme: string,
-  photoIdSuffix: string,
 ): AtlasFireParticipant | null {
   const uri = photo.uri?.trim();
   if (!uri) return null;
   const theme =
     (photo.theme ?? fallbackTheme).trim() || fallbackTheme || "";
   return {
-    photoId: photo.backendId?.trim() || `${LOCAL_MY_PHOTO_ID_PREFIX}${photoIdSuffix}`,
+    photoId: photo.backendId?.trim() || `${LOCAL_MY_PHOTO_ID_PREFIX}viewer`,
     userId: "",
     countryCode,
     theme,
@@ -1856,11 +1883,18 @@ function enrichExploreWithViewerPhotos(
   const viewer = viewerDisplay.code ?? profileViewer;
 
   const primaryBackendId = primary.backendId?.trim();
+  const viewerUriKeys = new Set(
+    viewerPhotos
+      .map((p) => photoKey(p.uri))
+      .filter((k) => k.length > 0),
+  );
 
   const isViewerParticipant = (p: AtlasFireParticipant) => {
     if (primaryBackendId && p.photoId === primaryBackendId) return true;
     if (p.photoId.startsWith(LOCAL_MY_PHOTO_ID_PREFIX)) return true;
-    return !!(viewer && p.countryCode === viewer);
+    const uriKey = photoKey(p.uri);
+    if (uriKey && viewerUriKeys.has(uriKey)) return true;
+    return false;
   };
 
   return moments.map((m) => {
@@ -1873,7 +1907,6 @@ function enrichExploreWithViewerPhotos(
         primary,
         p.countryCode || viewer || "",
         fallbackTheme,
-        m.id,
       );
       return patched ?? p;
     });
@@ -1891,7 +1924,6 @@ function enrichExploreWithViewerPhotos(
         primary,
         viewer,
         fallbackTheme,
-        m.id,
       );
       if (mine) participants = [mine, ...participants];
     }
@@ -2367,6 +2399,8 @@ export async function fetchAtlasFireExplore(
     const tiles = flattenAtlasFireExplorePhotos(
       withViewer,
       cluster?.displayTheme ?? "",
+      undefined,
+      buildExploreFlattenOptions(options?.viewerMyPhotos),
     );
     finalizeExploreDiagnostics(diag, withViewer, tiles.length);
     return { moments: withViewer, error, diagnostics: diag };
@@ -2621,11 +2655,50 @@ export function explorePhotoUriNeedsAuth(uri: string): boolean {
   return /\/api\/photos\/[^/]+\/image(?:\?|$)/.test(uri);
 }
 
-/** Flatten explore moments into scrollable photo rows. */
+export type FlattenExploreOptions = {
+  viewerBackendPhotoIds?: ReadonlySet<string>;
+  viewerUriKeys?: ReadonlySet<string>;
+};
+
+/** Viewer identity for explore flatten — one tile per distinct image, counterparty first. */
+export function buildExploreFlattenOptions(
+  viewerMyPhotos?: ViewerExplorePhoto[],
+): FlattenExploreOptions {
+  const viewerBackendPhotoIds = new Set<string>();
+  const viewerUriKeys = new Set<string>();
+  for (const p of viewerMyPhotos ?? []) {
+    const bid = p.backendId?.trim();
+    if (bid) viewerBackendPhotoIds.add(bid);
+    const key = photoKey(p.uri);
+    if (key) viewerUriKeys.add(key);
+  }
+  return {
+    viewerBackendPhotoIds:
+      viewerBackendPhotoIds.size > 0 ? viewerBackendPhotoIds : undefined,
+    viewerUriKeys: viewerUriKeys.size > 0 ? viewerUriKeys : undefined,
+  };
+}
+
+function isExploreViewerParticipant(
+  p: AtlasFireParticipant,
+  displayUri: string,
+  opts?: FlattenExploreOptions,
+): boolean {
+  if (!opts) return false;
+  const pid = p.photoId?.trim() ?? "";
+  if (pid.startsWith(LOCAL_MY_PHOTO_ID_PREFIX)) return true;
+  if (pid && opts.viewerBackendPhotoIds?.has(pid)) return true;
+  const uriKey = photoKey(displayUri);
+  if (uriKey && opts.viewerUriKeys?.has(uriKey)) return true;
+  return false;
+}
+
+/** Flatten explore moments into scrollable photo rows (one counterparty photo per arc). */
 export function flattenAtlasFireExplorePhotos(
   moments: AtlasFireMoment[],
   fallbackTheme: string,
   apiBase?: string,
+  flattenOptions?: FlattenExploreOptions,
 ): Array<{ key: string; theme: string; participant: AtlasFireParticipant }> {
   const base = apiBase?.trim() || getApiBase();
   const out: Array<{
@@ -2633,21 +2706,97 @@ export function flattenAtlasFireExplorePhotos(
     theme: string;
     participant: AtlasFireParticipant;
   }> = [];
-  const seenTileKeys = new Set<string>();
+  const seenUriKeys = new Set<string>();
+  const counterpartyTiles: Array<{
+    key: string;
+    theme: string;
+    participant: AtlasFireParticipant;
+    uriKey: string;
+  }> = [];
+  let viewerTile: {
+    key: string;
+    theme: string;
+    participant: AtlasFireParticipant;
+    uriKey: string;
+  } | null = null;
+
+  const pushTile = (
+    m: AtlasFireMoment,
+    p: AtlasFireParticipant,
+    displayUri: string,
+  ) => {
+    const uriKey = photoKey(displayUri);
+    if (!uriKey) return null;
+    return {
+      key: `${m.id}:${uriKey}`,
+      theme: p.theme.trim() || m.theme.trim() || fallbackTheme,
+      participant: { ...p, uri: displayUri },
+      uriKey,
+    };
+  };
+
   for (const m of moments) {
-    for (const p of m.participants) {
-      const displayUri = resolveExplorePhotoDisplayUri(p, base, m.id);
-      if (!displayUri) continue;
-      const tileKey = `${p.photoId}:${displayUri}`;
-      if (seenTileKeys.has(tileKey)) continue;
-      seenTileKeys.add(tileKey);
-      out.push({
-        key: `${m.id}:${p.photoId}`,
-        theme: p.theme.trim() || m.theme.trim() || fallbackTheme,
-        participant: { ...p, uri: displayUri },
-      });
+    const resolved = m.participants
+      .map((p) => {
+        const displayUri = resolveExplorePhotoDisplayUri(p, base, m.id);
+        if (!displayUri) return null;
+        return {
+          participant: p,
+          displayUri,
+          isViewer: isExploreViewerParticipant(p, displayUri, flattenOptions),
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x != null);
+
+    const counterparty = resolved.filter((r) => !r.isViewer);
+    if (counterparty[0]) {
+      const tile = pushTile(m, counterparty[0].participant, counterparty[0].displayUri);
+      if (tile && !seenUriKeys.has(tile.uriKey)) {
+        seenUriKeys.add(tile.uriKey);
+        counterpartyTiles.push(tile);
+      }
+    }
+
+    if (!viewerTile) {
+      const viewerResolved = resolved.find((r) => r.isViewer);
+      if (viewerResolved) {
+        const tile = pushTile(
+          m,
+          viewerResolved.participant,
+          viewerResolved.displayUri,
+        );
+        if (tile) viewerTile = tile;
+      }
     }
   }
+
+  if (viewerTile && counterpartyTiles.length > 0) {
+    if (!seenUriKeys.has(viewerTile.uriKey)) {
+      out.push({
+        key: viewerTile.key,
+        theme: viewerTile.theme,
+        participant: viewerTile.participant,
+      });
+      seenUriKeys.add(viewerTile.uriKey);
+    }
+  }
+
+  for (const tile of counterpartyTiles) {
+    out.push({
+      key: tile.key,
+      theme: tile.theme,
+      participant: tile.participant,
+    });
+  }
+
+  if (out.length === 0 && viewerTile) {
+    out.push({
+      key: viewerTile.key,
+      theme: viewerTile.theme,
+      participant: viewerTile.participant,
+    });
+  }
+
   return out;
 }
 

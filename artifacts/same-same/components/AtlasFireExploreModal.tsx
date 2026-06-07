@@ -24,6 +24,7 @@ import { useColors } from "@/hooks/useColors";
 import {
   authedImageHeaders,
   explorePhotoUriNeedsAuth,
+  buildExploreFlattenOptions,
   fetchAtlasFireExplore,
   flattenAtlasFireExplorePhotos,
   formatAtlasFireExploreDiagnostics,
@@ -307,6 +308,7 @@ export function AtlasFireExploreModal({
           moments,
           cluster.displayTheme,
           getPublicApiOrigin(),
+          buildExploreFlattenOptions(viewerMyPhotos),
         );
         setPhotoTiles(tiles);
         setLoadError(error);

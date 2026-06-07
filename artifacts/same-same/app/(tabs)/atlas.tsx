@@ -101,8 +101,8 @@ function mergeLocalSameRippleArcs(
   for (const m of matches) {
     if (m.verdict !== "same") continue;
     const to = (m.theirCountryCode ?? "").trim().toUpperCase();
-    if (!/^[A-Z]{2}$/.test(to)) continue;
-    if (hasApiRippleBetween(to) && to !== mine) continue;
+    if (!/^[A-Z]{2}$/.test(to) || to === mine) continue;
+    if (hasApiRippleBetween(to)) continue;
     const ts = Date.parse(m.timestamp);
     const fresh = Number.isFinite(ts) && now - ts < RIPPLE_FRESH_MS;
     const theme = (m.theme ?? "").trim();
@@ -246,15 +246,21 @@ export default function AtlasScreen() {
     setRefreshing(true);
     if (!atlasHasLoadedOnceRef.current && !hasCachedData) setLoading(true);
     try {
-      const data = await fetchAtlasSummary();
-      setSummary(data.countries);
-      setConnections(data.connections);
-      setLoadError(data.loadError ?? null);
-      setLoadFailure(data.loadFailure ?? null);
-      atlasHasLoadedOnceRef.current = true;
+      const data = await fetchAtlasSummary({ force: isRefresh });
       if (data.loadError == null) {
+        setSummary(data.countries);
+        setConnections(data.connections);
+        setLoadError(null);
+        setLoadFailure(null);
         await saveAtlasCache(data.countries, data.connections);
+      } else {
+        setLoadError(data.loadError);
+        setLoadFailure(data.loadFailure ?? null);
+        // Background refresh failed — keep the last good map instead of wiping it.
+        setSummary((prev) => (prev.length > 0 ? prev : data.countries));
+        setConnections((prev) => (prev.length > 0 ? prev : data.connections));
       }
+      atlasHasLoadedOnceRef.current = true;
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -350,8 +356,12 @@ export default function AtlasScreen() {
     totalPhotos,
   ]);
 
+  const hasDisplayableGlobe =
+    summary.length > 0 || globeConnections.length > 0;
+
   const showGlobe =
-    (!loading || hasCachedData) && loadError === null;
+    (!loading || hasCachedData || hasDisplayableGlobe) &&
+    (loadError === null || hasDisplayableGlobe);
   const showRefresh =
     (!loading || hasCachedData) &&
     !(
@@ -460,12 +470,17 @@ export default function AtlasScreen() {
             connections={globeConnections}
             countries={summary}
             isSignedIn={!!isSignedIn}
-            fireExploreOptions={fireExploreOptions}
+            localRippleMatches={fireExploreOptions.localMatches}
+            localWaveEchoes={fireExploreOptions.localWaves}
+            viewerCountryCode={fireExploreOptions.viewerCountryCode}
+            viewerMyPhotos={fireExploreOptions.viewerMyPhotos}
           />
         </View>
       ) : null}
 
-      {!loading && (loadError === "server" || loadError === "network") ? (
+      {!loading &&
+      (loadError === "server" || loadError === "network") &&
+      !hasDisplayableGlobe ? (
         <ScrollView
           style={styles.errorScroll}
           contentContainerStyle={[

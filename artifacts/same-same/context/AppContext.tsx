@@ -503,6 +503,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // the full persisted ledger and any pre-hydration picks should be
   // re-evaluated.
   const [hasHydrated, setHasHydrated] = useState(false);
+  const hasHydratedRef = React.useRef(false);
+  React.useEffect(() => {
+    hasHydratedRef.current = hasHydrated;
+  }, [hasHydrated]);
 
   useEffect(() => {
     loadState().finally(() => setHasHydrated(true));
@@ -1479,21 +1483,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // that the loop is real.
 
   const refreshEchoes = useCallback(async () => {
+    if (!hasHydratedRef.current) return;
     try {
-      const [inbox, mine] = await Promise.all([
+      const [inboxRes, mineRes] = await Promise.all([
         fetchEchoesInbox(),
         fetchEchoesMine(),
       ]);
+      if (!inboxRes.ok && !mineRes.ok) return;
+
+      const inbox = inboxRes.ok
+        ? inboxRes.echoes
+        : stateRef.current.pendingEchoes;
+      const mine = mineRes.ok ? mineRes.echoes : stateRef.current.mutualEchoes;
+
       const celebratedIds = await hydrateCelebratedEchoIds();
       const toMarkSeen: string[] = [];
-      for (const e of mine) {
-        if (e.state !== "mutual") continue;
-        if (flashEnqueuedRef.current.has(e.id)) continue;
-        if (shouldCelebrateMutualEcho(e, celebratedIds)) {
-          enqueueFlashEcho(e);
-        } else {
-          flashEnqueuedRef.current.add(e.id);
-          toMarkSeen.push(e.id);
+      if (mineRes.ok) {
+        for (const e of mine) {
+          if (e.state !== "mutual") continue;
+          if (flashEnqueuedRef.current.has(e.id)) continue;
+          if (shouldCelebrateMutualEcho(e, celebratedIds)) {
+            enqueueFlashEcho(e);
+          } else {
+            flashEnqueuedRef.current.add(e.id);
+            toMarkSeen.push(e.id);
+          }
         }
       }
       if (toMarkSeen.length > 0) {
@@ -1503,26 +1517,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setState((prev) => {
         const newState: AppState = {
           ...prev,
-          pendingEchoes: inbox,
-          mutualEchoes: mine,
+          pendingEchoes: inboxRes.ok ? inboxRes.echoes : prev.pendingEchoes,
+          mutualEchoes: mineRes.ok ? mineRes.echoes : prev.mutualEchoes,
         };
         saveState(newState);
         return newState;
       });
     } catch {
-      // Network failure — leave existing lists in place. The inbox screen
-      // shows an empty state when both lists are empty, which is fine.
+      // Network failure — leave existing lists in place.
     }
   }, [enqueueFlashEcho]);
 
-  // First load + lightweight 30s poll. We don't need push notifications
-  // for MVP; the user will see new offers when they next foreground the
-  // app or open the inbox.
+  // First load + lightweight 30s poll. Wait for AsyncStorage hydration so
+  // a fast failed fetch cannot overwrite persisted matches / echoes.
   React.useEffect(() => {
+    if (!hasHydrated) return;
     refreshEchoes();
     const id = setInterval(refreshEchoes, 30_000);
     return () => clearInterval(id);
-  }, [refreshEchoes]);
+  }, [refreshEchoes, hasHydrated]);
 
   // Keep the forward-declared ref in sync so removeMatch / changeVerdict
   // (declared earlier in this component) can fire a refresh after a

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Image, type ImageContentFit, type ImageStyle } from "expo-image";
 import {
   normalizeUnsplashUri,
@@ -12,6 +12,8 @@ type Props = {
   accessibilityLabel?: string;
   /** Crossfade when `uri` changes (ms). 0 disables. */
   transitionMs?: number;
+  /** Stable expo-image recycle id — use photoKey(uri), not a changing CDN query string. */
+  recyclingKey?: string;
 };
 
 /**
@@ -24,12 +26,17 @@ export function RemotePhotoImage({
   resizeMode = "cover",
   accessibilityLabel,
   transitionMs = 220,
+  recyclingKey,
 }: Props) {
-  const [src, setSrc] = useState(() => normalizeUnsplashUri(uri));
+  const normalized = useMemo(() => normalizeUnsplashUri(uri), [uri]);
+  const [failedUri, setFailedUri] = useState<string | null>(null);
 
   useEffect(() => {
-    setSrc(normalizeUnsplashUri(uri));
-  }, [uri]);
+    setFailedUri(null);
+  }, [normalized]);
+  const useFallback = failedUri === normalized;
+  const src = useFallback ? UNSPLASH_FALLBACK_URI : normalized;
+  const stableKey = recyclingKey ?? normalized;
 
   return (
     <Image
@@ -37,13 +44,11 @@ export function RemotePhotoImage({
       style={style}
       contentFit={resizeMode}
       cachePolicy="memory-disk"
-      recyclingKey={src}
+      recyclingKey={stableKey}
       transition={transitionMs > 0 ? transitionMs : undefined}
       accessibilityLabel={accessibilityLabel}
       onError={() => {
-        setSrc((current) =>
-          current === UNSPLASH_FALLBACK_URI ? current : UNSPLASH_FALLBACK_URI,
-        );
+        setFailedUri(normalized);
       }}
     />
   );
