@@ -116,6 +116,7 @@ if ($skipPrebuild -and (Test-Path $androidDir)) {
 & (Join-Path $scriptRoot "patch-android-package.ps1")
 & (Join-Path $scriptRoot "patch-android-hermes.ps1")
 & (Join-Path $scriptRoot "patch-android-architectures.ps1")
+& (Join-Path $scriptRoot "patch-android-signing.ps1")
 if (-not (Test-Path $androidDir)) {
   Write-Error "prebuild did not create android/"
 }

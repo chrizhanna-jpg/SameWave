@@ -1,7 +1,7 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useColors } from "@/hooks/useColors";
-import { getGeoTier, getTimeTier } from "@/utils/celebrations";
+import { getGeoTierForPhotos, getTimeTier } from "@/utils/celebrations";
 import type { Match } from "@/context/AppContext";
 
 /**
@@ -18,7 +18,10 @@ export function MatchTierChips({
 }) {
   const colors = useColors();
   const time = getTimeTier(match.myPhotoUploadedAt, match.theirPhotoMinutesAgo);
-  const geo = getGeoTier(myCountryCode, match.theirCountryCode);
+  const geo = getGeoTierForPhotos(
+    match.myCaptureCountryCode,
+    match.theirCaptureCountryCode,
+  );
   const timeColor =
     time.kind === "minute"
       ? colors.gold

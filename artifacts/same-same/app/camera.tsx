@@ -34,6 +34,7 @@ import {
 import { analyzePhoto, reactivateMyPhoto, uploadPhoto } from "@/utils/api";
 import { requestAtlasRefresh } from "@/utils/atlasHub";
 import { detectPhotoOrigin, type PhotoSource } from "@/utils/photoOrigin";
+import { photoCountryDisplay } from "@/utils/photoCountry";
 import {
   MUSIC_LIBRARY,
   genreMatchesSearchQuery,
@@ -280,6 +281,7 @@ export default function CameraScreen() {
   const [aiPaywallOpen, setAiPaywallOpen] = useState(false);
   const themeEditedRef = useRef(false);
   const pickedAssetRef = useRef<ImagePicker.ImagePickerAsset | null>(null);
+  const captureCountryRef = useRef<string | undefined>(undefined);
   // Tracks the latest analysis call so older in-flight responses don't
   // overwrite tags for a newer photo pick.
   const analyzeReqIdRef = useRef(0);
@@ -634,9 +636,12 @@ export default function CameraScreen() {
   const acceptPhoto = (
     asset: ImagePicker.ImagePickerAsset,
     source: PhotoSource,
+    captureCountryCode?: string,
   ) => {
     const verdict = detectPhotoOrigin(asset, source);
     resetForNewPhoto();
+    captureCountryRef.current =
+      source === "camera" ? captureCountryCode : undefined;
     setIsAi(verdict.looksAi);
     if (verdict.looksAi) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -883,7 +888,7 @@ export default function CameraScreen() {
           assetId: null,
           duration: null,
         } as unknown as ImagePicker.ImagePickerAsset;
-        acceptPhoto(asset, "camera");
+        acceptPhoto(asset, "camera", cap.captureCountryCode);
       }
       return () => {
         void pausePreview();
@@ -1070,12 +1075,15 @@ export default function CameraScreen() {
         finalGenre,
         recordedUrl ?? undefined,
         aiSubjectsRef.current,
+        captureCountryRef.current,
+        myCountryCode,
       );
       if (captured?.base64) {
         uploadPhoto({
           imageBase64: captured.base64,
           mimeType: captured.mimeType,
           countryCode: myCountryCode,
+          captureCountryCode: captureCountryRef.current,
           musicGenre: finalGenre,
           customAudioBase64: recordedBase64 ?? undefined,
           customAudioMime: recordedBase64 ? RECORDING_MIME : undefined,
@@ -1646,7 +1654,12 @@ export default function CameraScreen() {
                 showsHorizontalScrollIndicator={false}
                 style={styles.prevScroll}
               >
-                {myPhotos.slice(0, 8).map((photo, i) => (
+                {myPhotos.slice(0, 8).map((photo, i) => {
+                  const loc = photoCountryDisplay(
+                    photo.captureCountryCode,
+                    photo.declaredCountryCode ?? myCountryCode,
+                  );
+                  return (
                   <View key={i} style={styles.prevItem}>
                     <TouchableOpacity
                       onPress={() => {
@@ -1662,6 +1675,11 @@ export default function CameraScreen() {
                         style={[styles.prevPhoto, { borderColor: colors.border }]}
                         resizeMode="cover"
                       />
+                      {loc.code ? (
+                        <View style={styles.prevCountryBadge}>
+                          <Text style={styles.prevCountryFlag}>{loc.flag}</Text>
+                        </View>
+                      ) : null}
                     </TouchableOpacity>
                     {photo.customAudioUrl ? (
                       <MicBadge
@@ -1671,7 +1689,8 @@ export default function CameraScreen() {
                       />
                     ) : null}
                   </View>
-                ))}
+                  );
+                })}
               </ScrollView>
             </View>
           )}
@@ -1986,6 +2005,21 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 4,
     bottom: 4,
+  },
+  prevCountryBadge: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderRadius: 10,
+    minWidth: 24,
+    height: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+  },
+  prevCountryFlag: {
+    fontSize: 13,
   },
   themeSection: {
     gap: 8,

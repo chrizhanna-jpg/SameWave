@@ -57,6 +57,11 @@ export const photosTable = pgTable(
     embedding: vector("embedding", { dimensions: 768 }),
 
     countryCode: varchar("country_code", { length: 2 }),
+    // ISO country from coarse GPS at in-app camera capture. When set,
+    // this is the honest "where this moment was taken" signal — distinct
+    // from `countryCode`, which is the uploader's profile/default at post
+    // time (library uploads, legacy rows). Geo ripples require capture.
+    captureCountryCode: varchar("capture_country_code", { length: 2 }),
 
     // Music vibe (the "vibe clip" feature). Lower-case genre id from
     // artifacts/same-same/data/musicLibrary.ts (e.g. "classic", "rock").

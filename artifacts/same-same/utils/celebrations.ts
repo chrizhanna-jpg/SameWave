@@ -161,6 +161,31 @@ export interface GeoTier {
   emoji: string;
 }
 
+const SAME_PLANET_TIER: GeoTier = {
+  kind: "planet",
+  rank: 1,
+  label: "Same Planet",
+  sub: "Across the world, on the same planet.",
+  emoji: "🌍",
+};
+
+/**
+ * Geo celebration for a match between two photos. Same Country / Continent
+ * only when both photos have capture-time GPS country — library uploads and
+ * legacy rows without capture cap at Same Planet so geography stays honest.
+ */
+export function getGeoTierForPhotos(
+  myCapture?: string | null,
+  theirCapture?: string | null,
+): GeoTier {
+  const a = myCapture?.trim().toUpperCase();
+  const b = theirCapture?.trim().toUpperCase();
+  if (!a || !b || a.length !== 2 || b.length !== 2) {
+    return SAME_PLANET_TIER;
+  }
+  return getGeoTier(a, b);
+}
+
 export function getGeoTier(myCode?: string, theirCode?: string): GeoTier {
   const a = myCode?.toUpperCase();
   const b = theirCode?.toUpperCase();
@@ -187,11 +212,5 @@ export function getGeoTier(myCode?: string, theirCode?: string): GeoTier {
     };
   }
 
-  return {
-    kind: "planet",
-    rank: 1,
-    label: "Same Planet",
-    sub: "Across the world, on the same planet.",
-    emoji: "🌍",
-  };
+  return SAME_PLANET_TIER;
 }

@@ -16,6 +16,7 @@ import { useApp } from "@/context/AppContext";
 import { PhotoCard } from "@/components/PhotoCard";
 import { MatchTierChips } from "@/components/MatchTierChips";
 import { confirmReportPhoto } from "@/utils/photoModeration";
+import { photoCountryDisplay } from "@/utils/photoCountry";
 
 export default function PassesScreen() {
   const colors = useColors();
@@ -88,7 +89,14 @@ export default function PassesScreen() {
             </Text>
           </View>
         ) : (
-          passedMatches.map((match) => (
+          passedMatches.map((match) => {
+            const myFlag =
+              match.myCountryFlag ??
+              photoCountryDisplay(
+                match.myCaptureCountryCode,
+                match.myCountryCode,
+              ).flag;
+            return (
             <View
               key={match.id}
               style={[
@@ -97,7 +105,7 @@ export default function PassesScreen() {
               ]}
             >
               <View style={styles.passedHeader}>
-                <Text style={styles.matchFlag}>🌍</Text>
+                <Text style={styles.matchFlag}>{myFlag}</Text>
                 <Icon
                   name="arrow-right"
                   size={12}
@@ -164,7 +172,8 @@ export default function PassesScreen() {
                 </TouchableOpacity>
               </View>
             </View>
-          ))
+            );
+          })
         )}
       </ScrollView>
     </View>

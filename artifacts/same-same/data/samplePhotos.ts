@@ -11,6 +11,8 @@ export interface SamplePhoto {
   theme: string;
   minutesAgo: number;
   tags: string[];
+  /** GPS country at capture — geo ripples require this on both sides. */
+  captureCountryCode?: string;
   /**
    * Visual-form / composition tags (circles, vertical, layered…). Used
    * by scoreCandidates to credit shape overlap as a third axis (each

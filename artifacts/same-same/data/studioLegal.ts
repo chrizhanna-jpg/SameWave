@@ -7,6 +7,19 @@ export const WAVE_BLUE = "#3A7DFF";
 
 export const SUPPORT_EMAIL = "samewaveripple@gmail.com";
 
+/** Play Console / Data safety — public account deletion request page (no sign-in). */
+export const ACCOUNT_DELETION_PAGE_PATH = "/api/account-deletion";
+
+export const DATA_DELETION_REQUEST_SUBJECT = "SameWave data deletion request";
+
+export function accountDeletionPageUrl(apiOrigin: string): string {
+  return `${apiOrigin.replace(/\/+$/, "")}${ACCOUNT_DELETION_PAGE_PATH}`;
+}
+
+export function accountDeletionMailtoUrl(): string {
+  return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(DATA_DELETION_REQUEST_SUBJECT)}`;
+}
+
 export const COPYRIGHT_SHORT = `© ${COPYRIGHT_YEAR} ${STUDIO_NAME} — All rights reserved.`;
 export const COPYRIGHT_FOOTER_LABEL = "Copyright:";
 export const COPYRIGHT_FOOTER_LINE = COPYRIGHT_SHORT;

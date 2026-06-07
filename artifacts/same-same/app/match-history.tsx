@@ -18,6 +18,7 @@ import type { Match } from "@/context/AppContext";
 import { PhotoCard } from "@/components/PhotoCard";
 import { MatchTierChips } from "@/components/MatchTierChips";
 import { timeAgo } from "@/utils/timeAgo";
+import { photoCountryDisplay } from "@/utils/photoCountry";
 import { MATCH_HISTORY_EMPTY } from "@/data/waveRippleGlossary";
 import { confirmReportPhoto } from "@/utils/photoModeration";
 
@@ -108,6 +109,9 @@ export default function MatchHistoryScreen() {
   // multi-statement map callbacks (const + return) can trip Babel's
   // JSX parser during EAS export.
   const renderRippleRow = (match: Match) => {
+    const myFlag =
+      match.myCountryFlag ??
+      photoCountryDisplay(match.myCaptureCountryCode, match.myCountryCode).flag;
     const openReveal = (action?: "share" | "paywall") => {
       Haptics.selectionAsync();
       router.push({
@@ -132,7 +136,7 @@ export default function MatchHistoryScreen() {
         <PhotoCard uri={match.myPhoto} size="sm" />
         <View style={styles.matchMeta}>
           <View style={styles.matchFlags}>
-            <Text style={styles.matchFlag}>🌍</Text>
+            <Text style={styles.matchFlag}>{myFlag}</Text>
             <Icon
               name="arrow-right"
               size={12}
@@ -355,13 +359,19 @@ export default function MatchHistoryScreen() {
                       { color: colors.mutedForeground },
                     ]}
                   >
-                    both Rippled back
+                    They rippled back! Send a Ripple catch a Wave
                   </Text>
                 </View>
                 {sortedWaves.map((echo) => {
                   const stamp = echo.mutualAt
                     ? new Date(echo.mutualAt)
                     : new Date(echo.createdAt);
+                  const myFlag =
+                    echo.mine.countryFlag ??
+                    photoCountryDisplay(
+                      echo.mine.captureCountryCode,
+                      echo.mine.countryCode,
+                    ).flag;
                   return (
                     <TouchableOpacity
                       key={echo.id}
@@ -388,7 +398,7 @@ export default function MatchHistoryScreen() {
                       <PhotoCard uri={echo.mine.uri} size="sm" />
                       <View style={styles.matchMeta}>
                         <View style={styles.matchFlags}>
-                          <Text style={styles.matchFlag}>🌍</Text>
+                          <Text style={styles.matchFlag}>{myFlag}</Text>
                           <Icon
                             name="arrow-right"
                             size={12}

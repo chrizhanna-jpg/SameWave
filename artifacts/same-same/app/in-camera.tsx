@@ -41,6 +41,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
 import { setPendingCapture } from "@/utils/captureBus";
+import { detectCountryFromGPS } from "@/utils/gpsCountry";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 // Pinch sensitivity. expo-camera's zoom prop is 0-1; a single full
@@ -102,6 +103,7 @@ export default function InCameraScreen() {
   const capture = async () => {
     if (!cameraRef.current || busy) return;
     setBusy(true);
+    const captureCountryPromise = detectCountryFromGPS();
     try {
       const shot = await cameraRef.current.takePictureAsync({
         quality: 0.9,
@@ -139,10 +141,12 @@ export default function InCameraScreen() {
         Alert.alert("Couldn't save photo", "Please try again.");
         return;
       }
+      const detected = await captureCountryPromise;
       setPendingCapture({
         uri: cropped.uri,
         base64: cropped.base64,
         mimeType: "image/jpeg",
+        captureCountryCode: detected?.code,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
         () => {},

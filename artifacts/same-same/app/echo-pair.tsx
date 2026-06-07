@@ -30,7 +30,7 @@ import {
 import { WAVE_MUTUAL_TAGLINE } from "@/data/waveRippleGlossary";
 import { useColors } from "@/hooks/useColors";
 import { useProAccess } from "@/hooks/useProAccess";
-import { getTimeTier, getGeoTier } from "@/utils/celebrations";
+import { getGeoTierForPhotos, getTimeTier } from "@/utils/celebrations";
 import { fetchPair, type PhotoPairResult } from "@/utils/api";
 import { formatDualWaveThemes } from "@/utils/shareThemeLabels";
 import { useApp } from "@/context/AppContext";
@@ -240,9 +240,9 @@ export default function EchoPairScreen() {
       ? (Date.now() - new Date(pair.b.createdAt).getTime()) / 60000
       : undefined;
   const timeTier = getTimeTier(pair.a.createdAt ?? undefined, bMinutesAgo);
-  const geoTier = getGeoTier(
-    pair.a.countryCode ?? undefined,
-    pair.b.countryCode ?? undefined,
+  const geoTier = getGeoTierForPhotos(
+    pair.a.captureCountryCode,
+    pair.b.captureCountryCode,
   );
 
   const myPhotoIds = new Set(

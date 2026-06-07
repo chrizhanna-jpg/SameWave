@@ -13,6 +13,7 @@ import {
   fetchSeenPhotoIds,
   respondEcho as respondEchoApi,
   unvotePhoto,
+  deleteMyPhoto,
   type ServerEcho,
 } from "@/utils/api";
 import { requestAtlasRefresh } from "@/utils/atlasHub";
@@ -90,6 +91,13 @@ export interface MyPhoto {
    * a round-trip to the server.
    */
   customAudioUrl?: string;
+  /**
+   * ISO country from coarse GPS at in-app camera capture. When set,
+   * geo ripples and match display prefer this over profile country.
+   */
+  captureCountryCode?: string;
+  /** Profile country at upload time — fallback when capture is unknown. */
+  declaredCountryCode?: string;
 }
 
 /** Fields returned from `POST /photos` to merge onto the local `MyPhoto`. */
@@ -121,9 +129,15 @@ export interface Match {
   // predate this field stay client-side only.
   theirPhotoId?: string;
   myCountry: string;
+  myCountryCode?: string;
+  myCountryFlag?: string;
   theirCountry: string;
   theirCountryFlag: string;
   theirCountryCode: string;
+  /** Capture-time GPS country on my photo at swipe time, when known. */
+  myCaptureCountryCode?: string;
+  /** Capture-time GPS country on their photo, when known. */
+  theirCaptureCountryCode?: string;
   similarityScore: number;
   verdict: "same" | "different" | null;
   timestamp: string;
@@ -200,8 +214,10 @@ export interface PhotoSide {
   id: string;
   uri: string;
   countryCode: string | null;
+  captureCountryCode?: string | null;
   country: string;
   countryFlag: string;
+  theme?: string;
 }
 
 export interface EchoCard {
@@ -300,6 +316,8 @@ interface AppContextValue extends AppState {
      * to empty when callers (e.g. legacy paths) don't have them.
      */
     subjects?: string[],
+    captureCountryCode?: string,
+    declaredCountryCode?: string,
   ) => void;
   /**
    * Patch a previously-added local photo with the backend ID returned by
@@ -323,7 +341,24 @@ interface AppContextValue extends AppState {
     uri: string,
     state: NonNullable<MyPhoto["uploadState"]>,
   ) => void;
-  completeOnboarding: () => void;
+  /** Re-promote an existing upload for today's match deck (no duplicate row). */
+  activateMyPhotoForMatch: (
+    uri: string,
+    patch: {
+      theme: string;
+      tags?: string[];
+      musicGenre?: string;
+      customAudioUrl?: string;
+      subjects?: string[];
+    },
+  ) => void;
+  /** Remove a local photo and delete from server when signed in. */
+  removeMyPhoto: (uri: string) => Promise<boolean>;
+  completeOnboarding: (country?: {
+    code: string;
+    name: string;
+    flag: string;
+  }) => Promise<void>;
   resetOnboarding: () => void;
   unlockPro: () => void;
   setProUnlocked: (value: boolean) => void;
@@ -533,6 +568,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state.myPhotos]);
 
+  const persistChainRef = React.useRef(Promise.resolve());
+  const persistState = useCallback(async (newState: AppState) => {
+    persistChainRef.current = persistChainRef.current.then(async () => {
+      try {
+        await AsyncStorage.setItem("samesame_state", JSON.stringify(newState));
+      } catch {}
+    });
+    await persistChainRef.current;
+  }, []);
+
+  const saveState = useCallback(
+    (newState: AppState) => {
+      void persistState(newState);
+    },
+    [persistState],
+  );
+
   const loadState = async () => {
     try {
       const [echoCache, celebratedIds] = await Promise.all([
@@ -554,8 +606,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         // show the tutorial three times instead of the intended two.
         // Persist immediately so even an instant kill-and-relaunch
         // counts as an opened session.
-        const fresh = { appOpenCount: 1 };
-        AsyncStorage.setItem("samesame_state", JSON.stringify(fresh)).catch(() => {});
+        const fresh = { ...stateRef.current, appOpenCount: 1 };
+        await persistState(fresh);
         setState((prev) => ({
           ...prev,
           appOpenCount: 1,
@@ -655,10 +707,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         // app close before any other state mutation triggers a save —
         // otherwise the user could see the tutorial more than the
         // intended N times if they kill the app fast.
-        AsyncStorage.setItem(
-          "samesame_state",
-          JSON.stringify({ ...parsed, appOpenCount: nextOpenCount }),
-        ).catch(() => {});
+        await persistState({
+          ...stateRef.current,
+          ...parsed,
+          appOpenCount: nextOpenCount,
+        } as AppState);
         setState((prev) => ({
           ...prev,
           ...parsed,
@@ -686,12 +739,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ),
         }));
       }
-    } catch {}
-  };
-
-  const saveState = async (newState: AppState) => {
-    try {
-      await AsyncStorage.setItem("samesame_state", JSON.stringify(newState));
     } catch {}
   };
 
@@ -1019,6 +1066,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     musicGenre?: string,
     customAudioUrl?: string,
     subjects?: string[],
+    captureCountryCode?: string,
+    declaredCountryCode?: string,
   ) => {
     const photo: MyPhoto = {
       uri,
@@ -1032,6 +1081,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       isAI: isAI ?? false,
       musicGenre: musicGenre,
       customAudioUrl,
+      captureCountryCode,
+      declaredCountryCode,
       // Real (non-AI) photos start as "pending" — the camera screen
       // fires the POST /photos call and will patch this to "ok" or
       // "failed" once the network round-trip resolves. AI photos are
@@ -1139,13 +1190,83 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
-  const completeOnboarding = useCallback(() => {
+  const activateMyPhotoForMatch = useCallback(
+    (
+      uri: string,
+      patch: {
+        theme: string;
+        tags?: string[];
+        musicGenre?: string;
+        customAudioUrl?: string;
+        subjects?: string[];
+      },
+    ) => {
+      setState((prev) => {
+        const idx = prev.myPhotos.findIndex((p) => p.uri === uri);
+        if (idx < 0) return prev;
+        const existing = prev.myPhotos[idx];
+        const updated: MyPhoto = {
+          ...existing,
+          theme: patch.theme,
+          tags: patch.tags ?? existing.tags,
+          musicGenre: patch.musicGenre ?? existing.musicGenre,
+          customAudioUrl: patch.customAudioUrl ?? existing.customAudioUrl,
+          subjects: patch.subjects ?? existing.subjects,
+          uploadedAt: new Date().toISOString(),
+        };
+        const rest = prev.myPhotos.filter((_, i) => i !== idx);
+        const newState = {
+          ...prev,
+          myPhotos: [updated, ...rest],
+          seenPhotoKeys: [],
+          seenPhotoIds: [],
+        };
+        saveState(newState);
+        return newState;
+      });
+    },
+    [],
+  );
+
+  const removeMyPhoto = useCallback(async (uri: string): Promise<boolean> => {
+    const photo = stateRef.current.myPhotos.find((p) => p.uri === uri);
+    if (!photo) return false;
+    if (photo.backendId) {
+      const ok = await deleteMyPhoto(photo.backendId);
+      if (!ok) return false;
+    }
     setState((prev) => {
-      const newState = { ...prev, onboardingComplete: true };
+      const newPhotos = prev.myPhotos.filter((p) => p.uri !== uri);
+      if (newPhotos.length === prev.myPhotos.length) return prev;
+      AI_PHOTO_URIS.delete(uri);
+      const newState = { ...prev, myPhotos: newPhotos };
       saveState(newState);
       return newState;
     });
+    return true;
   }, []);
+
+  const completeOnboarding = useCallback(
+    async (country?: { code: string; name: string; flag: string }) => {
+      let snapshot!: AppState;
+      setState((prev) => {
+        snapshot = {
+          ...prev,
+          onboardingComplete: true,
+          ...(country
+            ? {
+                myCountryCode: country.code,
+                myCountryName: country.name,
+                myCountryFlag: country.flag,
+              }
+            : {}),
+        };
+        return snapshot;
+      });
+      await persistState(snapshot);
+    },
+    [persistState],
+  );
 
   const resetOnboarding = useCallback(() => {
     setState((prev) => {
@@ -1516,6 +1637,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addMyPhoto,
         setMyPhotoBackendId,
         setMyPhotoUploadState,
+        activateMyPhotoForMatch,
+        removeMyPhoto,
         completeOnboarding,
         resetOnboarding,
         unlockPro,

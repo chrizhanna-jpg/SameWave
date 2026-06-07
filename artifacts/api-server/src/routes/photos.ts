@@ -186,7 +186,7 @@ function approxBase64Bytes(b64: string): number {
 }
 
 // ---- POST /api/photos -----------------------------------------------------
-// Body: { imageBase64, mimeType?, countryCode? }
+// Body: { imageBase64, mimeType?, countryCode?, captureCountryCode? }
 // Header: X-Device-Id (required) — stable client UUID.
 router.post("/photos", async (req, res) => {
   try {
@@ -194,6 +194,7 @@ router.post("/photos", async (req, res) => {
       imageBase64?: unknown;
       mimeType?: unknown;
       countryCode?: unknown;
+      captureCountryCode?: unknown;
       musicGenre?: unknown;
       customAudioBase64?: unknown;
       customAudioMime?: unknown;
@@ -214,6 +215,11 @@ router.post("/photos", async (req, res) => {
     const countryCode =
       typeof body.countryCode === "string" && body.countryCode.length === 2
         ? body.countryCode.toUpperCase()
+        : null;
+    const captureCountryCode =
+      typeof body.captureCountryCode === "string" &&
+      body.captureCountryCode.length === 2
+        ? body.captureCountryCode.toUpperCase()
         : null;
 
     const user = await resolveUserFromRequest(req, { countryCode });
@@ -307,6 +313,7 @@ router.post("/photos", async (req, res) => {
         shapeTags: shapes,
         subjects,
         countryCode: effectiveCountryCode,
+        captureCountryCode,
         musicGenre,
         customAudioBase64,
         customAudioMime,
@@ -522,6 +529,7 @@ router.get("/photos/candidates", async (req, res) => {
           -- in the mobile app can re-rank locally with the same weights.
           p.subjects AS "subjects",
           p.country_code AS "countryCode",
+          p.capture_country_code AS "captureCountryCode",
           p.music_genre AS "musicGenre",
           p.custom_audio_base64 AS "customAudioBase64",
           p.custom_audio_mime AS "customAudioMime",
@@ -674,6 +682,7 @@ router.get("/photos/candidates", async (req, res) => {
         // until POST /photos/backfill-subjects fills them in.
         subjects: Array.isArray(r.subjects) ? (r.subjects as string[]) : [],
         countryCode: (r.countryCode as string | null) ?? null,
+        captureCountryCode: (r.captureCountryCode as string | null) ?? null,
         musicGenre: (r.musicGenre as string | null) ?? null,
         customAudioUrl,
         uri: `data:${String(r.mimeType)};base64,${String(r.bytesBase64)}`,
@@ -1120,6 +1129,7 @@ router.get("/photos/atlas", async (req, res) => {
     const rows = await db.execute(sql`
       SELECT
         upper(trim(both from coalesce(
+          nullif(trim(both from p.capture_country_code), ''),
           nullif(trim(both from p.country_code), ''),
           nullif(trim(both from u.country_code), '')
         ))) AS code,
@@ -1130,10 +1140,12 @@ router.get("/photos/atlas", async (req, res) => {
         AND p.report_count < ${REPORT_HIDE_THRESHOLD}
         AND (p.expires_at IS NULL OR p.expires_at > now())
         AND coalesce(
+          nullif(trim(both from p.capture_country_code), ''),
           nullif(trim(both from p.country_code), ''),
           nullif(trim(both from u.country_code), '')
         ) IS NOT NULL
         AND trim(both from coalesce(
+          nullif(trim(both from p.capture_country_code), ''),
           nullif(trim(both from p.country_code), ''),
           nullif(trim(both from u.country_code), '')
         )) <> ''
@@ -1158,10 +1170,12 @@ router.get("/photos/atlas", async (req, res) => {
         pl.subjects AS pl_subjects,
         ph.subjects AS ph_subjects,
         upper(trim(both from coalesce(
+          nullif(trim(both from pl.capture_country_code), ''),
           nullif(trim(both from pl.country_code), ''),
           nullif(trim(both from u_pl.country_code), '')
         ))) AS lc,
         upper(trim(both from coalesce(
+          nullif(trim(both from ph.capture_country_code), ''),
           nullif(trim(both from ph.country_code), ''),
           nullif(trim(both from u_ph.country_code), '')
         ))) AS hc,
@@ -1410,6 +1424,7 @@ router.post("/photos/atlas/explore", async (req, res) => {
         pl.custom_audio_mime AS pl_audio_mime,
         pl.user_id::text AS pl_user,
         upper(trim(both from coalesce(
+          nullif(trim(both from pl.capture_country_code), ''),
           nullif(trim(both from pl.country_code), ''),
           nullif(trim(both from u_pl.country_code), '')
         ))) AS pl_country,
@@ -1424,6 +1439,7 @@ router.post("/photos/atlas/explore", async (req, res) => {
         ph.custom_audio_mime AS ph_audio_mime,
         ph.user_id::text AS ph_user,
         upper(trim(both from coalesce(
+          nullif(trim(both from ph.capture_country_code), ''),
           nullif(trim(both from ph.country_code), ''),
           nullif(trim(both from u_ph.country_code), '')
         ))) AS ph_country
@@ -1471,10 +1487,12 @@ router.post("/photos/atlas/explore", async (req, res) => {
         ${themeFilter}
         AND (
           upper(trim(both from coalesce(
+            nullif(trim(both from pl.capture_country_code), ''),
             nullif(trim(both from pl.country_code), ''),
             nullif(trim(both from u_pl.country_code), '')
           ))) = ANY(${ccExpr})
           OR upper(trim(both from coalesce(
+            nullif(trim(both from ph.capture_country_code), ''),
             nullif(trim(both from ph.country_code), ''),
             nullif(trim(both from u_ph.country_code), '')
           ))) = ANY(${ccExpr})
@@ -1621,10 +1639,15 @@ router.get("/photos/atlas/:countryCode", async (req, res) => {
           ${exposurePenaltyExpr("pe")} AS exposure_penalty
         FROM photos p
         LEFT JOIN photo_exposure pe ON pe.photo_id = p.id
+        INNER JOIN users u ON u.id = p.user_id
         WHERE p.status = 'active'
           AND p.report_count < ${REPORT_HIDE_THRESHOLD}
           AND (p.expires_at IS NULL OR p.expires_at > now())
-          AND upper(p.country_code) = ${code}
+          AND upper(trim(both from coalesce(
+            nullif(trim(both from p.capture_country_code), ''),
+            nullif(trim(both from p.country_code), ''),
+            nullif(trim(both from u.country_code), '')
+          ))) = ${code}
       ),
       deduped AS (
         SELECT DISTINCT ON (content_hash) *

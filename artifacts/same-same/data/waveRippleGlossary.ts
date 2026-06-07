@@ -49,8 +49,10 @@ export const ATLAS_FILTER_HINT_MINE_SIGNIN =
   "Sign in to filter the map to Ripples and Waves you are part of.";
 
 export const ATLAS_FIRE_EMPTY = {
-  wavefire: "No Active Wavefire",
-  ripplefire: "No Active Ripplefire",
+  wavefire:
+    "No active Wavefire — mutual Waves with shared themes across countries in the last few hours.",
+  ripplefire:
+    "No active Ripplefire yet — send a Same swipe on Ripple, or check All for every live arc.",
 } as const;
 
 export const ATLAS_COUNTRY_MODAL = {

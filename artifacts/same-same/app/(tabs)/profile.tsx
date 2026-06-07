@@ -29,9 +29,11 @@ import { profileEchoBellA11y } from "@/data/waveRippleGlossary";
 import {
   COPYRIGHT_FOOTER_LABEL,
   COPYRIGHT_FOOTER_LINE,
+  accountDeletionPageUrl,
   SUPPORT_EMAIL,
   WAVE_BLUE,
 } from "@/data/studioLegal";
+import { getPublicApiOrigin } from "@/utils/publicEnv";
 
 // Region buckets used by the World Map breakdown. Order roughly matches
 // what feels exciting to the user — Europe & Asia first since the
@@ -714,8 +716,8 @@ export default function ProfileScreen() {
             </Text>
             <Text style={[styles.connectionsSub, { color: colors.mutedForeground }]}>
               {myCountryName
-                ? `${myCountryName} — used for Same Country / Same Continent`
-                : "So we can celebrate same-country & same-continent matches"}
+                ? `${myCountryName} — fallback when a photo has no GPS capture`
+                : "Default when camera GPS is unavailable (library uploads)"}
             </Text>
           </View>
           <Icon name="chevron-right" size={18} color={colors.mutedForeground} />
@@ -805,6 +807,19 @@ export default function ProfileScreen() {
           }
           onPress={() => router.push("/my-photos")}
           accessibilityLabel="Open your posted photos"
+        />
+
+        <NavRow
+          icon="send"
+          tint="#E57373"
+          title="Delete account & data"
+          subtitle="Request removal of your account and associated data"
+          onPress={() =>
+            Linking.openURL(accountDeletionPageUrl(getPublicApiOrigin())).catch(
+              () => {},
+            )
+          }
+          accessibilityLabel="Open account and data deletion request page"
         />
 
         <NavRow

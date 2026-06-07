@@ -20,7 +20,8 @@ import {
 import { ConnectionMapPreview } from "@/components/ConnectionMapPreview";
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
-import { getGeoTier, getTimeTier } from "@/utils/celebrations";
+import { getGeoTierForPhotos, getTimeTier } from "@/utils/celebrations";
+import { photoCountryDisplay } from "@/utils/photoCountry";
 
 const FLASH_MAP_WIDTH = Dimensions.get("window").width - 48;
 
@@ -36,6 +37,8 @@ interface Props {
   theirCountryCode?: string;
   myCountryFlag?: string;
   myCountryCode?: string;
+  myCaptureCountryCode?: string;
+  theirCaptureCountryCode?: string;
   themeTitle: string;
   themeEmoji: string;
   /** Thumbnail of the user's photo and the matched photo. */
@@ -69,6 +72,8 @@ export function MatchFlash({
   theirCountryCode,
   myCountryFlag,
   myCountryCode,
+  myCaptureCountryCode,
+  theirCaptureCountryCode,
   themeTitle,
   themeEmoji,
   myPhotoUri,
@@ -189,7 +194,15 @@ export function MatchFlash({
   // renders both — even the "Same Planet" baseline is part of the
   // story we're telling here.
   const timeTier = getTimeTier(myPhotoUploadedAt, theirPhotoMinutesAgo);
-  const geoTier = getGeoTier(myCountryCode, theirCountryCode);
+  const myDisplay = photoCountryDisplay(myCaptureCountryCode, myCountryCode);
+  const theirDisplay = photoCountryDisplay(
+    theirCaptureCountryCode,
+    theirCountryCode,
+  );
+  const geoTier = getGeoTierForPhotos(
+    myCaptureCountryCode,
+    theirCaptureCountryCode,
+  );
   const dragScale = celebrationDragScale(dragY);
   const backdropDragOpacity = dragY.interpolate({
     inputRange: [-140, 0, 140],
@@ -237,11 +250,11 @@ export function MatchFlash({
 
         <Text style={styles.tagline}>a ripple</Text>
 
-        {(myCountryCode || theirCountryCode) && (
+        {(myDisplay.code || theirDisplay.code) && (
           <ConnectionMapPreview
             kind="ripple"
-            fromCode={myCountryCode}
-            toCode={theirCountryCode}
+            fromCode={myDisplay.code}
+            toCode={theirDisplay.code}
             width={FLASH_MAP_WIDTH}
             height={Math.round(FLASH_MAP_WIDTH * 0.34)}
             style={styles.atlasPreview}
@@ -274,11 +287,11 @@ export function MatchFlash({
             ) : (
               <View style={[styles.thumb, styles.thumbFallback]}>
                 <Text style={styles.thumbFallbackFlag}>
-                  {myCountryFlag || "🌍"}
+                  {myDisplay.flag}
                 </Text>
               </View>
             )}
-            <Text style={styles.thumbFlag}>{myCountryFlag || "🌍"}</Text>
+            <Text style={styles.thumbFlag}>{myDisplay.flag}</Text>
           </Animated.View>
           <View style={styles.connector}>
             <View style={styles.dot} />
@@ -305,15 +318,15 @@ export function MatchFlash({
             ) : (
               <View style={[styles.thumb, styles.thumbFallback]}>
                 <Text style={styles.thumbFallbackFlag}>
-                  {theirCountryFlag || "🌍"}
+                  {theirDisplay.flag}
                 </Text>
               </View>
             )}
-            <Text style={styles.thumbFlag}>{theirCountryFlag || "🌍"}</Text>
+            <Text style={styles.thumbFlag}>{theirDisplay.flag}</Text>
           </Animated.View>
         </View>
 
-        <Text style={styles.country}>{theirCountry}</Text>
+        <Text style={styles.country}>{theirDisplay.name}</Text>
 
         <CelebrationMatchChips
           themeTitle={themeTitle}

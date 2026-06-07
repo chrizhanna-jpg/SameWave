@@ -1,6 +1,6 @@
 import { Audio } from "expo-av";
 
-import { markUserInteracted } from "@/utils/audio";
+import { setFirecircleFocusSlot as publishFirecircleFocusSlot } from "@/utils/firecircleFocus";
 import { dbToLinear } from "@/utils/dbLinear";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -90,9 +90,9 @@ export function setFirecircleMapScale(s: number): void {
   mapScale = s;
 }
 
-/** @deprecated Stereo orbit focus — kept for FirecircleOrbit API compat. */
-export function setFirecircleFocusSlot(_index: number): void {
-  /* no-op: natural stereo mix, no panning chatter */
+/** Stereo orbit focus — drives Wavefire center theme carousel. */
+export function setFirecircleFocusSlot(index: number): void {
+  publishFirecircleFocusSlot(index);
 }
 
 export async function startFirecircleAmbience(): Promise<void> {

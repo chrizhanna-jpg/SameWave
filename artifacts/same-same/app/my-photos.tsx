@@ -18,11 +18,12 @@ import { tagEmoji, tagLabel } from "@/utils/interests";
 import { timeAgo } from "@/utils/timeAgo";
 import { pausePreview, togglePreview } from "@/utils/audio";
 import { confirmDeleteMyPhoto } from "@/utils/photoModeration";
+import { photoCountryDisplay } from "@/utils/photoCountry";
 
 export default function MyPhotosScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { myPhotos, removeMyPhoto } = useApp();
+  const { myPhotos, removeMyPhoto, myCountryCode } = useApp();
   const [removingUri, setRemovingUri] = useState<string | null>(null);
 
   const handleRemove = (uri: string) => {
@@ -111,6 +112,10 @@ export default function MyPhotosScreen() {
         ) : (
           myPhotos.map((photo, i) => {
             const hasAudio = !!photo.customAudioUrl;
+            const loc = photoCountryDisplay(
+              photo.captureCountryCode,
+              photo.declaredCountryCode ?? myCountryCode,
+            );
             const rowKey = `${photo.uri}-${i}`;
             const rowStyle = [
               styles.photoRow,
@@ -128,12 +133,25 @@ export default function MyPhotosScreen() {
                   audioInteractive={false}
                 />
                 <View style={styles.photoMeta}>
-                  <Text
-                    style={[styles.photoTheme, { color: colors.foreground }]}
-                    numberOfLines={1}
-                  >
-                    {photo.theme}
-                  </Text>
+                  <View style={styles.photoMetaTop}>
+                    <Text
+                      style={[styles.photoTheme, { color: colors.foreground }]}
+                      numberOfLines={1}
+                    >
+                      {photo.theme}
+                    </Text>
+                    {loc.code ? (
+                      <Text
+                        style={[
+                          styles.photoCountry,
+                          { color: colors.mutedForeground },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {loc.flag} {loc.name}
+                      </Text>
+                    ) : null}
+                  </View>
                   <Text
                     style={[styles.photoTime, { color: colors.mutedForeground }]}
                   >
@@ -268,6 +286,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   photoMeta: { flex: 1, gap: 4 },
+  photoMetaTop: { gap: 2 },
+  photoCountry: {
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
+  },
   photoTheme: {
     fontSize: 14,
     fontFamily: "Inter_600SemiBold",

@@ -316,6 +316,8 @@ export async function uploadPhoto(input: {
   imageBase64: string;
   mimeType?: string;
   countryCode?: string;
+  /** Coarse GPS country at in-app camera capture — omitted for library picks. */
+  captureCountryCode?: string;
   musicGenre?: string;
   /** Optional user-recorded vibe clip — base64-encoded audio. */
   customAudioBase64?: string;
@@ -367,6 +369,7 @@ export interface CandidatePhoto {
    */
   subjects: string[];
   countryCode: string | null;
+  captureCountryCode: string | null;
   /** Music vibe label; null for legacy photos uploaded pre-feature. */
   musicGenre: string | null;
   /**
@@ -674,6 +677,7 @@ export interface ServerEchoSide {
   id: string;
   uri: string;
   countryCode: string | null;
+  captureCountryCode: string | null;
   country: string;
   countryFlag: string;
   theme?: string;
@@ -695,17 +699,21 @@ export interface ServerEcho {
 
 // Map ISO-3166-1 alpha-2 → display name + flag emoji. Mirrors the same
 // helpers used elsewhere on mobile so all surfaces show identical labels.
-import { flagFor, nameFor } from "@/data/countries";
+import { photoCountryDisplay } from "@/utils/photoCountry";
 
 function decorateSide(side: {
   id: string;
   uri: string;
   countryCode: string | null;
+  captureCountryCode?: string | null;
   theme?: string;
   customAudioBase64?: string | null;
   customAudioMime?: string | null;
 }): ServerEchoSide {
-  const code = (side.countryCode ?? "").toUpperCase();
+  const display = photoCountryDisplay(
+    side.captureCountryCode,
+    side.countryCode,
+  );
   const audio =
     side.customAudioBase64 && side.customAudioMime
       ? `data:${side.customAudioMime};base64,${side.customAudioBase64}`
@@ -713,9 +721,14 @@ function decorateSide(side: {
   return {
     id: side.id,
     uri: side.uri,
-    countryCode: code || null,
-    country: code ? nameFor(code) ?? "Somewhere" : "Somewhere",
-    countryFlag: code ? flagFor(code) : "🌍",
+    countryCode: display.code ?? null,
+    captureCountryCode:
+      typeof side.captureCountryCode === "string" &&
+      side.captureCountryCode.trim().length === 2
+        ? side.captureCountryCode.trim().toUpperCase()
+        : null,
+    country: display.name,
+    countryFlag: display.flag,
     theme: typeof side.theme === "string" ? side.theme : undefined,
     customAudioUrl: audio,
   };
@@ -731,6 +744,7 @@ function decorateEcho(raw: {
     id: string;
     uri: string;
     countryCode: string | null;
+    captureCountryCode?: string | null;
     theme?: string;
     customAudioBase64?: string | null;
     customAudioMime?: string | null;
@@ -739,6 +753,7 @@ function decorateEcho(raw: {
     id: string;
     uri: string;
     countryCode: string | null;
+    captureCountryCode?: string | null;
     theme?: string;
     customAudioBase64?: string | null;
     customAudioMime?: string | null;
@@ -861,6 +876,7 @@ export async function fetchEchoesByTheme(theme: string): Promise<{
           id: string;
           uri: string;
           countryCode: string | null;
+          captureCountryCode?: string | null;
           customAudioBase64?: string | null;
           customAudioMime?: string | null;
         };
@@ -914,6 +930,7 @@ export async function fetchPair(aId: string, bId: string): Promise<PhotoPairResu
         id: string;
         uri: string;
         countryCode: string | null;
+        captureCountryCode?: string | null;
         theme: string;
         tags?: string[];
         musicGenre?: string | null;
@@ -925,6 +942,7 @@ export async function fetchPair(aId: string, bId: string): Promise<PhotoPairResu
         id: string;
         uri: string;
         countryCode: string | null;
+        captureCountryCode?: string | null;
         theme: string;
         tags?: string[];
         musicGenre?: string | null;
@@ -1750,6 +1768,9 @@ export type LocalRippleExploreMatch = {
   myPhotoId?: string;
   theirCountryCode: string;
   myCountry?: string;
+  myCountryCode?: string;
+  myCaptureCountryCode?: string;
+  theirCaptureCountryCode?: string;
   theme?: string;
   theirActualTheme?: string;
   theirTags?: string[];
@@ -1789,6 +1810,8 @@ export type ViewerExplorePhoto = {
   subjects?: string[];
   musicGenre?: string;
   customAudioUrl?: string;
+  captureCountryCode?: string;
+  uploadedAt?: string;
 };
 
 const LOCAL_MY_PHOTO_ID_PREFIX = "local-my-";
@@ -1822,9 +1845,15 @@ function enrichExploreWithViewerPhotos(
   viewerPhotos: ViewerExplorePhoto[],
   viewerCountryCode?: string,
 ): AtlasFireMoment[] {
-  const viewer = (viewerCountryCode ?? "").trim().toUpperCase();
+  const profileViewer = (viewerCountryCode ?? "").trim().toUpperCase();
   const primary = viewerPhotos[0];
   if (!primary?.uri?.trim()) return moments;
+
+  const viewerDisplay = photoCountryDisplay(
+    primary.captureCountryCode,
+    profileViewer,
+  );
+  const viewer = viewerDisplay.code ?? profileViewer;
 
   const primaryBackendId = primary.backendId?.trim();
 
@@ -1908,10 +1937,13 @@ export function buildLocalMatchExploreMoments(
       cluster.displayTheme ||
       "";
     const tags = [...(m.theirTags ?? []), ...(m.sharedTags ?? [])].filter(Boolean);
+    const myFromPhoto = photoCountryDisplay(
+      m.myCaptureCountryCode,
+      m.myCountryCode ?? viewer,
+    );
     const from =
-      viewer && /^[A-Z]{2}$/.test(viewer)
-        ? viewer
-        : (m.myCountry ?? "").trim().slice(0, 2).toUpperCase() || their;
+      myFromPhoto.code ??
+      (viewer && /^[A-Z]{2}$/.test(viewer) ? viewer : their);
 
     const participants: AtlasFireParticipant[] = [];
     if (myUri) {

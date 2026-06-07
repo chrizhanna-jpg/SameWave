@@ -1,6 +1,7 @@
-// Best-effort GPS → ISO country code lookup. Used by onboarding to
-// gently nudge the user if the country they picked doesn't match where
-// their device thinks they are. Always best-effort: a denied permission,
+// Best-effort GPS → ISO country code lookup. Used at onboarding to
+// suggest a country pre-fill, and later in the tabs layout to gently
+// nudge the user if the country they picked doesn't match where their
+// device thinks they are. Always best-effort: a denied permission,
 // flaky GPS fix, or unsupported platform (web preview, simulator)
 // silently returns null and the caller carries on with the user's
 // manual choice.

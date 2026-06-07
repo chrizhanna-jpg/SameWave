@@ -19,9 +19,9 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  parseOAuthSessionFailure,
-} from "@/utils/googleOAuthErrors";
+import { useApp } from "@/context/AppContext";
+import { updateMyCountryCode } from "@/utils/api";
+import { parseOAuthSessionFailure } from "@/utils/googleOAuthErrors";
 import { getGoogleSsoRedirectUrl } from "@/utils/googleSsoRedirect";
 import { postDebugSessionLog } from "@/utils/debugSessionLog";
 import {
@@ -59,6 +59,7 @@ function useWarmUpBrowser(): void {
 export default function SignInScreen() {
   useWarmUpBrowser();
   const insets = useSafeAreaInsets();
+  const { myCountryCode } = useApp();
   const { startSSOFlow } = useSSO();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,6 +125,9 @@ export default function SignInScreen() {
         // Route through "/" so index.tsx lands on tabs when the tutorial
         // is already complete, or on /onboarding only if it is not.
         await setActive({ session: createdSessionId });
+        if (myCountryCode) {
+          void updateMyCountryCode(myCountryCode);
+        }
         // #region agent log
         postDebugSessionLog({
           hypothesisId: "H-Gok",
@@ -179,7 +183,7 @@ export default function SignInScreen() {
     } finally {
       setBusy(false);
     }
-  }, [busy, clerkProbe, diagnostics, startSSOFlow]);
+  }, [busy, clerkProbe, diagnostics, myCountryCode, startSSOFlow]);
 
   return (
     <View

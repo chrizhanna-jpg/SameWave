@@ -1,5 +1,6 @@
-import React, { useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Animated,
   Dimensions,
   Image,
@@ -17,13 +18,17 @@ import { Surface } from "@/components/Surface";
 import { GradientCard } from "@/components/GradientCard";
 import { PressableScale } from "@/components/PressableScale";
 import { Icon } from "@/components/Icon";
+import { flagFor, nameFor } from "@/data/countries";
+import { detectCountryFromGPS } from "@/utils/gpsCountry";
 
 // Only enforce country selection in production / published builds. In
 // dev / Expo Go we keep the legacy "Skip — I'll set it later" behaviour
 // so we never have to fight a country picker while testing other
-// features. The soft GPS sanity check happens later, in the tabs
-// layout, after the user has explored the app — see utils/tabVisits.
+// features. A soft GPS double-check still runs later in the tabs layout
+// if the user picked manually and may be traveling — see utils/tabVisits.
 const REQUIRE_COUNTRY = !__DEV__;
+
+type GpsCountryHint = "idle" | "loading" | "suggested" | "unavailable";
 
 const { width } = Dimensions.get("window");
 
@@ -51,9 +56,9 @@ const STEPS: Step[] = [
   },
   {
     kind: "country",
-    title: "Your Country?",
+    title: "Where are you now?",
     subtitle: null,
-    body: "Will you Ripple with someone in the same country, same continent or same planet?",
+    body: "We use this for same-country and same-continent ripples — change it anytime if you're traveling.",
   },
 ];
 
@@ -63,10 +68,14 @@ export default function OnboardingScreen() {
   const { completeOnboarding, myCountryCode, myCountryName, myCountryFlag, setMyCountry } = useApp();
   const [step, setStep] = React.useState(0);
   const [pickerOpen, setPickerOpen] = React.useState(false);
+  const [gpsHint, setGpsHint] = useState<GpsCountryHint>("idle");
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
   const globeScale = useRef(new Animated.Value(1)).current;
+  const gpsSuggestRanRef = useRef(false);
+  const myCountryCodeRef = useRef(myCountryCode);
+  myCountryCodeRef.current = myCountryCode;
 
   const goNext = async () => {
     // In production, the country step is a hard gate — the Continue
@@ -108,15 +117,12 @@ export default function OnboardingScreen() {
         ]).start();
       });
     } else {
-      // Persist country + onboardingComplete before "/" — otherwise a
-      // racing AsyncStorage write can drop the flag and replay the tutorial.
-      if (myCountryCode && myCountryName && myCountryFlag) {
-        await setMyCountry(myCountryCode, myCountryName, myCountryFlag);
-      }
-      await completeOnboarding();
-      // Route through "/" so the index gate decides whether sign-in is
-      // still required (first-time users complete the tutorial BEFORE
-      // they're asked to sign in) or it can drop them on the home tabs.
+      // One atomic persist before "/" — OAuth cold restart only sees AsyncStorage.
+      await completeOnboarding(
+        myCountryCode && myCountryName && myCountryFlag
+          ? { code: myCountryCode, name: myCountryName, flag: myCountryFlag }
+          : undefined,
+      );
       router.replace("/");
     }
   };
@@ -129,6 +135,38 @@ export default function OnboardingScreen() {
   const isCountryStep = currentStep.kind === "country";
   const continueLocked =
     isCountryStep && REQUIRE_COUNTRY && !myCountryCode;
+
+  useEffect(() => {
+    if (!isCountryStep) return;
+    if (gpsSuggestRanRef.current) return;
+    gpsSuggestRanRef.current = true;
+
+    if (myCountryCodeRef.current) {
+      setGpsHint("unavailable");
+      return;
+    }
+
+    setGpsHint("loading");
+    let cancelled = false;
+    void detectCountryFromGPS().then((detected) => {
+      if (cancelled) return;
+      if (myCountryCodeRef.current) {
+        setGpsHint("unavailable");
+        return;
+      }
+      if (!detected) {
+        setGpsHint("unavailable");
+        return;
+      }
+      const name = detected.name ?? nameFor(detected.code) ?? detected.code;
+      const flag = flagFor(detected.code);
+      setMyCountry(detected.code, name, flag);
+      setGpsHint("suggested");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isCountryStep, setMyCountry]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -236,43 +274,65 @@ export default function OnboardingScreen() {
         )}
 
         {isCountryStep && (
-          <PressableScale
-            onPress={() => setPickerOpen(true)}
-            haptic="light"
-            style={styles.countryWrap}
-            accessibilityLabel="Pick your country"
-          >
-            <Surface
-              elevation="md"
-              radius="xl"
-              background={colors.card}
-              style={[
-                styles.countryRow,
-                myCountryCode && {
-                  ...colors.shadows.glowAccent,
-                },
-              ]}
+          <>
+            <PressableScale
+              onPress={() => setPickerOpen(true)}
+              haptic="light"
+              style={styles.countryWrap}
+              accessibilityLabel={
+                myCountryCode
+                  ? `Country ${myCountryName}, tap to change`
+                  : "Tap to pick your country"
+              }
             >
-              <Text style={styles.countryRowFlag}>
-                {myCountryFlag ?? "🌍"}
-              </Text>
-              <Text
+              <Surface
+                elevation="md"
+                radius="xl"
+                background={colors.card}
                 style={[
-                  styles.countryRowText,
-                  {
-                    color: myCountryCode
-                      ? colors.foreground
-                      : colors.mutedForeground,
+                  styles.countryRow,
+                  myCountryCode && {
+                    ...colors.shadows.glowAccent,
                   },
                 ]}
               >
-                {myCountryName ?? "Tap to pick your country"}
+                <Text style={styles.countryRowFlag}>
+                  {myCountryFlag ?? "🌍"}
+                </Text>
+                <Text
+                  style={[
+                    styles.countryRowText,
+                    {
+                      color: myCountryCode
+                        ? colors.foreground
+                        : colors.mutedForeground,
+                    },
+                  ]}
+                >
+                  {myCountryName ??
+                    (gpsHint === "loading"
+                      ? "Finding your location…"
+                      : "Tap to pick your country")}
+                </Text>
+                {gpsHint === "loading" ? (
+                  <ActivityIndicator size="small" color={colors.teal} />
+                ) : (
+                  <Text style={[styles.countryRowChange, { color: colors.teal }]}>
+                    {myCountryCode ? "Change" : "Choose"}
+                  </Text>
+                )}
+              </Surface>
+            </PressableScale>
+            {gpsHint === "suggested" && myCountryCode ? (
+              <Text style={[styles.gpsHint, { color: colors.mutedForeground }]}>
+                Suggested from your location — tap Change if you&apos;re traveling.
               </Text>
-              <Text style={[styles.countryRowChange, { color: colors.teal }]}>
-                {myCountryCode ? "Change" : "Choose"}
+            ) : gpsHint === "unavailable" && !myCountryCode ? (
+              <Text style={[styles.gpsHint, { color: colors.mutedForeground }]}>
+                Pick the country you&apos;re in right now.
               </Text>
-            </Surface>
-          </PressableScale>
+            ) : null}
+          </>
         )}
       </Animated.View>
 
@@ -347,9 +407,11 @@ export default function OnboardingScreen() {
           (isCountryStep && !REQUIRE_COUNTRY && !myCountryCode)) && (
           <PressableScale
             onPress={async () => {
-              await completeOnboarding();
-              // Route through "/" so the gate enforces sign-in next if
-              // the user skipped the tutorial before authenticating.
+              await completeOnboarding(
+                myCountryCode && myCountryName && myCountryFlag
+                  ? { code: myCountryCode, name: myCountryName, flag: myCountryFlag }
+                  : undefined,
+              );
               router.replace("/");
             }}
           >
@@ -363,9 +425,12 @@ export default function OnboardingScreen() {
       <CountryPickerModal
         visible={pickerOpen}
         onClose={() => setPickerOpen(false)}
-        onSelect={(c) => setMyCountry(c.code, c.name, c.flag)}
+        onSelect={(c) => {
+          setMyCountry(c.code, c.name, c.flag);
+          setGpsHint("unavailable");
+        }}
         selectedCode={myCountryCode}
-        title="Where in the world are you?"
+        title="Where are you right now?"
       />
     </View>
   );
@@ -499,5 +564,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "Inter_700Bold",
     letterSpacing: 0.3,
+  },
+  gpsHint: {
+    width: "100%",
+    marginTop: 10,
+    paddingHorizontal: 4,
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+    lineHeight: 18,
   },
 });

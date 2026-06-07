@@ -16,6 +16,8 @@ import { PressableScale } from "@/components/PressableScale";
 import { Surface } from "@/components/Surface";
 import {
   APP_NAME,
+  accountDeletionMailtoUrl,
+  accountDeletionPageUrl,
   STUDIO_LEGAL_SECTIONS,
   STUDIO_NAME,
   STUDIO_PUBLIC_POLICIES,
@@ -89,6 +91,55 @@ export default function StudioLegalScreen() {
         <Text style={[styles.linksHeading, { color: colors.foreground }]}>
           Policies
         </Text>
+
+        <PressableScale
+          onPress={() => openExternal(accountDeletionPageUrl(apiOrigin))}
+          haptic="light"
+          accessibilityLabel="Open account and data deletion request page"
+          style={styles.linkRowWrap}
+        >
+          <Surface
+            elevation="sm"
+            radius="lg"
+            background={WAVE_BLUE + "14"}
+            style={[styles.linkRow, styles.deletionRow, { borderColor: WAVE_BLUE + "55" }]}
+          >
+            <View style={{ flex: 1, paddingRight: 8 }}>
+              <Text style={[styles.linkTitle, { color: colors.foreground }]}>
+                Request account & data deletion
+              </Text>
+              <Text style={[styles.linkSub, { color: colors.mutedForeground }]}>
+                Delete your account and all associated data (web form + email)
+              </Text>
+            </View>
+            <Icon name="send" size={18} color={WAVE_BLUE} />
+          </Surface>
+        </PressableScale>
+
+        <PressableScale
+          onPress={() => openExternal(accountDeletionMailtoUrl())}
+          haptic="light"
+          accessibilityLabel="Email account deletion request"
+          style={[styles.linkRowWrap, { marginBottom: 16 }]}
+        >
+          <Surface
+            elevation="sm"
+            radius="lg"
+            background={colors.card}
+            style={styles.linkRow}
+          >
+            <View style={{ flex: 1, paddingRight: 8 }}>
+              <Text style={[styles.linkTitle, { color: colors.foreground }]}>
+                Email deletion request
+              </Text>
+              <Text style={[styles.linkSub, { color: colors.mutedForeground }]}>
+                {SUPPORT_EMAIL}
+              </Text>
+            </View>
+            <Icon name="chevron-right" size={18} color={colors.mutedForeground} />
+          </Surface>
+        </PressableScale>
+
         {STUDIO_PUBLIC_POLICIES.map((policy) => (
           <PressableScale
             key={policy.id}
@@ -262,6 +313,9 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 14,
+  },
+  deletionRow: {
+    borderWidth: 1,
   },
   linkTitle: {
     fontSize: 15,

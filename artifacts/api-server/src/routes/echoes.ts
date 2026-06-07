@@ -311,27 +311,52 @@ type EchoCard = {
   theme: string;
   createdAt: string | Date;
   mutualAt: string | Date | null;
-  mine: { id: string; uri: string; countryCode: string | null; theme: string };
-  theirs: { id: string; uri: string; countryCode: string | null; theme: string };
+  mine: {
+    id: string;
+    uri: string;
+    countryCode: string | null;
+    captureCountryCode: string | null;
+    theme: string;
+  };
+  theirs: {
+    id: string;
+    uri: string;
+    countryCode: string | null;
+    captureCountryCode: string | null;
+    theme: string;
+  };
 };
+
+function photoSideFromRow(
+  row: Record<string, unknown>,
+  side: "low" | "high",
+): { id: string; uri: string; countryCode: string | null; captureCountryCode: string | null; theme: string } {
+  const captureRaw = row[`${side}CaptureCountry`] as string | null;
+  const declaredRaw = row[`${side}Country`] as string | null;
+  const capture =
+    typeof captureRaw === "string" && captureRaw.trim().length === 2
+      ? captureRaw.trim().toUpperCase()
+      : null;
+  const declared =
+    typeof declaredRaw === "string" && declaredRaw.trim().length === 2
+      ? declaredRaw.trim().toUpperCase()
+      : null;
+  return {
+    id: String(row[`photo${side === "low" ? "Low" : "High"}Id`]),
+    uri: `data:${String(row[`${side}Mime`])};base64,${String(row[`${side}Bytes`])}`,
+    countryCode: capture ?? declared,
+    captureCountryCode: capture,
+    theme: String(row[`${side}Theme`] ?? ""),
+  };
+}
 
 function buildEchoCard(
   row: Record<string, unknown>,
   meId: string,
 ): EchoCard {
   const lowId = String(row.userLowId);
-  const lowSide = {
-    id: String(row.photoLowId),
-    uri: `data:${String(row.lowMime)};base64,${String(row.lowBytes)}`,
-    countryCode: (row.lowCountry as string | null) ?? null,
-    theme: String(row.lowTheme ?? ""),
-  };
-  const highSide = {
-    id: String(row.photoHighId),
-    uri: `data:${String(row.highMime)};base64,${String(row.highBytes)}`,
-    countryCode: (row.highCountry as string | null) ?? null,
-    theme: String(row.highTheme ?? ""),
-  };
+  const lowSide = photoSideFromRow(row, "low");
+  const highSide = photoSideFromRow(row, "high");
   const mine = lowId === meId ? lowSide : highSide;
   const theirs = lowId === meId ? highSide : lowSide;
   const stateRaw = String(row.state);
@@ -371,10 +396,12 @@ router.get("/echoes/inbox", async (req, res) => {
         pl.bytes_base64 AS "lowBytes",
         pl.mime_type AS "lowMime",
         pl.country_code AS "lowCountry",
+        pl.capture_country_code AS "lowCaptureCountry",
         pl.theme AS "lowTheme",
         ph.bytes_base64 AS "highBytes",
         ph.mime_type AS "highMime",
         ph.country_code AS "highCountry",
+        ph.capture_country_code AS "highCaptureCountry",
         ph.theme AS "highTheme"
       FROM echoes e
       JOIN photos pl ON pl.id = e.photo_low_id
@@ -418,10 +445,12 @@ router.get("/echoes/mine", async (req, res) => {
         pl.bytes_base64 AS "lowBytes",
         pl.mime_type AS "lowMime",
         pl.country_code AS "lowCountry",
+        pl.capture_country_code AS "lowCaptureCountry",
         pl.theme AS "lowTheme",
         ph.bytes_base64 AS "highBytes",
         ph.mime_type AS "highMime",
         ph.country_code AS "highCountry",
+        ph.capture_country_code AS "highCaptureCountry",
         ph.theme AS "highTheme"
       FROM echoes e
       JOIN photos pl ON pl.id = e.photo_low_id
@@ -588,11 +617,13 @@ router.get("/echoes/theme/:theme", async (req, res) => {
         pl.bytes_base64 AS "lowBytes",
         pl.mime_type AS "lowMime",
         pl.country_code AS "lowCountry",
+        pl.capture_country_code AS "lowCaptureCountry",
         pl.custom_audio_base64 AS "lowAudioB64",
         pl.custom_audio_mime AS "lowAudioMime",
         ph.bytes_base64 AS "highBytes",
         ph.mime_type AS "highMime",
         ph.country_code AS "highCountry",
+        ph.capture_country_code AS "highCaptureCountry",
         ph.custom_audio_base64 AS "highAudioB64",
         ph.custom_audio_mime AS "highAudioMime"
       FROM pair_rows pr
@@ -608,6 +639,7 @@ router.get("/echoes/theme/:theme", async (req, res) => {
         id: string;
         uri: string;
         countryCode: string | null;
+        captureCountryCode: string | null;
         customAudioBase64: string | null;
         customAudioMime: string | null;
       };
@@ -619,6 +651,22 @@ router.get("/echoes/theme/:theme", async (req, res) => {
       const mutualAt = (raw.mutualAt as string | Date | null) ?? null;
       const lowId = String(raw.photoLowId);
       const highId = String(raw.photoHighId);
+      const lowCapture =
+        typeof raw.lowCaptureCountry === "string"
+          ? raw.lowCaptureCountry.trim().toUpperCase()
+          : null;
+      const highCapture =
+        typeof raw.highCaptureCountry === "string"
+          ? raw.highCaptureCountry.trim().toUpperCase()
+          : null;
+      const lowDeclared =
+        typeof raw.lowCountry === "string"
+          ? raw.lowCountry.trim().toUpperCase()
+          : null;
+      const highDeclared =
+        typeof raw.highCountry === "string"
+          ? raw.highCountry.trim().toUpperCase()
+          : null;
       photos.push({
         echoId,
         theme: themeStr,
@@ -626,7 +674,8 @@ router.get("/echoes/theme/:theme", async (req, res) => {
         photo: {
           id: lowId,
           uri: `data:${String(raw.lowMime)};base64,${String(raw.lowBytes)}`,
-          countryCode: (raw.lowCountry as string | null) ?? null,
+          countryCode: lowDeclared,
+          captureCountryCode: lowCapture,
           customAudioBase64: (raw.lowAudioB64 as string | null) ?? null,
           customAudioMime: (raw.lowAudioMime as string | null) ?? null,
         },
@@ -639,7 +688,8 @@ router.get("/echoes/theme/:theme", async (req, res) => {
         photo: {
           id: highId,
           uri: `data:${String(raw.highMime)};base64,${String(raw.highBytes)}`,
-          countryCode: (raw.highCountry as string | null) ?? null,
+          countryCode: highDeclared,
+          captureCountryCode: highCapture,
           customAudioBase64: (raw.highAudioB64 as string | null) ?? null,
           customAudioMime: (raw.highAudioMime as string | null) ?? null,
         },
@@ -706,6 +756,7 @@ router.get("/echoes/pair", async (req, res) => {
         bytesBase64: photosTable.bytesBase64,
         mimeType: photosTable.mimeType,
         countryCode: photosTable.countryCode,
+        captureCountryCode: photosTable.captureCountryCode,
         theme: photosTable.theme,
         tags: photosTable.tags,
         musicGenre: photosTable.musicGenre,
@@ -751,6 +802,7 @@ router.get("/echoes/pair", async (req, res) => {
         id: a.id,
         uri: `data:${a.mimeType};base64,${a.bytesBase64}`,
         countryCode: a.countryCode,
+        captureCountryCode: a.captureCountryCode,
         theme: a.theme,
         tags: a.tags ?? [],
         musicGenre: a.musicGenre,
@@ -762,6 +814,7 @@ router.get("/echoes/pair", async (req, res) => {
         id: b.id,
         uri: `data:${b.mimeType};base64,${b.bytesBase64}`,
         countryCode: b.countryCode,
+        captureCountryCode: b.captureCountryCode,
         theme: b.theme,
         tags: b.tags ?? [],
         musicGenre: b.musicGenre,

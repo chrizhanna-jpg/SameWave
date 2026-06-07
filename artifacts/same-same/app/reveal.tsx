@@ -42,7 +42,8 @@ import {
 import { nameFor } from "@/data/countries";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
 import { formatDualWaveThemes } from "@/utils/shareThemeLabels";
-import { getTimeTier, getGeoTier } from "@/utils/celebrations";
+import { getGeoTierForPhotos, getTimeTier } from "@/utils/celebrations";
+import { photoCountryDisplay } from "@/utils/photoCountry";
 import { commonInterests, tagEmoji, tagLabel } from "@/utils/interests";
 import type { Match } from "@/context/AppContext";
 import {
@@ -401,9 +402,11 @@ export default function RevealScreen() {
 
   // Tiered celebrations: closer in time = bigger deal.
   const timeTier = getTimeTier(match.myPhotoUploadedAt, match.theirPhotoMinutesAgo);
-  // Geography tier — uses the user's chosen home country (set in onboarding
-  // / profile). Falls back to "Same Planet" if they skipped picking one.
-  const geoTier = getGeoTier(myCountryCode, match.theirCountryCode);
+  // Geography tier — requires capture-time GPS on both photos.
+  const geoTier = getGeoTierForPhotos(
+    match.myCaptureCountryCode,
+    match.theirCaptureCountryCode,
+  );
   const isCelebrated = timeTier.rank >= 1; // anything from week up
 
   const myUploadTheme =
@@ -412,7 +415,15 @@ export default function RevealScreen() {
     myUploadTheme,
     match.theirActualTheme ?? match.theme,
   );
-  const myCountryName = nameFor(myCountryCode) ?? "You";
+  const myPhotoForMatch = myPhotos.find((p) => p.uri === match.myPhoto);
+  const myDisplay = photoCountryDisplay(
+    match.myCaptureCountryCode ?? myPhotoForMatch?.captureCountryCode,
+    match.myCountryCode ?? myCountryCode,
+  );
+  const theirDisplay = photoCountryDisplay(
+    match.theirCaptureCountryCode,
+    match.theirCountryCode,
+  );
 
   // The "same X" chips that summarise WHY this match happened. These ride
   // inside the shareable card so the social-media image makes immediate
@@ -491,12 +502,12 @@ export default function RevealScreen() {
           {shareLayoutMode === "atlas" ? (
             <ConnectionAtlasShareCard
               kind="ripple"
-              fromCode={myCountryCode}
-              toCode={match.theirCountryCode}
+              fromCode={myDisplay.code}
+              toCode={theirDisplay.code}
               myPhotoUri={match.myPhoto}
               theirPhotoUri={match.theirPhoto}
-              myCountryFlag={myCountryFlag}
-              theirCountryFlag={match.theirCountryFlag}
+              myCountryFlag={myDisplay.flag}
+              theirCountryFlag={theirDisplay.flag}
               themeTitle={themeTitle}
               themeEmoji={themeEmoji}
               timeTier={timeTier}
@@ -514,10 +525,10 @@ export default function RevealScreen() {
               geoTier={geoTier}
               myPhotoUri={match.myPhoto}
               theirPhotoUri={match.theirPhoto}
-              myCountryFlag={myCountryFlag}
-              myCountryName={myCountryName}
-              theirCountry={match.theirCountry}
-              theirCountryFlag={match.theirCountryFlag}
+              myCountryFlag={myDisplay.flag}
+              myCountryName={myDisplay.name}
+              theirCountry={theirDisplay.name}
+              theirCountryFlag={theirDisplay.flag}
               showWatermark={!proActive}
             />
           )}

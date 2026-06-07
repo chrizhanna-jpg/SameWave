@@ -12,6 +12,8 @@ export interface PendingCapture {
   uri: string;
   base64: string;
   mimeType: string;
+  /** ISO country from coarse GPS at shutter — in-app camera only. */
+  captureCountryCode?: string;
 }
 
 let pending: PendingCapture | null = null;

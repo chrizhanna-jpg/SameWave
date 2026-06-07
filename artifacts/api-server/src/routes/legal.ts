@@ -33,6 +33,23 @@ const PAGE_CSS = `
   ul { padding-left: 20px; }
   li { margin: 4px 0; }
   code { padding: 1px 6px; border-radius: 4px; background: #f0f1f3; font-size: 13px; }
+  .btn {
+    display: inline-block;
+    margin: 12px 0 8px;
+    padding: 12px 20px;
+    border-radius: 10px;
+    background: #3a7dff;
+    color: #fff !important;
+    font-weight: 600;
+    font-size: 15px;
+    text-decoration: none;
+  }
+  .btn-secondary {
+    background: transparent;
+    color: #3a7dff !important;
+    border: 1px solid #3a7dff;
+    margin-left: 0;
+  }
   hr { border: none; border-top: 1px solid #e5e7eb; margin: 32px 0; }
   @media (prefers-color-scheme: dark) {
     hr { border-top-color: #23262b; }
@@ -263,6 +280,8 @@ const CSAE_HTML = layout(
   `,
 );
 
+const ANDROID_PACKAGE = "echo.samewaveripple.app";
+
 // Play Console "Data safety" → deletion URL must return 200 HTML without sign-in.
 const DATA_DELETION_MAILTO = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent("SameWave data deletion request")}`;
 
@@ -270,16 +289,20 @@ const DATA_DELETION_HTML = layout(
   "Delete your data",
   `
   <h1>Request deletion of your SameWave account and data</h1>
-  <p class="meta">${APP_NAME} (Android package <code>app.echo.samewave</code>). Last updated: May 2026.</p>
+  <p class="meta">${APP_NAME} (Android package <code>${ANDROID_PACKAGE}</code>). Last updated: June 2026.</p>
 
   <p>Use this page to request deletion of your <strong>SameWave</strong> account
-  and associated personal data (photos, ripples/waves, votes, country, sign-in
-  linkage, and push tokens). You do not need to stay signed in to read this page.</p>
+  and associated personal data (photos, ripples/waves, votes, country, Google
+  sign-in linkage via Clerk, and push tokens). You do not need to stay signed in
+  to read this page or submit a request.</p>
+
+  <p><a class="btn" href="${DATA_DELETION_MAILTO}">Email a deletion request</a></p>
+  <p class="meta">Opens your email app with our address and subject line pre-filled.</p>
 
   <h2>Option 1 — Delete some data (keep your account)</h2>
   <p>Signed-in users can remove individual photos in the App under
-  <strong>My photos</strong>. That deletes those photos from our servers without
-  closing your account. See our <a href="/api/privacy">Privacy Policy</a>.</p>
+  <strong>My Path → My Photos</strong>. That deletes those photos from our servers
+  without closing your account. See our <a href="/api/privacy">Privacy Policy</a>.</p>
 
   <h2>Option 2 — Delete your account and all associated data</h2>
   <p>Email us to request complete deletion of your account and all data we hold

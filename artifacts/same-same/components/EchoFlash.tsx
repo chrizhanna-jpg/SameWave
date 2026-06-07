@@ -21,7 +21,8 @@ import {
 import { ConnectionMapPreview } from "@/components/ConnectionMapPreview";
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
-import { getGeoTier, getTimeTier } from "@/utils/celebrations";
+import { getGeoTierForPhotos, getTimeTier } from "@/utils/celebrations";
+import { photoCountryDisplay } from "@/utils/photoCountry";
 
 const FLASH_MAP_WIDTH = Dimensions.get("window").width - 48;
 
@@ -33,9 +34,11 @@ interface Props {
   /** Country/flag/photo metadata for the two sides of the echo. */
   myCountryFlag?: string;
   myCountryCode?: string;
+  myCaptureCountryCode?: string;
   theirCountry: string;
   theirCountryFlag: string;
   theirCountryCode?: string;
+  theirCaptureCountryCode?: string;
   myPhotoUri: string;
   theirPhotoUri: string;
   /** Theme that produced the echo (e.g. "Coffee", "Sunset"). */
@@ -74,9 +77,11 @@ interface Props {
 export function EchoFlash({
   myCountryFlag,
   myCountryCode,
+  myCaptureCountryCode,
   theirCountry,
   theirCountryFlag,
   theirCountryCode,
+  theirCaptureCountryCode,
   myPhotoUri,
   theirPhotoUri,
   themeTitle,
@@ -182,7 +187,15 @@ export function EchoFlash({
   });
 
   const timeTier = getTimeTier(myPhotoUploadedAt, theirPhotoMinutesAgo);
-  const geoTier = getGeoTier(myCountryCode, theirCountryCode);
+  const myDisplay = photoCountryDisplay(myCaptureCountryCode, myCountryCode);
+  const theirDisplay = photoCountryDisplay(
+    theirCaptureCountryCode,
+    theirCountryCode,
+  );
+  const geoTier = getGeoTierForPhotos(
+    myCaptureCountryCode,
+    theirCaptureCountryCode,
+  );
   const dragScale = celebrationDragScale(dragY);
   const backdropDragOpacity = dragY.interpolate({
     inputRange: [-140, 0, 140],
@@ -237,11 +250,11 @@ export function EchoFlash({
         </View>
         <Text style={styles.tagline}>They rippled back!</Text>
 
-        {(myCountryCode || theirCountryCode) && (
+        {(myDisplay.code || theirDisplay.code) && (
           <ConnectionMapPreview
             kind="wave"
-            fromCode={myCountryCode}
-            toCode={theirCountryCode}
+            fromCode={myDisplay.code}
+            toCode={theirDisplay.code}
             width={FLASH_MAP_WIDTH}
             height={Math.round(FLASH_MAP_WIDTH * 0.34)}
             style={styles.atlasPreview}
@@ -263,12 +276,10 @@ export function EchoFlash({
               />
             ) : (
               <View style={[styles.thumb, styles.thumbFallback]}>
-                <Text style={styles.thumbFallbackFlag}>
-                  {myCountryFlag || "🌍"}
-                </Text>
+                <Text style={styles.thumbFallbackFlag}>{myDisplay.flag}</Text>
               </View>
             )}
-            <Text style={styles.thumbFlag}>{myCountryFlag || "🌍"}</Text>
+            <Text style={styles.thumbFlag}>{myDisplay.flag}</Text>
           </Animated.View>
 
           <View style={styles.connector}>
@@ -292,11 +303,11 @@ export function EchoFlash({
             ) : (
               <View style={[styles.thumb, styles.thumbFallback]}>
                 <Text style={styles.thumbFallbackFlag}>
-                  {theirCountryFlag || "🌍"}
+                  {theirDisplay.flag}
                 </Text>
               </View>
             )}
-            <Text style={styles.thumbFlag}>{theirCountryFlag || "🌍"}</Text>
+            <Text style={styles.thumbFlag}>{theirDisplay.flag}</Text>
           </Animated.View>
         </View>
 

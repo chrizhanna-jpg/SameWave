@@ -76,6 +76,7 @@ import {
 } from "@/utils/audio";
 import { sampleMatchStats } from "@/utils/sampleStats";
 import { flagFor, nameFor } from "@/data/countries";
+import { photoCountryDisplay, displayCountryCode } from "@/utils/photoCountry";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
 import type { Match } from "@/context/AppContext";
 import { photoKey } from "@/utils/photoKey";
@@ -453,6 +454,11 @@ export default function SwipeScreen() {
       ? todaysPhoto.backendId
       : undefined;
 
+  const myPhotoDisplay = React.useMemo(
+    () => photoCountryDisplay(todaysPhoto?.captureCountryCode, myCountryCode),
+    [todaysPhoto?.captureCountryCode, myCountryCode],
+  );
+
   // User's photo is LOCKED for the session — only changes when they upload a new one
   const myPhotoData = React.useMemo<{
     uri: string;
@@ -666,7 +672,14 @@ export default function SwipeScreen() {
         if (cancelled) return;
         const ids = new Map<string, string>();
         const mapped: SamplePhoto[] = cands.map((c) => {
-          const code = (c.countryCode ?? "ZZ").toUpperCase();
+          const capture =
+            typeof c.captureCountryCode === "string" &&
+            c.captureCountryCode.length === 2
+              ? c.captureCountryCode.toUpperCase()
+              : undefined;
+          const code = (
+            displayCountryCode(c.captureCountryCode, c.countryCode) ?? "ZZ"
+          ).toUpperCase();
           const minutesAgo = Math.max(
             1,
             Math.round((Date.now() - new Date(c.createdAt).getTime()) / 60000),
@@ -678,6 +691,7 @@ export default function SwipeScreen() {
             country: nameFor(code) ?? "Somewhere",
             countryCode: code,
             countryFlag: flagFor(code),
+            captureCountryCode: capture,
             theme: c.theme || activeTheme,
             minutesAgo,
             tags: c.tags,
@@ -753,6 +767,14 @@ export default function SwipeScreen() {
     [],
   );
   const [theirPhoto, setTheirPhoto] = useState(initial?.photo ?? PLACEHOLDER_PHOTO);
+  const theirPhotoDisplay = React.useMemo(
+    () =>
+      photoCountryDisplay(
+        theirPhoto.captureCountryCode,
+        theirPhoto.countryCode,
+      ),
+    [theirPhoto.captureCountryCode, theirPhoto.countryCode],
+  );
   const [matchedTheme, setMatchedTheme] = useState<string>(initial?.matchedTheme ?? "");
   const [sharedTags, setSharedTags] = useState<string[]>(initial?.sharedTags ?? []);
   const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
@@ -1144,14 +1166,22 @@ export default function SwipeScreen() {
         // Build a match record for BOTH verdicts so the user can revisit
         // and flip a previous swipe from My Journey. Stats / countries /
         // badges only count "same" — the context handles that branching.
+        const myDisp = photoCountryDisplay(
+          todaysPhoto?.captureCountryCode,
+          myCountryCode,
+        );
         const match: Match = {
           id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
           myPhoto: snapshotMyUri,
           theirPhoto: snapshotPhoto.uri,
-          myCountry: myCountryName ?? "You",
+          myCountry: myDisp.name,
+          myCountryCode: myDisp.code,
+          myCountryFlag: myDisp.flag,
           theirCountry: snapshotPhoto.country,
           theirCountryFlag: snapshotPhoto.countryFlag,
           theirCountryCode: snapshotPhoto.countryCode,
+          myCaptureCountryCode: todaysPhoto?.captureCountryCode,
+          theirCaptureCountryCode: snapshotPhoto.captureCountryCode,
           similarityScore: 0,
           verdict: dir === "right" ? "same" : "different",
           timestamp: new Date().toISOString(),
@@ -1617,7 +1647,15 @@ export default function SwipeScreen() {
                     const ids = new Map<string, string>();
                     const exclude = buildExcludeKeys();
                     const mapped: SamplePhoto[] = cands.map((c) => {
-                      const code = (c.countryCode ?? "ZZ").toUpperCase();
+                      const capture =
+                        typeof c.captureCountryCode === "string" &&
+                        c.captureCountryCode.length === 2
+                          ? c.captureCountryCode.toUpperCase()
+                          : undefined;
+                      const code = (
+                        displayCountryCode(c.captureCountryCode, c.countryCode) ??
+                        "ZZ"
+                      ).toUpperCase();
                       const minutesAgo = Math.max(
                         1,
                         Math.round(
@@ -1632,6 +1670,7 @@ export default function SwipeScreen() {
                         country: nameFor(code) ?? "Somewhere",
                         countryCode: code,
                         countryFlag: flagFor(code),
+                        captureCountryCode: capture,
                         theme: c.theme || activeTheme,
                         minutesAgo,
                         tags: c.tags,
@@ -1825,6 +1864,16 @@ export default function SwipeScreen() {
                 resizeMode="cover"
               />
               {isAiPhoto(myPhotoUri) ? <AiGeneratedBadge size="sm" /> : null}
+              {myPhotoDisplay.code ? (
+                <View
+                  style={[styles.photoCountryBadge, { backgroundColor: "rgba(0,0,0,0.55)" }]}
+                  accessibilityLabel={`Posted from ${myPhotoDisplay.name}`}
+                >
+                  <Text style={styles.photoCountryBadgeText}>
+                    {myPhotoDisplay.flag}
+                  </Text>
+                </View>
+              ) : null}
               <View style={[styles.expandHint, { backgroundColor: "rgba(0,0,0,0.45)" }]}>
                 <Icon name="maximize" size={12} color="#fff" />
               </View>
@@ -1869,6 +1918,16 @@ export default function SwipeScreen() {
               {theirPhoto.customAudioUrl ? (
                 <View style={styles.micBadgeOverlay}>
                   <MicBadge audioUrl={theirPhoto.customAudioUrl} size="sm" />
+                </View>
+              ) : null}
+              {theirPhotoDisplay.code ? (
+                <View
+                  style={[styles.photoCountryBadge, { backgroundColor: "rgba(0,0,0,0.55)" }]}
+                  accessibilityLabel={`Posted from ${theirPhotoDisplay.name}`}
+                >
+                  <Text style={styles.photoCountryBadgeText}>
+                    {theirPhotoDisplay.flag}
+                  </Text>
                 </View>
               ) : null}
               <View style={[styles.expandHint, { backgroundColor: "rgba(0,0,0,0.45)" }]}>
@@ -1946,8 +2005,10 @@ export default function SwipeScreen() {
             theirCountry={flashMatch.theirCountry}
             theirCountryFlag={flashMatch.theirCountryFlag}
             theirCountryCode={flashMatch.theirCountryCode}
-            myCountryFlag={myCountryFlag}
-            myCountryCode={myCountryCode}
+            myCountryFlag={flashMatch.myCountryFlag ?? myPhotoDisplay.flag}
+            myCountryCode={flashMatch.myCountryCode ?? myPhotoDisplay.code}
+            myCaptureCountryCode={flashMatch.myCaptureCountryCode}
+            theirCaptureCountryCode={flashMatch.theirCaptureCountryCode}
             themeTitle={themeMeta?.title ?? flashMatch.theme ?? "the same thing"}
             themeEmoji={themeMeta?.emoji ?? "✨"}
             myPhotoUri={flashMatch.myPhoto}
@@ -2359,6 +2420,20 @@ const styles = StyleSheet.create({
     borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
+  },
+  photoCountryBadge: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    minWidth: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6,
+  },
+  photoCountryBadgeText: {
+    fontSize: 16,
   },
   actionOverlay: {
     position: "absolute",

@@ -15,7 +15,9 @@ import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Icon } from "@/components/Icon";
-import { DAILY_CHALLENGES } from "@/data/samplePhotos";
+import {
+  resolveThemeDisplay,
+} from "@/utils/resolveThemeDisplay";
 import { resolveMusicUrl } from "@/data/musicLibrary";
 import { flagFor, nameFor } from "@/data/countries";
 import { useColors } from "@/hooks/useColors";
@@ -69,16 +71,6 @@ function vibeUrl(p: AtlasFireParticipant): string | null {
       seed: p.uri,
     }) ?? null
   );
-}
-
-/** Show the theme string stored on the photo (upload), not challenge catalog titles. */
-function resolveThemeDisplay(raw: string): { title: string; emoji: string } {
-  const t = raw.trim();
-  if (!t) return { title: "Moment", emoji: "✨" };
-  const meta = DAILY_CHALLENGES.find(
-    (c) => c.id === t || c.title.toLowerCase() === t.toLowerCase(),
-  );
-  return { title: t, emoji: meta?.emoji ?? "✨" };
 }
 
 /** Loads explore URIs — uses bearer headers for `/api/photos/:id/image` streams. */

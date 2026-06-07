@@ -4,7 +4,7 @@
 // alive without being random on every render.
 
 import { SAMPLE_PHOTOS, type SamplePhoto, DAILY_CHALLENGES } from "./samplePhotos";
-import { getGeoTier, getTimeTier, type GeoTier, type TimeTier } from "@/utils/celebrations";
+import { getGeoTier, getGeoTierForPhotos, getTimeTier, type GeoTier, type TimeTier } from "@/utils/celebrations";
 import { sampleMatchStats, type SampleMatchStats } from "@/utils/sampleStats";
 import { photoKey } from "@/utils/photoKey";
 
@@ -152,7 +152,10 @@ export function buildDiscoveryFeed(
     const bPostedMin = happenedMinutesAgo - diff / 2;
     const aPostedAt = new Date(now - aPostedMin * 60_000).toISOString();
     const timeTier = getTimeTier(aPostedAt, Math.max(0, bPostedMin));
-    const geoTier = getGeoTier(a.countryCode, b.countryCode);
+    const geoTier =
+      a.captureCountryCode && b.captureCountryCode
+        ? getGeoTierForPhotos(a.captureCountryCode, b.captureCountryCode)
+        : getGeoTier(a.countryCode, b.countryCode);
 
     const challenge = DAILY_CHALLENGES.find((c) => c.id === themeId);
 

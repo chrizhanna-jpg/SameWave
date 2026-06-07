@@ -28,21 +28,45 @@ import {
   fetchAtlasTabDiagnostics,
   type AtlasConnection,
   type AtlasCountry,
+  type AtlasFireExploreOptions,
   type AtlasSummaryLoadError,
   type AtlasSummaryLoadFailure,
+  type LocalRippleExploreMatch,
+  type LocalWaveExploreEcho,
 } from "@/utils/api";
 import { registerAtlasRefreshListener } from "@/utils/atlasHub";
 import { loadAtlasCache, saveAtlasCache } from "@/utils/syncCache";
 import { markTabVisited } from "@/utils/tabVisits";
+import { photoCountryDisplay } from "@/utils/photoCountry";
+import type { MyPhoto } from "@/context/AppContext";
 import { COUNTRIES } from "@/data/countries";
 
 const RIPPLE_FRESH_MS = 48 * 60 * 60 * 1000;
 
-/** ISO2 for Atlas arcs: profile `myCountryCode`, else same-swipe match `myCountry` label (not "You"). */
+/** ISO2 for Atlas arcs: today's photo capture, else profile, else match snapshot. */
 function resolveViewerIso2(
   myCountryCode: string | undefined,
   matches: Match[],
+  myPhotos: MyPhoto[],
 ): string | undefined {
+  const todayUtcDay = Math.floor(Date.now() / 86_400_000);
+  const todayPhoto = myPhotos.find((p) => {
+    const uploadedUtcDay = Math.floor(
+      new Date(p.uploadedAt).getTime() / 86_400_000,
+    );
+    return uploadedUtcDay === todayUtcDay;
+  });
+  const fromToday = photoCountryDisplay(
+    todayPhoto?.captureCountryCode,
+    myCountryCode,
+  ).code;
+  if (fromToday) return fromToday;
+
+  const fromMatch = matches.find(
+    (m) => m.verdict === "same" && m.myCountryCode,
+  )?.myCountryCode;
+  if (fromMatch && /^[A-Z]{2}$/.test(fromMatch)) return fromMatch;
+
   const direct = (myCountryCode ?? "").trim().toUpperCase();
   if (/^[A-Z]{2}$/.test(direct)) return direct;
   const label = matches.find((m) => m.verdict === "same")?.myCountry?.trim();
@@ -58,10 +82,11 @@ function mergeLocalSameRippleArcs(
   api: AtlasConnection[],
   matches: Match[],
   myCountryCode: string | undefined,
+  myPhotos: MyPhoto[],
   isSignedIn: boolean,
 ): AtlasConnection[] {
   if (!isSignedIn) return api;
-  const mine = resolveViewerIso2(myCountryCode, matches);
+  const mine = resolveViewerIso2(myCountryCode, matches, myPhotos);
   if (!mine) return api;
 
   const hasApiRippleBetween = (to: string) =>
@@ -76,8 +101,8 @@ function mergeLocalSameRippleArcs(
   for (const m of matches) {
     if (m.verdict !== "same") continue;
     const to = (m.theirCountryCode ?? "").trim().toUpperCase();
-    if (!/^[A-Z]{2}$/.test(to) || to === mine) continue;
-    if (hasApiRippleBetween(to)) continue;
+    if (!/^[A-Z]{2}$/.test(to)) continue;
+    if (hasApiRippleBetween(to) && to !== mine) continue;
     const ts = Date.parse(m.timestamp);
     const fresh = Number.isFinite(ts) && now - ts < RIPPLE_FRESH_MS;
     const theme = (m.theme ?? "").trim();
@@ -125,7 +150,58 @@ export default function AtlasScreen() {
   const [diagBusy, setDiagBusy] = useState(false);
   const [diagJson, setDiagJson] = useState<string | null>(null);
 
-  const { matches, myCountryCode } = useApp();
+  const { matches, myCountryCode, mutualEchoes, myPhotos } = useApp();
+
+  const fireExploreOptions = useMemo((): AtlasFireExploreOptions => {
+    const localMatches: LocalRippleExploreMatch[] = matches
+      .filter((m) => m.verdict === "same")
+      .map((m) => ({
+        id: m.id,
+        verdict: m.verdict,
+        myPhoto: m.myPhoto,
+        theirPhoto: m.theirPhoto,
+        theirPhotoId: m.theirPhotoId,
+        theirCountryCode: m.theirCountryCode,
+        myCountry: m.myCountry,
+        myCountryCode: m.myCountryCode,
+        myCaptureCountryCode: m.myCaptureCountryCode,
+        theirCaptureCountryCode: m.theirCaptureCountryCode,
+        theme: m.theme,
+        theirActualTheme: m.theirActualTheme,
+        theirTags: m.theirTags,
+        sharedTags: m.sharedTags,
+        theirMusicGenre: m.theirMusicGenre,
+        theirCustomAudioUrl: m.theirCustomAudioUrl,
+        timestamp: m.timestamp,
+      }));
+    const localWaves: LocalWaveExploreEcho[] = mutualEchoes.map((e) => ({
+      id: e.id,
+      theme: e.theme,
+      myPhoto: e.mine.uri,
+      myPhotoId: e.mine.id,
+      theirPhoto: e.theirs.uri,
+      theirPhotoId: e.theirs.id,
+      theirCountryCode: e.theirs.countryCode ?? "",
+      myCountryCode: e.mine.countryCode ?? myCountryCode,
+      mutualAt: e.mutualAt,
+    }));
+    return {
+      localMatches,
+      localWaves,
+      viewerCountryCode: myCountryCode,
+      viewerMyPhotos: myPhotos.map((p, i) => ({
+        uri: p.uri,
+        backendId: p.backendId,
+        theme: p.theme,
+        tags: p.tags,
+        subjects: p.subjects,
+        musicGenre: p.musicGenre,
+        customAudioUrl: p.customAudioUrl,
+        captureCountryCode: p.captureCountryCode,
+        uploadedAt: p.uploadedAt,
+      })),
+    };
+  }, [matches, mutualEchoes, myCountryCode, myPhotos]);
 
   const globeConnections = useMemo(
     () =>
@@ -133,9 +209,10 @@ export default function AtlasScreen() {
         connections,
         matches,
         myCountryCode,
+        myPhotos,
         !!isSignedIn,
       ),
-    [connections, matches, myCountryCode, isSignedIn],
+    [connections, matches, myCountryCode, myPhotos, isSignedIn],
   );
 
   const runConnectivityDiagnostics = useCallback(async () => {
@@ -166,8 +243,8 @@ export default function AtlasScreen() {
   );
 
   const load = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    else if (!atlasHasLoadedOnceRef.current && !hasCachedData) setLoading(true);
+    setRefreshing(true);
+    if (!atlasHasLoadedOnceRef.current && !hasCachedData) setLoading(true);
     try {
       const data = await fetchAtlasSummary();
       setSummary(data.countries);
@@ -383,6 +460,7 @@ export default function AtlasScreen() {
             connections={globeConnections}
             countries={summary}
             isSignedIn={!!isSignedIn}
+            fireExploreOptions={fireExploreOptions}
           />
         </View>
       ) : null}
