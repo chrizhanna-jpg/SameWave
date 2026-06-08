@@ -21,6 +21,7 @@ import {
   exposurePenaltyExpr,
   photoExposureCte,
 } from "../lib/photoExposure";
+import { getPhotoRetentionMs } from "../lib/photoRetention";
 
 const bannedB64Md5Expr =
   BANNED_PHOTO_B64_MD5.length > 0
@@ -41,8 +42,7 @@ const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 // little long.
 const MAX_AUDIO_BYTES = 1 * 1024 * 1024;
 const ALLOWED_AUDIO_MIME_PREFIXES = ["audio/"];
-// 30-day retention for free users. Pro users get null expiresAt (forever).
-const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+// Free-tier retention — see `PHOTO_RETENTION_DAYS` (default 60). Pro: null expiresAt.
 // Hide any photo flagged by ≥ this many distinct reports — pulled from the
 // candidate pool until a human reviews it (manual moderation phase 2).
 const REPORT_HIDE_THRESHOLD = 3;
@@ -318,7 +318,7 @@ router.post("/photos", async (req, res) => {
         customAudioBase64,
         customAudioMime,
         status: "active",
-        expiresAt: new Date(Date.now() + RETENTION_MS),
+        expiresAt: new Date(Date.now() + getPhotoRetentionMs()),
       })
       .returning({
         id: photosTable.id,
@@ -2018,7 +2018,7 @@ router.post("/photos/:id/reactivate", async (req, res) => {
         tags: nextTags,
         musicGenre: nextMusic,
         status: "active",
-        expiresAt: new Date(Date.now() + RETENTION_MS),
+        expiresAt: new Date(Date.now() + getPhotoRetentionMs()),
         ...(countryCode ? { countryCode } : {}),
       })
       .where(eq(photosTable.id, photoId))

@@ -26,6 +26,7 @@ import type { Match } from "@/context/AppContext";
 import {
   fetchAtlasSummary,
   fetchAtlasTabDiagnostics,
+  invalidateAtlasSummaryCache,
   type AtlasConnection,
   type AtlasCountry,
   type AtlasFireExploreOptions,
@@ -127,6 +128,24 @@ function mergeLocalSameRippleArcs(
   return [...api, ...added];
 }
 
+/** Never replace a non-empty map with an empty/partial API payload (degraded refresh, races). */
+function mergeAtlasPayload(
+  prev: { countries: AtlasCountry[]; connections: AtlasConnection[] },
+  incoming: { countries: AtlasCountry[]; connections: AtlasConnection[] },
+): { countries: AtlasCountry[]; connections: AtlasConnection[] } {
+  const keepCountries =
+    incoming.countries.length === 0 && prev.countries.length > 0;
+  const keepConnections =
+    incoming.connections.length === 0 && prev.connections.length > 0;
+  if (!keepCountries && !keepConnections) {
+    return incoming;
+  }
+  return {
+    countries: keepCountries ? prev.countries : incoming.countries,
+    connections: keepConnections ? prev.connections : incoming.connections,
+  };
+}
+
 export default function AtlasScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -144,13 +163,14 @@ export default function AtlasScreen() {
   const [hasCachedData, setHasCachedData] = useState(false);
   const atlasHasLoadedOnceRef = useRef(false);
   const atlasFocusedRef = useRef(false);
+  const atlasLoadGenerationRef = useRef(0);
   const refreshSpin = useRef(new Animated.Value(0)).current;
   const refreshLoopRef = useRef<Animated.CompositeAnimation | null>(null);
 
   const [diagBusy, setDiagBusy] = useState(false);
   const [diagJson, setDiagJson] = useState<string | null>(null);
 
-  const { matches, myCountryCode, mutualEchoes, myPhotos } = useApp();
+  const { matches, myCountryCode, mutualEchoes, myPhotos, hasHydrated } = useApp();
 
   const fireExploreOptions = useMemo((): AtlasFireExploreOptions => {
     const localMatches: LocalRippleExploreMatch[] = matches
@@ -243,16 +263,36 @@ export default function AtlasScreen() {
   );
 
   const load = useCallback(async (isRefresh = false) => {
+    if (!hasHydrated) return;
+    const generation = ++atlasLoadGenerationRef.current;
+    if (isRefresh) invalidateAtlasSummaryCache();
     setRefreshing(true);
     if (!atlasHasLoadedOnceRef.current && !hasCachedData) setLoading(true);
     try {
       const data = await fetchAtlasSummary({ force: isRefresh });
+      if (generation !== atlasLoadGenerationRef.current) return;
       if (data.loadError == null) {
-        setSummary(data.countries);
-        setConnections(data.connections);
+        let mergedCountries = data.countries;
+        let mergedConnections = data.connections;
+        setSummary((prev) => {
+          mergedCountries = mergeAtlasPayload(
+            { countries: prev, connections: [] },
+            { countries: data.countries, connections: [] },
+          ).countries;
+          return mergedCountries;
+        });
+        setConnections((prev) => {
+          mergedConnections = mergeAtlasPayload(
+            { countries: [], connections: prev },
+            { countries: [], connections: data.connections },
+          ).connections;
+          return mergedConnections;
+        });
         setLoadError(null);
         setLoadFailure(null);
-        await saveAtlasCache(data.countries, data.connections);
+        if (mergedCountries.length > 0 || mergedConnections.length > 0) {
+          await saveAtlasCache(mergedCountries, mergedConnections);
+        }
       } else {
         setLoadError(data.loadError);
         setLoadFailure(data.loadFailure ?? null);
@@ -262,20 +302,28 @@ export default function AtlasScreen() {
       }
       atlasHasLoadedOnceRef.current = true;
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (generation === atlasLoadGenerationRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  }, [hasCachedData]);
+  }, [hasCachedData, hasHydrated]);
 
   useEffect(() => {
     let alive = true;
     void loadAtlasCache().then((cached) => {
       if (!alive || !cached) return;
-      setSummary(cached.countries);
-      setConnections(cached.connections);
-      setHasCachedData(true);
-      atlasHasLoadedOnceRef.current = true;
-      setLoading(false);
+      setSummary((prev) =>
+        prev.length > 0 ? prev : cached.countries,
+      );
+      setConnections((prev) =>
+        prev.length > 0 ? prev : cached.connections,
+      );
+      if (cached.countries.length > 0 || cached.connections.length > 0) {
+        setHasCachedData(true);
+        atlasHasLoadedOnceRef.current = true;
+        setLoading(false);
+      }
     });
     return () => {
       alive = false;
@@ -306,13 +354,14 @@ export default function AtlasScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      if (!hasHydrated) return;
       atlasFocusedRef.current = true;
       markTabVisited("atlas");
       void load(hasCachedData || atlasHasLoadedOnceRef.current);
       return () => {
         atlasFocusedRef.current = false;
       };
-    }, [load, hasCachedData]),
+    }, [load, hasCachedData, hasHydrated]),
   );
 
   useEffect(() => {

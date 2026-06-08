@@ -7,6 +7,7 @@
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "seed:atlas-global": "node ./scripts/seed-atlas-global-demo.mjs",
+    "extend:photo-retention": "node ./scripts/extend-photo-retention.mjs",
     "audit:photo-themes": "node ./scripts/audit-fix-photo-themes.mjs",
     "audit:photo-themes:apply": "node ./scripts/audit-fix-photo-themes.mjs --apply",
     "replace:viral-coffee": "node ./scripts/replace-viral-coffee-photo.mjs",

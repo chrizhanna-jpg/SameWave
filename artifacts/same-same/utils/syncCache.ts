@@ -34,7 +34,18 @@ export interface AtlasCachePayload {
 let celebratedIdsMem: Set<string> | null = null;
 let celebratedHydratePromise: Promise<Set<string>> | null = null;
 
+function shouldPersistEchoUri(uri: string | undefined): boolean {
+  if (!uri?.trim()) return false;
+  const u = uri.trim();
+  // Inline base64 can exceed AsyncStorage limits; remote URLs are safe to keep.
+  if (u.startsWith("data:")) return false;
+  return u.startsWith("http://") || u.startsWith("https://");
+}
+
 function stripEchoSide(side: EchoCard["mine"]): CachedPhotoSide {
+  if (shouldPersistEchoUri(side.uri)) {
+    return { ...side, uri: side.uri.trim() };
+  }
   const { uri: _uri, ...rest } = side;
   return rest;
 }
@@ -154,7 +165,14 @@ export async function loadEchoCache(): Promise<EchoCachePayload | null> {
 export async function saveEchoCache(
   inbox: EchoCard[],
   mine: EchoCard[],
+  opts?: { allowEmpty?: boolean },
 ): Promise<void> {
+  if (!opts?.allowEmpty && inbox.length === 0 && mine.length === 0) {
+    const prev = await loadEchoCache();
+    if (prev && (prev.inbox.length > 0 || prev.mine.length > 0)) {
+      return;
+    }
+  }
   const payload: EchoCachePayload = {
     inbox: inbox.map(stripEchoForCache),
     mine: mine.map(stripEchoForCache),
@@ -179,6 +197,9 @@ export async function saveAtlasCache(
   countries: AtlasCountry[],
   connections: AtlasConnection[],
 ): Promise<void> {
+  if (countries.length === 0 && connections.length === 0) {
+    return;
+  }
   const payload: AtlasCachePayload = {
     countries,
     connections: connections.map(stripAtlasConnection),

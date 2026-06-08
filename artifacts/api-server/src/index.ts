@@ -1,6 +1,8 @@
 import "./loadEnv";
 import app from "./app";
 import { logger } from "./lib/logger";
+import { startPhotoRetentionCleanup } from "./lib/photoRetentionCleanup";
+import { getPhotoRetentionDays } from "./lib/photoRetention";
 
 const rawPort = process.env["PORT"];
 
@@ -20,7 +22,11 @@ if (Number.isNaN(port) || port <= 0) {
 const listenHost = process.env["LISTEN_HOST"]?.trim() || "0.0.0.0";
 
 const server = app.listen(port, listenHost, () => {
-  logger.info({ port, listenHost }, "Server listening");
+  logger.info(
+    { port, listenHost, photoRetentionDays: getPhotoRetentionDays() },
+    "Server listening",
+  );
+  startPhotoRetentionCleanup();
 });
 
 server.on("error", (err) => {

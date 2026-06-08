@@ -1273,8 +1273,14 @@ export async function fetchAtlasSummary(
         );
       }),
     ]);
-    if (!result.loadError) {
+    if (
+      !result.loadError &&
+      (result.connections.length > 0 || result.countries.length > 0)
+    ) {
       atlasSummaryCache = { fetchedAt: Date.now(), data: result };
+      return result;
+    }
+    if (!result.loadError) {
       return result;
     }
     lastResult = result;
@@ -1353,7 +1359,29 @@ async function fetchAtlasSummaryOnce(
     const json = (await res.json()) as {
       countries?: AtlasCountry[];
       connections?: AtlasConnection[];
+      meta?: { degraded?: boolean; reason?: string; hint?: string };
     };
+    if (json.meta?.degraded === true) {
+      const reason =
+        typeof json.meta.reason === "string" && json.meta.reason.length > 0
+          ? json.meta.reason
+          : "database_unavailable";
+      const hint =
+        typeof json.meta.hint === "string" && json.meta.hint.length > 0
+          ? json.meta.hint
+          : undefined;
+      return {
+        countries: [],
+        connections: [],
+        loadError: "server",
+        loadFailure: {
+          category: "http",
+          status: 200,
+          detail: hint ? `${reason}: ${hint}` : reason,
+          apiHost,
+        },
+      };
+    }
     const countries = Array.isArray(json.countries) ? json.countries : [];
     const connectionsRaw = Array.isArray(json.connections)
       ? json.connections

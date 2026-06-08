@@ -64,6 +64,13 @@ export async function recordEchoOffer(input: {
   if (voterPhoto.status !== "active" || targetPhoto.status !== "active") {
     return { state: "skipped" };
   }
+  const now = Date.now();
+  if (
+    (voterPhoto.expiresAt && voterPhoto.expiresAt.getTime() <= now) ||
+    (targetPhoto.expiresAt && targetPhoto.expiresAt.getTime() <= now)
+  ) {
+    return { state: "skipped" };
+  }
   if (voterPhoto.userId !== voterUserId) return { state: "skipped" };
   if (voterPhoto.userId === targetPhoto.userId) return { state: "skipped" };
 

@@ -1513,7 +1513,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (toMarkSeen.length > 0) {
         await markEchoesCelebrated(toMarkSeen);
       }
-      await saveEchoCache(inbox, mine);
+      await saveEchoCache(inbox, mine, {
+        allowEmpty: inboxRes.ok && mineRes.ok,
+      });
       setState((prev) => {
         const newState: AppState = {
           ...prev,
@@ -1569,6 +1571,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const newPending = prev.pendingEchoes.filter((e) => e.id !== id);
         const newMutual =
           verdict === "same" ? [promoted, ...prev.mutualEchoes] : prev.mutualEchoes;
+        void saveEchoCache(newPending, newMutual, { allowEmpty: true });
         const newState: AppState = {
           ...prev,
           pendingEchoes: newPending,

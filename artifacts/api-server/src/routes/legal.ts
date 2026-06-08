@@ -1,5 +1,6 @@
 import type { Response } from "express";
 import { Router, type IRouter } from "express";
+import { getPhotoRetentionDays } from "../lib/photoRetention";
 
 const router: IRouter = Router();
 
@@ -83,7 +84,9 @@ function sendPublicHtml(res: Response, html: string): void {
   res.send(html);
 }
 
-const PRIVACY_HTML = layout(
+function buildPrivacyHtml(): string {
+  const retentionDays = getPhotoRetentionDays();
+  return layout(
   "Privacy Policy",
   `
   <h1>Privacy Policy</h1>
@@ -122,7 +125,7 @@ const PRIVACY_HTML = layout(
 
   <h2>How long we keep it</h2>
   <ul>
-    <li><strong>Free users:</strong> photos are automatically deleted 30 days after upload.</li>
+    <li><strong>Free users:</strong> photos are automatically deleted ${retentionDays} days after upload.</li>
     <li><strong>Pro users:</strong> photos remain until you delete them or your account is removed.</li>
     <li>Match history (your Echoes) and the seen-photo log are retained while your device identifier is active so the App can show you your past matches.</li>
   </ul>
@@ -149,7 +152,8 @@ const PRIVACY_HTML = layout(
   <hr />
   <p class="meta"><a href="/api/terms">Terms of Service</a></p>
   `,
-);
+  );
+}
 
 const TERMS_HTML = layout(
   "Terms of Service",
@@ -329,7 +333,7 @@ const DATA_DELETION_HTML = layout(
 );
 
 export function sendPrivacyPage(res: Response): void {
-  sendPublicHtml(res, PRIVACY_HTML);
+  sendPublicHtml(res, buildPrivacyHtml());
 }
 
 export function sendDataDeletionPage(res: Response): void {

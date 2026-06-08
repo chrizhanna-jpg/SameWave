@@ -50,7 +50,7 @@ export const ATLAS_FILTER_HINT_MINE_SIGNIN =
 
 export const ATLAS_FIRE_EMPTY = {
   wavefire:
-    "No active Wavefire — mutual Waves with shared themes across countries in the last few hours.",
+    "No active Wavefire — Waves with shared themes across countries in the last few hours.",
   ripplefire:
     "No active Ripplefire yet — send a Same swipe on Ripple, or check All for every live arc.",
 } as const;

@@ -15,7 +15,7 @@ export const usersTable = pgTable("users", {
   authId: varchar("auth_id", { length: 128 }).unique(),
   // ISO-3166-1 alpha-2 country code (e.g. "JP"). Matches the mobile app.
   countryCode: varchar("country_code", { length: 2 }),
-  // Pro users get extended retention (no 30-day expiry on their photos).
+  // Pro users get extended retention (no expiry on their photos).
   isPro: boolean("is_pro").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

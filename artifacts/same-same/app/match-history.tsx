@@ -346,20 +346,22 @@ export default function MatchHistoryScreen() {
                 the celebratory share-card with the hero brand graphic. */}
             {sortedWaves.length > 0 && (
               <>
-                <View style={styles.sectionHeaderRow}>
-                  <Icon name="wave" size={14} />
-                  <Text
-                    style={[styles.sectionTitle, { color: colors.gold }]}
-                  >
-                    My Waves · {sortedWaves.length}
-                  </Text>
+                <View style={styles.sectionHeaderBlock}>
+                  <View style={styles.sectionHeaderRow}>
+                    <Icon name="wave" size={14} />
+                    <Text
+                      style={[styles.sectionTitle, { color: colors.gold }]}
+                    >
+                      My Waves · {sortedWaves.length}
+                    </Text>
+                  </View>
                   <Text
                     style={[
                       styles.sectionSub,
                       { color: colors.mutedForeground },
                     ]}
                   >
-                    They rippled back! Send a Ripple catch a Wave
+                    They rippled back! Send a Ripple to catch a Wave
                   </Text>
                 </View>
                 {sortedWaves.map((echo) => {
@@ -441,23 +443,25 @@ export default function MatchHistoryScreen() {
               <>
                 <View
                   style={[
-                    styles.sectionHeaderRow,
-                    sortedWaves.length > 0 && styles.sectionHeaderRowSpaced,
+                    styles.sectionHeaderBlock,
+                    sortedWaves.length > 0 && styles.sectionHeaderBlockSpaced,
                   ]}
                 >
-                  <Icon name="ripple" size={14} color={colors.teal} />
-                  <Text
-                    style={[styles.sectionTitle, { color: colors.teal }]}
-                  >
-                    My Ripples · {confirmedMatches.length}
-                  </Text>
+                  <View style={styles.sectionHeaderRow}>
+                    <Icon name="ripple" size={14} color={colors.teal} />
+                    <Text
+                      style={[styles.sectionTitle, { color: colors.teal }]}
+                    >
+                      My Ripples · {confirmedMatches.length}
+                    </Text>
+                  </View>
                   <Text
                     style={[
                       styles.sectionSub,
                       { color: colors.mutedForeground },
                     ]}
                   >
-                    swipes you've sent
+                    Swipes you've sent
                   </Text>
                 </View>
                 {confirmedMatches.map(renderRippleRow)}
@@ -552,16 +556,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  sectionHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
+  sectionHeaderBlock: {
+    gap: 2,
     marginTop: 4,
     marginBottom: 2,
     paddingHorizontal: 2,
   },
-  sectionHeaderRowSpaced: {
+  sectionHeaderBlockSpaced: {
     marginTop: 18,
+  },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
   sectionTitle: {
     fontSize: 13,
@@ -571,6 +578,8 @@ const styles = StyleSheet.create({
   sectionSub: {
     fontSize: 11,
     fontFamily: "Inter_400Regular",
+    lineHeight: 16,
+    flexShrink: 1,
   },
   waveSub: {
     fontSize: 11,

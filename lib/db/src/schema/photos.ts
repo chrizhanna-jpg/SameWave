@@ -81,7 +81,8 @@ export const photosTable = pgTable(
     status: varchar("status", { length: 16 }).notNull().default("active"),
     reportCount: integer("report_count").notNull().default(0),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    // 30 days from upload for free users; null for Pro (kept indefinitely).
+    // Retention window from upload for free users (server default 60 days via
+    // PHOTO_RETENTION_DAYS); null for Pro (kept indefinitely).
     expiresAt: timestamp("expires_at"),
   },
   (t) => ({

@@ -114,6 +114,7 @@ import {
 import {
   detectRipplefireClusters,
   detectWavefireClusters,
+  connectionsInFireWindow,
   orderWavefireRingCountryCodes,
   type AtlasThemeCluster,
 } from "@/utils/atlasWavefire";
@@ -641,12 +642,32 @@ export function AtlasGlobeExperience({
     [normalized, filter, isSignedIn],
   );
 
+  const fireWindowRipples = useMemo(
+    () => connectionsInFireWindow(normalized, ATLAS_FIRE_WINDOW_MS, "ripple"),
+    [normalized],
+  );
+  const fireWindowWaves = useMemo(
+    () => connectionsInFireWindow(normalized, WAVEFIRE_WINDOW_MS, "wave"),
+    [normalized],
+  );
+
   const displayConnections = useMemo(() => {
-    if (filter === "ripplefire" || filter === "wavefire") {
-      return fireCluster?.connections ?? [];
+    if (filter === "ripplefire") {
+      if (fireCluster?.connections.length) return fireCluster.connections;
+      if (fireWindowRipples.length) return fireWindowRipples;
+      const allRipples = normalized.filter((c) => c.kind === "ripple");
+      if (allRipples.length) return allRipples;
+      return [];
+    }
+    if (filter === "wavefire") {
+      if (fireCluster?.connections.length) return fireCluster.connections;
+      if (fireWindowWaves.length) return fireWindowWaves;
+      const allWaves = normalized.filter((c) => c.kind === "wave");
+      if (allWaves.length) return allWaves;
+      return [];
     }
     return baseFiltered;
-  }, [filter, baseFiltered, fireCluster]);
+  }, [filter, baseFiltered, fireCluster, fireWindowRipples, fireWindowWaves, normalized]);
 
   const canvasPixelW = width * ATLAS_MAP_OVERSAMPLE;
   const canvasPixelH = mapPixelH * ATLAS_MAP_OVERSAMPLE;
@@ -786,14 +807,6 @@ export function AtlasGlobeExperience({
     );
   }, [ripplefireRingD, now]);
 
-  /** Fire tabs draw only the selected cluster — never the full ripple/wave feed. */
-  const showConnectionArcs = useMemo(() => {
-    if (filter === "wavefire" && wavefireActive) return false;
-    if (filter === "ripplefire") return false;
-    if (isFireFilter(filter)) return fireActive;
-    return true;
-  }, [filter, wavefireActive, fireActive]);
-
   const wavefireRingSegments = useMemo(() => {
     if (!wavefireActive || !wavefireCluster) return [];
     const ordered = orderWavefireRingCountryCodes(
@@ -822,6 +835,29 @@ export function AtlasGlobeExperience({
       now,
     );
   }, [wavefireActive, wavefireCluster, projection, now]);
+
+  const wavefireRingVisible =
+    wavefireActive &&
+    (wavefireWavyRingD != null || wavefireRingSegments.length > 0);
+
+  /** Fire tabs: ring when a cluster qualifies; otherwise show live arcs so the map is not blank. */
+  const showConnectionArcs = useMemo(() => {
+    if (filter === "wavefire") {
+      return !wavefireActive || !wavefireRingVisible;
+    }
+    if (filter === "ripplefire") {
+      return !ripplefireRingEligible || ripplefireRingD == null;
+    }
+    if (isFireFilter(filter)) return fireActive;
+    return true;
+  }, [
+    filter,
+    wavefireActive,
+    wavefireRingVisible,
+    ripplefireRingEligible,
+    ripplefireRingD,
+    fireActive,
+  ]);
 
   /** Geometric centre of the Wavefire country ring (projected px) + mean radius. */
   const wavefireRingCentroid = useMemo(() => {
@@ -1478,7 +1514,7 @@ export function AtlasGlobeExperience({
         </View>
       </View>
 
-      {fireActive && fireCluster && fireVisual ? (
+      {fireActive && fireCluster && fireVisual && fireMode ? (
         <AtlasFireExploreModal
           visible={fireExploreOpen}
           onClose={closeFireExplore}
