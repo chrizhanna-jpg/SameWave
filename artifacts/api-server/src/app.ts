@@ -49,6 +49,25 @@ app.get("/api/public/clerk-config", (_req, res) => {
   });
 });
 
+// Play Store update nudge — latest Android build the API knows about.
+app.get("/api/public/app-config", (_req, res) => {
+  const rawCode = process.env.ANDROID_LATEST_VERSION_CODE?.trim();
+  const parsedCode = rawCode ? Number(rawCode) : NaN;
+  const latestVersionCode =
+    Number.isFinite(parsedCode) && parsedCode > 0 ? Math.round(parsedCode) : 28;
+  const latestVersionName =
+    process.env.ANDROID_LATEST_VERSION_NAME?.trim() || "1.3.1";
+  res.json({
+    android: {
+      latestVersionCode,
+      latestVersionName,
+      playStoreUrl:
+        process.env.ANDROID_PLAY_STORE_URL?.trim() ||
+        "https://play.google.com/store/apps/details?id=echo.samewaveripple.app",
+    },
+  });
+});
+
 // DB + secret/key presence booleans — helps diagnose Atlas (SQL); no secrets in JSON.
 // Mounted before clerkMiddleware like `/api/public/clerk-config`.
 app.get("/api/public/backend-status", async (_req, res) => {

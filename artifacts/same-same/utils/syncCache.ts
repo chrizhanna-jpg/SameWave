@@ -1,16 +1,19 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import type { EchoCard } from "@/context/AppContext";
+import type { EchoCard, Match } from "@/context/AppContext";
 import type { AtlasConnection, AtlasCountry } from "@/utils/api";
 
 const CELEBRATED_KEY = "samesame_celebrated_echo_ids";
 const ECHO_CACHE_KEY = "samesame_echo_cache";
 const ATLAS_CACHE_KEY = "samesame_atlas_cache";
+const MATCHES_CACHE_KEY = "samesame_matches_cache";
+const RIPPLEFIRE_LOCAL_CACHE_KEY = "samesame_ripplefire_local";
 
 /** Only celebrate mutual waves whose timestamp is this recent. */
 export const MUTUAL_FLASH_WINDOW_MS = 15 * 60 * 1000;
 
 const MAX_CELEBRATED_IDS = 500;
+const MAX_MATCHES_CACHE = 400;
 
 type CachedPhotoSide = Omit<EchoCard["mine"], "uri"> & { uri?: string };
 
@@ -34,7 +37,7 @@ export interface AtlasCachePayload {
 let celebratedIdsMem: Set<string> | null = null;
 let celebratedHydratePromise: Promise<Set<string>> | null = null;
 
-function shouldPersistEchoUri(uri: string | undefined): boolean {
+export function shouldPersistRemoteUri(uri: string | undefined): boolean {
   if (!uri?.trim()) return false;
   const u = uri.trim();
   // Inline base64 can exceed AsyncStorage limits; remote URLs are safe to keep.
@@ -42,8 +45,140 @@ function shouldPersistEchoUri(uri: string | undefined): boolean {
   return u.startsWith("http://") || u.startsWith("https://");
 }
 
+export function stripHeavyUrisFromMatch(m: Match): Match {
+  return {
+    ...m,
+    myPhoto: shouldPersistRemoteUri(m.myPhoto) ? m.myPhoto.trim() : "",
+    theirPhoto: shouldPersistRemoteUri(m.theirPhoto) ? m.theirPhoto.trim() : "",
+    theirMusicUrl: shouldPersistRemoteUri(m.theirMusicUrl) ? m.theirMusicUrl!.trim() : undefined,
+    theirCustomAudioUrl: shouldPersistRemoteUri(m.theirCustomAudioUrl)
+      ? m.theirCustomAudioUrl!.trim()
+      : undefined,
+  };
+}
+
+export type CachedMatch = ReturnType<typeof stripHeavyUrisFromMatch>;
+
+export interface MatchesCachePayload {
+  matches: CachedMatch[];
+  fetchedAt: string;
+}
+
+/** Union by id; incoming wins on conflicts. Never drop local rows when server returns empty. */
+export function mergeEchoCardsById(prev: EchoCard[], incoming: EchoCard[]): EchoCard[] {
+  if (incoming.length === 0) return prev;
+  const byId = new Map(prev.map((e) => [e.id, e]));
+  for (const e of incoming) byId.set(e.id, e);
+  return [...byId.values()].sort(
+    (a, b) =>
+      Date.parse(b.mutualAt ?? b.createdAt ?? "") -
+      Date.parse(a.mutualAt ?? a.createdAt ?? ""),
+  );
+}
+
+/** Best-effort parse of echoes persisted inside `samesame_state`. */
+export function parsePersistedEchoes(raw: unknown): EchoCard[] {
+  if (!Array.isArray(raw)) return [];
+  const out: EchoCard[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const e = item as Partial<EchoCard>;
+    if (typeof e.id !== "string" || !e.id.trim()) continue;
+    if (e.state !== "pending" && e.state !== "mutual") continue;
+    const mine = e.mine;
+    const theirs = e.theirs;
+    if (!mine || typeof mine !== "object" || !theirs || typeof theirs !== "object") {
+      continue;
+    }
+    out.push({
+      id: e.id,
+      state: e.state,
+      theme: typeof e.theme === "string" ? e.theme : "",
+      createdAt:
+        typeof e.createdAt === "string" ? e.createdAt : new Date(0).toISOString(),
+      mutualAt: typeof e.mutualAt === "string" ? e.mutualAt : null,
+      mine: {
+        id: typeof mine.id === "string" ? mine.id : "",
+        uri: typeof mine.uri === "string" ? mine.uri : "",
+        countryCode:
+          typeof mine.countryCode === "string" ? mine.countryCode : null,
+        captureCountryCode:
+          typeof mine.captureCountryCode === "string"
+            ? mine.captureCountryCode
+            : null,
+        country: typeof mine.country === "string" ? mine.country : "",
+        countryFlag: typeof mine.countryFlag === "string" ? mine.countryFlag : "",
+        theme: typeof mine.theme === "string" ? mine.theme : undefined,
+      },
+      theirs: {
+        id: typeof theirs.id === "string" ? theirs.id : "",
+        uri: typeof theirs.uri === "string" ? theirs.uri : "",
+        countryCode:
+          typeof theirs.countryCode === "string" ? theirs.countryCode : null,
+        captureCountryCode:
+          typeof theirs.captureCountryCode === "string"
+            ? theirs.captureCountryCode
+            : null,
+        country: typeof theirs.country === "string" ? theirs.country : "",
+        countryFlag:
+          typeof theirs.countryFlag === "string" ? theirs.countryFlag : "",
+        theme: typeof theirs.theme === "string" ? theirs.theme : undefined,
+      },
+    });
+  }
+  return out;
+}
+
+export function mergeMatchesById(prev: Match[], incoming: Match[]): Match[] {
+  if (incoming.length === 0) return prev;
+  const byId = new Map(prev.map((m) => [m.id, m]));
+  for (const m of incoming) {
+    const existing = byId.get(m.id);
+    byId.set(
+      m.id,
+      existing
+        ? {
+            ...existing,
+            ...m,
+            myPhoto: m.myPhoto || existing.myPhoto,
+            theirPhoto: m.theirPhoto || existing.theirPhoto,
+          }
+        : m,
+    );
+  }
+  const merged = [...byId.values()];
+  merged.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+  return merged.slice(0, MAX_MATCHES_CACHE);
+}
+
+export async function loadMatchesCache(): Promise<Match[]> {
+  const parsed = await readJson<MatchesCachePayload>(MATCHES_CACHE_KEY);
+  if (!parsed || !Array.isArray(parsed.matches)) return [];
+  return parsed.matches.map((m) => ({
+    ...m,
+    myPhoto: m.myPhoto ?? "",
+    theirPhoto: m.theirPhoto ?? "",
+  }));
+}
+
+export async function saveMatchesCache(matches: Match[]): Promise<void> {
+  const ripples = matches
+    .filter((m) => m.verdict !== "different")
+    .map(stripHeavyUrisFromMatch)
+    .slice(0, MAX_MATCHES_CACHE);
+  if (ripples.length === 0) {
+    const prev = await loadMatchesCache();
+    if (prev.length > 0) return;
+  }
+  const payload: MatchesCachePayload = {
+    matches: ripples,
+    fetchedAt: new Date().toISOString(),
+  };
+  await writeJson(MATCHES_CACHE_KEY, payload);
+}
+
 function stripEchoSide(side: EchoCard["mine"]): CachedPhotoSide {
-  if (shouldPersistEchoUri(side.uri)) {
+  if (shouldPersistRemoteUri(side.uri)) {
     return { ...side, uri: side.uri.trim() };
   }
   const { uri: _uri, ...rest } = side;
@@ -67,6 +202,9 @@ export function hydrateEchoFromCache(cached: CachedEchoCard): EchoCard {
 }
 
 function stripAtlasConnection(c: AtlasConnection): AtlasConnection {
+  const thumb = c.thumbnailUrl;
+  const thumbnailUrl = shouldPersistRemoteUri(thumb) ? thumb!.trim() : undefined;
+  if (thumbnailUrl) return { ...c, thumbnailUrl };
   const { thumbnailUrl: _thumb, ...rest } = c;
   return rest;
 }
@@ -167,15 +305,30 @@ export async function saveEchoCache(
   mine: EchoCard[],
   opts?: { allowEmpty?: boolean },
 ): Promise<void> {
-  if (!opts?.allowEmpty && inbox.length === 0 && mine.length === 0) {
-    const prev = await loadEchoCache();
-    if (prev && (prev.inbox.length > 0 || prev.mine.length > 0)) {
+  const prev = await loadEchoCache();
+  let nextInbox = inbox;
+  let nextMine = mine;
+
+  if (!opts?.allowEmpty) {
+    if (inbox.length === 0 && prev && prev.inbox.length > 0) {
+      nextInbox = prev.inbox.map(hydrateEchoFromCache);
+    }
+    if (mine.length === 0 && prev && prev.mine.length > 0) {
+      nextMine = prev.mine.map(hydrateEchoFromCache);
+    }
+    if (
+      nextInbox.length === 0 &&
+      nextMine.length === 0 &&
+      prev &&
+      (prev.inbox.length > 0 || prev.mine.length > 0)
+    ) {
       return;
     }
   }
+
   const payload: EchoCachePayload = {
-    inbox: inbox.map(stripEchoForCache),
-    mine: mine.map(stripEchoForCache),
+    inbox: nextInbox.map(stripEchoForCache),
+    mine: nextMine.map(stripEchoForCache),
     fetchedAt: new Date().toISOString(),
   };
   await writeJson(ECHO_CACHE_KEY, payload);
@@ -206,4 +359,33 @@ export async function saveAtlasCache(
     fetchedAt: new Date().toISOString(),
   };
   await writeJson(ATLAS_CACHE_KEY, payload);
+}
+
+export interface RipplefireLocalCachePayload {
+  connections: AtlasConnection[];
+  fetchedAt: string;
+}
+
+/** Device ripple arcs for Ripplefire — survives API empty responses and app updates. */
+export async function loadRipplefireLocalCache(): Promise<AtlasConnection[]> {
+  const parsed = await readJson<RipplefireLocalCachePayload>(RIPPLEFIRE_LOCAL_CACHE_KEY);
+  if (!parsed || !Array.isArray(parsed.connections)) return [];
+  return parsed.connections;
+}
+
+export async function saveRipplefireLocalCache(
+  connections: AtlasConnection[],
+): Promise<void> {
+  const ripples = connections
+    .filter((c) => c.kind === "ripple")
+    .map(stripAtlasConnection);
+  if (ripples.length === 0) {
+    const prev = await loadRipplefireLocalCache();
+    if (prev.length > 0) return;
+  }
+  const payload: RipplefireLocalCachePayload = {
+    connections: ripples,
+    fetchedAt: new Date().toISOString(),
+  };
+  await writeJson(RIPPLEFIRE_LOCAL_CACHE_KEY, payload);
 }

@@ -116,6 +116,8 @@ import {
   detectWavefireClusters,
   connectionsInFireWindow,
   orderWavefireRingCountryCodes,
+  synthesizeRipplefireCluster,
+  synthesizeWavefireCluster,
   type AtlasThemeCluster,
 } from "@/utils/atlasWavefire";
 import { atlasLandPathD } from "@/utils/atlasWorldLand";
@@ -635,7 +637,6 @@ export function AtlasGlobeExperience({
   }, [fireClusters.length]);
 
   const fireCluster = fireClusters[fireClusterIndex] ?? null;
-  const wavefireCluster = filter === "wavefire" ? fireCluster : null;
 
   const baseFiltered = useMemo(
     () => filterConnections(normalized, filter, isSignedIn),
@@ -668,6 +669,17 @@ export function AtlasGlobeExperience({
     }
     return baseFiltered;
   }, [filter, baseFiltered, fireCluster, fireWindowRipples, fireWindowWaves, normalized]);
+
+  /** Device/server ripples without a themed cluster still activate Ripplefire UI. */
+  const effectiveFireCluster = useMemo((): AtlasThemeCluster | null => {
+    if (filter === "ripplefire") {
+      return fireCluster ?? synthesizeRipplefireCluster(displayConnections);
+    }
+    if (filter === "wavefire") {
+      return fireCluster ?? synthesizeWavefireCluster(displayConnections);
+    }
+    return fireCluster;
+  }, [filter, fireCluster, displayConnections]);
 
   const canvasPixelW = width * ATLAS_MAP_OVERSAMPLE;
   const canvasPixelH = mapPixelH * ATLAS_MAP_OVERSAMPLE;
@@ -755,29 +767,31 @@ export function AtlasGlobeExperience({
 
   const now = timeRef.current;
   const fireNight = isFireFilter(filter);
-  const fireActive = fireNight && fireCluster != null;
-  const wavefireActive = filter === "wavefire" && wavefireCluster != null;
-  const ripplefireActive = filter === "ripplefire" && fireCluster != null;
+  const fireActive = fireNight && effectiveFireCluster != null;
+  const wavefireActive = filter === "wavefire" && effectiveFireCluster != null;
+  const ripplefireActive = filter === "ripplefire" && effectiveFireCluster != null;
+  const wavefireCluster =
+    filter === "wavefire" ? effectiveFireCluster : null;
 
   /**
    * Ripplefire map = closed ring through themed cluster countries (not arc lines).
    * Needs multiple ripples and at least two countries on the ring.
    */
   const ripplefireRingEligible = useMemo(() => {
-    if (!ripplefireActive || !fireCluster) return false;
+    if (!ripplefireActive || !effectiveFireCluster) return false;
     return (
-      fireCluster.connections.length >= 2 &&
-      fireCluster.countryCodes.length >= 2
+      effectiveFireCluster.connections.length >= 2 &&
+      effectiveFireCluster.countryCodes.length >= 2
     );
-  }, [ripplefireActive, fireCluster]);
+  }, [ripplefireActive, effectiveFireCluster]);
 
   const ripplefireRing = useMemo((): {
     points: AtlasScreenPoint[];
     codes: string[];
   } | null => {
-    if (!ripplefireRingEligible || !fireCluster) return null;
+    if (!ripplefireRingEligible || !effectiveFireCluster) return null;
     const codes = orderWavefireRingCountryCodes(
-      fireCluster.countryCodes,
+      effectiveFireCluster.countryCodes,
       projection,
     );
     const points: AtlasScreenPoint[] = [];
@@ -790,7 +804,7 @@ export function AtlasGlobeExperience({
     }
     if (points.length < 2) return null;
     return { points, codes };
-  }, [ripplefireRingEligible, fireCluster, projection]);
+  }, [ripplefireRingEligible, effectiveFireCluster, projection]);
 
   const ripplefireRingD = useMemo(() => {
     if (!ripplefireRing) return null;
@@ -1052,10 +1066,10 @@ export function AtlasGlobeExperience({
     : "rgba(31, 169, 240, 0.15)";
 
   const openFireExplore = useCallback(() => {
-    if (!fireActive || !fireCluster || !fireVisual) return;
+    if (!fireActive || !effectiveFireCluster || !fireVisual) return;
     setFireExploreOpen(true);
     void startWavefireAmbience();
-  }, [fireActive, fireCluster, fireVisual]);
+  }, [fireActive, effectiveFireCluster, fireVisual]);
 
   const closeFireExplore = useCallback(() => {
     setFireExploreOpen(false);
@@ -1482,7 +1496,7 @@ export function AtlasGlobeExperience({
           {fireNight && fireVisual ? (
             <StatPill
               accessibilityLabel={fireVisual.statA11y}
-              value={fireClusters.length}
+              value={fireClusters.length > 0 ? fireClusters.length : effectiveFireCluster ? 1 : 0}
               fg={colors.foreground}
               icon={fireVisual.filterIcon}
               iconColor={fireVisual.lineStroke}
@@ -1494,19 +1508,19 @@ export function AtlasGlobeExperience({
         </View>
 
         <View style={styles.fireExploreSlot}>
-          {fireActive && fireVisual && fireCluster ? (
+          {fireActive && fireVisual && effectiveFireCluster ? (
             <FireClusterExploreBar
               visual={fireVisual}
-              cluster={fireCluster}
+              cluster={effectiveFireCluster}
               clusterIndex={fireClusterIndex}
-              clusterCount={fireClusters.length}
+              clusterCount={Math.max(fireClusters.length, 1)}
               foreground={colors.foreground}
               muted={colors.mutedForeground}
               onExplore={openFireExplore}
               onPrev={() => stepFireCluster(-1)}
               onNext={() => stepFireCluster(1)}
             />
-          ) : fireNight && fireVisual && !fireCluster ? (
+          ) : fireNight && fireVisual && !effectiveFireCluster ? (
             <Text style={[styles.wfHint, { color: colors.mutedForeground }]}>
               {fireVisual.emptyHint}
             </Text>
@@ -1514,13 +1528,13 @@ export function AtlasGlobeExperience({
         </View>
       </View>
 
-      {fireActive && fireCluster && fireVisual && fireMode ? (
+      {fireActive && effectiveFireCluster && fireVisual && fireMode ? (
         <AtlasFireExploreModal
           visible={fireExploreOpen}
           onClose={closeFireExplore}
           fireMode={fireMode}
           visual={fireVisual}
-          cluster={fireCluster}
+          cluster={effectiveFireCluster}
           localRippleMatches={localRippleMatches}
           localWaveEchoes={localWaveEchoes}
           viewerCountryCode={viewerCountryCode}

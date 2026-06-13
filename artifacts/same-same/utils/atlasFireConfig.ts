@@ -25,6 +25,6 @@ export const ATLAS_FIRE_WINDOW_MS = getAtlasFireWindowMs();
 /** One mutual wave can ignite Wavefire (same spirit as Ripplefire min 1). */
 export const WAVEFIRE_MIN_EVENTS = 1;
 export const WAVEFIRE_MIN_COUNTRIES = 2;
-/** Themed ripple clusters need at least two ripples across two countries. */
-export const RIPPLEFIRE_MIN_EVENTS = 2;
-export const RIPPLEFIRE_MIN_COUNTRIES = 2;
+/** Themed ripple clusters — one ripple can ignite Ripplefire on your map. */
+export const RIPPLEFIRE_MIN_EVENTS = 1;
+export const RIPPLEFIRE_MIN_COUNTRIES = 1;

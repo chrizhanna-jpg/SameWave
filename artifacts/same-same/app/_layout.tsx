@@ -32,7 +32,7 @@ import {
 import { EchoFlash } from "@/components/EchoFlash";
 import { formatDualWaveThemes } from "@/utils/shareThemeLabels";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { ToastHost } from "@/components/ToastHost";
+import { UpdateAvailableBanner } from "@/components/UpdateAvailableBanner";
 import { AppProvider, useApp } from "@/context/AppContext";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import {
@@ -451,6 +451,7 @@ function RootLayoutNav() {
   const { pendingFlashEcho, dismissFlashEcho } = useApp();
   return (
     <>
+      <UpdateAvailableBanner />
       <Stack screenOptions={{ headerBackTitle: "Back", headerShown: false }}>
         <Stack.Screen name="sign-in" options={{ headerShown: false, gestureEnabled: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />

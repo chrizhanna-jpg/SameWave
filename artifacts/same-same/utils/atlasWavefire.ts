@@ -236,6 +236,45 @@ export function detectAtlasThemeClusters(
   return clusters;
 }
 
+/** Fallback cluster from loose ripples when themed grouping finds none (local device history). */
+export function synthesizeRipplefireCluster(
+  connections: AtlasConnection[],
+): AtlasThemeCluster | null {
+  const ripples = connections.filter((c) => c.kind === "ripple");
+  if (ripples.length === 0) return null;
+  const countries = new Set<string>();
+  for (const c of ripples) {
+    countries.add(c.from);
+    countries.add(c.to);
+  }
+  const displayTheme = pickDisplayTheme(ripples);
+  return {
+    theme: clusterSeedKey(ripples, displayTheme),
+    displayTheme,
+    connections: ripples,
+    countryCodes: [...countries],
+  };
+}
+
+export function synthesizeWavefireCluster(
+  connections: AtlasConnection[],
+): AtlasThemeCluster | null {
+  const waves = connections.filter((c) => c.kind === "wave");
+  if (waves.length === 0) return null;
+  const countries = new Set<string>();
+  for (const c of waves) {
+    countries.add(c.from);
+    countries.add(c.to);
+  }
+  const displayTheme = pickDisplayTheme(waves);
+  return {
+    theme: clusterSeedKey(waves, displayTheme),
+    displayTheme,
+    connections: waves,
+    countryCodes: [...countries],
+  };
+}
+
 /** Largest cluster only — convenience for callers that need a single result. */
 export function detectAtlasThemeCluster(
   connections: AtlasConnection[],

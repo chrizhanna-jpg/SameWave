@@ -17,15 +17,25 @@ import {
   type ServerEcho,
 } from "@/utils/api";
 import { requestAtlasRefresh } from "@/utils/atlasHub";
+import { buildLocalRippleConnections } from "@/utils/atlasLocalRipples";
+import { resolveOnboardingComplete } from "@/utils/resolveOnboardingComplete";
 import { photoKey } from "@/utils/photoKey";
 import {
   hydrateCelebratedEchoIds,
   hydrateEchoFromCache,
   loadEchoCache,
+  loadMatchesCache,
   markEchoCelebrated,
   markEchoesCelebrated,
+  mergeEchoCardsById,
+  mergeMatchesById,
+  parsePersistedEchoes,
   saveEchoCache,
+  saveMatchesCache,
+  saveRipplefireLocalCache,
   shouldCelebrateMutualEcho,
+  stripHeavyUrisFromMatch,
+  shouldPersistRemoteUri,
 } from "@/utils/syncCache";
 
 export interface MatchedCountry {
@@ -509,7 +519,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [hasHydrated]);
 
   useEffect(() => {
-    loadState().finally(() => setHasHydrated(true));
+    loadState().finally(() => {
+      hasHydratedRef.current = true;
+      setHasHydrated(true);
+    });
   }, []);
 
   // Server-side mirror of the seen ledger. We learn IDs on launch (the
@@ -576,7 +589,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const persistState = useCallback(async (newState: AppState) => {
     persistChainRef.current = persistChainRef.current.then(async () => {
       try {
-        await AsyncStorage.setItem("samesame_state", JSON.stringify(newState));
+        const { pendingEchoes: _p, mutualEchoes: _m, ...rest } = newState;
+        const forStorage = {
+          ...rest,
+          matches: newState.matches.map(stripHeavyUrisFromMatch),
+          myPhotos: newState.myPhotos.map((p) => ({
+            ...p,
+            uri: shouldPersistRemoteUri(p.uri) ? p.uri.trim() : "",
+            customAudioUrl: shouldPersistRemoteUri(p.customAudioUrl)
+              ? p.customAudioUrl!.trim()
+              : undefined,
+          })),
+        };
+        await AsyncStorage.setItem("samesame_state", JSON.stringify(forStorage));
+        await saveMatchesCache(newState.matches);
       } catch {}
     });
     await persistChainRef.current;
@@ -584,6 +610,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const saveState = useCallback(
     (newState: AppState) => {
+      // Never persist before hydration — pre-load effects (e.g. seen-photo
+      // IDs) would otherwise write the empty initial slice and wipe matches.
+      if (!hasHydratedRef.current) return;
       void persistState(newState);
     },
     [persistState],
@@ -591,9 +620,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const loadState = async () => {
     try {
-      const [echoCache, celebratedIds] = await Promise.all([
+      const [echoCache, celebratedIds, cachedMatches] = await Promise.all([
         loadEchoCache(),
         hydrateCelebratedEchoIds(),
+        loadMatchesCache(),
       ]);
       flashEnqueuedRef.current = new Set(celebratedIds);
       const cachedPending = echoCache?.inbox.map(hydrateEchoFromCache) ?? [];
@@ -604,17 +634,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       const stored = await AsyncStorage.getItem("samesame_state");
       if (!stored) {
-        // First-ever launch — no persisted state. We still have to bump
-        // the app-open counter or the tutorial gate in `app/index.tsx`
-        // would treat opens 0, 1, 2 as "first three cold starts" and
-        // show the tutorial three times instead of the intended two.
-        // Persist immediately so even an instant kill-and-relaunch
-        // counts as an opened session.
-        const fresh = { ...stateRef.current, appOpenCount: 1 };
+        // First-ever launch — no persisted state. Persist open count so
+        // returning users can be distinguished from a true first open.
+        const fresh = {
+          ...stateRef.current,
+          appOpenCount: 1,
+          matches: mergeMatchesById([], cachedMatches),
+        };
         await persistState(fresh);
         setState((prev) => ({
           ...prev,
           appOpenCount: 1,
+          matches: fresh.matches,
           pendingEchoes: cachedPending,
           mutualEchoes: cachedMutual,
         }));
@@ -623,6 +654,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (stored) {
         const parsed = JSON.parse(stored);
         // Migrate old myPhotos formats to current MyPhoto[]
+        const parsedMatches: Match[] = Array.isArray(parsed.matches)
+          ? parsed.matches
+          : [];
+        const matches = mergeMatchesById(cachedMatches, parsedMatches);
+        const pendingEchoes = mergeEchoCardsById(
+          cachedPending,
+          parsePersistedEchoes(parsed.pendingEchoes),
+        );
+        const mutualEchoes = mergeEchoCardsById(
+          cachedMutual,
+          parsePersistedEchoes(parsed.mutualEchoes),
+        );
         const migratedPhotos: MyPhoto[] = (parsed.myPhotos || []).map(
           (p: string | Partial<MyPhoto>) => {
             if (typeof p === "string") {
@@ -685,7 +728,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const persistedKeys: string[] = Array.isArray(parsed.seenPhotoKeys)
           ? parsed.seenPhotoKeys.filter((k: unknown) => typeof k === "string" && k.length > 0)
           : [];
-        const matchKeys = (parsed.matches ?? [])
+        const matchKeys = matches
           .map((m: Match) => photoKey(m?.theirPhoto))
           .filter((k: string) => k.length > 0);
         const seenPhotoKeys = Array.from(new Set([...persistedKeys, ...matchKeys]));
@@ -695,11 +738,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             )
           : [];
         const seenPhotoIds = Array.from(new Set(persistedIds));
-        // App-open counter — bumped once per cold start. Drives the
-        // "show the tutorial on the first N opens" routing in
-        // `app/index.tsx`. For users who had already completed
-        // onboarding before this counter existed, seed above the
-        // threshold so they don't regress into the tutorial.
         const priorOpenCount =
           typeof parsed.appOpenCount === "number"
             ? parsed.appOpenCount
@@ -707,6 +745,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               ? 999
               : 0;
         const nextOpenCount = priorOpenCount + 1;
+        const onboardingComplete = resolveOnboardingComplete(
+          { ...parsed, matches },
+          priorOpenCount,
+          mutualEchoes.length,
+        );
         // Persist the bumped count immediately so it survives a quick
         // app close before any other state mutation triggers a save —
         // otherwise the user could see the tutorial more than the
@@ -715,15 +758,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ...stateRef.current,
           ...parsed,
           appOpenCount: nextOpenCount,
+          onboardingComplete,
+          matches,
+          myPhotos: migratedPhotos,
+          connectRequests: migratedRequests,
+          pendingEchoes,
+          mutualEchoes,
         } as AppState);
         setState((prev) => ({
           ...prev,
           ...parsed,
           appOpenCount: nextOpenCount,
+          onboardingComplete,
+          matches,
           myPhotos: migratedPhotos,
           connectRequests: migratedRequests,
-          pendingEchoes: cachedPending,
-          mutualEchoes: cachedMutual,
+          pendingEchoes,
+          mutualEchoes,
           echoesSeenAt: typeof parsed.echoesSeenAt === "string" ? parsed.echoesSeenAt : undefined,
           badges: defaultBadges.map((b) => {
             const stored = parsed.badges?.find((sb: Badge) => sb.id === b.id);
@@ -821,6 +872,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         seenPhotoKeys,
       };
       saveState(newState);
+      if (match.verdict === "same") {
+        void saveRipplefireLocalCache(
+          buildLocalRippleConnections(
+            allMatches,
+            prev.myCountryCode,
+            prev.myPhotos,
+          ),
+        );
+      }
       return newState;
     });
   }, []);
@@ -1492,9 +1552,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!inboxRes.ok && !mineRes.ok) return;
 
       const inbox = inboxRes.ok
-        ? inboxRes.echoes
+        ? mergeEchoCardsById(
+            stateRef.current.pendingEchoes,
+            inboxRes.echoes as EchoCard[],
+          )
         : stateRef.current.pendingEchoes;
-      const mine = mineRes.ok ? mineRes.echoes : stateRef.current.mutualEchoes;
+      const mine = mineRes.ok
+        ? mergeEchoCardsById(
+            stateRef.current.mutualEchoes,
+            mineRes.echoes as EchoCard[],
+          )
+        : stateRef.current.mutualEchoes;
 
       const celebratedIds = await hydrateCelebratedEchoIds();
       const toMarkSeen: string[] = [];
@@ -1513,14 +1581,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (toMarkSeen.length > 0) {
         await markEchoesCelebrated(toMarkSeen);
       }
-      await saveEchoCache(inbox, mine, {
-        allowEmpty: inboxRes.ok && mineRes.ok,
-      });
+      await saveEchoCache(inbox, mine);
       setState((prev) => {
         const newState: AppState = {
           ...prev,
-          pendingEchoes: inboxRes.ok ? inboxRes.echoes : prev.pendingEchoes,
-          mutualEchoes: mineRes.ok ? mineRes.echoes : prev.mutualEchoes,
+          pendingEchoes: inbox,
+          mutualEchoes: mine,
         };
         saveState(newState);
         return newState;

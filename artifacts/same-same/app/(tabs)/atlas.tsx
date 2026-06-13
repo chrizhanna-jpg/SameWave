@@ -22,7 +22,6 @@ import { Icon } from "@/components/Icon";
 import { OceanShimmer } from "@/components/OceanShimmer";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
-import type { Match } from "@/context/AppContext";
 import {
   fetchAtlasSummary,
   fetchAtlasTabDiagnostics,
@@ -36,97 +35,18 @@ import {
   type LocalWaveExploreEcho,
 } from "@/utils/api";
 import { registerAtlasRefreshListener } from "@/utils/atlasHub";
-import { loadAtlasCache, saveAtlasCache } from "@/utils/syncCache";
+import {
+  buildLocalRippleConnections,
+  mergeAtlasConnectionsById,
+} from "@/utils/atlasLocalRipples";
+import {
+  loadAtlasCache,
+  loadRipplefireLocalCache,
+  saveAtlasCache,
+  saveRipplefireLocalCache,
+} from "@/utils/syncCache";
 import { markTabVisited } from "@/utils/tabVisits";
-import { photoCountryDisplay } from "@/utils/photoCountry";
 import type { MyPhoto } from "@/context/AppContext";
-import { COUNTRIES } from "@/data/countries";
-
-const RIPPLE_FRESH_MS = 48 * 60 * 60 * 1000;
-
-/** ISO2 for Atlas arcs: today's photo capture, else profile, else match snapshot. */
-function resolveViewerIso2(
-  myCountryCode: string | undefined,
-  matches: Match[],
-  myPhotos: MyPhoto[],
-): string | undefined {
-  const todayUtcDay = Math.floor(Date.now() / 86_400_000);
-  const todayPhoto = myPhotos.find((p) => {
-    const uploadedUtcDay = Math.floor(
-      new Date(p.uploadedAt).getTime() / 86_400_000,
-    );
-    return uploadedUtcDay === todayUtcDay;
-  });
-  const fromToday = photoCountryDisplay(
-    todayPhoto?.captureCountryCode,
-    myCountryCode,
-  ).code;
-  if (fromToday) return fromToday;
-
-  const fromMatch = matches.find(
-    (m) => m.verdict === "same" && m.myCountryCode,
-  )?.myCountryCode;
-  if (fromMatch && /^[A-Z]{2}$/.test(fromMatch)) return fromMatch;
-
-  const direct = (myCountryCode ?? "").trim().toUpperCase();
-  if (/^[A-Z]{2}$/.test(direct)) return direct;
-  const label = matches.find((m) => m.verdict === "same")?.myCountry?.trim();
-  if (!label || label.toLowerCase() === "you") return undefined;
-  const hit = COUNTRIES.find(
-    (c) => c.name.toLowerCase() === label.toLowerCase(),
-  );
-  return hit?.code.toUpperCase();
-}
-
-/** My Journey "Ripples" live in local `matches`; Atlas uses `/api/photos/atlas` (echoes). Merge same-swipe ripples when no server arc exists for that country pair yet. */
-function mergeLocalSameRippleArcs(
-  api: AtlasConnection[],
-  matches: Match[],
-  myCountryCode: string | undefined,
-  myPhotos: MyPhoto[],
-  isSignedIn: boolean,
-): AtlasConnection[] {
-  if (!isSignedIn) return api;
-  const mine = resolveViewerIso2(myCountryCode, matches, myPhotos);
-  if (!mine) return api;
-
-  const hasApiRippleBetween = (to: string) =>
-    api.some(
-      (c) =>
-        c.kind === "ripple" &&
-        ((c.from === mine && c.to === to) || (c.from === to && c.to === mine)),
-    );
-
-  const now = Date.now();
-  const added: AtlasConnection[] = [];
-  for (const m of matches) {
-    if (m.verdict !== "same") continue;
-    const to = (m.theirCountryCode ?? "").trim().toUpperCase();
-    if (!/^[A-Z]{2}$/.test(to) || to === mine) continue;
-    if (hasApiRippleBetween(to)) continue;
-    const ts = Date.parse(m.timestamp);
-    const fresh = Number.isFinite(ts) && now - ts < RIPPLE_FRESH_MS;
-    const theme = (m.theme ?? "").trim();
-    added.push({
-      id: `local-ripple-${m.id}`,
-      kind: "ripple",
-      from: mine,
-      to,
-      fresh,
-      createdAt: m.timestamp,
-      theme,
-      tags: [],
-      subjects: [],
-      color: "#4FD89C",
-      mine: true,
-      spotlightPhotoId: m.theirPhotoId,
-      thumbnailUrl: m.theirPhoto,
-    });
-  }
-  if (added.length === 0) return api;
-
-  return [...api, ...added];
-}
 
 /** Never replace a non-empty map with an empty/partial API payload (degraded refresh, races). */
 function mergeAtlasPayload(
@@ -161,6 +81,7 @@ export default function AtlasScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [hasCachedData, setHasCachedData] = useState(false);
+  const [localRippleArcs, setLocalRippleArcs] = useState<AtlasConnection[]>([]);
   const atlasHasLoadedOnceRef = useRef(false);
   const atlasFocusedRef = useRef(false);
   const atlasLoadGenerationRef = useRef(0);
@@ -223,16 +144,22 @@ export default function AtlasScreen() {
     };
   }, [matches, mutualEchoes, myCountryCode, myPhotos]);
 
+  const liveLocalRipples = useMemo(
+    () =>
+      isSignedIn
+        ? buildLocalRippleConnections(matches, myCountryCode, myPhotos)
+        : [],
+    [isSignedIn, matches, myCountryCode, myPhotos],
+  );
+
   const globeConnections = useMemo(
     () =>
-      mergeLocalSameRippleArcs(
+      mergeAtlasConnectionsById(
         connections,
-        matches,
-        myCountryCode,
-        myPhotos,
-        !!isSignedIn,
+        localRippleArcs,
+        liveLocalRipples,
       ),
-    [connections, matches, myCountryCode, myPhotos, isSignedIn],
+    [connections, localRippleArcs, liveLocalRipples],
   );
 
   const runConnectivityDiagnostics = useCallback(async () => {
@@ -310,21 +237,33 @@ export default function AtlasScreen() {
   }, [hasCachedData, hasHydrated]);
 
   useEffect(() => {
+    if (!hasHydrated) return;
+    if (globeConnections.length === 0 && summary.length === 0) return;
+    void saveAtlasCache(summary, globeConnections);
+  }, [globeConnections, summary, hasHydrated]);
+
+  useEffect(() => {
     let alive = true;
-    void loadAtlasCache().then((cached) => {
-      if (!alive || !cached) return;
-      setSummary((prev) =>
-        prev.length > 0 ? prev : cached.countries,
-      );
-      setConnections((prev) =>
-        prev.length > 0 ? prev : cached.connections,
-      );
-      if (cached.countries.length > 0 || cached.connections.length > 0) {
-        setHasCachedData(true);
-        atlasHasLoadedOnceRef.current = true;
-        setLoading(false);
-      }
-    });
+    void Promise.all([loadAtlasCache(), loadRipplefireLocalCache()]).then(
+      ([cached, localRipples]) => {
+        if (!alive) return;
+        if (localRipples.length > 0) {
+          setLocalRippleArcs(localRipples);
+        }
+        if (!cached) return;
+        setSummary((prev) =>
+          prev.length > 0 ? prev : cached.countries,
+        );
+        setConnections((prev) =>
+          mergeAtlasConnectionsById(prev, cached.connections),
+        );
+        if (cached.countries.length > 0 || cached.connections.length > 0) {
+          setHasCachedData(true);
+          atlasHasLoadedOnceRef.current = true;
+          setLoading(false);
+        }
+      },
+    );
     return () => {
       alive = false;
     };
@@ -376,6 +315,18 @@ export default function AtlasScreen() {
     });
     return () => sub.remove();
   }, [load]);
+
+  // Persist merged server + local ripple arcs so Ripplefire survives refresh/update.
+  useEffect(() => {
+    if (!hasHydrated) return;
+    const ripples = globeConnections.filter((c) => c.kind === "ripple");
+    if (ripples.length === 0) return;
+    const t = setTimeout(() => {
+      void saveRipplefireLocalCache(ripples);
+      void saveAtlasCache(summary, globeConnections);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [hasHydrated, globeConnections, summary]);
 
   const outerPad = 16;
   const topPadding = Platform.OS === "web" ? 56 : insets.top;

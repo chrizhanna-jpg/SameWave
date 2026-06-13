@@ -4,11 +4,12 @@ import { useApp } from "@/context/AppContext";
 
 // Single decision point for "where should the user land right now?"
 // First-time flow (production AAB):
-//   1. Tutorial once (`onboardingComplete` persisted before leaving /onboarding)
+//   1. Tutorial once (`onboardingComplete` — persisted when onboarding finishes)
 //   2. Google sign-in
 //   3. Home tabs
 // Replay tutorial from Home uses resetOnboarding() — does not affect this gate
-// until the user finishes/skips again.
+// until the user finishes/skips again. Legacy installs without the flag are
+// treated as complete if they already have match/echo history.
 //
 // Routing post-tutorial / post-sign-in through "/" keeps the decision in
 // one place instead of hard-coding /(tabs) after OAuth.
