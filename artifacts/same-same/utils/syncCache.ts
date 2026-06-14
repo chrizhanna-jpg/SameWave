@@ -131,22 +131,33 @@ export function parsePersistedEchoes(raw: unknown): EchoCard[] {
 
 export function mergeMatchesById(prev: Match[], incoming: Match[]): Match[] {
   if (incoming.length === 0) return prev;
-  const byId = new Map(prev.map((m) => [m.id, m]));
+  const byKey = new Map<string, Match>();
+  const keyOf = (m: Match): string => {
+    const pid = m.theirPhotoId?.trim();
+    if (pid) return `their:${pid}`;
+    return `id:${m.id}`;
+  };
+  for (const m of prev) {
+    byKey.set(keyOf(m), m);
+  }
   for (const m of incoming) {
-    const existing = byId.get(m.id);
-    byId.set(
-      m.id,
+    const key = keyOf(m);
+    const existing = byKey.get(key);
+    byKey.set(
+      key,
       existing
         ? {
             ...existing,
             ...m,
+            id: m.id || existing.id,
             myPhoto: m.myPhoto || existing.myPhoto,
             theirPhoto: m.theirPhoto || existing.theirPhoto,
+            theirPhotoId: m.theirPhotoId || existing.theirPhotoId,
           }
         : m,
     );
   }
-  const merged = [...byId.values()];
+  const merged = [...byKey.values()];
   merged.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
   return merged.slice(0, MAX_MATCHES_CACHE);
 }

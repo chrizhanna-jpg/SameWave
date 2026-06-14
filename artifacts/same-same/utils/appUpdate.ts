@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import { AppState, Platform } from "react-native";
 
-import { getApiBase } from "@/utils/api";
+import { getPublicApiOrigin } from "@/utils/publicEnv";
 
 const DISMISSED_KEY = "samesame_dismissed_update_vc";
 
@@ -24,7 +24,7 @@ export function getInstalledAndroidVersionCode(): number | null {
 export async function fetchAppUpdateInfo(): Promise<AppUpdateInfo | null> {
   if (Platform.OS !== "android") return null;
   try {
-    const base = getApiBase();
+    const base = getPublicApiOrigin();
     const res = await fetch(`${base}/api/public/app-config`, {
       method: "GET",
       headers: { Accept: "application/json" },

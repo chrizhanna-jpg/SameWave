@@ -10,7 +10,7 @@ Use this checklist before each internal/closed-test rollout.
 
 - **`eas.json`** — `preview` and **`production`** profiles point at **`samewave.onrender.com`** and **`pk_test_…`**. **`EXPO_PUBLIC_CLERK_PROXY_URL`** is **`none`** for closed test (proxy only works with **`pk_live_…`**; test keys talk to Clerk directly). Fake RevenueCat placeholders were **removed** so builds do not override working RevenueCat fallbacks.
 - **`app.json`** — **`android.versionCode`** was bumped (e.g. to **17**) for the next Play upload; **bump it again by 1** for every later upload Google accepts.
-- **Package id** is **`app.echo.samewave`** — external console steps: [docs/PACKAGE_RENAME_APP_ECHO_SAMEWAVE.md](../../docs/PACKAGE_RENAME_APP_ECHO_SAMEWAVE.md).
+- **Package id** is **`echo.samewaveripple.app`** — external console steps: [docs/PLAY_CLOSED_TEST_AUTH.md](../../docs/PLAY_CLOSED_TEST_AUTH.md) and [docs/PACKAGE_RENAME_APP_ECHO_SAMEWAVE.md](../../docs/PACKAGE_RENAME_APP_ECHO_SAMEWAVE.md).
 - **API** — `/api/public/clerk-config` is served **before** Clerk middleware so Render health checks and config checks don’t return 500 when Clerk env is still being tuned.
 
 **Pre-launch swap list (do before treating the app as “live” on the store):**
@@ -101,7 +101,7 @@ Run on at least one Android physical device and one iOS device/simulator.
 
 - [ ] **Render** environment: `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY` (same `pk_test` / `sk_test` pair as `eas.json`), `DATABASE_URL`, `OPENAI_API_KEY` if using analyze — see `artifacts/api-server/.env.render.example`.
 - [ ] **Google Play** closed track: publish release, add testers.
-- [ ] **Google Sign-In / Clerk boot**: Play **App signing** SHA-1 + SHA-256 in Google Cloud Android OAuth client (`app.echo.samewave`); Clerk Native allowlist **`app.echo.samewave://callback`** (same Clerk *instance* as `pk_test` in EAS). Full steps: [docs/PLAY_CLOSED_TEST_AUTH.md](../../docs/PLAY_CLOSED_TEST_AUTH.md). Sign-in screen shows **Build … · Android versionCode** — ship **≥ 37** for latest Clerk boot fixes.
+- [ ] **Google Sign-In / Clerk boot**: Play **App signing** SHA-1 + SHA-256 in Google Cloud Android OAuth client (`echo.samewaveripple.app`); Clerk Native allowlist **`echo.samewaveripple.app://callback`** (same Clerk *instance* as `pk_test` in EAS). Full steps: [docs/PLAY_CLOSED_TEST_AUTH.md](../../docs/PLAY_CLOSED_TEST_AUTH.md). Sign-in screen **Redirect** line must show `echo.samewaveripple.app://callback`.
 - [ ] **RevenueCat** (optional for core app; needed for £1 Pro): Google Play service account + product linked to entitlement `pro`.
 - [ ] **EAS build**: `eas build --platform android --profile production` after bumping `versionCode`.
 

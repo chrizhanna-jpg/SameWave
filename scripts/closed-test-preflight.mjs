@@ -71,9 +71,9 @@ for (const key of requiredProdKeys) {
   }
 }
 
-if (androidPackage !== "app.echo.samewave") {
+if (androidPackage !== "echo.samewaveripple.app") {
   failures.push(
-    `app.json android.package is ${androidPackage ?? "?"} (expected app.echo.samewave)`,
+    `app.json android.package is ${androidPackage ?? "?"} (expected echo.samewaveripple.app)`,
   );
 }
 
@@ -207,5 +207,5 @@ if (failures.length) {
 
 console.log("Repo + deployed API checks passed.");
 console.log(
-  "\nOnly you can fix (not in git): Play signing SHA in Google Cloud, Clerk allowlist app.echo.samewave://callback, RevenueCat Play credentials, Play tester list, Render cold-start if service sleeps.",
+  "\nOnly you can fix (not in git): Play signing SHA in Google Cloud, Clerk allowlist echo.samewaveripple.app://callback, RevenueCat Play credentials, Play tester list, Render cold-start if service sleeps.",
 );

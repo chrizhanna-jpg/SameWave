@@ -40,3 +40,4 @@ Write-Host "  Package name: echo.samewaveripple.app"
 Write-Host "  SHA-1: (from Play App signing key certificate)"
 Write-Host ""
 Write-Host "Clerk Dashboard -> Google: Web client ID + secret; redirect URIs from Clerk." -ForegroundColor Cyan
+Write-Host "Clerk Dashboard -> Native applications -> Allowlist: echo.samewaveripple.app://callback" -ForegroundColor Cyan

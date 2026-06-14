@@ -10,6 +10,7 @@ import React, {
 import {
   fetchEchoesInbox,
   fetchEchoesMine,
+  fetchMyJourney,
   fetchSeenPhotoIds,
   respondEcho as respondEchoApi,
   unvotePhoto,
@@ -19,6 +20,7 @@ import {
 import { requestAtlasRefresh } from "@/utils/atlasHub";
 import { buildLocalRippleConnections } from "@/utils/atlasLocalRipples";
 import { resolveOnboardingComplete } from "@/utils/resolveOnboardingComplete";
+import { mapServerJourneyToMatch } from "@/utils/journeySync";
 import { photoKey } from "@/utils/photoKey";
 import {
   hydrateCelebratedEchoIds,
@@ -391,6 +393,8 @@ interface AppContextValue extends AppState {
   unreadEchoes: number;
   /** Fetch fresh inbox + mutual lists from the server. Safe to call often. */
   refreshEchoes: () => Promise<void>;
+  /** Fetch My Journey (ripples + passes) from the server and merge locally. */
+  refreshJourney: () => Promise<void>;
   /**
    * Respond to a pending offer. "same" promotes it to mutual; "different"
    * deletes it. Optimistically updates local state and reconciles with
@@ -987,6 +991,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // is defined further down (it depends on a lot of derived state),
   // so we route through a ref that's filled in by an effect below.
   const refreshEchoesRef = useRef<(() => Promise<void>) | null>(null);
+  const refreshJourneyRef = useRef<(() => Promise<void>) | null>(null);
 
   const removeMatch = useCallback((id: string) => {
     // Snapshot the target match BEFORE calling setState. React 18's
@@ -1030,6 +1035,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       void unvotePhoto(theirPhotoId).then((ok) => {
         if (ok) {
           refreshEchoesRef.current?.();
+          refreshJourneyRef.current?.();
           requestAtlasRefresh();
         }
       });
@@ -1097,6 +1103,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         void unvotePhoto(theirPhotoId).then((ok) => {
           if (ok) {
             refreshEchoesRef.current?.();
+          refreshJourneyRef.current?.();
             requestAtlasRefresh();
           }
         });
@@ -1534,13 +1541,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [state.connectRequests],
   );
 
-  // --- Echoes (server-backed) -----------------------------------------
+  // --- Echoes + My Journey (server-backed) ---------------------------
   //
-  // The inbox + mutual list both live on the server. We refresh on mount,
-  // when the app foregrounds (handled by callers via refreshEchoes), and
-  // every time the user opens the inbox screen. There's no local-only
-  // echo state any more — the simulated dev push has been retired now
-  // that the loop is real.
+  // Waves (inbox + mutual) and ripples (My Journey) both sync from the
+  // server on hydrate and every 30s. Local cache is a fast copy; cloud
+  // is source of truth after sign-in.
 
   const refreshEchoes = useCallback(async () => {
     if (!hasHydratedRef.current) return;
@@ -1596,21 +1601,64 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [enqueueFlashEcho]);
 
+  const refreshJourney = useCallback(async () => {
+    if (!hasHydratedRef.current) return;
+    try {
+      const res = await fetchMyJourney();
+      if (!res.ok || res.matches.length === 0) return;
+      const incoming = res.matches.map(mapServerJourneyToMatch);
+      setState((prev) => {
+        const matches = mergeMatchesById(prev.matches, incoming);
+        const confirmed = matches.filter((m) => m.verdict === "same");
+        const { matchedCountries, badges } = recomputeFromConfirmed(
+          confirmed,
+          prev.badges,
+        );
+        const newState: AppState = {
+          ...prev,
+          matches,
+          matchedCountries,
+          badges,
+          totalMatches: confirmed.length,
+        };
+        saveState(newState);
+        void saveMatchesCache(matches);
+        if (confirmed.length > 0) {
+          void saveRipplefireLocalCache(
+            buildLocalRippleConnections(
+              matches,
+              prev.myCountryCode,
+              prev.myPhotos,
+            ),
+          );
+        }
+        return newState;
+      });
+    } catch {
+      // Offline — keep local journey.
+    }
+  }, []);
+
   // First load + lightweight 30s poll. Wait for AsyncStorage hydration so
   // a fast failed fetch cannot overwrite persisted matches / echoes.
   React.useEffect(() => {
     if (!hasHydrated) return;
-    refreshEchoes();
-    const id = setInterval(refreshEchoes, 30_000);
+    void refreshEchoes();
+    void refreshJourney();
+    const id = setInterval(() => {
+      void refreshEchoes();
+      void refreshJourney();
+    }, 30_000);
     return () => clearInterval(id);
-  }, [refreshEchoes, hasHydrated]);
+  }, [refreshEchoes, refreshJourney, hasHydrated]);
 
   // Keep the forward-declared ref in sync so removeMatch / changeVerdict
   // (declared earlier in this component) can fire a refresh after a
   // server-side cascade revoke.
   React.useEffect(() => {
     refreshEchoesRef.current = refreshEchoes;
-  }, [refreshEchoes]);
+    refreshJourneyRef.current = refreshJourney;
+  }, [refreshEchoes, refreshJourney]);
 
   const markAllEchoesSeen = useCallback(() => {
     const nowIso = new Date().toISOString();
@@ -1735,6 +1783,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         markAllEchoesSeen,
         unreadEchoes,
         refreshEchoes,
+        refreshJourney,
         respondToEcho,
         markPhotoSeen,
         hasSeenPhoto,

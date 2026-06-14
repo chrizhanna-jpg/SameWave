@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { postDebugSessionLog } from "@/utils/debugSessionLog";
+import type { ServerJourneyMatch } from "@/utils/journeySync";
 import { resolveMatchPhotoUris } from "@/utils/matchPhotoSnapshot";
 import { photoKey } from "@/utils/photoKey";
 import {
@@ -775,6 +776,30 @@ export type EchoListFetchResult = {
   ok: boolean;
   echoes: ServerEcho[];
 };
+
+export type JourneyFetchResult = {
+  ok: boolean;
+  matches: ServerJourneyMatch[];
+};
+
+/** Cloud backup of My Journey — ripples and passes for reinstall / new device. */
+export async function fetchMyJourney(): Promise<JourneyFetchResult> {
+  try {
+    const base = getApiBase();
+    const res = await fetch(`${base}/api/photos/my-journey`, {
+      headers: await authedHeaders(),
+      cache: "no-store",
+    });
+    if (!res.ok) return { ok: false, matches: [] };
+    const json = (await res.json()) as { matches?: unknown[] };
+    const matches = Array.isArray(json.matches)
+      ? (json.matches as ServerJourneyMatch[])
+      : [];
+    return { ok: true, matches };
+  } catch {
+    return { ok: false, matches: [] };
+  }
+}
 
 export async function fetchEchoesInbox(): Promise<EchoListFetchResult> {
   try {

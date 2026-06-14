@@ -24,6 +24,10 @@ export const votesTable = pgTable(
       .references(() => photosTable.id, { onDelete: "cascade" }),
     // "same" or "different"
     verdict: varchar("verdict", { length: 16 }).notNull(),
+    /** User's representing photo at swipe time — used to rebuild My Journey from cloud. */
+    voterPhotoId: varchar("voter_photo_id").references(() => photosTable.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => ({

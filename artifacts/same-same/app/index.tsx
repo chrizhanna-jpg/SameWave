@@ -1,5 +1,6 @@
 import { Redirect } from "expo-router";
 import { useAuth } from "@clerk/expo";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { useApp } from "@/context/AppContext";
 
 // Single decision point for "where should the user land right now?"
@@ -23,7 +24,11 @@ export default function Index() {
   // state catches up — the tutorial / sign-in screen would then fire
   // on every cold start.
   if (!hasHydrated || !isLoaded) {
-    return null;
+    return (
+      <View style={styles.boot}>
+        <ActivityIndicator size="large" color="#E8F4F8" />
+      </View>
+    );
   }
 
   if (!onboardingComplete) {
@@ -36,3 +41,12 @@ export default function Index() {
 
   return <Redirect href="/(tabs)" />;
 }
+
+const styles = StyleSheet.create({
+  boot: {
+    flex: 1,
+    backgroundColor: "#166FFC",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});

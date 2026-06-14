@@ -22,6 +22,7 @@ import {
   photoExposureCte,
 } from "../lib/photoExposure";
 import { getPhotoRetentionMs } from "../lib/photoRetention";
+import { fetchMyJourneyRows } from "../lib/myJourney";
 
 const bannedB64Md5Expr =
   BANNED_PHOTO_B64_MD5.length > 0
@@ -42,7 +43,7 @@ const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 // little long.
 const MAX_AUDIO_BYTES = 1 * 1024 * 1024;
 const ALLOWED_AUDIO_MIME_PREFIXES = ["audio/"];
-// Free-tier retention — see `PHOTO_RETENTION_DAYS` (default 60). Pro: null expiresAt.
+// Free-tier retention — see `PHOTO_RETENTION_DAYS` (default 90). Pro: null expiresAt.
 // Hide any photo flagged by ≥ this many distinct reports — pulled from the
 // candidate pool until a human reviews it (manual moderation phase 2).
 const REPORT_HIDE_THRESHOLD = 3;
@@ -1720,6 +1721,23 @@ router.get("/photos/atlas/:countryCode", async (req, res) => {
   }
 });
 
+// ---- GET /api/photos/my-journey -------------------------------------------
+// Cloud backup of My Journey (ripples + passes) for reinstall / new device.
+router.get("/photos/my-journey", async (req, res) => {
+  try {
+    const user = await resolveUserFromRequest(req);
+    if (!user) {
+      res.status(401).json({ error: "authentication required" });
+      return;
+    }
+    const matches = await fetchMyJourneyRows(user.id);
+    res.json({ matches });
+  } catch (err) {
+    req.log.error({ err }, "my-journey failed");
+    res.status(500).json({ error: "my-journey failed" });
+  }
+});
+
 // ---- GET /api/photos/:id/image --------------------------------------------
 // Streams one photo for in-app viewers (Atlas Ripplefire / Wavefire explore).
 // Avoids multi‑MB base64 JSON payloads that break RN image decoders in lists.
@@ -1790,10 +1808,18 @@ router.post("/photos/:id/vote", async (req, res) => {
     // Idempotent: re-voting upserts the verdict.
     await db
       .insert(votesTable)
-      .values({ voterUserId: user.id, photoId, verdict })
+      .values({
+        voterUserId: user.id,
+        photoId,
+        verdict,
+        voterPhotoId: voterPhotoId ?? undefined,
+      })
       .onConflictDoUpdate({
         target: [votesTable.voterUserId, votesTable.photoId],
-        set: { verdict },
+        set: {
+          verdict,
+          ...(voterPhotoId ? { voterPhotoId } : {}),
+        },
       });
 
     // If a "same" vote was made while the user was representing one of

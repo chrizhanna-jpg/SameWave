@@ -32,6 +32,7 @@ import {
 import { EchoFlash } from "@/components/EchoFlash";
 import { formatDualWaveThemes } from "@/utils/shareThemeLabels";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ToastHost } from "@/components/ToastHost";
 import { UpdateAvailableBanner } from "@/components/UpdateAvailableBanner";
 import { AppProvider, useApp } from "@/context/AppContext";
 import { usePushNotifications } from "@/hooks/usePushNotifications";

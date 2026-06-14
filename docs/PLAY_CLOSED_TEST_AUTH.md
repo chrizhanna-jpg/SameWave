@@ -9,14 +9,14 @@ Play re-signs your AAB with **Google Play App Signing**. OAuth must use that cer
 1. [Play Console](https://play.google.com/console) → your app → **Setup** → **App signing**.
 2. Copy **SHA-1** and **SHA-256** from **App signing key certificate** (not "Upload key").
 3. [Google Cloud Console](https://console.cloud.google.com/) → **APIs & Services** → **Credentials** → Android OAuth client.
-4. Package name: **`app.echo.samewave`**
+4. Package name: **`echo.samewaveripple.app`**
 5. Paste both SHA-1 and SHA-256 from step 2 → **Save**.
 
 ## Fix in Clerk (required)
 
 1. [Clerk Dashboard](https://dashboard.clerk.com/) → the instance matching `pk_test_…` in `artifacts/same-same/eas.json`.
 2. **Configure** → **Native applications** → **Allowlist for mobile SSO redirect**.
-3. Add exactly: **`app.echo.samewave://callback`**
+3. Add exactly: **`echo.samewaveripple.app://callback`**
 4. **User & authentication** → **Social** → **Google** → use the same OAuth client as above.
 
 ## Fix on Render

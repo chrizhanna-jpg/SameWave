@@ -1,6 +1,6 @@
 /**
  * Extends `expires_at` for active free-tier photos to created_at + retention window.
- * Run once after raising PHOTO_RETENTION_DAYS (e.g. 30 → 60) so existing uploads
+ * Run once after raising PHOTO_RETENTION_DAYS (e.g. 60 → 90) so existing uploads
  * benefit without re-uploading.
  *
  *   cd artifacts/api-server && node scripts/extend-photo-retention.mjs
@@ -23,7 +23,7 @@ if (!DATABASE_URL) {
 const rawDays = process.env.PHOTO_RETENTION_DAYS?.trim();
 const days = rawDays && Number.isFinite(Number(rawDays)) && Number(rawDays) > 0
   ? Math.round(Number(rawDays))
-  : 60;
+  : 90;
 
 const client = new pg.Client({ connectionString: DATABASE_URL });
 

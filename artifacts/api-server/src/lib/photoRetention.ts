@@ -1,5 +1,5 @@
 /** Default free-tier photo retention. Override with `PHOTO_RETENTION_DAYS`. */
-export const DEFAULT_PHOTO_RETENTION_DAYS = 60;
+export const DEFAULT_PHOTO_RETENTION_DAYS = 90;
 
 /**
  * How long free-user photos stay on the server before `expires_at` hides them.

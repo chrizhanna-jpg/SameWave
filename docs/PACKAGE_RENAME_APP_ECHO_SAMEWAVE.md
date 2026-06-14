@@ -1,4 +1,14 @@
-# Package rename: `app.echo.samewave`
+# Package id history — current: `echo.samewaveripple.app`
+
+> **Live Play / Clerk / Google Cloud package (2026):** **`echo.samewaveripple.app`**  
+> **Clerk SSO redirect:** **`echo.samewaveripple.app://callback`**  
+> See [PLAY_CLOSED_TEST_AUTH.md](./PLAY_CLOSED_TEST_AUTH.md) for closed-test OAuth setup.
+
+This guide also documents the earlier rename **`app.echo.samesame`** → **`app.echo.samewave`**. If your Google Cloud or Clerk consoles were configured from older docs, update them to **`echo.samewaveripple.app`** (not `app.echo.samewave`).
+
+---
+
+# Package rename: `app.echo.samewave` (historical)
 
 This guide covers the move from **`app.echo.samesame`** → **`app.echo.samewave`** (Android `applicationId` / iOS `bundleIdentifier`).
 
@@ -168,9 +178,9 @@ To ship on the old Play listing again, revert `app.json` package/bundle to `app.
 
 | Item | Value |
 |------|--------|
-| Android package | `app.echo.samewave` |
-| iOS bundle | `app.echo.samewave` |
-| Clerk SSO redirect | `app.echo.samewave://callback` |
+| Android package | `echo.samewaveripple.app` |
+| iOS bundle | `echo.samewaveripple.app` |
+| Clerk SSO redirect | `echo.samewaveripple.app://callback` |
 | Legacy scheme (deep links) | `same-same://` |
 | Expo slug | `same-same` (unchanged) |
 | Play IAP SKU | `samewave_pro` (unchanged) |
