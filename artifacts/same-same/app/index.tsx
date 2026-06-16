@@ -1,6 +1,5 @@
 import { Redirect } from "expo-router";
 import { useAuth } from "@clerk/expo";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { useApp } from "@/context/AppContext";
 
 // Single decision point for "where should the user land right now?"
@@ -18,35 +17,19 @@ export default function Index() {
   const { hasHydrated, onboardingComplete } = useApp();
   const { isLoaded, isSignedIn } = useAuth();
 
-  // Wait for AsyncStorage AND Clerk to hydrate before deciding. Without
-  // these gates, a returning user is briefly marked as a first-open (or
-  // unauthenticated) and we redirect them away before the persisted
-  // state catches up — the tutorial / sign-in screen would then fire
-  // on every cold start.
-  if (!hasHydrated || !isLoaded) {
-    return (
-      <View style={styles.boot}>
-        <ActivityIndicator size="large" color="#E8F4F8" />
-      </View>
-    );
+  // Route from local cache as soon as AsyncStorage hydrates — do not wait
+  // for Clerk or server sync (Home / Atlas show a header sync spinner).
+  if (!hasHydrated) {
+    return null;
   }
 
   if (!onboardingComplete) {
     return <Redirect href="/onboarding" />;
   }
 
-  if (!isSignedIn) {
+  if (isLoaded && !isSignedIn) {
     return <Redirect href="/sign-in" />;
   }
 
   return <Redirect href="/(tabs)" />;
 }
-
-const styles = StyleSheet.create({
-  boot: {
-    flex: 1,
-    backgroundColor: "#166FFC",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-});

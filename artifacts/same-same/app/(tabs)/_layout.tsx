@@ -221,6 +221,20 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="waves"
+        options={{
+          title: "Waves",
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon
+              name="wave-glyph"
+              color={color}
+              focused={focused}
+              activeColor={colors.primary}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="discover"
         options={{
           href: SHOW_DISCOVER_TAB ? undefined : null,

@@ -1,9 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Animated,
   AppState,
-  Easing,
   Platform,
   ScrollView,
   StyleSheet,
@@ -19,6 +17,7 @@ import { useAuth } from "@clerk/expo";
 
 import { AtlasGlobeExperience } from "@/components/AtlasGlobeExperience";
 import { Icon } from "@/components/Icon";
+import { SyncRefreshButton } from "@/components/SyncRefreshButton";
 import { OceanShimmer } from "@/components/OceanShimmer";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
@@ -85,8 +84,6 @@ export default function AtlasScreen() {
   const atlasHasLoadedOnceRef = useRef(false);
   const atlasFocusedRef = useRef(false);
   const atlasLoadGenerationRef = useRef(0);
-  const refreshSpin = useRef(new Animated.Value(0)).current;
-  const refreshLoopRef = useRef<Animated.CompositeAnimation | null>(null);
 
   const [diagBusy, setDiagBusy] = useState(false);
   const [diagJson, setDiagJson] = useState<string | null>(null);
@@ -269,28 +266,6 @@ export default function AtlasScreen() {
     };
   }, []);
 
-  useEffect(() => {
-    if (refreshing) {
-      refreshLoopRef.current?.stop();
-      refreshSpin.setValue(0);
-      refreshLoopRef.current = Animated.loop(
-        Animated.timing(refreshSpin, {
-          toValue: 1,
-          duration: 900,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        }),
-      );
-      refreshLoopRef.current.start();
-      return () => {
-        refreshLoopRef.current?.stop();
-      };
-    }
-    refreshLoopRef.current?.stop();
-    refreshSpin.setValue(0);
-    return undefined;
-  }, [refreshing, refreshSpin]);
-
   useFocusEffect(
     useCallback(() => {
       if (!hasHydrated) return;
@@ -369,17 +344,7 @@ export default function AtlasScreen() {
       totalCountries === 0 &&
       globeConnections.length === 0
     );
-
-  const refreshSpinStyle = {
-    transform: [
-      {
-        rotate: refreshSpin.interpolate({
-          inputRange: [0, 1],
-          outputRange: ["0deg", "360deg"],
-        }),
-      },
-    ],
-  };
+  const atlasSyncing = refreshing || (loading && hasCachedData);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -399,22 +364,12 @@ export default function AtlasScreen() {
           ) : null}
         </View>
         {showRefresh ? (
-          <TouchableOpacity
-            accessibilityRole="button"
-            accessibilityLabel="Refresh Atlas"
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            disabled={refreshing}
+          <SyncRefreshButton
+            syncing={atlasSyncing}
             onPress={() => void load(true)}
+            accessibilityLabel="Refresh Atlas"
             style={styles.refreshBtn}
-          >
-            <Animated.View style={refreshSpinStyle}>
-              <Icon
-                name="refresh-cw"
-                size={22}
-                color={refreshing ? colors.mutedForeground : colors.primary}
-              />
-            </Animated.View>
-          </TouchableOpacity>
+          />
         ) : null}
       </View>
 

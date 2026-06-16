@@ -1,6 +1,6 @@
 import type { Match } from "@/context/AppContext";
 import { photoCountryDisplay } from "@/utils/photoCountry";
-import { getPublicApiOrigin } from "@/utils/publicEnv";
+import { serverPhotoImageUrl } from "@/utils/photoDisplayUri";
 
 /** Row shape from `GET /api/photos/my-journey`. */
 export type ServerJourneyMatch = {
@@ -20,13 +20,6 @@ export type ServerJourneyMatch = {
   theirPhotoActive: boolean;
   myPhotoActive: boolean;
 };
-
-export function serverPhotoImageUrl(photoId: string): string {
-  const id = photoId.trim();
-  if (!id) return "";
-  const base = getPublicApiOrigin().replace(/\/$/, "");
-  return `${base}/api/photos/${encodeURIComponent(id)}/image`;
-}
 
 /** Map cloud journey row → local Match (HTTPS image URLs for persistence). */
 export function mapServerJourneyToMatch(row: ServerJourneyMatch): Match {

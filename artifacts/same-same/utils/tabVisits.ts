@@ -11,12 +11,12 @@
 
 import { SHOW_DISCOVER_TAB } from "@/constants/featureFlags";
 
-const ALL_TABS = ["home", "match", "discover", "atlas", "profile"] as const;
+const ALL_TABS = ["home", "match", "discover", "atlas", "waves", "profile"] as const;
 export type TabName = (typeof ALL_TABS)[number];
 
 const REQUIRED: readonly TabName[] = SHOW_DISCOVER_TAB
   ? ALL_TABS
-  : ["home", "match", "atlas", "profile"];
+  : ["home", "match", "atlas", "waves", "profile"];
 
 const visited = new Set<TabName>();
 const listeners = new Set<() => void>();

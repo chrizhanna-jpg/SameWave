@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { useAuth } from "@clerk/expo";
 import {
   fetchEchoesInbox,
   fetchEchoesMine,
@@ -21,6 +22,10 @@ import { requestAtlasRefresh } from "@/utils/atlasHub";
 import { buildLocalRippleConnections } from "@/utils/atlasLocalRipples";
 import { resolveOnboardingComplete } from "@/utils/resolveOnboardingComplete";
 import { mapServerJourneyToMatch } from "@/utils/journeySync";
+import {
+  hydrateMyPhotoUri,
+  serverPhotoImageUrl,
+} from "@/utils/photoDisplayUri";
 import { photoKey } from "@/utils/photoKey";
 import {
   hydrateCelebratedEchoIds,
@@ -395,6 +400,10 @@ interface AppContextValue extends AppState {
   refreshEchoes: () => Promise<void>;
   /** Fetch My Journey (ripples + passes) from the server and merge locally. */
   refreshJourney: () => Promise<void>;
+  /** Ripples + waves cloud sync — safe to call repeatedly. */
+  syncCloudData: () => Promise<void>;
+  /** True while echoes / journey are fetching from the server. */
+  cloudSyncInProgress: boolean;
   /**
    * Respond to a pending offer. "same" promotes it to mutual; "different"
    * deletes it. Optimistically updates local state and reconciles with
@@ -453,6 +462,9 @@ const defaultBadges: Badge[] = [
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
+  const { isLoaded: clerkLoaded, isSignedIn } = useAuth();
+  const [cloudSyncInProgress, setCloudSyncInProgress] = useState(false);
+  const cloudSyncInflightRef = useRef(0);
   const [state, setState] = useState<AppState>({
     matchedCountries: [],
     matches: [],
@@ -717,6 +729,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             };
           }
         );
+        const hydratedPhotos = migratedPhotos.map(hydrateMyPhotoUri);
         // Expire any pending requests whose 48h window has passed.
         const now = Date.now();
         const migratedRequests: ConnectRequest[] = (parsed.connectRequests ?? [])
@@ -764,7 +777,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           appOpenCount: nextOpenCount,
           onboardingComplete,
           matches,
-          myPhotos: migratedPhotos,
+          myPhotos: hydratedPhotos,
           connectRequests: migratedRequests,
           pendingEchoes,
           mutualEchoes,
@@ -775,7 +788,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           appOpenCount: nextOpenCount,
           onboardingComplete,
           matches,
-          myPhotos: migratedPhotos,
+          myPhotos: hydratedPhotos,
           connectRequests: migratedRequests,
           pendingEchoes,
           mutualEchoes,
@@ -1222,6 +1235,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return {
           ...p,
           backendId: ack.backendId,
+          uri: serverPhotoImageUrl(ack.backendId),
           subjects: nextSubjects,
           theme: nextTheme,
           tags: nextTags,
@@ -1639,18 +1653,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // First load + lightweight 30s poll. Wait for AsyncStorage hydration so
-  // a fast failed fetch cannot overwrite persisted matches / echoes.
+  const syncCloudData = useCallback(async () => {
+    if (!hasHydratedRef.current) return;
+    cloudSyncInflightRef.current += 1;
+    setCloudSyncInProgress(true);
+    try {
+      await Promise.all([refreshEchoes(), refreshJourney()]);
+    } finally {
+      cloudSyncInflightRef.current -= 1;
+      if (cloudSyncInflightRef.current <= 0) {
+        cloudSyncInflightRef.current = 0;
+        setCloudSyncInProgress(false);
+      }
+    }
+  }, [refreshEchoes, refreshJourney]);
+
+  // Background cloud sync after local cache is ready — never blocks the UI.
   React.useEffect(() => {
-    if (!hasHydrated) return;
-    void refreshEchoes();
-    void refreshJourney();
+    if (!hasHydrated || !clerkLoaded || !isSignedIn) return;
+    void syncCloudData();
     const id = setInterval(() => {
-      void refreshEchoes();
-      void refreshJourney();
+      void syncCloudData();
     }, 30_000);
     return () => clearInterval(id);
-  }, [refreshEchoes, refreshJourney, hasHydrated]);
+  }, [hasHydrated, clerkLoaded, isSignedIn, syncCloudData]);
 
   // Keep the forward-declared ref in sync so removeMatch / changeVerdict
   // (declared earlier in this component) can fire a refresh after a
@@ -1784,6 +1810,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         unreadEchoes,
         refreshEchoes,
         refreshJourney,
+        syncCloudData,
+        cloudSyncInProgress,
         respondToEcho,
         markPhotoSeen,
         hasSeenPhoto,

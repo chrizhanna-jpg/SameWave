@@ -21,7 +21,6 @@ import {
   initialWindowMetrics,
 } from "react-native-safe-area-context";
 import {
-  ActivityIndicator,
   Alert,
   Platform,
   StyleSheet,
@@ -43,16 +42,11 @@ import {
   warmHostedApiOnLaunch,
 } from "@/utils/api";
 import {
-  probeApiReachability,
-  probeClerkBootstrap,
   resolveClerkBootConfig,
   resolveClerkProxyUrl,
-  type ApiReachabilityProbe,
   type ClerkBootConfig,
-  type ClerkBootstrapProbe,
 } from "@/utils/clerkConfig";
 import { postDebugSessionLog } from "@/utils/debugSessionLog";
-import { getNativeClerkSsoRedirectUrl } from "@/utils/googleSsoRedirect";
 import { isMonetizationEnabled } from "@/lib/monetization";
 import {
   initializeRevenueCat,
@@ -129,75 +123,19 @@ if (!EMBEDDED_CLERK_PUBLISHABLE_KEY && __DEV__) {
 
 // --- Clerk boot gate (replaces <ClerkLoaded>) ----------------------------
 // `<ClerkLoaded>` from @clerk/expo simply returns null until isLoaded is
-// true — with no fallback for the case where it NEVER becomes true. That
-// is exactly the failure mode that bricked v1.2.5 (TLS handshake hung,
-// SDK never resolved, tree never rendered, user saw an indefinite black
-// screen). This gate keeps the same "wait for Clerk" semantics on the
-// happy path, but if auth bootstrap hasn't completed within a hard
-// budget (8 s — generous on cellular cold start, short enough that a
-// user won't write the app off as dead) it surfaces a real error screen
-// the user can act on, instead of a blank canvas.
-//
-// 8 s was picked empirically: v1.2.4's normal cold-start Clerk init was
-// well under 2 s on mid-tier Android over LTE, so 8 s is ~4× headroom.
-// Tune if real-world telemetry shows otherwise.
-const CLERK_BOOT_TIMEOUT_MS = 30_000;
-const CLERK_BOOT_TIMEOUT_FAST_MS = 12_000;
+// true — with no fallback for the case where it NEVER becomes true. We
+// render the app immediately from local cache instead; AuthGate / index.tsx
+// only redirect to sign-in once Clerk reports isLoaded.
 
 function ClerkBootGate({
   children,
-  onRetry,
   boot,
 }: {
   children: React.ReactNode;
-  onRetry: () => void;
+  onRetry?: () => void;
   boot: ClerkBootConfig;
 }) {
-  const { isLoaded } = useAuth();
-  const [timedOut, setTimedOut] = useState(false);
-  const [bootstrapProbe, setBootstrapProbe] = useState<ClerkBootstrapProbe | null>(
-    null,
-  );
-  const [apiProbe, setApiProbe] = useState<ApiReachabilityProbe | null>(null);
   const publishableKey = boot.publishableKey;
-  const apiOrigin = getPublicApiOrigin();
-  const ssoRedirect = getNativeClerkSsoRedirectUrl();
-
-  useEffect(() => {
-    if (__DEV__ || !publishableKey.trim()) return;
-    let cancelled = false;
-    const origin = apiOrigin;
-    void Promise.all([
-      probeClerkBootstrap(publishableKey, origin),
-      probeApiReachability(origin),
-    ]).then(([clerk, api]) => {
-      if (!cancelled) {
-        setBootstrapProbe(clerk);
-        setApiProbe(api);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [publishableKey, apiOrigin]);
-
-  const clerkReachable = bootstrapProbe?.ok === true;
-  const bootTimeoutMs =
-    bootstrapProbe && !bootstrapProbe.ok
-      ? CLERK_BOOT_TIMEOUT_FAST_MS
-      : CLERK_BOOT_TIMEOUT_MS;
-
-  // Re-arm whenever Clerk's load state changes OR the retry button
-  // resets us back to the loading state. Without `timedOut` in the dep
-  // array the timer would only ever fire once, so a Try-Again press
-  // would leave the user staring at the spinner forever.
-  useEffect(() => {
-    if (isLoaded || timedOut) return;
-    const t = setTimeout(() => setTimedOut(true), bootTimeoutMs);
-    return () => clearTimeout(t);
-  }, [isLoaded, timedOut, bootTimeoutMs]);
-
-  if (isLoaded) return <>{children}</>;
 
   if (!publishableKey.trim()) {
     return (
@@ -212,63 +150,7 @@ function ClerkBootGate({
     );
   }
 
-  if (!timedOut) {
-    return (
-      <View style={bootGateStyles.loadingRoot}>
-        <ActivityIndicator size="large" color="#E8F4F8" />
-      </View>
-    );
-  }
-
-  const clerkLine = bootstrapProbe
-    ? bootstrapProbe.ok
-      ? `Clerk (${bootstrapProbe.host}): OK ${bootstrapProbe.status} · ${bootstrapProbe.ms}ms`
-      : `Clerk (${bootstrapProbe.host ?? "?"}): failed — ${bootstrapProbe.error ?? "unknown"}`
-    : "Clerk: still checking…";
-  const apiLine = apiProbe
-    ? apiProbe.ok
-      ? `API (${apiProbe.origin}): OK ${apiProbe.status} · ${apiProbe.ms}ms`
-      : `API (${apiProbe.origin}): failed — ${apiProbe.error ?? "unknown"}`
-    : "API: still checking…";
-  const keyLine = `Clerk key (${boot.keySource}${boot.serverKeyMatched ? "" : ", synced from server"}): ${publishableKey.slice(0, 12)}…`;
-
-  return (
-    <View style={bootGateStyles.root}>
-      <Text style={bootGateStyles.title}>Can&apos;t reach SameWave</Text>
-      <Text style={bootGateStyles.body}>
-        The sign-in service did not finish loading (timed out after{" "}
-        {bootTimeoutMs / 1000}s).{" "}
-        {clerkReachable
-          ? "Your network can reach Clerk, so this is usually Play App Signing or Clerk allowlist setup."
-          : "Clerk could not be reached from this device — check mobile data, VPN, or DNS."}
-      </Text>
-      <Text style={bootGateStyles.mono}>{apiLine}</Text>
-      <Text style={bootGateStyles.mono}>{clerkLine}</Text>
-      <Text style={bootGateStyles.mono}>{keyLine}</Text>
-      <Text style={bootGateStyles.body}>
-        Play closed-test: add Google Play App Signing SHA-1/256 to your Android
-        OAuth client (package{" "}
-        <Text style={bootGateStyles.monoInline}>echo.samewaveripple.app</Text>). In
-        Clerk → Native applications → allowlist add{" "}
-        <Text style={bootGateStyles.monoInline}>{ssoRedirect}</Text> (expected:{" "}
-        <Text style={bootGateStyles.monoInline}>echo.samewaveripple.app://callback</Text>
-        ).
-      </Text>
-      <Text style={bootGateStyles.body}>
-        Tap Try again. If it keeps failing, send a screenshot of this screen.
-      </Text>
-      <TouchableOpacity
-        style={bootGateStyles.button}
-        onPress={() => {
-          setTimedOut(false);
-          setBootstrapProbe(null);
-          onRetry();
-        }}
-      >
-        <Text style={bootGateStyles.buttonLabel}>Try again</Text>
-      </TouchableOpacity>
-    </View>
-  );
+  return <>{children}</>;
 }
 const bootGateStyles = StyleSheet.create({
   loadingRoot: {
@@ -398,6 +280,7 @@ function HostedApiWarmup() {
 // redirecting so the user never sees a flash of the wrong tree.
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { isLoaded, isSignedIn } = useAuth();
+  const { hasHydrated } = useApp();
   const segments = useSegments();
 
   // Cast to a plain string so the comparisons below don't fight
@@ -435,7 +318,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     isLoaded &&
     ((isSignedIn && onSignIn) || (!isSignedIn && !onPreAuthScreen));
 
-  if (!isLoaded) return null;
+  if (!hasHydrated) return null;
   if (needsRedirect) return <Redirect href="/" />;
   return <>{children}</>;
 }
@@ -560,37 +443,35 @@ export default function RootLayout() {
 // a likely culprit for the v1.2.1 stuck-on-splash, since ClerkLoaded
 // suspends rendering until Clerk resolves and offers no fallback if
 // it never does).
+function createEmbeddedClerkBoot(): ClerkBootConfig {
+  const origin = getPublicApiOrigin();
+  const key = EMBEDDED_CLERK_PUBLISHABLE_KEY;
+  return {
+    publishableKey: key,
+    proxyUrl: resolveClerkProxyUrl(key, origin),
+    keySource: "embedded",
+    serverKeyMatched: true,
+  };
+}
+
 function RootLayoutWithClerk() {
   const [clerkBootNonce, setClerkBootNonce] = useState(0);
-  const [boot, setBoot] = useState<ClerkBootConfig | null>(null);
-  const [bootResolving, setBootResolving] = useState(true);
+  const [boot, setBoot] = useState<ClerkBootConfig>(createEmbeddedClerkBoot);
+
+  useEffect(() => {
+    const key = EMBEDDED_CLERK_PUBLISHABLE_KEY;
+    if (key.trim()) warmClerkOnLaunch(key);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
-    setBootResolving(true);
-    setBoot(null);
     void resolveClerkBootConfig(getPublicApiOrigin())
       .then((config) => {
-        if (cancelled) return;
-        if (config.publishableKey.trim()) {
-          warmClerkOnLaunch(config.publishableKey);
-        }
+        if (cancelled || !config.publishableKey.trim()) return;
+        warmClerkOnLaunch(config.publishableKey);
         setBoot(config);
-        setBootResolving(false);
       })
-      .catch(() => {
-        if (!cancelled) {
-          const origin = getPublicApiOrigin();
-          const key = EMBEDDED_CLERK_PUBLISHABLE_KEY;
-          setBoot({
-            publishableKey: key,
-            proxyUrl: resolveClerkProxyUrl(key, origin),
-            keySource: "embedded",
-            serverKeyMatched: true,
-          });
-          setBootResolving(false);
-        }
-      });
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -600,14 +481,6 @@ function RootLayoutWithClerk() {
     resetLaunchWarmups();
     setClerkBootNonce((n) => n + 1);
   };
-
-  if (bootResolving || !boot) {
-    return (
-      <View style={bootGateStyles.loadingRoot}>
-        <ActivityIndicator size="large" color="#E8F4F8" />
-      </View>
-    );
-  }
 
   if (!boot.publishableKey.trim()) {
     return (

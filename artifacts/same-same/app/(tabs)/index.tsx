@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
+import { SyncRefreshButton } from "@/components/SyncRefreshButton";
 import { OceanShimmer } from "@/components/OceanShimmer";
 import { Surface } from "@/components/Surface";
 import { GradientCard } from "@/components/GradientCard";
@@ -24,7 +25,7 @@ import { scrollPaddingAboveTabBar } from "@/utils/tabBarSafeArea";
 export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { matches, matchedCountries, mutualEchoes, resetOnboarding } =
+  const { matches, matchedCountries, mutualEchoes, resetOnboarding, cloudSyncInProgress, syncCloudData } =
     useApp();
   const challenge = getTodaysChallenge();
 
@@ -59,6 +60,18 @@ export default function HomeScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <OceanShimmer />
+      <View
+        style={[
+          styles.syncHeader,
+          { top: topPadding + 4, right: 16 },
+        ]}
+      >
+        <SyncRefreshButton
+          syncing={cloudSyncInProgress}
+          onPress={() => void syncCloudData()}
+          accessibilityLabel="Sync ripples and waves"
+        />
+      </View>
       <View
         style={[
           styles.content,
@@ -229,6 +242,10 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  syncHeader: {
+    position: "absolute",
+    zIndex: 2,
+  },
   content: {
     flex: 1,
     alignItems: "center",

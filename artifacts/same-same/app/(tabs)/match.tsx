@@ -15,6 +15,7 @@ import {
 import { Image } from "expo-image";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Reanimated, {
+  Easing,
   interpolate,
   runOnJS,
   useAnimatedStyle,
@@ -85,6 +86,7 @@ import {
 import { sampleMatchStats } from "@/utils/sampleStats";
 import { flagFor, nameFor } from "@/data/countries";
 import { photoCountryDisplay, displayCountryCode } from "@/utils/photoCountry";
+import { resolveMyPhotoDisplayUri } from "@/utils/photoDisplayUri";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
 import type { Match } from "@/context/AppContext";
 import { photoKey } from "@/utils/photoKey";
@@ -94,10 +96,12 @@ import { normalizeUnsplashUri } from "@/utils/unsplashUri";
 
 const { width } = Dimensions.get("window");
 /** How far (px) a drag must travel before it counts as a vote. */
-const SWIPE_DISTANCE_THRESHOLD = width * 0.17;
+const SWIPE_DISTANCE_THRESHOLD = width * 0.136;
 /** Fast horizontal flicks commit with a shorter drag (px/s from RNGH). */
-const SWIPE_VELOCITY_THRESHOLD = 420;
-const SWIPE_MIN_FLICK_DX = 28;
+const SWIPE_VELOCITY_THRESHOLD = 336;
+const SWIPE_MIN_FLICK_DX = 22;
+const SWIPE_OUT_MS = 300;
+const SNAP_BACK_SPRING = { damping: 20, stiffness: 220, mass: 0.75 };
 
 function shouldCommitHorizontalSwipe(dx: number, vx: number): boolean {
   "worklet";
@@ -106,6 +110,28 @@ function shouldCommitHorizontalSwipe(dx: number, vx: number): boolean {
     Math.abs(vx) >= SWIPE_VELOCITY_THRESHOLD &&
     Math.abs(dx) >= SWIPE_MIN_FLICK_DX
   );
+}
+
+/** Swipe-out runs on the UI thread so release → fly-off feels instant. */
+function playSwipeOutAnimation(
+  dir: "left" | "right",
+  translateX: SharedValue<number>,
+  translateY: SharedValue<number>,
+  cardScale: SharedValue<number>,
+  onFinished?: () => void,
+) {
+  "worklet";
+  const targetX = dir === "right" ? width * 1.5 : -width * 1.5;
+  const easing = Easing.out(Easing.cubic);
+  translateX.value = withTiming(
+    targetX,
+    { duration: SWIPE_OUT_MS, easing },
+    (finished) => {
+      if (finished && onFinished) onFinished();
+    },
+  );
+  translateY.value = withTiming(0, { duration: SWIPE_OUT_MS, easing });
+  cardScale.value = withTiming(0.92, { duration: SWIPE_OUT_MS, easing });
 }
 
 function resetCardMotion(
@@ -511,7 +537,7 @@ export default function SwipeScreen() {
   }>(() => {
     if (todaysPhoto) {
       return {
-        uri: todaysPhoto.uri,
+        uri: resolveMyPhotoDisplayUri(todaysPhoto),
         uploadedAt: todaysPhoto.uploadedAt,
         theme: todaysPhoto.theme,
         tags: todaysPhoto.tags ?? [],
@@ -1148,18 +1174,20 @@ export default function SwipeScreen() {
     prefetchDeckAhead,
   ]);
 
-  const handleSwipeRef = useRef<(dir: "left" | "right") => void>(() => {});
+  const handleSwipeRef = useRef<
+    (dir: "left" | "right", animateOut?: boolean) => void
+  >(() => {});
   const swipeOutCompleteRef = useRef<(() => void) | null>(null);
   const runSwipeOutComplete = useCallback(() => {
     swipeOutCompleteRef.current?.();
     swipeOutCompleteRef.current = null;
   }, []);
   const invokeSwipeFromGesture = useCallback((dir: "left" | "right") => {
-    handleSwipeRef.current(dir);
+    handleSwipeRef.current(dir, false);
   }, []);
 
   const handleSwipe = useCallback(
-    (dir: "left" | "right") => {
+    (dir: "left" | "right", animateOut = true) => {
       if (isAnimatingOutRef.current) return;
       // Don't record a swipe when there's nothing to swipe on.
       if (noMore) return;
@@ -1296,13 +1324,18 @@ export default function SwipeScreen() {
 
       swipeOutCompleteRef.current = onSwipeOutComplete;
 
-      const targetX = dir === "right" ? width * 1.5 : -width * 1.5;
-      translateX.value = withTiming(targetX, { duration: 320 }, (finished) => {
-        if (finished) {
-          runOnJS(runSwipeOutComplete)();
-        }
-      });
-      cardScale.value = withTiming(0.9, { duration: 320 });
+      if (animateOut) {
+        playSwipeOutAnimation(
+          dir,
+          translateX,
+          translateY,
+          cardScale,
+          () => {
+            "worklet";
+            runOnJS(runSwipeOutComplete)();
+          },
+        );
+      }
     },
     [
       sharedTags,
@@ -1333,7 +1366,7 @@ export default function SwipeScreen() {
 
   const panGesture = Gesture.Pan()
     .enabled(deckGestureEnabled)
-    .activeOffsetX([-8, 8])
+    .activeOffsetX([-6, 6])
     .failOffsetY([-100, 100])
     .onBegin(() => {
       panStartX.value = translateX.value;
@@ -1346,16 +1379,27 @@ export default function SwipeScreen() {
         translateX.value > 0 ? Math.min(progress, 1) : 0;
     })
     .onEnd((e) => {
-      if (shouldCommitHorizontalSwipe(e.translationX, e.velocityX)) {
+      const dx = translateX.value;
+      const vx = e.velocityX;
+      if (shouldCommitHorizontalSwipe(dx, vx)) {
         const goRight =
-          Math.abs(e.translationX) >= SWIPE_DISTANCE_THRESHOLD
-            ? e.translationX > 0
-            : e.velocityX > 0;
-        runOnJS(invokeSwipeFromGesture)(goRight ? "right" : "left");
+          Math.abs(dx) >= SWIPE_DISTANCE_THRESHOLD ? dx > 0 : vx > 0;
+        const dir = goRight ? "right" : "left";
+        playSwipeOutAnimation(
+          dir,
+          translateX,
+          translateY,
+          cardScale,
+          () => {
+            "worklet";
+            runOnJS(runSwipeOutComplete)();
+          },
+        );
+        runOnJS(invokeSwipeFromGesture)(dir);
       } else {
-        translateX.value = withSpring(0, { damping: 15, stiffness: 150 });
-        translateY.value = withSpring(0);
-        sameLabelOpacity.value = withTiming(0, { duration: 120 });
+        translateX.value = withSpring(0, SNAP_BACK_SPRING);
+        translateY.value = withSpring(0, SNAP_BACK_SPRING);
+        sameLabelOpacity.value = withTiming(0, { duration: 100 });
       }
     });
 
