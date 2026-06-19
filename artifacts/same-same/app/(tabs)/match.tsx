@@ -86,7 +86,7 @@ import {
 import { sampleMatchStats } from "@/utils/sampleStats";
 import { flagFor, nameFor } from "@/data/countries";
 import { photoCountryDisplay, displayCountryCode } from "@/utils/photoCountry";
-import { resolveMyPhotoDisplayUri, serverPhotoImageUrl } from "@/utils/photoDisplayUri";
+import { resolveMyPhotoDisplayUri, pickVoterPhotoBackendId, serverPhotoImageUrl } from "@/utils/photoDisplayUri";
 import { stopWavefireAmbience } from "@/utils/wavefireAmbience";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
 import type { Match } from "@/context/AppContext";
@@ -1219,7 +1219,10 @@ export default function SwipeScreen() {
       prefetchDeckAhead(2, snapshotPhoto.uri);
 
       const onSwipeOutComplete = () => {
-        const voterPhotoId = todayBackendIdRef.current;
+        const voterPhotoId = pickVoterPhotoBackendId(myPhotos, {
+          uploadedAt: snapshotMyUploadedAt,
+          preferUri: snapshotMyUri,
+        });
         const snapshotMyPhoto =
           voterPhotoId && voterPhotoId.length > 0
             ? serverPhotoImageUrl(voterPhotoId)
@@ -1264,9 +1267,7 @@ export default function SwipeScreen() {
           }) ?? undefined,
         };
         const liveId = realPhotoIdsRef.current.get(snapshotPhoto.uri);
-        const hadNoVoterPhotoId =
-          typeof todaysPhoto?.backendId !== "string" ||
-          todaysPhoto.backendId.length === 0;
+        const hadNoVoterPhotoId = !voterPhotoId;
         const matchWithStats: Match =
           dir === "right"
             ? {
@@ -1287,10 +1288,14 @@ export default function SwipeScreen() {
         );
         addMatch(matchWithStats);
         if (liveId) {
-          const voterPhotoIdForVote = todaysPhoto?.backendId;
+          const voterPhotoIdForVote = todaysPhoto?.backendId ?? voterPhotoId;
           const voterIdAtSwipe = voterPhotoId || voterPhotoIdForVote;
           if (voterIdAtSwipe) {
-            void rememberVoterPhotoForTarget(liveId, voterIdAtSwipe);
+            void rememberVoterPhotoForTarget(
+              liveId,
+              voterIdAtSwipe,
+              snapshotPhoto.uri,
+            );
           }
           votePhoto(
             liveId,
@@ -1304,13 +1309,11 @@ export default function SwipeScreen() {
                 todayBackendIdRef.current ||
                 voterPhotoIdForVote;
               if (result.ok && bidNow) {
-                void rememberVoterPhotoForTarget(liveId, bidNow);
-              }
-              if (
-                result.ok &&
-                bidNow &&
-                !matchWithStats.myPhotoId
-              ) {
+                void rememberVoterPhotoForTarget(
+                  liveId,
+                  bidNow,
+                  snapshotPhoto.uri,
+                );
                 patchMatchVoterPhoto(matchWithStats.id, bidNow, liveId);
               }
               if (
@@ -1372,11 +1375,13 @@ export default function SwipeScreen() {
     [
       sharedTags,
       myPhotoData.uploadedAt,
+      myPhotos,
       translateX,
       cardScale,
       sameLabelOpacity,
       loadNextCandidate,
       addMatch,
+      patchMatchVoterPhoto,
       myCountryCode,
       todaysPhoto?.backendId,
       todaysPhoto?.captureCountryCode,
@@ -1385,6 +1390,7 @@ export default function SwipeScreen() {
       runSwipeOutComplete,
       setAnimatingOut,
       noMore,
+      refreshEchoes,
     ]
   );
 

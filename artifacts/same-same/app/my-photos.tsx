@@ -19,6 +19,7 @@ import { timeAgo } from "@/utils/timeAgo";
 import { pausePreview, togglePreview } from "@/utils/audio";
 import { confirmDeleteMyPhoto } from "@/utils/photoModeration";
 import { photoCountryDisplay } from "@/utils/photoCountry";
+import { resolveMyPhotoDisplayUri } from "@/utils/photoDisplayUri";
 
 export default function MyPhotosScreen() {
   const colors = useColors();
@@ -127,7 +128,7 @@ export default function MyPhotosScreen() {
             const inner = (
               <>
                 <PhotoCard
-                  uri={photo.uri}
+                  uri={resolveMyPhotoDisplayUri(photo)}
                   size="md"
                   audioUrl={photo.customAudioUrl}
                   audioInteractive={false}

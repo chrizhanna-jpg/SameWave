@@ -26,14 +26,13 @@ import {
   WAVES_TAB,
   WAVE_MUTUAL_TAGLINE,
 } from "@/data/waveRippleGlossary";
-import { fetchRecentWavesFeed, type RecentWaveFeedItem, explorePhotoUriNeedsAuth } from "@/utils/api";
+import { fetchRecentWavesFeed, type RecentWaveFeedItem } from "@/utils/api";
 import {
   enrichMatchMyPhotoFields,
   resolveEchoPhotoUri,
   resolveMatchMyPhotoUri,
   resolveMatchPhotoDisplay,
 } from "@/utils/photoDisplayUri";
-import { debugLogC416 } from "@/utils/debugLogC416";
 import { markTabVisited } from "@/utils/tabVisits";
 import { scrollPaddingAboveTabBar, tabBarTotalHeight } from "@/utils/tabBarSafeArea";
 import { timeAgo } from "@/utils/timeAgo";
@@ -105,6 +104,7 @@ export default function WavesScreen() {
     respondToEcho,
     cloudSyncInProgress,
     syncCloudData,
+    reconcileMatchPhotos,
   } = useApp();
   const [refreshing, setRefreshing] = useState(false);
   const [celebratingId, setCelebratingId] = useState<string | null>(null);
@@ -211,12 +211,19 @@ export default function WavesScreen() {
   useFocusEffect(
     useCallback(() => {
       markTabVisited("waves");
+      reconcileMatchPhotos();
       void refreshEchoes();
       void syncCloudData();
       void loadWorldWaves();
       const t = setTimeout(() => markAllEchoesSeen(), 900);
       return () => clearTimeout(t);
-    }, [refreshEchoes, syncCloudData, markAllEchoesSeen, loadWorldWaves]),
+    }, [
+      refreshEchoes,
+      syncCloudData,
+      markAllEchoesSeen,
+      loadWorldWaves,
+      reconcileMatchPhotos,
+    ]),
   );
 
   const onRefresh = async () => {
@@ -461,6 +468,8 @@ function WavesSectionBar({
               ? colors.foreground
               : colors.mutedForeground;
 
+        const iconSize = id === "caught" ? 36 : 24;
+
         return (
           <Pressable
             key={id}
@@ -470,6 +479,7 @@ function WavesSectionBar({
             }}
             style={[
               styles.sectionChip,
+              id === "caught" ? styles.sectionChipCaught : null,
               {
                 backgroundColor: chipBg,
                 borderColor: chipBorder,
@@ -485,18 +495,17 @@ function WavesSectionBar({
             ) : null}
             <Icon
               name={icon}
-              size={16}
+              size={iconSize}
               color={selected ? accent : labelColor}
               glyphFit={icon === "wave-glyph" ? "square" : undefined}
             />
             <Text
               style={[
                 styles.sectionChipLabel,
+                isWorld ? styles.sectionChipLabelShort : null,
                 { color: labelColor },
               ]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.85}
+              numberOfLines={isWorld ? 1 : 2}
             >
               {WAVES_TAB[chip]}
             </Text>
@@ -782,23 +791,6 @@ function RippleSentCard({
   const myUri = resolveMatchMyPhotoUri(match, myPhotos);
   const theirUri = resolveMatchPhotoDisplay(match, myPhotos).theirPhoto;
 
-  useEffect(() => {
-    debugLogC416({
-      hypothesisId: "H3-H4",
-      location: "waves.tsx:RippleSentCard",
-      message: "Sent card photo state",
-      data: {
-        matchId: match.id,
-        myPhotoId: match.myPhotoId ?? null,
-        myUriLen: myUri.length,
-        myUriNeedsAuth: myUri ? explorePhotoUriNeedsAuth(myUri) : false,
-        theirUriLen: theirUri.length,
-        showPlaceholder: !myUri,
-        myPhotosCount: myPhotos.length,
-      },
-    });
-  }, [match.id, match.myPhotoId, myUri, theirUri, myPhotos.length]);
-
   return (
     <TouchableOpacity
       activeOpacity={0.85}
@@ -979,27 +971,36 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     paddingHorizontal: 16,
     gap: 6,
-    paddingBottom: 8,
+    paddingBottom: 10,
   },
   sectionChip: {
     flex: 1,
     minWidth: 0,
+    minHeight: 70,
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: 3,
-    paddingHorizontal: 4,
-    paddingTop: 10,
-    paddingBottom: 8,
+    gap: 5,
+    paddingHorizontal: 3,
+    paddingTop: 11,
+    paddingBottom: 10,
     borderRadius: 16,
     borderWidth: 1,
     position: "relative",
   },
+  sectionChipCaught: {
+    minHeight: 86,
+  },
   sectionChipLabel: {
     fontSize: 10,
+    lineHeight: 12,
     fontFamily: "Inter_600SemiBold",
     textAlign: "center",
     width: "100%",
+  },
+  sectionChipLabelShort: {
+    fontSize: 11,
+    lineHeight: 13,
   },
   sectionChipBadge: {
     position: "absolute",

@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
-  Image,
   Keyboard,
   Platform,
   ScrollView,
@@ -20,12 +19,12 @@ import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { consumePendingCapture } from "@/utils/captureBus";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AiGeneratedBadge } from "@/components/AiGeneratedBadge";
+import { RemotePhotoImage } from "@/components/RemotePhotoImage";
 import { Icon } from "@/components/Icon";
 import { LoadingGlobe } from "@/components/LoadingGlobe";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
-import { useApp } from "@/context/AppContext";
+import { useApp, type MyPhoto } from "@/context/AppContext";
 import {
   getTodaysChallenge,
   SUGGESTED_TAGS_BY_THEME,
@@ -35,6 +34,10 @@ import { analyzePhoto, reactivateMyPhoto, uploadPhoto } from "@/utils/api";
 import { requestAtlasRefresh } from "@/utils/atlasHub";
 import { detectPhotoOrigin, type PhotoSource } from "@/utils/photoOrigin";
 import { photoCountryDisplay } from "@/utils/photoCountry";
+import {
+  findMyPhotoByUri,
+  resolveMyPhotoDisplayUri,
+} from "@/utils/photoDisplayUri";
 import {
   MUSIC_LIBRARY,
   genreMatchesSearchQuery,
@@ -674,33 +677,32 @@ export default function CameraScreen() {
     }
   };
 
-  const selectRecentPhoto = (uri: string) => {
-    const existing = myPhotos.find((p) => p.uri === uri);
-    setSelectedPhoto(uri);
+  const selectRecentPhoto = (photo: MyPhoto) => {
+    const displayUri = resolveMyPhotoDisplayUri(photo);
+    const canonicalUri = photo.uri?.trim() || displayUri;
+    setSelectedPhoto(canonicalUri);
     pickedAssetRef.current = null;
     selectedAssetRef.current = null;
-    if (existing) {
-      const theme = normalizeTheme(existing.theme);
-      if (theme) {
-        setThemeText(theme);
-        setThemeEdited(true);
-        themeEditedRef.current = true;
-      }
-      if (existing.tags && existing.tags.length > 0) {
-        setSelectedTags(existing.tags);
-      }
-      if (existing.musicGenre) {
-        setMusicGenre(existing.musicGenre as MusicGenre);
-        setGenreEdited(true);
-        genreEditedRef.current = true;
-        const meta = MUSIC_LIBRARY.find((g) => g.id === existing.musicGenre);
-        if (meta) setVibeSearchText(meta.label);
-      }
-      if (existing.customAudioUrl) {
-        setCustomAudioUrl(existing.customAudioUrl);
-      }
-      setIsAi(existing.isAI === true);
+    const theme = normalizeTheme(photo.theme);
+    if (theme) {
+      setThemeText(theme);
+      setThemeEdited(true);
+      themeEditedRef.current = true;
     }
+    if (photo.tags && photo.tags.length > 0) {
+      setSelectedTags(photo.tags);
+    }
+    if (photo.musicGenre) {
+      setMusicGenre(photo.musicGenre as MusicGenre);
+      setGenreEdited(true);
+      genreEditedRef.current = true;
+      const meta = MUSIC_LIBRARY.find((g) => g.id === photo.musicGenre);
+      if (meta) setVibeSearchText(meta.label);
+    }
+    if (photo.customAudioUrl) {
+      setCustomAudioUrl(photo.customAudioUrl);
+    }
+    setIsAi(photo.isAI === true);
   };
 
   const applyPostIntentSeed = useCallback(() => {
@@ -1035,7 +1037,7 @@ export default function CameraScreen() {
     const recordedBase64 = customAudioBase64;
     const recordedUrl = customAudioUrl;
     const localUri = selectedPhoto;
-    const existing = myPhotos.find((p) => p.uri === localUri);
+    const existing = findMyPhotoByUri(myPhotos, localUri);
     const captured = selectedAssetRef.current;
 
     if (existing?.backendId) {
@@ -1257,10 +1259,12 @@ export default function CameraScreen() {
                 syncThemeScrollOffset();
               }}
             >
-              <Image
-                source={{ uri: selectedPhoto }}
+              <RemotePhotoImage
+                uri={selectedPhoto}
                 style={styles.photoPreviewImage}
                 resizeMode="cover"
+                transitionMs={0}
+                recyclingKey={selectedPhoto}
               />
               {isAi ? <AiGeneratedBadge size="lg" /> : null}
             </View>
@@ -1655,26 +1659,38 @@ export default function CameraScreen() {
                 style={styles.prevScroll}
               >
                 {myPhotos.slice(0, 8).map((photo, i) => {
+                  const displayUri = resolveMyPhotoDisplayUri(photo);
                   const loc = photoCountryDisplay(
                     photo.captureCountryCode,
                     photo.declaredCountryCode ?? myCountryCode,
                   );
                   return (
-                  <View key={i} style={styles.prevItem}>
+                  <View key={photo.backendId ?? photo.uri ?? String(i)} style={styles.prevItem}>
                     <TouchableOpacity
                       onPress={() => {
-                        selectRecentPhoto(photo.uri);
+                        selectRecentPhoto(photo);
                         if (photo.customAudioUrl) {
                           togglePreview(photo.customAudioUrl);
                         }
                       }}
                       activeOpacity={0.85}
                     >
-                      <Image
-                        source={{ uri: photo.uri }}
-                        style={[styles.prevPhoto, { borderColor: colors.border }]}
-                        resizeMode="cover"
-                      />
+                      {displayUri ? (
+                        <RemotePhotoImage
+                          uri={displayUri}
+                          style={[styles.prevPhoto, { borderColor: colors.border }]}
+                          resizeMode="cover"
+                          transitionMs={0}
+                          recyclingKey={photo.backendId ?? displayUri}
+                        />
+                      ) : (
+                        <View
+                          style={[
+                            styles.prevPhoto,
+                            { borderColor: colors.border, backgroundColor: colors.card },
+                          ]}
+                        />
+                      )}
                       {loc.code ? (
                         <View style={styles.prevCountryBadge}>
                           <Text style={styles.prevCountryFlag}>{loc.flag}</Text>

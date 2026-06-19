@@ -2,7 +2,7 @@ import type { Match, MyPhoto } from "@/context/AppContext";
 import { getPublicApiOrigin } from "@/utils/publicEnv";
 import { resolveMatchPhotoUris, pickDurablePhotoUri } from "@/utils/matchPhotoSnapshot";
 import { photoKey } from "@/utils/photoKey";
-import { lookupVoterPhotoForTargetSync } from "@/utils/voterPhotoByTarget";
+import { lookupVoterPhotoForMatchSync } from "@/utils/voterPhotoByTarget";
 
 /** Authenticated stream URL for a server photo row. */
 export function serverPhotoImageUrl(photoId: string): string {
@@ -40,6 +40,41 @@ function uploadTimesEqual(a?: string, b?: string): boolean {
   const ta = Date.parse(sa);
   const tb = Date.parse(sb);
   return Number.isFinite(ta) && Number.isFinite(tb) && ta === tb;
+}
+
+/** Best backend id for the voter photo at swipe time (today's upload preferred). */
+export function pickVoterPhotoBackendId(
+  myPhotos: MyPhoto[],
+  opts?: { uploadedAt?: string; preferUri?: string },
+): string | undefined {
+  const preferUri = opts?.preferUri?.trim();
+  if (preferUri) {
+    const hit = myPhotos.find(
+      (p) => p.uri === preferUri || resolveMyPhotoDisplayUri(p) === preferUri,
+    );
+    const bid = hit?.backendId?.trim();
+    if (bid) return bid;
+  }
+
+  const uploadedAt = opts?.uploadedAt?.trim();
+  if (uploadedAt) {
+    const exact = myPhotos.find((p) => uploadTimesEqual(p.uploadedAt, uploadedAt));
+    const bid = exact?.backendId?.trim();
+    if (bid) return bid;
+  }
+
+  const todayUtcDay = Math.floor(Date.now() / 86_400_000);
+  const newest = myPhotos[0];
+  if (newest?.backendId?.trim()) {
+    const day = Math.floor(new Date(newest.uploadedAt).getTime() / 86_400_000);
+    if (day === todayUtcDay) return newest.backendId.trim();
+  }
+
+  for (const p of myPhotos) {
+    const bid = p.backendId?.trim();
+    if (bid && p.uploadState !== "failed") return bid;
+  }
+  return undefined;
 }
 
 /** Best-effort voter photo for a ripple row — id, upload time, or active-at-swipe. */
@@ -145,42 +180,7 @@ export function resolveMatchMyPhotoUri(
     myPhoto = resolveMyPhotoForMatch(enriched, myPhotos, stashed.myPhoto);
   }
 
-  const result = resolveEchoPhotoUri({ id: enriched.myPhotoId, uri: myPhoto });
-  logMyPhotoResolve(match, myPhotos, enriched, result, "final");
-  return result;
-}
-
-function logMyPhotoResolve(
-  match: Pick<Match, "id" | "myPhotoId" | "myPhoto" | "myPhotoUploadedAt">,
-  myPhotos: MyPhoto[],
-  enriched: Match,
-  result: string,
-  stage: string,
-): void {
-  if (!__DEV__) return;
-  try {
-    const { debugLogC416 } = require("@/utils/debugLogC416") as typeof import("@/utils/debugLogC416");
-    debugLogC416({
-      hypothesisId: "H1-H2",
-      location: "photoDisplayUri.ts:resolveMatchMyPhotoUri",
-      message: "resolveMatchMyPhotoUri",
-      data: {
-        stage,
-        matchId: match.id,
-        myPhotoId: match.myPhotoId ?? null,
-        enrichedMyPhotoId: enriched.myPhotoId ?? null,
-        myPhotoLen: (match.myPhoto ?? "").length,
-        enrichedMyPhotoLen: (enriched.myPhoto ?? "").length,
-        myPhotosCount: myPhotos.length,
-        myPhotosWithBackend: myPhotos.filter((p) => !!p.backendId?.trim()).length,
-        resultLen: result.length,
-        resultPrefix: result.slice(0, 60),
-        apiOrigin: require("@/utils/publicEnv").getPublicApiOrigin(),
-      },
-    });
-  } catch {
-    /* ignore */
-  }
+  return resolveEchoPhotoUri({ id: enriched.myPhotoId, uri: myPhoto });
 }
 
 /** Match row photos for lists — survives stripped cache and stale file:// captures. */
@@ -230,7 +230,7 @@ export function enrichMatchMyPhotoFields(
   }).myPhoto;
   let photoId = match.myPhotoId?.trim();
   if (!photoId) {
-    const fromTarget = lookupVoterPhotoForTargetSync(match.theirPhotoId);
+    const fromTarget = lookupVoterPhotoForMatchSync(match);
     if (fromTarget) photoId = fromTarget;
   }
   if (photoId) {
@@ -281,6 +281,20 @@ export function hydrateMyPhotoUri(photo: MyPhoto): MyPhoto {
     return { ...photo, uri: server };
   }
   return photo;
+}
+
+/** Match a row by stored uri or authenticated display uri. */
+export function findMyPhotoByUri(
+  photos: MyPhoto[],
+  uri: string,
+): MyPhoto | undefined {
+  const u = uri.trim();
+  if (!u) return undefined;
+  for (const p of photos) {
+    if (p.uri === u) return p;
+    if (resolveMyPhotoDisplayUri(p) === u) return p;
+  }
+  return undefined;
 }
 
 /** Enrich matches before persisting so stripped file:// rows keep HTTPS urls via myPhotoId. */

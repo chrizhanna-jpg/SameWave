@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import type { EchoCard, Match } from "@/context/AppContext";
 import type { AtlasConnection, AtlasCountry } from "@/utils/api";
+import { photoKey } from "@/utils/photoKey";
 
 const CELEBRATED_KEY = "samesame_celebrated_echo_ids";
 const ECHO_CACHE_KEY = "samesame_echo_cache";
@@ -133,37 +134,44 @@ export function parsePersistedEchoes(raw: unknown): EchoCard[] {
 
 export function mergeMatchesById(prev: Match[], incoming: Match[]): Match[] {
   if (incoming.length === 0) return prev;
-  const byKey = new Map<string, Match>();
-  const keyOf = (m: Match): string => {
-    const pid = m.theirPhotoId?.trim();
-    if (pid) return `their:${pid}`;
-    return `id:${m.id}`;
+
+  const mergeRow = (existing: Match, m: Match): Match => ({
+    ...existing,
+    ...m,
+    // Keep the local swipe id so late voter-photo patches still match.
+    id: existing.id || m.id,
+    myPhoto: m.myPhoto || existing.myPhoto,
+    theirPhoto: m.theirPhoto || existing.theirPhoto,
+    theirPhotoId: m.theirPhotoId || existing.theirPhotoId,
+    myPhotoId: m.myPhotoId || existing.myPhotoId,
+    myPhotoUploadedAt: m.myPhotoUploadedAt || existing.myPhotoUploadedAt,
+  });
+
+  const merged: Match[] = prev.map((m) => ({ ...m }));
+
+  const findIndex = (m: Match): number => {
+    const tid = m.theirPhotoId?.trim();
+    if (tid) {
+      const byId = merged.findIndex((x) => x.theirPhotoId?.trim() === tid);
+      if (byId >= 0) return byId;
+    }
+    const pk = photoKey(m.theirPhoto);
+    if (pk) {
+      const byPhoto = merged.findIndex((x) => photoKey(x.theirPhoto) === pk);
+      if (byPhoto >= 0) return byPhoto;
+    }
+    return merged.findIndex((x) => x.id === m.id);
   };
-  for (const m of prev) {
-    byKey.set(keyOf(m), m);
-  }
+
   for (const m of incoming) {
-    const key = keyOf(m);
-    const existing = byKey.get(key);
-    byKey.set(
-      key,
-      existing
-        ? {
-            ...existing,
-            ...m,
-            // Keep the local swipe id so late voter-photo patches still match.
-            id: existing.id || m.id,
-            myPhoto: m.myPhoto || existing.myPhoto,
-            theirPhoto: m.theirPhoto || existing.theirPhoto,
-            theirPhotoId: m.theirPhotoId || existing.theirPhotoId,
-            myPhotoId: m.myPhotoId || existing.myPhotoId,
-            myPhotoUploadedAt:
-              m.myPhotoUploadedAt || existing.myPhotoUploadedAt,
-          }
-        : m,
-    );
+    const idx = findIndex(m);
+    if (idx >= 0) {
+      merged[idx] = mergeRow(merged[idx], m);
+    } else {
+      merged.push({ ...m });
+    }
   }
-  const merged = [...byKey.values()];
+
   merged.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
   return merged.slice(0, MAX_MATCHES_CACHE);
 }

@@ -14,6 +14,7 @@ import {
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { AudioMuteButton } from "@/components/AudioMuteButton";
 import { Icon } from "@/components/Icon";
 import {
   resolveThemeDisplay,
@@ -145,15 +146,18 @@ function ImmersivePhotoViewer({
       <View style={styles.immersiveRoot}>
         <ExploreAtlasPhoto uri={tile.participant.uri} />
         <View style={styles.immersiveScrim} pointerEvents="none" />
-        <Pressable
-          onPress={onClose}
-          hitSlop={12}
-          style={[styles.immersiveClose, { top: insets.top + 12 }]}
-          accessibilityRole="button"
-          accessibilityLabel="Close photo"
-        >
-          <Icon name="x" size={22} color="#E8F4F8" />
-        </Pressable>
+        <View style={[styles.immersiveTopBar, { top: insets.top + 12 }]}>
+          <AudioMuteButton variant="overlay" iconSize={20} />
+          <Pressable
+            onPress={onClose}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Close photo"
+            style={styles.immersiveClose}
+          >
+            <Icon name="x" size={22} color="#E8F4F8" />
+          </Pressable>
+        </View>
         <View
           style={[styles.immersiveCaption, { paddingBottom: insets.bottom + 20 }]}
         >
@@ -372,15 +376,18 @@ export function AtlasFireExploreModal({
                 ) : null}
               </View>
             </View>
-            <Pressable
-              onPress={handleClose}
-              hitSlop={12}
-              accessibilityRole="button"
-              accessibilityLabel="Close explore"
-              style={[styles.closeBtn, { backgroundColor: "rgba(255,255,255,0.12)" }]}
-            >
-              <Icon name="x" size={20} color={colors.foreground} />
-            </Pressable>
+            <View style={styles.topBarActions}>
+              <AudioMuteButton variant="overlay" iconSize={20} />
+              <Pressable
+                onPress={handleClose}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Close explore"
+                style={[styles.closeBtn, { backgroundColor: "rgba(255,255,255,0.12)" }]}
+              >
+                <Icon name="x" size={20} color={colors.foreground} />
+              </Pressable>
+            </View>
           </View>
 
           {loading ? (
@@ -507,6 +514,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 0.2,
   },
+  topBarActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   closeBtn: {
     width: 40,
     height: 40,
@@ -607,16 +619,22 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0, 16, 24, 0.2)",
   },
-  immersiveClose: {
+  immersiveTopBar: {
     position: "absolute",
+    left: 16,
     right: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    zIndex: 3,
+  },
+  immersiveClose: {
     width: 44,
     height: 44,
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(0, 16, 24, 0.55)",
-    zIndex: 3,
   },
   immersiveCaption: {
     position: "absolute",

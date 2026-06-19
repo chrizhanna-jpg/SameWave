@@ -82,9 +82,9 @@ export const WAVES_TAB = {
   emptyBody:
     "When someone sends you a Ripple, it appears here. Ripple back to catch a Wave.",
   pendingActionLabel: "Make a Wave",
-  sectionReceivedChip: "Received",
-  sectionCaughtChip: "Caught",
-  sectionSentChip: "Sent",
+  sectionReceivedChip: "Ripples Received",
+  sectionCaughtChip: "Waves Caught",
+  sectionSentChip: "Ripples\nSent",
   sectionWorldChip: "World",
 } as const;
 

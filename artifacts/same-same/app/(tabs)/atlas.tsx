@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@clerk/expo";
 
 import { AtlasGlobeExperience } from "@/components/AtlasGlobeExperience";
+import { AudioMuteButton } from "@/components/AudioMuteButton";
 import { Icon } from "@/components/Icon";
 import { SyncRefreshButton } from "@/components/SyncRefreshButton";
 import { OceanShimmer } from "@/components/OceanShimmer";
@@ -368,14 +369,17 @@ export default function AtlasScreen() {
             </Text>
           ) : null}
         </View>
-        {showRefresh ? (
-          <SyncRefreshButton
-            syncing={atlasSyncing}
-            onPress={() => void load(true)}
-            accessibilityLabel="Refresh Atlas"
-            style={styles.refreshBtn}
-          />
-        ) : null}
+        <View style={styles.headerActions}>
+          <AudioMuteButton style={styles.muteBtn} />
+          {showRefresh ? (
+            <SyncRefreshButton
+              syncing={atlasSyncing}
+              onPress={() => void load(true)}
+              accessibilityLabel="Refresh Atlas"
+              style={styles.refreshBtn}
+            />
+          ) : null}
+        </View>
       </View>
 
       {loading && !hasCachedData ? (
@@ -543,8 +547,18 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   headerTextCol: { flex: 1, minWidth: 0 },
-  refreshBtn: {
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
     marginTop: 2,
+  },
+  muteBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  refreshBtn: {
     padding: 4,
   },
   headerTitle: {

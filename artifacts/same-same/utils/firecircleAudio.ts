@@ -1,5 +1,6 @@
 import { Audio } from "expo-av";
 
+import { isMuted, markUserInteracted, onMuteChange } from "@/utils/audio";
 import { setFirecircleFocusSlot as publishFirecircleFocusSlot } from "@/utils/firecircleFocus";
 import { dbToLinear } from "@/utils/dbLinear";
 
@@ -25,6 +26,37 @@ let fireSound: Audio.Sound | null = null;
 let started = false;
 let duckUntil = 0;
 let mapScale = 1;
+let muteHooked = false;
+
+function ensureMuteHook(): void {
+  if (muteHooked) return;
+  muteHooked = true;
+  onMuteChange(() => {
+    void syncFirecirclePlayback();
+  });
+}
+
+async function syncFirecirclePlayback(): Promise<void> {
+  if (!started || !oceanSound || !fireSound) return;
+  try {
+    if (isMuted()) {
+      await oceanSound.pauseAsync();
+      await fireSound.pauseAsync();
+      return;
+    }
+    await applyVolumes();
+    const playIfPaused = async (s: Audio.Sound) => {
+      const status = await s.getStatusAsync();
+      if (status.isLoaded && !status.isPlaying) {
+        await s.playAsync();
+      }
+    };
+    await playIfPaused(oceanSound);
+    await playIfPaused(fireSound);
+  } catch {
+    /* non-fatal */
+  }
+}
 
 function zoomMul(): number {
   return mapScale < ZOOM_OUT_BREAK ? ZOOM_OUT_GAIN : 1;
@@ -96,8 +128,12 @@ export function setFirecircleFocusSlot(index: number): void {
 }
 
 export async function startFirecircleAmbience(): Promise<void> {
+  ensureMuteHook();
   markUserInteracted();
-  if (started) return;
+  if (started) {
+    void syncFirecirclePlayback();
+    return;
+  }
   started = true;
   try {
     await Audio.setAudioModeAsync({
@@ -121,8 +157,10 @@ export async function startFirecircleAmbience(): Promise<void> {
       /* non-fatal */
     }
   };
-  await play(oceanSound);
-  await play(fireSound);
+  if (!isMuted()) {
+    await play(oceanSound);
+    await play(fireSound);
+  }
   startVolumePump();
 }
 

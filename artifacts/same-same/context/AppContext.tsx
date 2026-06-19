@@ -27,6 +27,7 @@ import {
   enrichMatchMyPhotoFields,
   enrichMatchesForStorage,
   hydrateMyPhotoUri,
+  resolveMyPhotoDisplayUri,
   serverPhotoImageUrl,
 } from "@/utils/photoDisplayUri";
 import {
@@ -421,6 +422,8 @@ interface AppContextValue extends AppState {
   refreshJourney: () => Promise<void>;
   /** Ripples + waves cloud sync — safe to call repeatedly. */
   syncCloudData: () => Promise<void>;
+  /** Backfill myPhotoId / HTTPS uris on ripple rows from library + voter map. */
+  reconcileMatchPhotos: () => void;
   /** True while echoes / journey are fetching from the server. */
   cloudSyncInProgress: boolean;
   /**
@@ -655,13 +658,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [persistState],
   );
 
-  const myPhotoBackendKey = state.myPhotos
-    .map((p) => p.backendId?.trim() ?? "")
-    .filter(Boolean)
-    .join("|");
-
-  useEffect(() => {
-    if (!hasHydrated || !myPhotoBackendKey) return;
+  const reconcileMatchPhotos = useCallback(() => {
+    if (!hasHydratedRef.current) return;
     setState((prev) => {
       let changed = false;
       const matches = prev.matches.map((m) => {
@@ -677,7 +675,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       saveState(newState);
       return newState;
     });
-  }, [hasHydrated, myPhotoBackendKey, saveState]);
+  }, [saveState]);
+
+  const myPhotoBackendKey = state.myPhotos
+    .map((p) => p.backendId?.trim() ?? "")
+    .filter(Boolean)
+    .join("|");
+
+  useEffect(() => {
+    if (!hasHydrated) return;
+    reconcileMatchPhotos();
+  }, [hasHydrated, myPhotoBackendKey, reconcileMatchPhotos]);
 
   const loadState = async () => {
     try {
@@ -1316,7 +1324,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const bid = photoId.trim();
     const tid = theirPhotoId?.trim() ?? "";
     if (!bid || !matchId.trim()) return;
-    if (tid) void rememberVoterPhotoForTarget(tid, bid);
+    const target = stateRef.current.matches.find(
+      (m) => m.id === matchId || (!!tid && m.theirPhotoId?.trim() === tid),
+    );
+    if (tid || target?.theirPhoto) {
+      void rememberVoterPhotoForTarget(tid, bid, target?.theirPhoto);
+    }
     setState((prev) => {
       let changed = false;
       const matches = prev.matches.map((m) => {
@@ -1377,7 +1390,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       },
     ) => {
       setState((prev) => {
-        const idx = prev.myPhotos.findIndex((p) => p.uri === uri);
+        const idx = prev.myPhotos.findIndex(
+          (p) =>
+            p.uri === uri ||
+            resolveMyPhotoDisplayUri(p) === uri,
+        );
         if (idx < 0) return prev;
         const existing = prev.myPhotos[idx];
         const updated: MyPhoto = {
@@ -1769,6 +1786,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setCloudSyncInProgress(true);
     try {
       await Promise.all([refreshEchoes(), refreshJourney()]);
+      reconcileMatchPhotos();
     } finally {
       cloudSyncInflightRef.current -= 1;
       if (cloudSyncInflightRef.current <= 0) {
@@ -1776,7 +1794,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setCloudSyncInProgress(false);
       }
     }
-  }, [refreshEchoes, refreshJourney]);
+  }, [refreshEchoes, refreshJourney, reconcileMatchPhotos]);
 
   // Background cloud sync after local cache is ready — never blocks the UI.
   React.useEffect(() => {
@@ -1923,6 +1941,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         refreshEchoes,
         refreshJourney,
         syncCloudData,
+        reconcileMatchPhotos,
         cloudSyncInProgress,
         respondToEcho,
         markPhotoSeen,

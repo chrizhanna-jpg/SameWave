@@ -3,6 +3,7 @@
 
 import { Audio } from "expo-av";
 
+import { isMuted, onMuteChange } from "@/utils/audio";
 import { dbToLinear } from "@/utils/dbLinear";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -17,6 +18,37 @@ let ambienceSound: Audio.Sound | null = null;
 /** Bumped on every stop so in-flight start() cannot play after leaving the screen. */
 let playSession = 0;
 let mapScale = 1;
+/** True while Wavefire / explore should keep the loop running (honors global mute). */
+let wantPlaying = false;
+let muteHooked = false;
+
+function ensureMuteHook(): void {
+  if (muteHooked) return;
+  muteHooked = true;
+  onMuteChange(() => {
+    void syncAmbiencePlayback();
+  });
+}
+
+async function syncAmbiencePlayback(): Promise<void> {
+  if (!ambienceSound) return;
+  try {
+    if (!wantPlaying || isMuted()) {
+      const status = await ambienceSound.getStatusAsync();
+      if (status.isLoaded && status.isPlaying) {
+        await ambienceSound.pauseAsync();
+      }
+      return;
+    }
+    await applyVolume();
+    const status = await ambienceSound.getStatusAsync();
+    if (status.isLoaded && !status.isPlaying) {
+      await ambienceSound.playAsync();
+    }
+  } catch {
+    /* non-fatal */
+  }
+}
 
 function zoomMul(): number {
   return mapScale < ZOOM_OUT_BREAK ? ZOOM_OUT_GAIN : 1;
@@ -58,6 +90,8 @@ function aborted(session: number): boolean {
 }
 
 export async function startWavefireAmbience(): Promise<void> {
+  ensureMuteHook();
+  wantPlaying = true;
   const session = playSession;
   try {
     await Audio.setAudioModeAsync({
@@ -92,6 +126,7 @@ export async function startWavefireAmbience(): Promise<void> {
       await ambienceSound!.setPositionAsync(0);
     }
     if (aborted(session)) return;
+    if (isMuted()) return;
     await ambienceSound!.playAsync();
   } catch {
     /* non-fatal */
@@ -99,6 +134,7 @@ export async function startWavefireAmbience(): Promise<void> {
 }
 
 export async function stopWavefireAmbience(): Promise<void> {
+  wantPlaying = false;
   playSession += 1;
   if (!ambienceSound) return;
   try {
@@ -126,13 +162,6 @@ export async function resumeWavefireAmbienceAfterOverlay(): Promise<void> {
     void startWavefireAmbience();
     return;
   }
-  try {
-    await applyVolume();
-    const status = await ambienceSound.getStatusAsync();
-    if (status.isLoaded && !status.isPlaying) {
-      await ambienceSound.playAsync();
-    }
-  } catch {
-    /* non-fatal */
-  }
+  wantPlaying = true;
+  await syncAmbiencePlayback();
 }

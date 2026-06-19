@@ -128,4 +128,19 @@ assert(
   true,
 );
 
+// H7: voter photo map by their photo uri when id missing
+setVoterPhotoMapForTests({
+  [`pk:${require("../utils/photoKey").photoKey(baseMatch.theirPhoto)}`]:
+    "cached-by-uri",
+});
+const fromUriMap = enrichMatchMyPhotoFields(
+  { ...baseMatch, theirPhotoId: undefined },
+  [],
+);
+assert(
+  "voter map sets myPhotoId via photoKey",
+  fromUriMap.myPhotoId === "cached-by-uri" ? fromUriMap.myPhoto : "",
+  true,
+);
+
 console.log("Done. exitCode=", process.exitCode ?? 0);
