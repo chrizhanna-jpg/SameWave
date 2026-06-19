@@ -27,7 +27,7 @@ export const ATLAS_FILTER_A11Y = {
   waves: `Waves only — ${WAVE_MUTUAL_TAGLINE}`,
   mine: "Mine only — Ripples and Waves you are part of",
   wavefire:
-    "Wavefire — global fire circle when matching moments connect into a shared campfire",
+    "Wavefire — A fire circle formed from Waves: moments two people agreed were truly alike",
   ripplefire:
     "Ripplefire — fire circle from Ripples who resonated but have not become a Wave yet",
 } as const;
@@ -40,7 +40,7 @@ export const ATLAS_FILTER_HINT = {
   waves: `Waves — ${WAVE_MUTUAL_TAGLINE}`,
   mine: "Mine only — Only Ripples and Waves you are part of.",
   wavefire:
-    "Wavefire — A global fire circle that lights up when matching moments connect, bringing people on the same wavelength into a shared campfire space.",
+    "Wavefire — A fire circle formed from Waves: moments two people agreed were truly alike.",
   ripplefire:
     "Ripplefire — A fire circle formed from Ripples, gathering people who resonated with the same moments but haven't yet connected as a Wave.",
 } as const;
@@ -59,6 +59,33 @@ export const ATLAS_COUNTRY_MODAL = {
   ripplesSent: "Ripples you sent (one-way)",
   ripplesReceived: "Ripples you received (one-way)",
   wavesMutual: `Waves — ${WAVE_MUTUAL_TAGLINE}`,
+} as const;
+
+export const WAVES_TAB = {
+  title: "Waves",
+  subtitle: "Waves: moments two people agreed were truly alike.",
+  wavesAroundTitle: "Waves around the world",
+  wavesAroundSub:
+    "Scroll recent Waves from other people — two moments they agreed were truly alike.",
+  wavesAroundEmpty: "No Waves from others yet. Check back soon.",
+  ripplesReceivedTitle: "Ripples Received",
+  ripplesReceivedSub:
+    "Someone felt the same about your moment — Ripple back if you agree it's truly alike.",
+  wavesCaughtTitle: "Waves Caught",
+  wavesCaughtSub:
+    "Waves you made by Rippling back, and Waves made when someone Rippled back to you.",
+  wavesCaughtYouRippledBack: "You rippled back",
+  wavesCaughtTheyRippledBack: "They rippled back to you",
+  ripplesSentTitle: "Ripples Sent",
+  ripplesSentSub: "Ripples you sent from the match deck.",
+  emptyTitle: "No Ripples or Waves yet",
+  emptyBody:
+    "When someone sends you a Ripple, it appears here. Ripple back to catch a Wave.",
+  pendingActionLabel: "Make a Wave",
+  sectionReceivedChip: "Received",
+  sectionCaughtChip: "Caught",
+  sectionSentChip: "Sent",
+  sectionWorldChip: "World",
 } as const;
 
 export const ECHOES_SCREEN = {

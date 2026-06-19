@@ -1844,6 +1844,17 @@ router.post("/photos/:id/vote", async (req, res) => {
         .orderBy(desc(photosTable.createdAt))
         .limit(1);
       voterPhotoId = fallback[0]?.id ?? null;
+      if (voterPhotoId) {
+        await db
+          .update(votesTable)
+          .set({ voterPhotoId })
+          .where(
+            and(
+              eq(votesTable.voterUserId, user.id),
+              eq(votesTable.photoId, photoId),
+            ),
+          );
+      }
     }
     if (verdict === "same" && voterPhotoId) {
       try {
@@ -1858,7 +1869,7 @@ router.post("/photos/:id/vote", async (req, res) => {
       }
     }
 
-    res.json({ ok: true, echo: echoState });
+    res.json({ ok: true, echo: echoState, voterPhotoId: voterPhotoId ?? null });
   } catch (err) {
     req.log.error({ err }, "vote failed");
     res.status(500).json({ error: "vote failed" });

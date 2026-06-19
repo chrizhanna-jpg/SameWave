@@ -290,7 +290,7 @@ export default function ProfileScreen() {
           <HeaderSignedInBadge />
         </View>
         <TouchableOpacity
-          onPress={() => router.push("/echoes")}
+          onPress={() => router.push("/(tabs)/waves")}
           activeOpacity={0.8}
           style={[
             styles.bellBtn,
@@ -430,6 +430,56 @@ export default function ProfileScreen() {
             </ScrollView>
           </View>
         )}
+
+        <PressableScale
+          onPress={() => router.push("/connections")}
+          haptic="light"
+          accessibilityLabel="Open connections"
+          style={styles.navRowWrap}
+        >
+        <Surface
+          elevation="sm"
+          radius="lg"
+          background={colors.card}
+          style={styles.connectionsRow}
+        >
+          <View
+            style={[
+              styles.connectionsIcon,
+              {
+                backgroundColor:
+                  unreadIncoming > 0 ? colors.teal : colors.teal + "22",
+              },
+            ]}
+          >
+            <Icon
+              name="bell"
+              size={18}
+              color={unreadIncoming > 0 ? "#001018" : colors.teal}
+            />
+            {unreadIncoming > 0 && (
+              <View style={[styles.connectionsDot, { backgroundColor: colors.gold, borderColor: colors.card }]}>
+                <Text style={styles.connectionsDotText}>{unreadIncoming}</Text>
+              </View>
+            )}
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.connectionsTitle, { color: colors.foreground }]}>
+              Connections
+            </Text>
+            <Text style={[styles.connectionsSub, { color: colors.mutedForeground }]}>
+              {unreadIncoming > 0
+                ? `${unreadIncoming} new — tap to respond`
+                : pendingOutgoing > 0
+                ? `${pendingOutgoing} request${pendingOutgoing === 1 ? "" : "s"} awaiting reply`
+                : connectionsCount > 0
+                ? `${connectionsCount} mutual reveal${connectionsCount === 1 ? "" : "s"}`
+                : "Anonymous social swaps with your matches"}
+            </Text>
+          </View>
+          <Icon name="chevron-right" size={18} color={colors.mutedForeground} />
+        </Surface>
+        </PressableScale>
 
         {/* Match History deep-link row — moved up so it sits right with
             the recent-matches preview rather than buried below the world
@@ -718,56 +768,6 @@ export default function ProfileScreen() {
               {myCountryName
                 ? `${myCountryName} — fallback when a photo has no GPS capture`
                 : "Default when camera GPS is unavailable (library uploads)"}
-            </Text>
-          </View>
-          <Icon name="chevron-right" size={18} color={colors.mutedForeground} />
-        </Surface>
-        </PressableScale>
-
-        <PressableScale
-          onPress={() => router.push("/connections")}
-          haptic="light"
-          accessibilityLabel="Open connections"
-          style={styles.navRowWrap}
-        >
-        <Surface
-          elevation="sm"
-          radius="lg"
-          background={colors.card}
-          style={styles.connectionsRow}
-        >
-          <View
-            style={[
-              styles.connectionsIcon,
-              {
-                backgroundColor:
-                  unreadIncoming > 0 ? colors.teal : colors.teal + "22",
-              },
-            ]}
-          >
-            <Icon
-              name="bell"
-              size={18}
-              color={unreadIncoming > 0 ? "#001018" : colors.teal}
-            />
-            {unreadIncoming > 0 && (
-              <View style={[styles.connectionsDot, { backgroundColor: colors.gold, borderColor: colors.card }]}>
-                <Text style={styles.connectionsDotText}>{unreadIncoming}</Text>
-              </View>
-            )}
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.connectionsTitle, { color: colors.foreground }]}>
-              Connections
-            </Text>
-            <Text style={[styles.connectionsSub, { color: colors.mutedForeground }]}>
-              {unreadIncoming > 0
-                ? `${unreadIncoming} new — tap to respond`
-                : pendingOutgoing > 0
-                ? `${pendingOutgoing} request${pendingOutgoing === 1 ? "" : "s"} awaiting reply`
-                : connectionsCount > 0
-                ? `${connectionsCount} mutual reveal${connectionsCount === 1 ? "" : "s"}`
-                : "Anonymous social swaps with your matches"}
             </Text>
           </View>
           <Icon name="chevron-right" size={18} color={colors.mutedForeground} />

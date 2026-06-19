@@ -396,6 +396,8 @@ interface Props {
   connections: AtlasConnection[];
   countries: AtlasCountry[];
   isSignedIn: boolean;
+  /** False when another tab is focused — pauses Wavefire ambience. */
+  isTabFocused?: boolean;
   /** When set, country modal shows "View moments". */
   onOpenCountryPhotos?: (code: string) => void;
   localRippleMatches?: LocalRippleExploreMatch[];
@@ -410,6 +412,7 @@ export function AtlasGlobeExperience({
   connections,
   countries,
   isSignedIn,
+  isTabFocused = true,
   onOpenCountryPhotos,
   localRippleMatches,
   localWaveEchoes,
@@ -850,15 +853,9 @@ export function AtlasGlobeExperience({
     );
   }, [wavefireActive, wavefireCluster, projection, now]);
 
-  const wavefireRingVisible =
-    wavefireActive &&
-    (wavefireWavyRingD != null || wavefireRingSegments.length > 0);
-
-  /** Fire tabs: ring when a cluster qualifies; otherwise show live arcs so the map is not blank. */
+  /** Wavefire = coloured orbit tiles only — never arc lines or travelling dots. */
   const showConnectionArcs = useMemo(() => {
-    if (filter === "wavefire") {
-      return !wavefireActive || !wavefireRingVisible;
-    }
+    if (filter === "wavefire") return false;
     if (filter === "ripplefire") {
       return !ripplefireRingEligible || ripplefireRingD == null;
     }
@@ -866,8 +863,6 @@ export function AtlasGlobeExperience({
     return true;
   }, [
     filter,
-    wavefireActive,
-    wavefireRingVisible,
     ripplefireRingEligible,
     ripplefireRingD,
     fireActive,
@@ -911,14 +906,14 @@ export function AtlasGlobeExperience({
       0.4 * (0.5 + 0.5 * Math.sin(t)) +
       0.12 * Math.sin(t * 3.2 + 0.5) +
       0.08 * Math.sin(now * 0.019);
-    const baseW = Math.max(20, ringR * 0.72);
+    const baseW = Math.min(26, Math.max(8, ringR * 0.22));
     const raw: { w: number; color: string; o: number }[] = [
-      { w: baseW * 1.25, color: "#7c2d12", o: 0.075 },
-      { w: baseW * 0.98, color: "#ea580c", o: 0.095 },
-      { w: baseW * 0.74, color: "#ea580c", o: 0.12 },
-      { w: baseW * 0.52, color: "#fb923c", o: 0.15 },
-      { w: baseW * 0.34, color: "#fb923c", o: 0.19 },
-      { w: baseW * 0.18, color: "#fde68a", o: 0.24 },
+      { w: baseW * 1.15, color: "#7c2d12", o: 0.065 },
+      { w: baseW * 0.88, color: "#ea580c", o: 0.085 },
+      { w: baseW * 0.66, color: "#ea580c", o: 0.11 },
+      { w: baseW * 0.46, color: "#fb923c", o: 0.14 },
+      { w: baseW * 0.3, color: "#fb923c", o: 0.17 },
+      { w: baseW * 0.16, color: "#fde68a", o: 0.22 },
     ];
     const layers = raw.map((L) => ({
       w: L.w,
@@ -934,7 +929,7 @@ export function AtlasGlobeExperience({
   }, [wavefireActive, wavefireCluster, projection]);
 
   useEffect(() => {
-    if (!wavefireActive) {
+    if (!wavefireActive || !isTabFocused) {
       void stopWavefireAmbience();
       return;
     }
@@ -944,7 +939,7 @@ export function AtlasGlobeExperience({
         void stopWavefireAmbience();
         return;
       }
-      if (s === "active" && filter === "wavefire" && wavefireCluster) {
+      if (s === "active" && filter === "wavefire" && wavefireCluster && isTabFocused) {
         void startWavefireAmbience();
       }
     });
@@ -952,7 +947,7 @@ export function AtlasGlobeExperience({
       sub.remove();
       void stopWavefireAmbience();
     };
-  }, [wavefireActive, filter, wavefireCluster]);
+  }, [wavefireActive, isTabFocused, filter, wavefireCluster]);
 
   useEffect(() => {
     if (!wfPhotoTile) {
@@ -1068,8 +1063,8 @@ export function AtlasGlobeExperience({
   const openFireExplore = useCallback(() => {
     if (!fireActive || !effectiveFireCluster || !fireVisual) return;
     setFireExploreOpen(true);
-    void startWavefireAmbience();
-  }, [fireActive, effectiveFireCluster, fireVisual]);
+    if (filter === "wavefire") void startWavefireAmbience();
+  }, [fireActive, effectiveFireCluster, fireVisual, filter]);
 
   const closeFireExplore = useCallback(() => {
     setFireExploreOpen(false);
@@ -1444,6 +1439,7 @@ export function AtlasGlobeExperience({
               <FirecircleOrbit
                 tiles={firecircleTiles}
                 mapScale={scale}
+                hueOnly
                 onSelectTile={(tile) => setWfPhotoTile(tile)}
               />
             ) : null}

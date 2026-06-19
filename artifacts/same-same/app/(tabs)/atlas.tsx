@@ -45,6 +45,7 @@ import {
   saveRipplefireLocalCache,
 } from "@/utils/syncCache";
 import { markTabVisited } from "@/utils/tabVisits";
+import { stopWavefireAmbience } from "@/utils/wavefireAmbience";
 import type { MyPhoto } from "@/context/AppContext";
 
 /** Never replace a non-empty map with an empty/partial API payload (degraded refresh, races). */
@@ -81,6 +82,7 @@ export default function AtlasScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [hasCachedData, setHasCachedData] = useState(false);
   const [localRippleArcs, setLocalRippleArcs] = useState<AtlasConnection[]>([]);
+  const [atlasTabFocused, setAtlasTabFocused] = useState(false);
   const atlasHasLoadedOnceRef = useRef(false);
   const atlasFocusedRef = useRef(false);
   const atlasLoadGenerationRef = useRef(0);
@@ -269,11 +271,14 @@ export default function AtlasScreen() {
   useFocusEffect(
     useCallback(() => {
       if (!hasHydrated) return;
+      setAtlasTabFocused(true);
       atlasFocusedRef.current = true;
       markTabVisited("atlas");
       void load(hasCachedData || atlasHasLoadedOnceRef.current);
       return () => {
+        setAtlasTabFocused(false);
         atlasFocusedRef.current = false;
+        void stopWavefireAmbience();
       };
     }, [load, hasCachedData, hasHydrated]),
   );
@@ -425,6 +430,7 @@ export default function AtlasScreen() {
             connections={globeConnections}
             countries={summary}
             isSignedIn={!!isSignedIn}
+            isTabFocused={atlasTabFocused}
             localRippleMatches={fireExploreOptions.localMatches}
             localWaveEchoes={fireExploreOptions.localWaves}
             viewerCountryCode={fireExploreOptions.viewerCountryCode}

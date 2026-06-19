@@ -10,6 +10,8 @@ type WaveIconProps = {
   color?: string;
   strokeWidth?: number;
   style?: object;
+  /** `wide` keeps the wordmark aspect; `square` fits inside a square box (tab bar, chips). */
+  fit?: "wide" | "square";
 };
 
 // SameWave wave wordmark — the brand app-icon artwork rendered as a
@@ -41,7 +43,16 @@ export function WaveIcon({ size = 24, style }: WaveIconProps) {
 // (image width ÷ image height) and update WAVE_GLYPH_ASPECT.
 const WAVE_GLYPH_ASPECT = 974 / 444;
 
-export function WaveGlyphIcon({ size = 24, style }: WaveIconProps) {
+export function WaveGlyphIcon({ size = 24, style, fit = "wide" }: WaveIconProps) {
+  if (fit === "square") {
+    return (
+      <Image
+        source={require("@/assets/images/samewave-glyph.png")}
+        style={[{ width: size, height: size }, style as object]}
+        resizeMode="contain"
+      />
+    );
+  }
   return (
     <Image
       source={require("@/assets/images/samewave-glyph.png")}

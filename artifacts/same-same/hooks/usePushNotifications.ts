@@ -73,8 +73,8 @@ function navigateFromData(data: Record<string, unknown> | undefined) {
   const deepLink = typeof data.deepLink === "string" ? data.deepLink : null;
   if (!deepLink) return;
   try {
-    if (deepLink === "/echoes") {
-      router.push("/echoes");
+    if (deepLink === "/echoes" || deepLink === "/(tabs)/waves" || deepLink === "/waves") {
+      router.push("/(tabs)/waves");
     } else if (deepLink.startsWith("/echo-pair")) {
       router.push(deepLink as never);
     } else if (deepLink.startsWith("/")) {

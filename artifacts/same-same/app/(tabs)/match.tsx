@@ -86,11 +86,13 @@ import {
 import { sampleMatchStats } from "@/utils/sampleStats";
 import { flagFor, nameFor } from "@/data/countries";
 import { photoCountryDisplay, displayCountryCode } from "@/utils/photoCountry";
-import { resolveMyPhotoDisplayUri } from "@/utils/photoDisplayUri";
+import { resolveMyPhotoDisplayUri, serverPhotoImageUrl } from "@/utils/photoDisplayUri";
+import { stopWavefireAmbience } from "@/utils/wavefireAmbience";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
 import type { Match } from "@/context/AppContext";
 import { photoKey } from "@/utils/photoKey";
 import { stashMatchPhotoUris } from "@/utils/matchPhotoSnapshot";
+import { rememberVoterPhotoForTarget } from "@/utils/voterPhotoByTarget";
 import { RIPPLE_CARD_WIDTH } from "@/constants/ripplePhotoFrame";
 import { normalizeUnsplashUri } from "@/utils/unsplashUri";
 
@@ -454,6 +456,7 @@ export default function SwipeScreen() {
   useFocusEffect(
     useCallback(() => {
       markTabVisited("match");
+      void stopWavefireAmbience();
       // On blur: pause the swipe card's background music (lease-aware,
       // no-ops if another screen has since taken over the singleton)
       // and any voice-clip preview the user started via a mic badge.
@@ -467,6 +470,7 @@ export default function SwipeScreen() {
     streakCount,
     myPhotos,
     addMatch,
+    patchMatchVoterPhoto,
     refreshEchoes,
     myCountryCode,
     myCountryName,
@@ -965,9 +969,9 @@ export default function SwipeScreen() {
     if (!theirPhoto?.uri) return;
     // Keep the matched card's vibe during the Ripple celebration overlay.
     if (flashMatchRef.current) return;
-    // Don't play over the placeholder card (which is just the user's
-    // own photo as a backdrop) or once the deck is exhausted.
-    if (theirPhoto.id === "placeholder" || noMore) {
+    // Don't play until the user has uploaded today's photo, over the
+    // placeholder card, or once the deck is exhausted.
+    if (!todaysPhoto || theirPhoto.id === "placeholder" || noMore) {
       void pauseAudio();
       return;
     }
@@ -996,6 +1000,7 @@ export default function SwipeScreen() {
     theirPhoto.musicGenre,
     theirPhoto.customAudioUrl,
     theirPhoto.theme,
+    todaysPhoto,
     noMore,
     fullscreenUri,
     flashMatch,
@@ -1047,7 +1052,7 @@ export default function SwipeScreen() {
         return;
       }
       const photo = theirPhotoRef.current;
-      if (!photo?.uri || photo.id === "placeholder" || noMore) return;
+      if (!photo?.uri || photo.id === "placeholder" || noMore || !todaysPhoto) return;
       const url = resolveMusicUrl({
         customAudioUrl: photo.customAudioUrl,
         musicGenre: photo.musicGenre,
@@ -1056,7 +1061,7 @@ export default function SwipeScreen() {
         seed: photo.uri,
       });
       if (url) playLeaseRef.current = playClip(url);
-    }, [noMore]),
+    }, [noMore, todaysPhoto]),
   );
 
   const toggleMute = useCallback(() => {
@@ -1214,6 +1219,11 @@ export default function SwipeScreen() {
       prefetchDeckAhead(2, snapshotPhoto.uri);
 
       const onSwipeOutComplete = () => {
+        const voterPhotoId = todayBackendIdRef.current;
+        const snapshotMyPhoto =
+          voterPhotoId && voterPhotoId.length > 0
+            ? serverPhotoImageUrl(voterPhotoId)
+            : snapshotMyUri;
         // Build a match record for BOTH verdicts so the user can revisit
         // and flip a previous swipe from My Journey. Stats / countries /
         // badges only count "same" — the context handles that branching.
@@ -1223,7 +1233,7 @@ export default function SwipeScreen() {
         );
         const match: Match = {
           id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-          myPhoto: snapshotMyUri,
+          myPhoto: snapshotMyPhoto,
           theirPhoto: snapshotPhoto.uri,
           myCountry: myDisp.name,
           myCountryCode: myDisp.code,
@@ -1262,9 +1272,14 @@ export default function SwipeScreen() {
             ? {
                 ...match,
                 ...(liveId ? { theirPhotoId: liveId } : {}),
+                ...(voterPhotoId ? { myPhotoId: voterPhotoId } : {}),
                 matchStats: sampleMatchStats(snapshotPhoto.uri),
               }
-            : { ...match, ...(liveId ? { theirPhotoId: liveId } : {}) };
+            : {
+                ...match,
+                ...(liveId ? { theirPhotoId: liveId } : {}),
+                ...(voterPhotoId ? { myPhotoId: voterPhotoId } : {}),
+              };
         stashMatchPhotoUris(
           matchWithStats.id,
           matchWithStats.myPhoto,
@@ -1272,21 +1287,38 @@ export default function SwipeScreen() {
         );
         addMatch(matchWithStats);
         if (liveId) {
-          const voterPhotoId = todaysPhoto?.backendId;
+          const voterPhotoIdForVote = todaysPhoto?.backendId;
+          const voterIdAtSwipe = voterPhotoId || voterPhotoIdForVote;
+          if (voterIdAtSwipe) {
+            void rememberVoterPhotoForTarget(liveId, voterIdAtSwipe);
+          }
           votePhoto(
             liveId,
             dir === "right" ? "same" : "different",
-            voterPhotoId,
+            voterPhotoIdForVote,
           )
             .then((result) => {
               if (result.ok) requestAtlasRefresh();
+              const bidNow =
+                result.voterPhotoId ||
+                todayBackendIdRef.current ||
+                voterPhotoIdForVote;
+              if (result.ok && bidNow) {
+                void rememberVoterPhotoForTarget(liveId, bidNow);
+              }
+              if (
+                result.ok &&
+                bidNow &&
+                !matchWithStats.myPhotoId
+              ) {
+                patchMatchVoterPhoto(matchWithStats.id, bidNow, liveId);
+              }
               if (
                 hadNoVoterPhotoId &&
                 result.ok &&
                 dir === "right" &&
                 result.echo === "skipped"
               ) {
-                const bidNow = todayBackendIdRef.current;
                 if (typeof bidNow === "string" && bidNow.length > 0) {
                   runEchoVoteRetry(liveId, bidNow);
                 } else {

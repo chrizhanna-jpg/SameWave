@@ -1,6 +1,6 @@
 import type { Match } from "@/context/AppContext";
 import { photoCountryDisplay } from "@/utils/photoCountry";
-import { serverPhotoImageUrl } from "@/utils/photoDisplayUri";
+import { serverPhotoImageUrl, serverPhotoImageUrlAtOrigin } from "@/utils/photoDisplayUri";
 
 /** Row shape from `GET /api/photos/my-journey`. */
 export type ServerJourneyMatch = {
@@ -22,7 +22,12 @@ export type ServerJourneyMatch = {
 };
 
 /** Map cloud journey row → local Match (HTTPS image URLs for persistence). */
-export function mapServerJourneyToMatch(row: ServerJourneyMatch): Match {
+export function mapServerJourneyToMatch(
+  row: ServerJourneyMatch,
+  apiOrigin?: string,
+): Match {
+  const img = (id: string) =>
+    apiOrigin ? serverPhotoImageUrlAtOrigin(id, apiOrigin) : serverPhotoImageUrl(id);
   const myDisp = photoCountryDisplay(
     row.myCaptureCountryCode,
     row.myCountryCode,
@@ -31,17 +36,13 @@ export function mapServerJourneyToMatch(row: ServerJourneyMatch): Match {
     row.theirCaptureCountryCode,
     row.theirCountryCode,
   );
-  const myPhoto =
-    row.myPhotoId && row.myPhotoActive
-      ? serverPhotoImageUrl(row.myPhotoId)
-      : "";
-  const theirPhoto = row.theirPhotoActive
-    ? serverPhotoImageUrl(row.theirPhotoId)
-    : "";
+  const myPhoto = row.myPhotoId ? img(row.myPhotoId) : "";
+  const theirPhoto = row.theirPhotoActive ? img(row.theirPhotoId) : "";
 
   return {
     id: row.id,
     theirPhotoId: row.theirPhotoId,
+    myPhotoId: row.myPhotoId ?? undefined,
     myPhoto,
     theirPhoto,
     myCountry: myDisp.name,

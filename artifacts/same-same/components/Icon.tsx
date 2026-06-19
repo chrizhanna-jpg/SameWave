@@ -104,9 +104,21 @@ interface IconProps {
   size?: number;
   color?: string;
   style?: object;
+  /** Square-fit brand wave glyph (tab bar / compact chips). */
+  glyphFit?: "wide" | "square";
 }
 
-export function Icon({ name, size = 24, color = "#000", style }: IconProps) {
+export function Icon({ name, size = 24, color = "#000", style, glyphFit }: IconProps) {
   const Component = ICONS[name] ?? ICONS.award;
+  if (name === "wave-glyph" || name === "wave") {
+    return (
+      <Component
+        size={size}
+        color={color}
+        style={style}
+        fit={glyphFit}
+      />
+    );
+  }
   return <Component size={size} color={color} style={style} />;
 }

@@ -29,23 +29,69 @@ function TabIcon({
   color,
   focused,
   activeColor,
+  sizeFocused = 24,
+  sizeUnfocused = 22,
+  glyphFit,
+  wrapWidth,
+  iconScale = 1,
+  iconOffsetY = 0,
+  showActiveDot = true,
 }: {
   name: string;
   color: string;
   focused: boolean;
   activeColor: string;
+  sizeFocused?: number;
+  sizeUnfocused?: number;
+  glyphFit?: "wide" | "square";
+  wrapWidth?: number;
+  iconScale?: number;
+  iconOffsetY?: number;
+  showActiveDot?: boolean;
 }) {
-  return (
-    <View style={tabIconStyles.wrap}>
-      <View
-        style={[
-          tabIconStyles.dot,
-          {
-            backgroundColor: focused ? activeColor : "transparent",
-          },
-        ]}
+  const iconBlock = (
+    <>
+      {showActiveDot ? (
+        <View
+          style={[
+            tabIconStyles.dot,
+            {
+              backgroundColor: focused ? activeColor : "transparent",
+            },
+          ]}
+        />
+      ) : null}
+      <Icon
+        name={name as never}
+        size={focused ? sizeFocused : sizeUnfocused}
+        color={color}
+        glyphFit={glyphFit}
       />
-      <Icon name={name as never} size={focused ? 24 : 22} color={color} />
+    </>
+  );
+
+  return (
+    <View
+      style={[
+        tabIconStyles.wrap,
+        wrapWidth != null ? { width: wrapWidth } : null,
+      ]}
+    >
+      {iconScale !== 1 || iconOffsetY !== 0 ? (
+        <View
+          style={{
+            transform: [
+              ...(iconScale !== 1 ? [{ scale: iconScale }] : []),
+              ...(iconOffsetY !== 0 ? [{ translateY: iconOffsetY }] : []),
+            ],
+            alignItems: "center",
+          }}
+        >
+          {iconBlock}
+        </View>
+      ) : (
+        iconBlock
+      )}
     </View>
   );
 }
@@ -207,26 +253,42 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="waves"
+        options={{
+          title: "Waves",
+          tabBarBadge: echoBadge,
+          tabBarBadgeStyle: {
+            backgroundColor: colors.gold,
+            color: "#001018",
+            fontSize: 10,
+            fontWeight: "700",
+            minWidth: 16,
+            height: 16,
+            lineHeight: 16,
+            paddingHorizontal: 4,
+          },
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon
+              name="wave-glyph"
+              color={color}
+              focused={focused}
+              activeColor={colors.primary}
+              iconScale={2.2}
+              iconOffsetY={2}
+              wrapWidth={56}
+              glyphFit="square"
+              showActiveDot={false}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="atlas"
         options={{
           title: "Atlas",
           tabBarIcon: ({ color, focused }) => (
             <TabIcon
               name="map"
-              color={color}
-              focused={focused}
-              activeColor={colors.primary}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="waves"
-        options={{
-          title: "Waves",
-          tabBarIcon: ({ color, focused }) => (
-            <TabIcon
-              name="wave-glyph"
               color={color}
               focused={focused}
               activeColor={colors.primary}
@@ -261,17 +323,6 @@ export default function TabLayout() {
               activeColor={colors.primary}
             />
           ),
-          tabBarBadge: echoBadge,
-          tabBarBadgeStyle: {
-            backgroundColor: colors.gold,
-            color: "#001018",
-            fontSize: 10,
-            fontWeight: "700",
-            minWidth: 16,
-            height: 16,
-            lineHeight: 16,
-            paddingHorizontal: 4,
-          },
         }}
       />
     </Tabs>

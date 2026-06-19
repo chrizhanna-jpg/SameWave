@@ -12,6 +12,7 @@ import {
   fetchEchoesInbox,
   fetchEchoesMine,
   fetchMyJourney,
+  fetchMyJourneyAtOrigin,
   fetchSeenPhotoIds,
   respondEcho as respondEchoApi,
   unvotePhoto,
@@ -23,10 +24,18 @@ import { buildLocalRippleConnections } from "@/utils/atlasLocalRipples";
 import { resolveOnboardingComplete } from "@/utils/resolveOnboardingComplete";
 import { mapServerJourneyToMatch } from "@/utils/journeySync";
 import {
+  enrichMatchMyPhotoFields,
+  enrichMatchesForStorage,
   hydrateMyPhotoUri,
   serverPhotoImageUrl,
 } from "@/utils/photoDisplayUri";
+import {
+  hydrateVoterPhotoMap,
+  importVoterPhotosFromJourney,
+  rememberVoterPhotoForTarget,
+} from "@/utils/voterPhotoByTarget";
 import { photoKey } from "@/utils/photoKey";
+import { getPublicApiOrigin, getStagedProductionApiOrigin } from "@/utils/publicEnv";
 import {
   hydrateCelebratedEchoIds,
   hydrateEchoFromCache,
@@ -145,6 +154,8 @@ export interface Match {
   // vote and cascade-cancel any wave it produced. Older matches that
   // predate this field stay client-side only.
   theirPhotoId?: string;
+  /** Backend id of the voter's photo at swipe time, when known. */
+  myPhotoId?: string;
   myCountry: string;
   myCountryCode?: string;
   myCountryFlag?: string;
@@ -243,6 +254,8 @@ export interface EchoCard {
   theme: string;
   createdAt: string;
   mutualAt: string | null;
+  /** True when this user sent the first Ripple on the pair. */
+  youSentFirst?: boolean;
   mine: PhotoSide;
   theirs: PhotoSide;
 }
@@ -348,6 +361,12 @@ interface AppContextValue extends AppState {
    * wipe good pre-upload client state when the server analysis failed.
    */
   setMyPhotoBackendId: (uri: string, ack: MyPhotoUploadAck) => void;
+  /** Attach voter photo id to a swipe row after upload ack or late vote ack. */
+  patchMatchVoterPhoto: (
+    matchId: string,
+    photoId: string,
+    theirPhotoId?: string,
+  ) => void;
   /**
    * Update the in-flight upload state of a local photo. Called by the
    * camera screen when POST /photos errors or returns a malformed body
@@ -608,7 +627,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const { pendingEchoes: _p, mutualEchoes: _m, ...rest } = newState;
         const forStorage = {
           ...rest,
-          matches: newState.matches.map(stripHeavyUrisFromMatch),
+          matches: enrichMatchesForStorage(newState.matches, newState.myPhotos).map(
+            stripHeavyUrisFromMatch,
+          ),
           myPhotos: newState.myPhotos.map((p) => ({
             ...p,
             uri: shouldPersistRemoteUri(p.uri) ? p.uri.trim() : "",
@@ -618,7 +639,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           })),
         };
         await AsyncStorage.setItem("samesame_state", JSON.stringify(forStorage));
-        await saveMatchesCache(newState.matches);
+        await saveMatchesCache(enrichMatchesForStorage(newState.matches, newState.myPhotos));
       } catch {}
     });
     await persistChainRef.current;
@@ -634,8 +655,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [persistState],
   );
 
+  const myPhotoBackendKey = state.myPhotos
+    .map((p) => p.backendId?.trim() ?? "")
+    .filter(Boolean)
+    .join("|");
+
+  useEffect(() => {
+    if (!hasHydrated || !myPhotoBackendKey) return;
+    setState((prev) => {
+      let changed = false;
+      const matches = prev.matches.map((m) => {
+        const next = enrichMatchMyPhotoFields(m, prev.myPhotos);
+        if (next.myPhoto !== m.myPhoto || next.myPhotoId !== m.myPhotoId) {
+          changed = true;
+          return next;
+        }
+        return m;
+      });
+      if (!changed) return prev;
+      const newState = { ...prev, matches };
+      saveState(newState);
+      return newState;
+    });
+  }, [hasHydrated, myPhotoBackendKey, saveState]);
+
   const loadState = async () => {
     try {
+      await hydrateVoterPhotoMap();
       const [echoCache, celebratedIds, cachedMatches] = await Promise.all([
         loadEchoCache(),
         hydrateCelebratedEchoIds(),
@@ -730,6 +776,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           }
         );
         const hydratedPhotos = migratedPhotos.map(hydrateMyPhotoUri);
+        const enrichedMatches = matches.map((m) =>
+          enrichMatchMyPhotoFields(m, hydratedPhotos),
+        );
         // Expire any pending requests whose 48h window has passed.
         const now = Date.now();
         const migratedRequests: ConnectRequest[] = (parsed.connectRequests ?? [])
@@ -745,7 +794,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const persistedKeys: string[] = Array.isArray(parsed.seenPhotoKeys)
           ? parsed.seenPhotoKeys.filter((k: unknown) => typeof k === "string" && k.length > 0)
           : [];
-        const matchKeys = matches
+        const matchKeys = enrichedMatches
           .map((m: Match) => photoKey(m?.theirPhoto))
           .filter((k: string) => k.length > 0);
         const seenPhotoKeys = Array.from(new Set([...persistedKeys, ...matchKeys]));
@@ -763,7 +812,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               : 0;
         const nextOpenCount = priorOpenCount + 1;
         const onboardingComplete = resolveOnboardingComplete(
-          { ...parsed, matches },
+          { ...parsed, matches: enrichedMatches },
           priorOpenCount,
           mutualEchoes.length,
         );
@@ -776,7 +825,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ...parsed,
           appOpenCount: nextOpenCount,
           onboardingComplete,
-          matches,
+          matches: enrichedMatches,
           myPhotos: hydratedPhotos,
           connectRequests: migratedRequests,
           pendingEchoes,
@@ -787,7 +836,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ...parsed,
           appOpenCount: nextOpenCount,
           onboardingComplete,
-          matches,
+          matches: enrichedMatches,
           myPhotos: hydratedPhotos,
           connectRequests: migratedRequests,
           pendingEchoes,
@@ -864,14 +913,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addMatch = useCallback((match: Match) => {
     setState((prev) => {
-      const allMatches = [match, ...prev.matches];
+      const enriched = enrichMatchMyPhotoFields(match, prev.myPhotos);
+      const allMatches = [enriched, ...prev.matches];
       const confirmed = allMatches.filter((m) => m.verdict === "same");
       const { matchedCountries, badges } = recomputeFromConfirmed(
         confirmed,
         prev.badges,
       );
       // Add the matched photo to the seen ledger. Idempotent.
-      const k = photoKey(match.theirPhoto);
+      const k = photoKey(enriched.theirPhoto);
       const seenPhotoKeys =
         k && !prev.seenPhotoKeys.includes(k)
           ? [...prev.seenPhotoKeys, k]
@@ -882,14 +932,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         matches: allMatches,
         totalMatches: confirmed.length,
         streakCount:
-          match.verdict === "same"
+          enriched.verdict === "same"
             ? prev.streakCount + 1
             : prev.streakCount,
         badges,
         seenPhotoKeys,
       };
       saveState(newState);
-      if (match.verdict === "same") {
+      if (enriched.verdict === "same") {
         void saveRipplefireLocalCache(
           buildLocalRippleConnections(
             allMatches,
@@ -1244,11 +1294,51 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         };
       });
       if (!changed) return prev;
-      const newState = { ...prev, myPhotos: newPhotos };
+      const ackPhoto = newPhotos.find((p) => p.backendId === ack.backendId);
+      let newMatches = prev.matches;
+      if (ackPhoto) {
+        newMatches = prev.matches.map((m) => enrichMatchMyPhotoFields(m, newPhotos));
+        const matchesChanged = newMatches.some(
+          (m, i) =>
+            m.myPhoto !== prev.matches[i]?.myPhoto ||
+            m.myPhotoId !== prev.matches[i]?.myPhotoId,
+        );
+        if (!matchesChanged) newMatches = prev.matches;
+      }
+      const newState = { ...prev, myPhotos: newPhotos, matches: newMatches };
       saveState(newState);
       return newState;
     });
   }, []);
+
+  const patchMatchVoterPhoto = useCallback(
+    (matchId: string, photoId: string, theirPhotoId?: string) => {
+    const bid = photoId.trim();
+    const tid = theirPhotoId?.trim() ?? "";
+    if (!bid || !matchId.trim()) return;
+    if (tid) void rememberVoterPhotoForTarget(tid, bid);
+    setState((prev) => {
+      let changed = false;
+      const matches = prev.matches.map((m) => {
+        if (m.myPhotoId?.trim() === bid) return m;
+        const isTarget =
+          m.id === matchId || (!!tid && m.theirPhotoId?.trim() === tid);
+        if (!isTarget) return m;
+        changed = true;
+        return {
+          ...m,
+          myPhotoId: bid,
+          myPhoto: serverPhotoImageUrl(bid),
+        };
+      });
+      if (!changed) return prev;
+      const newState = { ...prev, matches };
+      saveState(newState);
+      return newState;
+    });
+  },
+  [saveState],
+  );
 
   const setMyPhotoUploadState = useCallback(
     (uri: string, uploadState: NonNullable<MyPhoto["uploadState"]>) => {
@@ -1618,11 +1708,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const refreshJourney = useCallback(async () => {
     if (!hasHydratedRef.current) return;
     try {
-      const res = await fetchMyJourney();
-      if (!res.ok || res.matches.length === 0) return;
-      const incoming = res.matches.map(mapServerJourneyToMatch);
+      let journeyOrigin: string | undefined;
+      let res = await fetchMyJourney();
+      if (!res.ok || res.matches.length === 0) {
+        const hosted = getStagedProductionApiOrigin();
+        if (hosted && hosted !== getPublicApiOrigin()) {
+          const hostedRes = await fetchMyJourneyAtOrigin(hosted);
+          if (hostedRes.ok && hostedRes.matches.length > 0) {
+            res = hostedRes;
+            journeyOrigin = hosted;
+          }
+        }
+      }
+      if (!res.ok) return;
+      if (res.matches.length > 0) {
+        await importVoterPhotosFromJourney(res.matches);
+      }
+      if (res.matches.length === 0) return;
+      const incoming = res.matches.map((row) =>
+        mapServerJourneyToMatch(row, journeyOrigin),
+      );
       setState((prev) => {
-        const matches = mergeMatchesById(prev.matches, incoming);
+        const merged = mergeMatchesById(prev.matches, incoming);
+        const matches = merged.map((m) =>
+          enrichMatchMyPhotoFields(m, prev.myPhotos),
+        );
         const confirmed = matches.filter((m) => m.verdict === "same");
         const { matchedCountries, badges } = recomputeFromConfirmed(
           confirmed,
@@ -1706,6 +1816,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ...target,
         state: "mutual" as const,
         mutualAt: new Date().toISOString(),
+        youSentFirst: false,
       };
       setState((prev) => {
         const newPending = prev.pendingEchoes.filter((e) => e.id !== id);
@@ -1792,6 +1903,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setMyCountry,
         addMyPhoto,
         setMyPhotoBackendId,
+        patchMatchVoterPhoto,
         setMyPhotoUploadState,
         activateMyPhotoForMatch,
         removeMyPhoto,

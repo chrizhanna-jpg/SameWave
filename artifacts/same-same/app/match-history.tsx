@@ -21,6 +21,7 @@ import { timeAgo } from "@/utils/timeAgo";
 import { photoCountryDisplay } from "@/utils/photoCountry";
 import { MATCH_HISTORY_EMPTY } from "@/data/waveRippleGlossary";
 import { confirmReportPhoto } from "@/utils/photoModeration";
+import { resolveMatchMyPhotoUri } from "@/utils/photoDisplayUri";
 
 export default function MatchHistoryScreen() {
   const colors = useColors();
@@ -28,6 +29,7 @@ export default function MatchHistoryScreen() {
   const {
     matches,
     mutualEchoes,
+    myPhotos,
     removeMatch,
     changeVerdict,
     myCountryCode,
@@ -133,7 +135,7 @@ export default function MatchHistoryScreen() {
           { backgroundColor: colors.card, borderColor: colors.border },
         ]}
       >
-        <PhotoCard uri={match.myPhoto} size="sm" />
+        <PhotoCard uri={resolveMatchMyPhotoUri(match, myPhotos)} size="sm" />
         <View style={styles.matchMeta}>
           <View style={styles.matchFlags}>
             <Text style={styles.matchFlag}>{myFlag}</Text>

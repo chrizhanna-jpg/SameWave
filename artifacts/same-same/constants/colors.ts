@@ -50,6 +50,9 @@ const palette = {
   coral: "#1FA9F0",
   navy: "#0A2552",
   green: "#3DA478",
+  // Soft periwinkle for browse/feed surfaces (World Waves) — distinct from
+  // notification accents (teal, gold, primary) and from mutedForeground.
+  feedAccent: "#A4B0D8",
 };
 
 const radii = { sm: 12, md: 16, lg: 20, xl: 28, pill: 999 } as const;

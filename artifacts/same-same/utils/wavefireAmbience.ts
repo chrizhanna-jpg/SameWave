@@ -3,7 +3,6 @@
 
 import { Audio } from "expo-av";
 
-import { markUserInteracted } from "@/utils/audio";
 import { dbToLinear } from "@/utils/dbLinear";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -59,7 +58,6 @@ function aborted(session: number): boolean {
 }
 
 export async function startWavefireAmbience(): Promise<void> {
-  markUserInteracted();
   const session = playSession;
   try {
     await Audio.setAudioModeAsync({

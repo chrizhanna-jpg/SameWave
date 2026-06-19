@@ -97,6 +97,8 @@ export function parsePersistedEchoes(raw: unknown): EchoCard[] {
       createdAt:
         typeof e.createdAt === "string" ? e.createdAt : new Date(0).toISOString(),
       mutualAt: typeof e.mutualAt === "string" ? e.mutualAt : null,
+      youSentFirst:
+        typeof e.youSentFirst === "boolean" ? e.youSentFirst : undefined,
       mine: {
         id: typeof mine.id === "string" ? mine.id : "",
         uri: typeof mine.uri === "string" ? mine.uri : "",
@@ -149,10 +151,14 @@ export function mergeMatchesById(prev: Match[], incoming: Match[]): Match[] {
         ? {
             ...existing,
             ...m,
-            id: m.id || existing.id,
+            // Keep the local swipe id so late voter-photo patches still match.
+            id: existing.id || m.id,
             myPhoto: m.myPhoto || existing.myPhoto,
             theirPhoto: m.theirPhoto || existing.theirPhoto,
             theirPhotoId: m.theirPhotoId || existing.theirPhotoId,
+            myPhotoId: m.myPhotoId || existing.myPhotoId,
+            myPhotoUploadedAt:
+              m.myPhotoUploadedAt || existing.myPhotoUploadedAt,
           }
         : m,
     );

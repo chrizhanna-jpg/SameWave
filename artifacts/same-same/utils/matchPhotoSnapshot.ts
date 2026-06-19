@@ -6,6 +6,26 @@
  */
 const byMatchId = new Map<string, { myPhoto: string; theirPhoto: string }>();
 
+/** Prefer remote/https (and data:) over stale local `file://` captures. */
+export function pickDurablePhotoUri(
+  ...candidates: (string | undefined)[]
+): string {
+  for (const raw of candidates) {
+    const u = raw?.trim() ?? "";
+    if (!u) continue;
+    if (u.startsWith("http://") || u.startsWith("https://")) return u;
+  }
+  for (const raw of candidates) {
+    const u = raw?.trim() ?? "";
+    if (u.startsWith("data:")) return u;
+  }
+  for (const raw of candidates) {
+    const u = raw?.trim() ?? "";
+    if (u.startsWith("file:")) return u;
+  }
+  return "";
+}
+
 export function stashMatchPhotoUris(
   matchId: string,
   myPhoto: string,
@@ -23,7 +43,7 @@ export function resolveMatchPhotoUris(
   const hit = byMatchId.get(matchId);
   if (!hit) return fallback;
   return {
-    myPhoto: hit.myPhoto || fallback.myPhoto,
-    theirPhoto: hit.theirPhoto || fallback.theirPhoto,
+    myPhoto: pickDurablePhotoUri(fallback.myPhoto, hit.myPhoto),
+    theirPhoto: pickDurablePhotoUri(fallback.theirPhoto, hit.theirPhoto),
   };
 }

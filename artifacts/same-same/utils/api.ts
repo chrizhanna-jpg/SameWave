@@ -508,13 +508,8 @@ export async function matchByObject(
 
 export interface VoteResult {
   ok: boolean;
-  /**
-   * Did this vote create or promote an echo offer? "skipped" when no
-   * voterPhotoId was sent (or self-vote / missing photo). "pending" when
-   * we recorded a one-way offer. "mutual" when the other side had
-   * already offered and this vote completes the loop.
-   */
   echo: "pending" | "mutual" | "skipped";
+  voterPhotoId?: string | null;
 }
 
 /**
@@ -535,10 +530,17 @@ export async function votePhoto(
       body: JSON.stringify({ verdict, voterPhotoId: voterPhotoId ?? null }),
     });
     if (!res.ok) return { ok: false, echo: "skipped" };
-    const json = (await res.json().catch(() => ({}))) as { echo?: string };
+    const json = (await res.json().catch(() => ({}))) as {
+      echo?: string;
+      voterPhotoId?: string | null;
+    };
     const echo =
       json.echo === "mutual" || json.echo === "pending" ? json.echo : "skipped";
-    return { ok: true, echo };
+    const voterPhotoId =
+      typeof json.voterPhotoId === "string" && json.voterPhotoId.length > 0
+        ? json.voterPhotoId
+        : null;
+    return { ok: true, echo, voterPhotoId };
   } catch {
     return { ok: false, echo: "skipped" };
   }
@@ -695,6 +697,7 @@ export interface ServerEcho {
   theme: string;
   createdAt: string;
   mutualAt: string | null;
+  youSentFirst?: boolean;
   mine: ServerEchoSide;
   theirs: ServerEchoSide;
 }
@@ -742,6 +745,7 @@ function decorateEcho(raw: {
   theme: string;
   createdAt: string;
   mutualAt: string | null;
+  youSentFirst?: boolean;
   mine: {
     id: string;
     uri: string;
@@ -767,6 +771,7 @@ function decorateEcho(raw: {
     theme: raw.theme ?? "",
     createdAt: raw.createdAt,
     mutualAt: raw.mutualAt ?? null,
+    youSentFirst: raw.youSentFirst,
     mine: decorateSide(raw.mine),
     theirs: decorateSide(raw.theirs),
   };
@@ -784,9 +789,16 @@ export type JourneyFetchResult = {
 
 /** Cloud backup of My Journey — ripples and passes for reinstall / new device. */
 export async function fetchMyJourney(): Promise<JourneyFetchResult> {
+  return fetchMyJourneyAtOrigin(getApiBase());
+}
+
+/** Journey fetch against an explicit API origin (hosted fallback in dev). */
+export async function fetchMyJourneyAtOrigin(
+  base: string,
+): Promise<JourneyFetchResult> {
   try {
-    const base = getApiBase();
-    const res = await fetch(`${base}/api/photos/my-journey`, {
+    const origin = base.replace(/\/$/, "");
+    const res = await fetch(`${origin}/api/photos/my-journey`, {
       headers: await authedHeaders(),
       cache: "no-store",
     });
@@ -932,6 +944,65 @@ export async function fetchEchoesByTheme(theme: string): Promise<{
     };
   } catch {
     return { theme, count: 0, photos: [] };
+  }
+}
+
+export type RecentWaveFeedItem = {
+  echoId: string;
+  theme: string;
+  mutualAt: string | null;
+  a: ServerEchoSide;
+  b: ServerEchoSide;
+};
+
+/** Recent mutual waves from other people (Waves tab browse feed). */
+export async function fetchRecentWavesFeed(
+  limit = 30,
+): Promise<RecentWaveFeedItem[]> {
+  try {
+    const base = getApiBase();
+    const res = await fetch(
+      `${base}/api/echoes/recent-waves?limit=${encodeURIComponent(String(limit))}`,
+      { headers: await authedHeaders() },
+    );
+    if (!res.ok) return [];
+    const json = (await res.json()) as {
+      waves?: Array<{
+        echoId: string;
+        theme: string;
+        mutualAt: string | null;
+        a: {
+          id: string;
+          countryCode: string | null;
+          captureCountryCode?: string | null;
+        };
+        b: {
+          id: string;
+          countryCode: string | null;
+          captureCountryCode?: string | null;
+        };
+      }>;
+    };
+    if (!Array.isArray(json.waves)) return [];
+    return json.waves.map((w) => ({
+      echoId: w.echoId,
+      theme: w.theme,
+      mutualAt: w.mutualAt,
+      a: decorateSide({
+        id: w.a.id,
+        uri: `${base}/api/photos/${encodeURIComponent(w.a.id)}/image`,
+        countryCode: w.a.countryCode,
+        captureCountryCode: w.a.captureCountryCode,
+      }),
+      b: decorateSide({
+        id: w.b.id,
+        uri: `${base}/api/photos/${encodeURIComponent(w.b.id)}/image`,
+        countryCode: w.b.countryCode,
+        captureCountryCode: w.b.captureCountryCode,
+      }),
+    }));
+  } catch {
+    return [];
   }
 }
 

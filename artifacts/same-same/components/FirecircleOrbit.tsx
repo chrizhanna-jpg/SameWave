@@ -33,6 +33,7 @@ function hashHue(userId: string): number {
 function FirecircleTile(props: {
   slot: FirecircleTileModel;
   mapScale: SharedValue<number>;
+  hueOnly?: boolean;
   onPressCountry: (tile: FirecircleTileModel) => void;
 }) {
   const slotIndex = props.slot.slotIndex;
@@ -70,11 +71,13 @@ function FirecircleTile(props: {
 
   const rawThumb = props.slot.thumbnailUrl?.trim() ?? "";
   const thumb =
-    rawThumb.startsWith("data:") || rawThumb.startsWith("http")
-      ? rawThumb
-      : rawThumb && isTrustedFirecircleThumbUrl(rawThumb)
-        ? resolveFirecircleThumbUri(rawThumb)
-        : null;
+    props.hueOnly
+      ? null
+      : rawThumb.startsWith("data:") || rawThumb.startsWith("http")
+        ? rawThumb
+        : rawThumb && isTrustedFirecircleThumbUrl(rawThumb)
+          ? resolveFirecircleThumbUri(rawThumb)
+          : null;
   const hue = hashHue(props.slot.userId);
 
   return (
@@ -104,20 +107,22 @@ function FirecircleTile(props: {
             <View
               style={[
                 styles.image,
-                { backgroundColor: `hsla(${hue}, 42%, 28%, 0.95)` },
+                { backgroundColor: `hsla(${hue}, 58%, 42%, 0.92)` },
               ]}
             />
           )}
-          <LinearGradient
-            colors={[
-              "rgba(255, 120, 60, 0.38)",
-              "rgba(30, 80, 120, 0.22)",
-              "rgba(255, 200, 120, 0.28)",
-            ]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.grade}
-          />
+          {!props.hueOnly ? (
+            <LinearGradient
+              colors={[
+                "rgba(255, 120, 60, 0.38)",
+                "rgba(30, 80, 120, 0.22)",
+                "rgba(255, 200, 120, 0.28)",
+              ]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.grade}
+            />
+          ) : null}
         </View>
       </Pressable>
     </Animated.View>
@@ -127,6 +132,8 @@ function FirecircleTile(props: {
 export function FirecircleOrbit(props: {
   tiles: FirecircleTileModel[];
   mapScale: SharedValue<number>;
+  /** Wavefire map: solid hue discs per participant, no photo thumbs. */
+  hueOnly?: boolean;
   onSelectTile: (tile: FirecircleTileModel) => void;
 }) {
   useEffect(() => {
@@ -147,6 +154,7 @@ export function FirecircleOrbit(props: {
           key={`${slot.spotlightPhotoId ?? slot.countryCode}-${slot.slotIndex}`}
           slot={slot}
           mapScale={props.mapScale}
+          hueOnly={props.hueOnly}
           onPressCountry={props.onSelectTile}
         />
       ))}

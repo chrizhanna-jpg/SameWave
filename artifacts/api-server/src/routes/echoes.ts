@@ -318,6 +318,8 @@ type EchoCard = {
   theme: string;
   createdAt: string | Date;
   mutualAt: string | Date | null;
+  /** True when this user sent the first Ripple on the pair. */
+  youSentFirst?: boolean;
   mine: {
     id: string;
     uri: string;
@@ -367,12 +369,15 @@ function buildEchoCard(
   const mine = lowId === meId ? lowSide : highSide;
   const theirs = lowId === meId ? highSide : lowSide;
   const stateRaw = String(row.state);
+  const firstRippleUserId =
+    typeof row.firstRippleUserId === "string" ? row.firstRippleUserId : null;
   return {
     id: String(row.id),
     state: stateRaw === "mutual" ? "mutual" : "pending",
     theme: String(row.theme ?? ""),
     createdAt: row.createdAt as string | Date,
     mutualAt: (row.mutualAt as string | Date | null) ?? null,
+    youSentFirst: firstRippleUserId ? firstRippleUserId === meId : undefined,
     mine,
     theirs,
   };
@@ -458,7 +463,15 @@ router.get("/echoes/mine", async (req, res) => {
         ph.mime_type AS "highMime",
         ph.country_code AS "highCountry",
         ph.capture_country_code AS "highCaptureCountry",
-        ph.theme AS "highTheme"
+        ph.theme AS "highTheme",
+        (
+          SELECT v.voter_user_id
+          FROM votes v
+          WHERE v.verdict = 'same'
+            AND v.photo_id IN (e.photo_low_id, e.photo_high_id)
+          ORDER BY v.created_at ASC
+          LIMIT 1
+        ) AS "firstRippleUserId"
       FROM echoes e
       JOIN photos pl ON pl.id = e.photo_low_id
       JOIN photos ph ON ph.id = e.photo_high_id
@@ -712,6 +725,89 @@ router.get("/echoes/theme/:theme", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "echoes theme failed");
     res.status(500).json({ error: "theme failed" });
+  }
+});
+
+// ---- GET /api/echoes/recent-waves -----------------------------------------
+// Recent mutual waves for the Waves tab browse feed. Returns both sides of
+// each pair (photo id + country only — images via /api/photos/:id/image).
+router.get("/echoes/recent-waves", async (req, res) => {
+  try {
+    const limitRaw =
+      typeof req.query.limit === "string" ? Number.parseInt(req.query.limit, 10) : 30;
+    const limit = Number.isFinite(limitRaw)
+      ? Math.min(60, Math.max(1, limitRaw))
+      : 30;
+    const viewer = await resolveUserFromRequest(req);
+    const viewerId = viewer?.id ?? null;
+
+    const rows = await db.execute(sql`
+      SELECT
+        e.id AS "echoId",
+        e.theme AS theme,
+        e.mutual_at AS "mutualAt",
+        pl.id AS "lowId",
+        pl.country_code AS "lowCountry",
+        pl.capture_country_code AS "lowCaptureCountry",
+        pl.user_id AS "lowUserId",
+        ph.id AS "highId",
+        ph.country_code AS "highCountry",
+        ph.capture_country_code AS "highCaptureCountry",
+        ph.user_id AS "highUserId"
+      FROM echoes e
+      JOIN photos pl ON pl.id = e.photo_low_id
+      JOIN photos ph ON ph.id = e.photo_high_id
+      WHERE e.state = 'mutual'
+      ORDER BY e.mutual_at DESC NULLS LAST, e.created_at DESC
+      LIMIT ${limit * 2}
+    `);
+
+    const waves: Array<{
+      echoId: string;
+      theme: string;
+      mutualAt: string | null;
+      a: { id: string; countryCode: string | null; captureCountryCode: string | null };
+      b: { id: string; countryCode: string | null; captureCountryCode: string | null };
+    }> = [];
+
+    for (const raw of rows.rows as Array<Record<string, unknown>>) {
+      const echoId = String(raw.echoId ?? "");
+      if (!echoId) continue;
+      const lowUser = String(raw.lowUserId ?? "");
+      const highUser = String(raw.highUserId ?? "");
+      if (
+        viewerId != null &&
+        (viewerId === lowUser || viewerId === highUser)
+      ) {
+        continue;
+      }
+      const iso = (v: unknown) => {
+        const s = typeof v === "string" ? v.trim().toUpperCase() : "";
+        return s.length === 2 ? s : null;
+      };
+      waves.push({
+        echoId,
+        theme: String(raw.theme ?? ""),
+        mutualAt: raw.mutualAt ? String(raw.mutualAt) : null,
+        a: {
+          id: String(raw.lowId),
+          countryCode: iso(raw.lowCountry),
+          captureCountryCode: iso(raw.lowCaptureCountry),
+        },
+        b: {
+          id: String(raw.highId),
+          countryCode: iso(raw.highCountry),
+          captureCountryCode: iso(raw.highCaptureCountry),
+        },
+      });
+      if (waves.length >= limit) break;
+    }
+
+    res.setHeader("Cache-Control", "private, no-store, max-age=0");
+    res.json({ waves });
+  } catch (err) {
+    req.log.error({ err }, "recent-waves failed");
+    res.status(500).json({ error: "recent-waves failed" });
   }
 });
 
