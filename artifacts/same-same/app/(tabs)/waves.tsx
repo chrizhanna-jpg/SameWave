@@ -37,11 +37,33 @@ import { markTabVisited } from "@/utils/tabVisits";
 import { scrollPaddingAboveTabBar, tabBarTotalHeight } from "@/utils/tabBarSafeArea";
 import { timeAgo } from "@/utils/timeAgo";
 import { photoKey } from "@/utils/photoKey";
+import { photoCountryDisplay } from "@/utils/photoCountry";
 
 type WaveSectionId = "received" | "caught" | "sent" | "world";
 
 function echoPairKey(a: string, b: string): string {
   return [a, b].sort().join(":");
+}
+
+type FlagSide = {
+  countryFlag?: string;
+  countryCode?: string | null;
+  captureCountryCode?: string | null;
+};
+
+function resolveSideFlag(side: FlagSide): string {
+  const trimmed = side.countryFlag?.trim();
+  if (trimmed) return trimmed;
+  return photoCountryDisplay(side.captureCountryCode, side.countryCode).flag;
+}
+
+function resolveMatchTheirFlag(match: Match): string {
+  const trimmed = match.theirCountryFlag?.trim();
+  if (trimmed) return trimmed;
+  return photoCountryDisplay(
+    match.theirCaptureCountryCode,
+    match.theirCountryCode,
+  ).flag;
 }
 
 function matchToCaughtEcho(match: Match, myPhotos: MyPhoto[]): EchoCard {
@@ -59,7 +81,12 @@ function matchToCaughtEcho(match: Match, myPhotos: MyPhoto[]): EchoCard {
       countryCode: match.myCountryCode ?? null,
       captureCountryCode: match.myCaptureCountryCode ?? null,
       country: match.myCountry,
-      countryFlag: match.myCountryFlag ?? "",
+      countryFlag:
+        match.myCountryFlag?.trim() ||
+        photoCountryDisplay(
+          match.myCaptureCountryCode,
+          match.myCountryCode,
+        ).flag,
       theme: match.theme,
     },
     theirs: {
@@ -68,10 +95,14 @@ function matchToCaughtEcho(match: Match, myPhotos: MyPhoto[]): EchoCard {
       countryCode: match.theirCountryCode ?? null,
       captureCountryCode: match.theirCaptureCountryCode ?? null,
       country: match.theirCountry,
-      countryFlag: match.theirCountryFlag,
+      countryFlag: resolveMatchTheirFlag(match),
       theme: match.theirActualTheme ?? match.theme,
     },
   };
+}
+
+function waveWithCountry(country: string): string {
+  return `Wave with ${country}`;
 }
 
 function caughtWaveSubtitle(echo: EchoCard): string {
@@ -605,7 +636,7 @@ function PendingRippleCard({
       ]}
     >
       <View style={styles.cardHeader}>
-        <Text style={styles.bigFlag}>{echo.theirs.countryFlag}</Text>
+        <Text style={styles.bigFlag}>{resolveSideFlag(echo.theirs)}</Text>
         <View style={{ flex: 1, minWidth: 0 }}>
           <View style={styles.cardTitleRow}>
             <Icon name="ripple" size={14} color={colors.teal} />
@@ -690,7 +721,7 @@ function WaveCaughtCard({ echo }: { echo: EchoCard }) {
       ]}
     >
       <View style={styles.cardHeader}>
-        <Text style={styles.bigFlag}>{echo.theirs.countryFlag}</Text>
+        <Text style={styles.bigFlag}>{resolveSideFlag(echo.theirs)}</Text>
         <View style={{ flex: 1, minWidth: 0 }}>
           <View style={styles.cardTitleRow}>
             <Icon name="wave-glyph" size={14} color={colors.gold} />
@@ -698,14 +729,13 @@ function WaveCaughtCard({ echo }: { echo: EchoCard }) {
               style={[styles.cardTitle, { color: colors.foreground }]}
               numberOfLines={1}
             >
-              Wave with someone in {echo.theirs.country}
+              {waveWithCountry(echo.theirs.country)}
             </Text>
           </View>
           <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>
             {caughtWaveSubtitle(echo)} · {ago}
           </Text>
         </View>
-        <Icon name="wave-glyph" size={20} color={colors.gold} />
       </View>
       <PhotoPair mine={echo.mine} theirs={echo.theirs} />
     </TouchableOpacity>
@@ -802,12 +832,15 @@ function RippleSentCard({
       }
       style={[
         styles.card,
-        { backgroundColor: colors.cardElevated, borderColor: colors.border },
+        {
+          backgroundColor: colors.cardElevated,
+          borderColor: isWave ? colors.gold + "44" : colors.border,
+        },
         colors.shadows.sm,
       ]}
     >
       <View style={styles.cardHeader}>
-        <Text style={styles.bigFlag}>{match.theirCountryFlag}</Text>
+        <Text style={styles.bigFlag}>{resolveMatchTheirFlag(match)}</Text>
         <View style={{ flex: 1, minWidth: 0 }}>
           <View style={styles.cardTitleRow}>
             <Icon
@@ -819,7 +852,9 @@ function RippleSentCard({
               style={[styles.cardTitle, { color: colors.foreground }]}
               numberOfLines={1}
             >
-              Ripple to {match.theirCountry}
+              {isWave
+                ? waveWithCountry(match.theirCountry)
+                : `Ripple to ${match.theirCountry}`}
             </Text>
           </View>
           <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>
@@ -1059,8 +1094,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     minWidth: 0,
+    flex: 1,
   },
-  cardTitle: { fontSize: 14, fontFamily: "Inter_600SemiBold", flexShrink: 1 },
+  cardTitle: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+    flex: 1,
+    minWidth: 0,
+  },
   cardSub: {
     fontSize: 11,
     fontFamily: "Inter_400Regular",
