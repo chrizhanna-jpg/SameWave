@@ -112,6 +112,159 @@ Return FOUR things:
 Return ONLY this JSON, no prose, no markdown:
 {"theme": "...", "tags": ["..."], "shapes": ["..."], "subjects": ["..."]}`;
 
+function stockPrompt(args: {
+  expectedTheme: string;
+  bucket: string;
+  manifestTags: string[];
+  manifestSubjects: string[];
+}): string {
+  const tagHint =
+    args.manifestTags.length > 0
+      ? `Editorial tag hints (use only if they match what you see): ${args.manifestTags.join(", ")}.`
+      : "";
+  const subjectHint =
+    args.manifestSubjects.length > 0
+      ? `Editorial subject hints: ${args.manifestSubjects.join(", ")}.`
+      : "";
+  return `You are labeling a curated stock photo for a global photo-matching app.
+
+Context (may be wrong — trust the image):
+- Stock bucket: "${args.bucket}"
+- Intended daily-challenge theme id: "${args.expectedTheme}"
+${tagHint}
+${subjectHint}
+
+Return FOUR things based on what is ACTUALLY visible:
+1. "theme" — best daily-challenge id from this list when the image clearly fits:
+   morning, coffee, hands, sky, shoes, food, instrument, view, movement, pets,
+   reading, commute, listening, plant, work, wearing, made, night, water, joy,
+   door, wheels, ritual, nature, playing, groceries, wall, handwriting, weather,
+   smallthing, furniture, games, hobbies, passions, birds, plants, music, selfie,
+   shopping, cafe, objects, chores.
+   Prefer "${args.expectedTheme}" only when the image honestly matches that id.
+2. "tags" — up to 6 from: ${ALLOWED_TAGS.join(", ")}
+3. "shapes" — up to 4 from: ${SHAPE_TAGS.join(", ")}
+4. "subjects" — up to 6 concrete visible nouns (include category + specific when useful).
+
+Return ONLY JSON:
+{"theme": "...", "tags": ["..."], "shapes": ["..."], "subjects": ["..."]}`;
+}
+
+type ParsedVision = {
+  tags?: unknown;
+  theme?: unknown;
+  shapes?: unknown;
+  subjects?: unknown;
+};
+
+function parseVisionFields(parsed: ParsedVision): {
+  theme: string;
+  tags: string[];
+  shapes: string[];
+  subjects: string[];
+} {
+  const tags = Array.isArray(parsed.tags)
+    ? parsed.tags
+        .filter((t): t is string => typeof t === "string")
+        .map((t) => t.toLowerCase().trim())
+        .filter((t) => ALLOWED_TAGS.includes(t))
+        .slice(0, 6)
+    : [];
+  const shapes = Array.isArray(parsed.shapes)
+    ? parsed.shapes
+        .filter((t): t is string => typeof t === "string")
+        .map((t) => t.toLowerCase().trim())
+        .filter((t) => SHAPE_TAGS.includes(t))
+        .slice(0, 4)
+    : [];
+  const subjects = enrichSubjects(parseSubjects(parsed.subjects));
+  let theme = "";
+  if (typeof parsed.theme === "string") {
+    theme = parsed.theme
+      .toLowerCase()
+      .replace(/[^a-z0-9 \-']/g, "")
+      .trim()
+      .split(/\s+/)
+      .slice(0, 4)
+      .join(" ");
+    if (theme) {
+      theme = resolveChallengeThemeId(theme);
+    }
+  }
+  return { theme, tags, shapes, subjects };
+}
+
+/** Merge AI labels with manifest fallbacks for stock seed rows. */
+export function mergeStockLabels(
+  manifest: { theme: string; tags: string[]; subjects: string[] },
+  ai: { theme: string; tags: string[]; shapes: string[]; subjects: string[] },
+): { theme: string; tags: string[]; shapes: string[]; subjects: string[] } {
+  const theme = ai.theme || manifest.theme;
+  const tagSet = new Set<string>();
+  for (const t of ai.tags) tagSet.add(t);
+  for (const t of manifest.tags) {
+    if (ALLOWED_TAGS.includes(t)) tagSet.add(t);
+  }
+  const tags = [...tagSet].slice(0, 6);
+  const subjects =
+    ai.subjects.length > 0 ? ai.subjects : [...manifest.subjects].slice(0, 6);
+  return { theme, tags, shapes: ai.shapes, subjects };
+}
+
+export async function analyzeStockPhoto(args: {
+  base64: string;
+  mimeType: string;
+  expectedTheme: string;
+  bucket: string;
+  manifestTags?: string[];
+  manifestSubjects?: string[];
+}): Promise<{
+  theme: string;
+  tags: string[];
+  shapes: string[];
+  subjects: string[];
+}> {
+  const ai = createOpenAIClient();
+  const empty = { theme: "", tags: [], shapes: [], subjects: [] };
+  if (!ai) return empty;
+
+  const response = await ai.chat.completions.create({
+    model: "gpt-4o",
+    max_tokens: 2048,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: stockPrompt({
+              expectedTheme: args.expectedTheme,
+              bucket: args.bucket,
+              manifestTags: args.manifestTags ?? [],
+              manifestSubjects: args.manifestSubjects ?? [],
+            }),
+          },
+          {
+            type: "image_url",
+            image_url: {
+              url: `data:${args.mimeType};base64,${args.base64}`,
+            },
+          },
+        ],
+      },
+    ],
+  });
+
+  let parsed: ParsedVision = {};
+  try {
+    parsed = JSON.parse(response.choices[0]?.message?.content ?? "{}");
+  } catch {
+    parsed = {};
+  }
+  return parseVisionFields(parsed);
+}
+
 export async function analyzePhoto(args: {
   base64: string;
   mimeType: string;
@@ -144,46 +297,13 @@ export async function analyzePhoto(args: {
       },
     ],
   });
-  let parsed: {
-    tags?: unknown;
-    theme?: unknown;
-    shapes?: unknown;
-    subjects?: unknown;
-  } = {};
+  let parsed: ParsedVision = {};
   try {
     parsed = JSON.parse(response.choices[0]?.message?.content ?? "{}");
   } catch {
     parsed = {};
   }
-  const tags = Array.isArray(parsed.tags)
-    ? parsed.tags
-        .filter((t): t is string => typeof t === "string")
-        .map((t) => t.toLowerCase().trim())
-        .filter((t) => ALLOWED_TAGS.includes(t))
-        .slice(0, 6)
-    : [];
-  const shapes = Array.isArray(parsed.shapes)
-    ? parsed.shapes
-        .filter((t): t is string => typeof t === "string")
-        .map((t) => t.toLowerCase().trim())
-        .filter((t) => SHAPE_TAGS.includes(t))
-        .slice(0, 4)
-    : [];
-  const subjects = enrichSubjects(parseSubjects(parsed.subjects));
-  let theme = "";
-  if (typeof parsed.theme === "string") {
-    theme = parsed.theme
-      .toLowerCase()
-      .replace(/[^a-z0-9 \-']/g, "")
-      .trim()
-      .split(/\s+/)
-      .slice(0, 4)
-      .join(" ");
-    if (theme) {
-      theme = resolveChallengeThemeId(theme);
-    }
-  }
-  return { theme, tags, shapes, subjects };
+  return parseVisionFields(parsed);
 }
 
 const OBJECT_PROMPT = `You are looking at a photo for a global "match by subject matter" feature.

@@ -24,6 +24,7 @@ import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { useProAccess } from "@/hooks/useProAccess";
 import { shouldShowPaywalls } from "@/lib/monetization";
+import { gateProFeature } from "@/lib/proFeatures";
 import { useSubscription } from "@/lib/revenuecat";
 import { resolveMusicUrl } from "@/data/musicLibrary";
 import {
@@ -342,6 +343,7 @@ export default function RevealScreen() {
       if (action === "share") {
         handleShare();
       } else if (action === "paywall") {
+        if (!gateProFeature("SameWave Pro")) return;
         if (showPaywalls && !proActive) setPaywallOpen(true);
       }
     }, 350);
@@ -654,7 +656,10 @@ export default function RevealScreen() {
           {!proActive && (
             <TouchableOpacity
               style={[styles.upsellBtn, { borderColor: colors.gold }]}
-              onPress={() => setPaywallOpen(true)}
+              onPress={() => {
+                if (!gateProFeature("SameWave Pro")) return;
+                setPaywallOpen(true);
+              }}
               activeOpacity={0.85}
             >
               <Icon name="wave" size={16} color={colors.gold} />

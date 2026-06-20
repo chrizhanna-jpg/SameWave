@@ -303,15 +303,15 @@ export interface UploadedPhoto {
   theme: string;
   tags: string[];
   /**
-   * Free-form concrete subjects Gemini saw at upload time. Threaded
-   * back to the client so AppContext can stash them on the in-memory
-   * `MyPhoto` and the match screen can pass them into /candidates as
-   * the `subjects=` query param — that's what unlocks the heaviest
-   * subject-overlap scoring axis. Empty if the model returned nothing.
+   * Concrete subjects for /candidates subject-overlap scoring.
+   * Derived from user tags + rule-based hints when vision is off.
    */
   subjects: string[];
   musicGenre: string | null;
   hasCustomAudio: boolean;
+  /** Server rule-based alternate when tags fit another daily theme better. */
+  suggestedTheme?: string;
+  suggestedTags?: string[];
 }
 
 export async function uploadPhoto(input: {
@@ -325,6 +325,11 @@ export async function uploadPhoto(input: {
   customAudioBase64?: string;
   /** Mime type for the recording (e.g. "audio/m4a", "audio/mp4"). */
   customAudioMime?: string;
+  /** User-chosen daily theme — stored as primary; server may suggest otherwise. */
+  theme?: string;
+  tags?: string[];
+  subjects?: string[];
+  shapes?: string[];
 }): Promise<UploadedPhoto | null> {
   try {
     const base = getApiBase();
@@ -343,6 +348,11 @@ export async function uploadPhoto(input: {
       subjects: Array.isArray(json.subjects) ? json.subjects : [],
       musicGenre: typeof json.musicGenre === "string" ? json.musicGenre : null,
       hasCustomAudio: json.hasCustomAudio === true,
+      suggestedTheme:
+        typeof json.suggestedTheme === "string" ? json.suggestedTheme : undefined,
+      suggestedTags: Array.isArray(json.suggestedTags)
+        ? json.suggestedTags.filter((t): t is string => typeof t === "string")
+        : undefined,
     };
   } catch {
     return null;

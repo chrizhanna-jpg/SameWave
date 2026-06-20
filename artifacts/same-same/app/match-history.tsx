@@ -22,6 +22,7 @@ import { photoCountryDisplay } from "@/utils/photoCountry";
 import { MATCH_HISTORY_EMPTY } from "@/data/waveRippleGlossary";
 import { confirmReportPhoto } from "@/utils/photoModeration";
 import { resolveMatchMyPhotoUri } from "@/utils/photoDisplayUri";
+import { gateProFeature } from "@/lib/proFeatures";
 
 export default function MatchHistoryScreen() {
   const colors = useColors();
@@ -191,6 +192,7 @@ export default function MatchHistoryScreen() {
               <TouchableOpacity
                 onPress={(e) => {
                   e.stopPropagation?.();
+                  if (!gateProFeature("SameWave Pro")) return;
                   openReveal("paywall");
                 }}
                 style={[

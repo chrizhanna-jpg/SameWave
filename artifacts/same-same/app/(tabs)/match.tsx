@@ -70,6 +70,7 @@ import {
   fetchMatchStats,
   markPhotosSeen,
   matchByObject,
+  type CandidatePhoto,
 } from "@/utils/api";
 import { requestAtlasRefresh } from "@/utils/atlasHub";
 import { resolveMusicUrl } from "@/data/musicLibrary";
@@ -79,7 +80,9 @@ import {
   isThemeRelevant,
   isSubjectRelevant,
   rollRelevance,
+  shouldWidenToSuggestedTheme,
 } from "@/data/matchTuning";
+import { mergeCandidatePools } from "@/utils/candidatePool";
 import {
   isMuted as audioIsMuted,
   markUserInteracted,
@@ -287,6 +290,67 @@ function scoreCandidates(
     // getTheirPhoto curates the actual pick.
     .sort((a, b) => b.score - a.score);
   return candidates;
+}
+
+function countThemeRelevantCandidates(
+  preferredTheme: string,
+  myTags: string[],
+  excludeKeys: Set<string>,
+  pool: SamplePhoto[],
+  mySubjects: string[],
+): number {
+  const ranked = scoreCandidates(
+    preferredTheme,
+    myTags,
+    excludeKeys,
+    pool,
+    false,
+    [],
+    mySubjects,
+  );
+  return ranked.filter((c) =>
+    isThemeRelevant({
+      candidateTheme: c.photo.theme,
+      preferredTheme,
+      sharedTags: c.sharedTags,
+    }),
+  ).length;
+}
+
+function mapFetchedCandidates(
+  cands: CandidatePhoto[],
+  fallbackTheme: string,
+): { mapped: SamplePhoto[]; ids: Map<string, string> } {
+  const ids = new Map<string, string>();
+  const mapped: SamplePhoto[] = cands.map((c) => {
+    const capture =
+      typeof c.captureCountryCode === "string" &&
+      c.captureCountryCode.length === 2
+        ? c.captureCountryCode.toUpperCase()
+        : undefined;
+    const disp = photoCountryDisplay(capture);
+    const minutesAgo = Math.max(
+      1,
+      Math.round((Date.now() - new Date(c.createdAt).getTime()) / 60000),
+    );
+    ids.set(c.uri, c.id);
+    return {
+      id: `live-${c.id}`,
+      uri: c.uri,
+      country: disp.name,
+      countryCode: disp.code ?? "",
+      countryFlag: disp.flag,
+      captureCountryCode: capture,
+      theme: c.theme || fallbackTheme,
+      minutesAgo,
+      tags: c.tags,
+      shapes: c.shapeTags,
+      subjects: c.subjects,
+      musicGenre: c.musicGenre ?? undefined,
+      customAudioUrl: c.customAudioUrl ?? undefined,
+    };
+  });
+  return { mapped, ids };
 }
 
 // Pick the next candidate. Prefers tag overlap, then same theme, then adjacent
@@ -574,6 +638,18 @@ export default function SwipeScreen() {
   const themeEmoji = themeMeta?.emoji ?? "✨";
   const themeTitle = themeMeta?.title ?? activeTheme;
 
+  const suggestedThemeId = React.useMemo(() => {
+    const raw = todaysPhoto?.suggestedTheme?.trim();
+    if (!raw) return null;
+    const id = resolveChallengeThemeId(raw) || raw;
+    if (id === activeTheme) return null;
+    return id;
+  }, [todaysPhoto?.suggestedTheme, activeTheme]);
+  const suggestedThemeMeta = React.useMemo(
+    () => DAILY_CHALLENGES.find((c) => c.id === suggestedThemeId),
+    [suggestedThemeId],
+  );
+
   // Stable signature of the user's tag list — included in deps so re-uploading
   // the same URI/theme but with different tags re-seeds the candidate pool.
   const myTagsKey = React.useMemo(() => [...myTags].sort().join("|"), [myTags]);
@@ -654,6 +730,10 @@ export default function SwipeScreen() {
   // SwipeScreen still renders something via SAMPLE_PHOTOS in dev / a graceful
   // empty state in production.
   const [realPool, setRealPool] = useState<SamplePhoto[]>([]);
+  const [usingSuggestedThemeFallback, setUsingSuggestedThemeFallback] =
+    useState(false);
+  const [suggestedPool, setSuggestedPool] = useState<SamplePhoto[]>([]);
+  const sessionSwipeCountRef = useRef(0);
   // URI → backend photo ID, so handleSwipe can post the verdict to the right
   // row. Populated when realPool is loaded; missing entries (e.g. curated
   // SAMPLE_PHOTOS, synthetic candidates) skip the API call cleanly.
@@ -707,42 +787,7 @@ export default function SwipeScreen() {
     })
       .then((cands) => {
         if (cancelled) return;
-        const ids = new Map<string, string>();
-        const mapped: SamplePhoto[] = cands.map((c) => {
-          const capture =
-            typeof c.captureCountryCode === "string" &&
-            c.captureCountryCode.length === 2
-              ? c.captureCountryCode.toUpperCase()
-              : undefined;
-          const disp = photoCountryDisplay(capture);
-          const minutesAgo = Math.max(
-            1,
-            Math.round((Date.now() - new Date(c.createdAt).getTime()) / 60000),
-          );
-          ids.set(c.uri, c.id);
-          return {
-            id: `live-${c.id}`,
-            uri: c.uri,
-            country: disp.name,
-            countryCode: disp.code ?? "",
-            countryFlag: disp.flag,
-            captureCountryCode: capture,
-            theme: c.theme || activeTheme,
-            minutesAgo,
-            tags: c.tags,
-            // Forward the candidate's shape tags so scoreCandidates can
-            // compute shape overlap during local re-rank. Server returns
-            // [] for legacy rows — handled by the `(p.shapes ?? [])`
-            // guard inside scoreCandidates.
-            shapes: c.shapeTags,
-            // Same role for the new subjects axis — without this, the
-            // local re-rank's subject term is always 0 and the heaviest
-            // single-axis bonus collapses to nothing.
-            subjects: c.subjects,
-            musicGenre: c.musicGenre ?? undefined,
-            customAudioUrl: c.customAudioUrl ?? undefined,
-          };
-        });
+        const { mapped, ids } = mapFetchedCandidates(cands, activeTheme);
         realPhotoIdsRef.current = ids;
         // Prime the local seen ledger with any candidates whose backend
         // ID is in the server-side seen set. Lets cross-device dedup
@@ -765,8 +810,51 @@ export default function SwipeScreen() {
     // re-ranks against the authoritative subjects.
   }, [activeTheme, myTagsKey, mySubjectsKey]);
 
+  useEffect(() => {
+    if (!usingSuggestedThemeFallback || !suggestedThemeId) return;
+    let cancelled = false;
+    fetchCandidates({
+      theme: suggestedThemeId,
+      tags: myTags,
+      subjects: expandSubjectsForQuery(mySubjects),
+      musicGenre: todaysPhoto?.musicGenre,
+      limit: 24,
+      excludeIds: seenPhotoIds,
+    })
+      .then((cands) => {
+        if (cancelled) return;
+        const { mapped, ids } = mapFetchedCandidates(cands, suggestedThemeId);
+        for (const [uri, id] of ids) {
+          realPhotoIdsRef.current.set(uri, id);
+        }
+        primeSeenFromCandidates(
+          cands.map((c) => ({ id: c.id, uri: c.uri })),
+        );
+        setSuggestedPool(mapped);
+      })
+      .catch(() => {
+        if (!cancelled) setSuggestedPool([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    usingSuggestedThemeFallback,
+    suggestedThemeId,
+    myTagsKey,
+    mySubjectsKey,
+    todaysPhoto?.musicGenre,
+    seenPhotoIds,
+  ]);
+
   const realPoolRef = useRef<SamplePhoto[]>(realPool);
   realPoolRef.current = realPool;
+  const suggestedPoolRef = useRef<SamplePhoto[]>(suggestedPool);
+  suggestedPoolRef.current = suggestedPool;
+  const usingSuggestedThemeFallbackRef = useRef(usingSuggestedThemeFallback);
+  usingSuggestedThemeFallbackRef.current = usingSuggestedThemeFallback;
+  const suggestedThemeIdRef = useRef<string | null>(suggestedThemeId);
+  suggestedThemeIdRef.current = suggestedThemeId;
 
   // A placeholder rendered before the first real candidate arrives (and as
   // a sentinel when the production pool runs dry — see `noMore` below).
@@ -847,6 +935,53 @@ export default function SwipeScreen() {
     [],
   );
 
+  const pickDeckCandidate = useCallback(
+    (currentKey?: string, excludeExtra?: string) => {
+      const theme =
+        usingSuggestedThemeFallbackRef.current && suggestedThemeIdRef.current
+          ? suggestedThemeIdRef.current
+          : activeThemeRef.current;
+      const pool = usingSuggestedThemeFallbackRef.current
+        ? mergeCandidatePools(realPoolRef.current, suggestedPoolRef.current)
+        : realPoolRef.current;
+      return getTheirPhoto(
+        theme,
+        myTagsRef.current,
+        buildExcludeKeys(excludeExtra ?? currentKey),
+        currentKey,
+        pool,
+        [],
+        mySubjectsRef.current,
+      );
+    },
+    [buildExcludeKeys],
+  );
+
+  const tryActivateSuggestedThemeFallback = useCallback((): boolean => {
+    if (usingSuggestedThemeFallbackRef.current) return false;
+    if (!suggestedThemeIdRef.current) return false;
+    const themeRelevant = countThemeRelevantCandidates(
+      activeThemeRef.current,
+      myTagsRef.current,
+      buildExcludeKeys(),
+      realPoolRef.current,
+      mySubjectsRef.current,
+    );
+    if (
+      !shouldWidenToSuggestedTheme({
+        sessionSwipes: sessionSwipeCountRef.current,
+        preferredTheme: activeThemeRef.current,
+        suggestedTheme: suggestedThemeIdRef.current,
+        themeRelevantCount: themeRelevant,
+      })
+    ) {
+      return false;
+    }
+    usingSuggestedThemeFallbackRef.current = true;
+    setUsingSuggestedThemeFallback(true);
+    return true;
+  }, [buildExcludeKeys]);
+
   useEffect(() => {
     if (deckInteractionBlocked()) return;
     const currentUri = theirPhotoRef.current?.uri;
@@ -862,22 +997,14 @@ export default function SwipeScreen() {
     )
       return;
     if (!seenSet.has(k)) return;
-    const next = getTheirPhoto(
-      activeThemeRef.current,
-      myTagsRef.current,
-      buildExcludeKeys(k),
-      k,
-      realPoolRef.current,
-      [],
-      mySubjectsRef.current,
-    );
+    const next = pickDeckCandidate(k, k);
     if (next) {
       setTheirPhoto(next.photo);
       setMatchedTheme(next.matchedTheme);
       setSharedTags(next.sharedTags);
       setNoMore(false);
     }
-  }, [seenSet, buildExcludeKeys, hasHydrated, deckInteractionBlocked]);
+  }, [seenSet, buildExcludeKeys, hasHydrated, deckInteractionBlocked, pickDeckCandidate]);
 
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
@@ -904,6 +1031,9 @@ export default function SwipeScreen() {
     setObjectMatchTags(null);
     setObjectMatchShapes([]);
     setObjectMatchError(null);
+    sessionSwipeCountRef.current = 0;
+    setUsingSuggestedThemeFallback(false);
+    setSuggestedPool([]);
     const next = getTheirPhoto(
       activeTheme,
       myTags,
@@ -1082,40 +1212,22 @@ export default function SwipeScreen() {
       let skipKey = afterUri
         ? photoKey(afterUri)
         : photoKey(theirPhotoRef.current.uri);
-      let exclude = buildExcludeKeys(skipKey);
       for (let i = 0; i < count; i++) {
-        const pick = getTheirPhoto(
-          activeThemeRef.current,
-          myTagsRef.current,
-          exclude,
-          skipKey,
-          realPoolRef.current,
-          [],
-          mySubjectsRef.current,
-        );
+        const pick = pickDeckCandidate(skipKey, skipKey);
         if (!pick?.photo.uri) break;
         void prefetchPhotoUri(pick.photo.uri);
         skipKey = photoKey(pick.photo.uri);
-        exclude = buildExcludeKeys(skipKey);
       }
     },
-    [buildExcludeKeys, prefetchPhotoUri],
+    [buildExcludeKeys, prefetchPhotoUri, pickDeckCandidate],
   );
 
   const loadNextCandidate = useCallback(() => {
     const currentUri = theirPhotoRef.current.uri;
     const currentKey = photoKey(currentUri);
-    // The current photo is already in the ledger (mark-on-display),
-    // so just hand the canonical exclusion set to the picker.
-    const next = getTheirPhoto(
-      activeThemeRef.current,
-      myTagsRef.current,
-      buildExcludeKeys(currentKey),
-      currentKey,
-      realPoolRef.current,
-      [],
-      mySubjectsRef.current,
-    );
+    sessionSwipeCountRef.current += 1;
+    tryActivateSuggestedThemeFallback();
+    const next = pickDeckCandidate(currentKey, currentKey);
     if (next?.photo.uri) {
       void prefetchPhotoUri(next.photo.uri);
     }
@@ -1150,32 +1262,22 @@ export default function SwipeScreen() {
     prefetchPhotoUri,
     prefetchDeckAhead,
     setAnimatingOut,
+    pickDeckCandidate,
+    tryActivateSuggestedThemeFallback,
   ]);
 
   // Warm the next card in the deck so the swap does not flash a blank pane.
   useEffect(() => {
     if (noMore || theirPhoto.id === "placeholder") return;
     const currentKey = photoKey(theirPhoto.uri);
-    const next = getTheirPhoto(
-      activeTheme,
-      myTags,
-      buildExcludeKeys(currentKey),
-      currentKey,
-      realPool,
-      [],
-      mySubjects,
-    );
+    const next = pickDeckCandidate(currentKey, currentKey);
     if (next?.photo.uri) void prefetchPhotoUri(next.photo.uri);
     prefetchDeckAhead(2);
   }, [
     theirPhoto.uri,
     theirPhoto.id,
     noMore,
-    activeTheme,
-    myTags,
-    mySubjects,
-    realPool,
-    buildExcludeKeys,
+    pickDeckCandidate,
     prefetchPhotoUri,
     prefetchDeckAhead,
   ]);
@@ -1487,14 +1589,9 @@ export default function SwipeScreen() {
       theirPhotoRef.current.id === "placeholder" ||
       theirPhotoRef.current.uri === myPhotoUriRef.current;
     if (!stuck) return;
-    const next = getTheirPhoto(
-      activeThemeRef.current,
-      myTagsRef.current,
-      buildExcludeKeys(photoKey(theirPhotoRef.current.uri) || undefined),
+    const next = pickDeckCandidate(
       photoKey(theirPhotoRef.current.uri) || undefined,
-      realPoolRef.current,
-      [],
-      mySubjectsRef.current,
+      photoKey(theirPhotoRef.current.uri) || undefined,
     );
     if (next) {
       setTheirPhoto(next.photo);
@@ -1512,6 +1609,9 @@ export default function SwipeScreen() {
     mySubjectsKey,
     activeTheme,
     deckInteractionBlocked,
+    pickDeckCandidate,
+    usingSuggestedThemeFallback,
+    suggestedPool.length,
   ]);
 
   return (
@@ -1887,6 +1987,26 @@ export default function SwipeScreen() {
                 </Text>
               )}
             </View>
+          </View>
+        )}
+        {hasUploadedPhoto && !noMore && usingSuggestedThemeFallback && suggestedThemeId && (
+          <View
+            style={{
+              alignSelf: "center",
+              paddingHorizontal: 14,
+              paddingVertical: 6,
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.card,
+              marginBottom: 8,
+            }}
+          >
+            <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+              also matching {suggestedThemeMeta?.emoji ?? "✨"}{" "}
+              {suggestedThemeMeta?.title ?? suggestedThemeId} — your theme{" "}
+              {themeEmoji} {themeTitle} first
+            </Text>
           </View>
         )}
         {hasUploadedPhoto && !noMore && objectMatchTags && objectMatchTags.length > 0 && (

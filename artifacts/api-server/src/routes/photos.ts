@@ -11,6 +11,11 @@ import {
 import { getOpenAIEnv } from "../lib/openaiEnv";
 import { resolveUserFromRequest } from "../lib/users";
 import { analyzePhoto, extractObjectTags } from "../lib/photoAnalysis";
+import {
+  getPhotoLabelMode,
+  mergeWithVisionLabels,
+  resolveUploadLabels,
+} from "../lib/localPhotoLabels";
 import { recordEchoOffer, revokeEchoForUnvote } from "./echoes";
 import { normalizeMusicGenre } from "../lib/allowedMusicGenres";
 import { sendPhotoReportAlert } from "../lib/moderationEmail";
@@ -193,7 +198,8 @@ function approxBase64Bytes(b64: string): number {
 }
 
 // ---- POST /api/photos -----------------------------------------------------
-// Body: { imageBase64, mimeType?, countryCode?, captureCountryCode? }
+// Body: { imageBase64, mimeType?, countryCode?, captureCountryCode?,
+//         theme?, tags?, subjects?, shapes? }
 // Header: X-Device-Id (required) — stable client UUID.
 router.post("/photos", async (req, res) => {
   try {
@@ -205,6 +211,10 @@ router.post("/photos", async (req, res) => {
       musicGenre?: unknown;
       customAudioBase64?: unknown;
       customAudioMime?: unknown;
+      theme?: unknown;
+      tags?: unknown;
+      subjects?: unknown;
+      shapes?: unknown;
     };
     const b64 = typeof body.imageBase64 === "string" ? body.imageBase64 : "";
     if (!b64) {
@@ -259,23 +269,48 @@ router.post("/photos", async (req, res) => {
     }
 
     const stripped = b64.replace(/^data:[^;]+;base64,/, "");
-    // Gemini analysis is best-effort — a quota error, safety rejection, or
-    // transient network hiccup must never block the upload itself. The photo
-    // still reaches the pool with empty metadata; the candidate scorer
-    // handles missing tags gracefully and the user isn't left with a
-    // silently-failed upload just because AI analysis was unavailable.
-    let theme = "";
-    let tags: string[] = [];
-    let shapes: string[] = [];
-    let subjects: string[] = [];
-    try {
-      const analysis = await analyzePhoto({ base64: stripped, mimeType });
-      theme = analysis.theme;
-      tags = analysis.tags;
-      shapes = analysis.shapes;
-      subjects = analysis.subjects;
-    } catch (analyzeErr) {
-      req.log.warn({ err: analyzeErr }, "photo analysis failed — uploading without AI tags");
+
+    const userLabels = resolveUploadLabels({
+      theme: typeof body.theme === "string" ? body.theme : undefined,
+      tags: Array.isArray(body.tags)
+        ? body.tags.filter((t): t is string => typeof t === "string")
+        : undefined,
+      subjects: Array.isArray(body.subjects)
+        ? body.subjects.filter((s): s is string => typeof s === "string")
+        : undefined,
+      shapes: Array.isArray(body.shapes)
+        ? body.shapes.filter((s): s is string => typeof s === "string")
+        : undefined,
+    });
+
+    let theme = userLabels.theme;
+    let tags = userLabels.tags;
+    let shapes = userLabels.shapes;
+    let subjects = userLabels.subjects;
+    const { suggestedTheme, suggestedTags } = userLabels;
+
+    const labelMode = getPhotoLabelMode();
+    if (labelMode === "openai" || labelMode === "hybrid") {
+      try {
+        const analysis = await analyzePhoto({ base64: stripped, mimeType });
+        if (labelMode === "openai" && !theme && !tags.length) {
+          theme = analysis.theme;
+          tags = analysis.tags;
+          shapes = analysis.shapes;
+          subjects = analysis.subjects;
+        } else if (labelMode === "hybrid") {
+          const merged = mergeWithVisionLabels(userLabels, analysis);
+          theme = merged.theme;
+          tags = merged.tags;
+          shapes = merged.shapes;
+          subjects = merged.subjects;
+        }
+      } catch (analyzeErr) {
+        req.log.warn(
+          { err: analyzeErr },
+          "photo analysis failed — using user/rule labels",
+        );
+      }
     }
 
     // Music-vibe id chosen on the client. Whitelisted to the canonical
@@ -355,13 +390,12 @@ router.post("/photos", async (req, res) => {
       id: row.id,
       theme: row.theme,
       tags: row.tags,
-      // Free-form concrete subjects detected by Gemini. Surfaced so the
-      // mobile app can stash them on the local MyPhoto record and pass
-      // them into /candidates as the `subjects=` query param — that's
-      // what unlocks subject-overlap scoring in the matcher.
+      // Concrete subjects for /candidates subject-overlap scoring.
       subjects: row.subjects ?? [],
       musicGenre: row.musicGenre,
       hasCustomAudio: customAudioBase64 !== null,
+      ...(suggestedTheme ? { suggestedTheme } : {}),
+      ...(suggestedTags?.length ? { suggestedTags } : {}),
     });
   } catch (err) {
     req.log.error({ err }, "photo upload failed");

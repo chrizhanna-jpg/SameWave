@@ -63,6 +63,7 @@ import {
 } from "@/utils/audio";
 import { MicBadge } from "@/components/MicBadge";
 import { useProAccess } from "@/hooks/useProAccess";
+import { gateProFeature } from "@/lib/proFeatures";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
 
@@ -918,6 +919,7 @@ export default function CameraScreen() {
       );
       return;
     }
+    if (!gateProFeature("AI suggest")) return;
     if (!proActive) {
       setAiPaywallOpen(true);
       return;
@@ -1096,6 +1098,9 @@ export default function CameraScreen() {
           musicGenre: finalGenre,
           customAudioBase64: recordedBase64 ?? undefined,
           customAudioMime: recordedBase64 ? RECORDING_MIME : undefined,
+          theme: finalTheme,
+          tags: merged,
+          subjects: aiSubjectsRef.current.length > 0 ? aiSubjectsRef.current : undefined,
         })
           .then((res) => {
             if (res?.id && localUri) {
@@ -1105,6 +1110,7 @@ export default function CameraScreen() {
                 theme: res.theme,
                 tags: res.tags,
                 musicGenre: res.musicGenre,
+                suggestedTheme: res.suggestedTheme,
               });
               requestAtlasRefresh();
             } else if (localUri) {

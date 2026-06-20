@@ -126,6 +126,12 @@ export interface MyPhoto {
   captureCountryCode?: string;
   /** Profile country at upload time — fallback when capture is unknown. */
   declaredCountryCode?: string;
+  /**
+   * Server rule-based alternate daily theme when tags fit another challenge
+   * better than the user's pick. Used by Ripple to widen matching after a
+   * thin on-topic pool — never overwrites the stored theme.
+   */
+  suggestedTheme?: string;
 }
 
 /** Fields returned from `POST /photos` to merge onto the local `MyPhoto`. */
@@ -135,6 +141,7 @@ export interface MyPhotoUploadAck {
   theme?: string;
   tags?: string[];
   musicGenre?: string | null;
+  suggestedTheme?: string;
 }
 
 // Module-scoped registry of URIs flagged as AI. Kept in sync with the
@@ -1292,6 +1299,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           typeof ack.musicGenre === "string" && ack.musicGenre.length > 0
             ? ack.musicGenre
             : p.musicGenre;
+        const nextSuggested =
+          typeof ack.suggestedTheme === "string" && ack.suggestedTheme.trim().length > 0
+            ? ack.suggestedTheme.trim()
+            : p.suggestedTheme;
         const sameSubjects =
           (nextSubjects ?? []).length === (p.subjects ?? []).length &&
           (nextSubjects ?? []).every((s, i) => s === (p.subjects ?? [])[i]);
@@ -1301,6 +1312,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           nextTheme === p.theme &&
           tagsEqual(nextTags, p.tags) &&
           nextMusic === p.musicGenre &&
+          nextSuggested === p.suggestedTheme &&
           p.uploadState === "ok"
         ) {
           return p;
@@ -1314,6 +1326,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           theme: nextTheme,
           tags: nextTags,
           musicGenre: nextMusic,
+          suggestedTheme: nextSuggested,
           uploadState: "ok" as const,
         };
       });

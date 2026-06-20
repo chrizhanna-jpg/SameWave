@@ -52,6 +52,39 @@ export const THEME_RELEVANCE_TARGET = 0.8;
 export const SUBJECT_RELEVANCE_TARGET = 0.6;
 
 /**
+ * After this many swipes on the primary deck, we may widen matching to the
+ * server rule-based `suggestedTheme` when the user's chosen theme yields
+ * a thin on-topic pool.
+ */
+export const SUGGESTED_THEME_FALLBACK_AFTER_SWIPES = 5;
+
+/**
+ * Fewer theme-relevant unseen candidates than this (for the user's theme)
+ * counts as "thin" and triggers the suggested-theme widen pass.
+ */
+export const SUGGESTED_THEME_FALLBACK_MIN_POOL = 4;
+
+/**
+ * Whether to widen Ripple matching to the server `suggestedTheme` after
+ * the user has swiped enough and their chosen theme has few on-topic picks.
+ */
+export function shouldWidenToSuggestedTheme(args: {
+  sessionSwipes: number;
+  preferredTheme: string;
+  suggestedTheme: string | null | undefined;
+  themeRelevantCount: number;
+}): boolean {
+  const sugRaw = args.suggestedTheme?.trim();
+  if (!sugRaw) return false;
+  const prefId =
+    resolveChallengeThemeId(args.preferredTheme) || args.preferredTheme;
+  const sugId = resolveChallengeThemeId(sugRaw) || sugRaw;
+  if (!prefId || sugId === prefId) return false;
+  if (args.sessionSwipes < SUGGESTED_THEME_FALLBACK_AFTER_SWIPES) return false;
+  return args.themeRelevantCount < SUGGESTED_THEME_FALLBACK_MIN_POOL;
+}
+
+/**
  * Predicate inputs — the fields `scoreCandidates` already produces, so
  * we never recompute overlap when filtering. `candidateTheme` is the
  * candidate photo's theme string; `preferredTheme` is the requester's
