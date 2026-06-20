@@ -1,6 +1,11 @@
 /**
- * Match relevance tuning.
- *
+ * Match relevance tuning — see also `data/themeMatch.ts` for interpretive
+ * theme matching (titles vs ids, adjacency, fuzzy text).
+ */
+import { isThemeOnTopic, resolveChallengeThemeId } from "./themeMatch";
+import { hasSubjectMatch } from "./subjectMatch";
+
+/**
  * These two constants control how often the swipe-deck matcher restricts
  * its pick to "on-topic" candidates versus letting the unrestricted
  * top-tier window through. They're intentionally isolated in this file so
@@ -56,62 +61,49 @@ type ThemeRelevanceArgs = {
   candidateTheme: string;
   preferredTheme: string;
   sharedTags: string[];
-  /** Same chain as scoreCandidates (`getThemeChain(preferredTheme)`). */
+  /** @deprecated chain is derived via themeMatch when omitted */
   themeChain?: string[];
 };
 
-function themeInChain(candidateTheme: string, chain: string[]): boolean {
-  const c = candidateTheme.trim().toLowerCase();
-  if (!c) return false;
-  return chain.some((t) => {
-    const tl = t.trim().toLowerCase();
-    if (!tl) return false;
-    return c === tl || c.includes(tl) || tl.includes(c);
-  });
-}
-
 /**
- * A candidate is theme-relevant when its theme bucket is plausibly related
- * to the requester's daily challenge:
- *   • exact match or substring match on the preferred theme,
- *   • OR the candidate theme is in the preferred theme's adjacency chain.
- *
- * Shared vibe tags alone do NOT qualify — that gate let generic tags like
- * "warm" or "outdoors" surface coffee shots under unrelated themes (e.g.
- * shoes). Vibe overlap still boosts rank inside scoreCandidates.
- *
- * Empty preferredTheme (subject-matter mode) is a no-op — every candidate
- * passes the theme gate.
+ * A candidate is theme-relevant when interpretive matching says it relates
+ * to the requester's challenge (exact id, title variant, adjacency, fuzzy).
  */
 export function isThemeRelevant({
   candidateTheme,
   preferredTheme,
   sharedTags: _sharedTags,
-  themeChain = [],
+  themeChain: _themeChain = [],
 }: ThemeRelevanceArgs): boolean {
   if (!preferredTheme) return true;
-  const chain =
-    themeChain.length > 0 ? themeChain : [preferredTheme];
-  return themeInChain(candidateTheme, chain);
+  const canonical = resolveChallengeThemeId(preferredTheme) || preferredTheme;
+  return isThemeOnTopic(canonical, candidateTheme);
 }
 
 type SubjectRelevanceArgs = {
-  sharedSubjects: string[];
+  sharedSubjects?: string[];
   sharedShapes: string[];
+  mySubjects?: string[];
+  candidateSubjects?: string[];
 };
 
 /**
  * A candidate is subject-relevant when it shares at least one concrete
- * subject OR at least one visual shape with the requester. Both axes
- * count because they answer the same "is this the same kind of thing?"
- * question from different angles — subjects say "this is also an
- * apple", shapes say "this also has the same visual silhouette".
+ * subject (exact or fuzzy, e.g. tomato ↔ vegetable) OR at least one visual
+ * shape with the requester.
  */
 export function isSubjectRelevant({
-  sharedSubjects,
+  sharedSubjects = [],
   sharedShapes,
+  mySubjects,
+  candidateSubjects,
 }: SubjectRelevanceArgs): boolean {
-  return sharedSubjects.length > 0 || sharedShapes.length > 0;
+  if (sharedShapes.length > 0) return true;
+  if (sharedSubjects.length > 0) return true;
+  if (mySubjects && candidateSubjects) {
+    return hasSubjectMatch(mySubjects, candidateSubjects);
+  }
+  return false;
 }
 
 /**

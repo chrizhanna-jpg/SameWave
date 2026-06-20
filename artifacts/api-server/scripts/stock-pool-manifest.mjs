@@ -149,7 +149,7 @@ const POOLS = {
   joy: [
     "1516627145497-ae6968895b74", "1541701494587-cb58502866ab",
     "1530103862676-de8c9debad1d", "1543610892-0b1f7e6d8ac1",
-    "1527525443983-6e60c75fff46", "1488161628813-04466f872be2",
+    "1694605735529-8d60f23a30b6", "1604518950478-98429105d1f6",
   ],
   door: [
     "1558618666-fcd25c85cd64", "1519710164239-da123dc03ef4",
@@ -257,9 +257,9 @@ const POOLS = {
     "1519710164239-da123dc03ef4", "1462536943532-57a629f6cc60",
   ],
   kids: [
-    "1516627145497-ae6968895b74", "1527525443983-6e60c75fff46",
-    "1530103862676-de8c9debad1d", "1488161628813-04466f872be2",
-    "1543610892-0b1f7e6d8ac1", "1541701494587-cb58502866ab",
+    "1694605735529-8d60f23a30b6", "1604518950478-98429105d1f6",
+    "1516627145497-ae6968895b74", "1530103862676-de8c9debad1d",
+    "1543610892-0b1f7e6d8ac1", "1488161628813-04466f872be2",
   ],
   seasonal: [
     "1519710164239-da123dc03ef4", "1493663284031-b7e3aefcae8e",
@@ -354,6 +354,14 @@ const TAGS = {
 };
 
 const SUBJECTS = {
+  joy: [
+    ["baby", "smile", "happy"],
+    ["baby", "crying", "newborn"],
+    ["smile", "celebration", "friends"],
+    ["people", "laughing", "party"],
+    ["family", "kids", "playing"],
+    ["friends", "warm", "together"],
+  ],
   hands: [
     ["hands", "coffee cup", "warm drink"],
     ["hands", "laptop", "typing"],
@@ -442,12 +450,12 @@ export const LIFESTYLE_BUCKETS = {
     pool: "kids",
     tags: ["kids", "family", "toys", "play", "home"],
     subjects: [
-      ["child", "toys", "playing"],
+      ["baby", "smile", "happy"],
+      ["baby", "crying", "newborn"],
       ["kids", "crafts", "table"],
       ["homework", "child", "desk"],
       ["family", "playing", "floor"],
       ["toy blocks", "child"],
-      ["drawing", "crayons", "kids"],
     ],
   },
   at_home_gaming: {

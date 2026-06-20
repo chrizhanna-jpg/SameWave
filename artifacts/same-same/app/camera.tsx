@@ -27,6 +27,7 @@ import { useColors } from "@/hooks/useColors";
 import { useApp, type MyPhoto } from "@/context/AppContext";
 import {
   getTodaysChallenge,
+  resolveChallengeThemeId,
   SUGGESTED_TAGS_BY_THEME,
   TAG_LIBRARY,
 } from "@/data/samplePhotos";
@@ -1032,7 +1033,8 @@ export default function CameraScreen() {
     // Use the ref so we read the freshest AI tags (state closure is stale
     // after awaiting an in-flight analysis above).
     const merged = Array.from(new Set([...selectedTags, ...aiTagsRef.current]));
-    const finalTheme = normalizeTheme(themeText);
+    const normalized = normalizeTheme(themeText);
+    const finalTheme = resolveChallengeThemeId(normalized) || normalized;
     if (!finalTheme) return;
     // Chip-selected library vibe only — typed search text does not assign music.
     const finalGenre: MusicGenre | undefined = musicGenreRef.current ?? undefined;

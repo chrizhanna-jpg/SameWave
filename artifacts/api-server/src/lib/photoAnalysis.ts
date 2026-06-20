@@ -1,4 +1,6 @@
 import { createOpenAIClient } from "./openaiEnv";
+import { resolveChallengeThemeId } from "./challengeTheme";
+import { enrichSubjects } from "./subjectMatch";
 
 // Photo analysis (theme + tags + shapes + subjects) was previously inline
 // in routes/analyze.ts. We extract it here so the upload endpoint can
@@ -104,6 +106,8 @@ Return FOUR things:
    ["golden retriever", "tennis ball", "grass"] for a dog playing fetch.
    Skip lifestyle / mood / activity words (those go in "tags") — only name
    physical things, materials, or proper nouns visible in the frame.
+   When a broad category fits, include it alongside specifics (e.g.
+   ["tomato", "vegetable"] or ["golden retriever", "dog", "pet"]).
 
 Return ONLY this JSON, no prose, no markdown:
 {"theme": "...", "tags": ["..."], "shapes": ["..."], "subjects": ["..."]}`;
@@ -165,7 +169,7 @@ export async function analyzePhoto(args: {
         .filter((t) => SHAPE_TAGS.includes(t))
         .slice(0, 4)
     : [];
-  const subjects = parseSubjects(parsed.subjects);
+  const subjects = enrichSubjects(parseSubjects(parsed.subjects));
   let theme = "";
   if (typeof parsed.theme === "string") {
     theme = parsed.theme
@@ -175,6 +179,9 @@ export async function analyzePhoto(args: {
       .split(/\s+/)
       .slice(0, 4)
       .join(" ");
+    if (theme) {
+      theme = resolveChallengeThemeId(theme);
+    }
   }
   return { theme, tags, shapes, subjects };
 }
@@ -238,7 +245,7 @@ export async function extractObjectTags(args: {
   } catch {
     parsed = {};
   }
-  const objects = parseSubjects(parsed.objects);
+  const objects = enrichSubjects(parseSubjects(parsed.objects));
   const shapes = Array.isArray(parsed.shapes)
     ? parsed.shapes
         .filter((t): t is string => typeof t === "string")

@@ -57,6 +57,8 @@ app.get("/api/public/app-config", (_req, res) => {
     Number.isFinite(parsedCode) && parsedCode > 0 ? Math.round(parsedCode) : 28;
   const latestVersionName =
     process.env.ANDROID_LATEST_VERSION_NAME?.trim() || "1.3.1";
+  const updateMessage =
+    process.env.ANDROID_UPDATE_MESSAGE?.trim() || undefined;
   res.json({
     android: {
       latestVersionCode,
@@ -64,6 +66,7 @@ app.get("/api/public/app-config", (_req, res) => {
       playStoreUrl:
         process.env.ANDROID_PLAY_STORE_URL?.trim() ||
         "https://play.google.com/store/apps/details?id=echo.samewaveripple.app",
+      ...(updateMessage ? { updateMessage } : {}),
     },
   });
 });

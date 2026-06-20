@@ -1,6 +1,7 @@
 import { photoKey } from "@/utils/photoKey";
 import { normalizeUnsplashUri, unsplashPhotoUrl } from "@/utils/unsplashUri";
 import { suggestGenre, type MusicGenre } from "@/data/musicLibrary";
+import { DAILY_CHALLENGES } from "./themeMatch";
 
 export interface SamplePhoto {
   id: string;
@@ -535,6 +536,31 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   { id: "138", uri: unsplashPhotoUrl("1607082349566-187342175e2f"), country: "Romania", countryCode: "RO", countryFlag: "🇷🇴", theme: "shopping", minutesAgo: 52, tags: ["shopping","grocery","city"] },
   { id: "139", uri: unsplashPhotoUrl("1581578731548-c64695cc6952"), country: "Estonia", countryCode: "EE", countryFlag: "🇪🇪", theme: "chores", minutesAgo: 73, tags: ["chores","cleaning","home"] },
   { id: "140", uri: unsplashPhotoUrl("1519681393784-d120267933ba"), country: "Sri Lanka", countryCode: "LK", countryFlag: "🇱🇰", theme: "reading", minutesAgo: 140, tags: ["reading","cozy","home"] },
+  // Babies — happy + crying for subject-matter matching (baby ↔ smile / cry).
+  {
+    id: "141",
+    uri: unsplashPhotoUrl("1694605735529-8d60f23a30b6"),
+    country: "Finland",
+    countryCode: "FI",
+    countryFlag: "🇫🇮",
+    theme: "joy",
+    minutesAgo: 42,
+    tags: ["kids", "family", "smile", "people"],
+    shapes: ["curves", "centered", "organic"],
+    subjects: ["baby", "smile", "happy"],
+  },
+  {
+    id: "142",
+    uri: unsplashPhotoUrl("1604518950478-98429105d1f6"),
+    country: "India",
+    countryCode: "IN",
+    countryFlag: "🇮🇳",
+    theme: "joy",
+    minutesAgo: 118,
+    tags: ["kids", "family", "people"],
+    shapes: ["centered", "curves", "organic"],
+    subjects: ["baby", "crying", "newborn"],
+  },
 ];
 
 /** Maps launch QA slots → primary stock photo id (existing + new). */
@@ -543,7 +569,7 @@ export const STOCK_LAUNCH_SLOTS: Readonly<Record<string, string>> = {
   coffee_tea_drinks: "128",
   breakfast_lunch_dinner: "26",
   pets: "14",
-  kids_family: "50",
+  kids_family: "141",
   desk_work: "30",
   commute: "45",
   weather: "37",
@@ -835,7 +861,7 @@ const SYNTH_PHOTO_BANK = {
   ],
   joy: [
     "1516627145497-ae6968895b74","1541701494587-cb58502866ab","1530103862676-de8c9debad1d",
-    "1543610892-0b1f7e6d8ac1","1527525443983-6e60c75fff46","1488161628813-04466f872be2",
+    "1543610892-0b1f7e6d8ac1","1694605735529-8d60f23a30b6","1604518950478-98429105d1f6",
   ],
   nature: [
     "1506905925346-21bda4d32df4","1518548419970-58e3b4079ab2","1483450388369-9ed95738483c",
@@ -1218,125 +1244,19 @@ export const SUGGESTED_TAGS_BY_THEME: Record<string, string[]> = {
   coffee: ["coffee", "tea", "drink", "cafe", "warm", "breakfast"],
 };
 
-// The daily challenge pool. One theme is shown to the entire world each
-// UTC day, rotating deterministically. Order is interleaved so back-to-
-// back days don't feel similar (e.g. food themes are spaced apart). Add
-// freely — anything in here will appear in the rotation. The first 9
-// entries also exist as synthetic dev-mode placeholder buckets in
-// SYNTH_PHOTO_BANK; new themes silently fall back to the synthetic
-// "joy" bucket in dev only.
-export const DAILY_CHALLENGES = [
-  { id: "morning", title: "Your morning", description: "What does your morning look like?", emoji: "☀️" },
-  { id: "coffee", title: "Your coffee", description: "Coffee, tea, or whatever's in your cup", emoji: "☕" },
-  { id: "hands", title: "Your hands", description: "Show us your hands right now", emoji: "👐" },
-  { id: "sky", title: "Your sky", description: "Look up. What do you see?", emoji: "🌤️" },
-  { id: "shoes", title: "Your shoes today", description: "What's carrying you around?", emoji: "👟" },
-  { id: "food", title: "What you ate", description: "Share your meal", emoji: "🍽️" },
-  { id: "instrument", title: "Your instrument", description: "What you play, or what's around", emoji: "🎸" },
-  { id: "view", title: "Your view", description: "What's in front of you right now", emoji: "🪟" },
-  { id: "movement", title: "Your movement", description: "Workout, walk, run, dance", emoji: "🏃" },
-  { id: "pets", title: "An animal", description: "Pet, wild, or neighbour's", emoji: "🐾" },
-  { id: "reading", title: "What you're reading", description: "Book, article, anything words", emoji: "📚" },
-  { id: "commute", title: "Your commute", description: "How do you get around?", emoji: "🚌" },
-  { id: "listening", title: "What you're hearing", description: "Music, podcast, the world outside", emoji: "🎧" },
-  { id: "plant", title: "A plant near you", description: "House plant, tree, weed in the cracks", emoji: "🪴" },
-  { id: "work", title: "Where you work", description: "Show your workspace", emoji: "💼" },
-  { id: "wearing", title: "What you're wearing", description: "Today's outfit, however small", emoji: "🧥" },
-  { id: "made", title: "Something you made", description: "Today, this week, ever — your hands made it", emoji: "🎨" },
-  { id: "night", title: "Your night", description: "Where you are after dark", emoji: "🌃" },
-  { id: "water", title: "Your water", description: "Bottle, glass, sea, rain — water around you", emoji: "💧" },
-  { id: "joy", title: "Something joyful", description: "What made you smile today?", emoji: "😊" },
-  { id: "door", title: "Your front door", description: "Where you come and go", emoji: "🚪" },
-  { id: "wheels", title: "Your wheels", description: "Bike, board, car, stroller, anything that rolls", emoji: "🚲" },
-  { id: "ritual", title: "Your daily ritual", description: "The small thing you do every day", emoji: "🌀" },
-  { id: "nature", title: "Nature near you", description: "Any plant, tree or sky", emoji: "🌿" },
-  { id: "playing", title: "What you play", description: "Game, sport, toy, hobby", emoji: "🎮" },
-  { id: "groceries", title: "Your groceries", description: "What you bought, what you have", emoji: "🛒" },
-  { id: "wall", title: "Your wall", description: "Whatever's hanging on it", emoji: "🖼️" },
-  { id: "handwriting", title: "Your handwriting", description: "A note, a list, a doodle", emoji: "✍️" },
-  { id: "weather", title: "Your weather", description: "Rain, sun, fog, snow — show us the day", emoji: "🌦️" },
-  { id: "smallthing", title: "A small good thing", description: "Tiny, easy to miss, made your day better", emoji: "✨" },
-  // ── New themes added later — interleaved into the rotation by virtue
-  // of being appended (the daily index walks the full list, so the gap
-  // between any two related themes stays large).
-  { id: "furniture", title: "Your favourite chair", description: "Sofa, stool, bench, the seat you love", emoji: "🪑" },
-  { id: "games", title: "What you're playing", description: "Board game, video game, cards, anything", emoji: "🎲" },
-  { id: "hobbies", title: "Your hobby right now", description: "What you've been into lately", emoji: "🧶" },
-  { id: "passions", title: "Your passion", description: "The thing you'd stay up all night for", emoji: "❤️‍🔥" },
-  { id: "birds", title: "A bird you spotted", description: "Backyard, balcony, park, anywhere", emoji: "🐦" },
-  // (rocks challenge removed — see SAMPLE_PHOTOS rocks comment.)
-  { id: "plants", title: "A plant you noticed", description: "House plant, tree, weed, flower — close-up", emoji: "🪴" },
-  { id: "music", title: "Your music", description: "What's playing — vinyl, speaker, headphones, anything", emoji: "🎵" },
-  // ── Lifestyle round — selfie / shopping / cafe / objects / chores.
-  // Stock coverage in SAMPLE_PHOTOS (match / discover pools).
-  { id: "selfie", title: "A selfie", description: "Today's you, however you feel", emoji: "🤳" },
-  { id: "shopping", title: "What you bought", description: "Today's haul, big or small", emoji: "🛍️" },
-  { id: "cafe", title: "Your café", description: "Where you go for a coffee, a drink, a bite", emoji: "☕" },
-  { id: "objects", title: "An object you love", description: "On your shelf, in your pocket, your everyday", emoji: "💎" },
-  { id: "chores", title: "Today's chore", description: "Dishes, laundry, the thing you just did", emoji: "🧹" },
-];
-
-// Themes that "feel" related — used as fallback when the active theme
-// pool is exhausted so the user can still find a match nearby.
-export const THEME_ADJACENCY: Record<string, string[]> = {
-  morning: ["food", "commute", "sky"],
-  food: ["morning", "coffee", "cafe", "hands", "joy"],
-  hands: ["food", "work", "joy"],
-  sky: ["nature", "morning"],
-  commute: ["morning", "work", "sky"],
-  work: ["commute", "hands"],
-  joy: ["pets", "food", "hands"],
-  nature: ["sky", "pets", "birds", "plants"],
-  pets: ["nature", "joy", "birds"],
-  furniture: ["home", "hobbies"],
-  games: ["hobbies", "joy", "playing"],
-  hobbies: ["games", "creative", "made", "music", "passions"],
-  birds: ["nature", "pets", "plants"],
-  plants: ["nature", "home", "furniture"],
-  music: ["hobbies", "joy", "made", "passions"],
-  // Passions falls back to its lower-energy and adjacent-feeling
-  // cousins so a "stay up all night" ripple still finds a wave on
-  // quiet days. Music sits closest (concert / festival energy);
-  // hobbies and joy widen the net without diluting the vibe.
-  passions: ["music", "hobbies", "joy", "made"],
-  // Lifestyle round adjacency. Each chain leans on themes that share
-  // the same vibe register (selfie ↔ wearing ↔ joy; cafe ↔ coffee ↔
-  // food) so a quiet day still finds a wave nearby.
-  selfie: ["wearing", "joy", "hands"],
-  shopping: ["groceries", "made", "wearing"],
-  cafe: ["coffee", "morning", "food"],
-  objects: ["made", "wall", "smallthing"],
-  chores: ["ritual", "made", "home"],
-  shoes: ["movement", "commute", "wearing", "outdoors"],
-  coffee: ["morning", "cafe", "food"],
-  wearing: ["selfie", "shoes", "movement", "joy"],
-  movement: ["active", "shoes", "morning"],
-  instrument: ["music", "hobbies", "made"],
-  view: ["sky", "work", "nature", "home"],
-  weather: ["sky", "nature", "morning"],
-  night: ["morning", "home", "sky"],
-  groceries: ["food", "morning", "shopping"],
-  wheels: ["commute", "movement", "travel"],
-  made: ["objects", "hands", "joy", "hobbies"],
-  playing: ["games", "hobbies", "joy"],
-  smallthing: ["joy", "objects", "home"],
-  reading: ["hobbies", "work", "home"],
-  listening: ["music", "hobbies"],
-  shoes: ["movement", "wearing", "commute"],
-  door: ["home", "ritual", "wall"],
-  water: ["nature", "sky"],
-  wall: ["art", "home", "objects"],
-  handwriting: ["work", "made", "art"],
-  weather: ["sky", "nature"],
-  ritual: ["morning", "home", "chores"],
-  plant: ["plants", "nature", "home"],
-  hands: ["food", "work", "joy"],
-};
-
-export function getThemeChain(theme: string): string[] {
-  const adj = THEME_ADJACENCY[theme] ?? [];
-  return [theme, ...adj];
-}
+export {
+  DAILY_CHALLENGES,
+  THEME_ADJACENCY,
+  resolveChallengeThemeId,
+  getThemeChain,
+  classifyThemeRelation,
+  themeMatchPoints,
+  isThemeOnTopic,
+  shouldSinkOffTopic,
+  stripThemePrefixes,
+  themeExactMatchVariants,
+  themeAdjacentIds,
+} from "./themeMatch";
 
 /**
  * Today's challenge — UTC-anchored so the entire world is on the same

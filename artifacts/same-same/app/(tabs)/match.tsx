@@ -44,6 +44,9 @@ import {
   DAILY_CHALLENGES,
   getTodaysChallenge,
   getThemeChain,
+  resolveChallengeThemeId,
+  themeMatchPoints,
+  shouldSinkOffTopic,
   TAG_LIBRARY,
   generateSyntheticCandidates,
   ENABLE_SYNTHETIC_MATCHES,
@@ -55,6 +58,11 @@ import { AiGeneratedBadge } from "@/components/AiGeneratedBadge";
 import { RemotePhotoImage } from "@/components/RemotePhotoImage";
 import { MatchPhotoDevOverlay } from "@/components/MatchPhotoDevOverlay";
 import { StockPhotoWatermark } from "@/components/StockPhotoWatermark";
+import {
+  scoreSubjectMatch,
+  sharedSubjectLabels,
+  expandSubjectsForQuery,
+} from "@/data/subjectMatch";
 import { ENABLE_STOCK_PHOTO_POOL } from "@/lib/stockPhotos";
 import {
   fetchCandidates,
@@ -194,13 +202,13 @@ function scoreCandidates(
   mySubjects: string[] = [],
 ): Scored[] {
   const chain = getThemeChain(preferredTheme);
-  const chainIndex = (theme: string) => {
-    const i = chain.indexOf(theme);
-    return i === -1 ? -1 : i;
+  const chainIndex = (candidateTheme: string) => {
+    const id = resolveChallengeThemeId(candidateTheme) || candidateTheme;
+    const i = chain.indexOf(id);
+    return i;
   };
   const myTagSet = new Set(myTags);
   const myShapeSet = new Set(myShapes);
-  const mySubjectSet = new Set(mySubjects);
 
   // Production launch: curated stock (Unsplash) + live API candidates.
   // Dev/Expo Go: stock + synthetic generator + API. Synthetic stays dev-only.
@@ -227,50 +235,38 @@ function scoreCandidates(
     .map((p) => {
       const sharedTags = p.tags.filter((t) => myTagSet.has(t));
       const sharedShapes = (p.shapes ?? []).filter((s) => myShapeSet.has(s));
-      const sharedSubjects = (p.subjects ?? []).filter((s) =>
-        mySubjectSet.has(s),
+      const subjectMatch = scoreSubjectMatch(mySubjects, p.subjects ?? []);
+      const sharedSubjects = sharedSubjectLabels(
+        mySubjects,
+        p.subjects ?? [],
       );
       const idx = chainIndex(p.theme);
       const inChain = idx >= 0;
-      const sameTheme = p.theme === preferredTheme;
-      // SCORING — mirrors the server's /candidates SQL exactly so the
-      // swipe feel is consistent whether the pool is sample data or
-      // live backend candidates. Subject overlap is the heaviest
-      // single axis because it's the only one with free-form
-      // vocabulary — sharing concrete nouns ("apple", "sculpture") is
-      // a much stronger "this is the same thing" signal than sharing
-      // a lifestyle bucket:
-      //   • subject: min(sharedSubjects, 5) × 3 → 0..15 pts. Heaviest
-      //              term — fixes the "two apple sculptures don't
-      //              match" failure the constrained `tags` couldn't.
-      //              Skipped (0 pts) when either side has no subjects
-      //              recorded so legacy rows aren't penalised.
-      //   • theme  : 10 pts on exact match (still a strong signal)
-      //   • vibe   : min(sharedTags, 5) × 2  → 0..10 pts
-      //   • shapes : min(sharedShapes, 5) × 2 → 0..10 pts. Soft
-      //              tie-breaker in the primary deck and the second
-      //              axis in subject-matter mode.
-      //   • chain  : small adjacent-theme bleed (max +3) so themes in
-      //              the same chain don't feel disconnected when the
-      //              same-theme bucket is thin.
-      //   • recency: tiny decay so fresh uploads outrank week-old ones.
-      const subjectScore =
-        mySubjects.length === 0 || (p.subjects ?? []).length === 0
-          ? 0
-          : Math.min(sharedSubjects.length, 5) * 3;
+      const themeScore = themeMatchPoints(preferredTheme, p.theme);
+      const sameTheme = themeScore >= 10;
+      // SCORING — mirrors the server's /candidates SQL so live and stock
+      // candidates rank consistently. Subject overlap is heaviest; theme
+      // uses interpretive matching (titles, ids, adjacency, fuzzy text).
+      const subjectScore = subjectMatch.points;
       const vibeScore = Math.min(sharedTags.length, 5) * 2;
       const shapeScore = Math.min(sharedShapes.length, 5) * 2;
-      // Off-topic photos (wrong daily theme, not in adjacency chain) sink
-      // so coffee stock cannot outrank shoes uploads via generic vibe tags.
-      const offTopic =
-        Boolean(preferredTheme) && !sameTheme && !inChain;
+      const chainBonus =
+        inChain && !sameTheme && themeScore < 10
+          ? Math.max(0, 3 - Math.max(idx, 0))
+          : 0;
+      const offTopic = shouldSinkOffTopic(
+        preferredTheme,
+        p.theme,
+        sharedTags.length,
+        subjectMatch.points > 0 ? 1 : 0,
+      );
       const score =
         subjectScore +
-        (sameTheme ? 10 : 0) +
+        themeScore +
         vibeScore +
         shapeScore +
-        (inChain && !sameTheme ? Math.max(0, 3 - idx * 1) : 0) +
-        Math.max(0, 0.6 - p.minutesAgo / 4320) - // up to +0.6, decays over 3 days
+        chainBonus +
+        Math.max(0, 0.6 - p.minutesAgo / 4320) -
         (offTopic ? 14 : 0);
       return {
         photo: p,
@@ -370,7 +366,6 @@ function getTheirPhoto(
     // synth set so we never return null when synth photos exist.
     const myTagSetSynth = new Set(myTags);
     const myShapeSetSynth = new Set(myShapes);
-    const mySubjectSetSynth = new Set(mySubjects);
     let synthPool = fresh;
     if (themeFired) {
       const themeOnly = synthPool.filter((p) =>
@@ -386,9 +381,8 @@ function getTheirPhoto(
     if (subjectFired) {
       const subjectOnly = synthPool.filter((p) =>
         isSubjectRelevant({
-          sharedSubjects: (p.subjects ?? []).filter((s) =>
-            mySubjectSetSynth.has(s),
-          ),
+          mySubjects,
+          candidateSubjects: p.subjects ?? [],
           sharedShapes: (p.shapes ?? []).filter((s) => myShapeSetSynth.has(s)),
         }),
       );
@@ -561,13 +555,21 @@ export default function SwipeScreen() {
   }, [todaysPhoto]);
 
   const myPhotoUri = myPhotoData.uri;
-  const activeTheme = myPhotoData.theme;
+  const rawTheme = myPhotoData.theme;
+  // Canonical id for scoring + /candidates (uploads may store "your hands").
+  const activeTheme =
+    resolveChallengeThemeId(rawTheme) ||
+    rawTheme ||
+    getTodaysChallenge().id;
   const myTags = myPhotoData.tags;
   const mySubjects = myPhotoData.subjects;
   // The user's theme is freeform — find a matching daily challenge for the
   // emoji if possible, otherwise default to ✨ and show the raw theme text.
   const themeMeta = DAILY_CHALLENGES.find(
-    (c) => c.id === activeTheme || c.title.toLowerCase() === activeTheme,
+    (c) =>
+      c.id === activeTheme ||
+      c.id === rawTheme ||
+      c.title.toLowerCase() === rawTheme.toLowerCase(),
   );
   const themeEmoji = themeMeta?.emoji ?? "✨";
   const themeTitle = themeMeta?.title ?? activeTheme;
@@ -690,7 +692,7 @@ export default function SwipeScreen() {
       // overlap, 5 = 0..15) — the axis that lets two apple sculptures
       // match each other when neither tags nor theme would carry the
       // overlap. Skipped silently when the photo predates the column.
-      subjects: mySubjects,
+      subjects: expandSubjectsForQuery(mySubjects),
       // Pass the user's chosen music vibe so the server can boost
       // candidates with the same vibe (theme + lifestyle tags +
       // music vibe = the primary "vibe match" signal).
@@ -1725,7 +1727,7 @@ export default function SwipeScreen() {
                       // sending objects there would double-count
                       // against the same candidates the subjects axis
                       // already promoted.
-                      subjects: objects,
+                      subjects: expandSubjectsForQuery(objects),
                       shapes,
                       limit: 24,
                       // Same hard exclusion as the primary deck — we never

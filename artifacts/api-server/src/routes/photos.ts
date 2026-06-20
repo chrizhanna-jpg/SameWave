@@ -23,6 +23,12 @@ import {
 } from "../lib/photoExposure";
 import { getPhotoRetentionMs } from "../lib/photoRetention";
 import { fetchMyJourneyRows } from "../lib/myJourney";
+import {
+  normalizeChallengeTheme,
+  themeAdjacentIds,
+  themeExactMatchVariants,
+} from "../lib/challengeTheme";
+import { expandSubjectsForQuery } from "../lib/subjectMatch";
 
 const bannedB64Md5Expr =
   BANNED_PHOTO_B64_MD5.length > 0
@@ -410,8 +416,35 @@ router.get("/photos/candidates", async (req, res) => {
       return;
     }
 
-    const theme =
-      typeof req.query.theme === "string" ? req.query.theme.toLowerCase().trim() : "";
+    const theme = normalizeChallengeTheme(
+      typeof req.query.theme === "string" ? req.query.theme : "",
+    );
+    const themeExactVariants =
+      theme.length > 0 ? themeExactMatchVariants(theme) : [];
+    const themeAdjacent =
+      theme.length > 0 ? themeAdjacentIds(theme) : [];
+    const themeExactExpr =
+      themeExactVariants.length > 0
+        ? sql`ARRAY[${sql.join(
+            themeExactVariants.map((v) => sql`${v}`),
+            sql`, `,
+          )}]::text[]`
+        : sql`ARRAY[]::text[]`;
+    const themeAdjacentExpr =
+      themeAdjacent.length > 0
+        ? sql`ARRAY[${sql.join(
+            themeAdjacent.map((v) => sql`${v}`),
+            sql`, `,
+          )}]::text[]`
+        : sql`ARRAY[]::text[]`;
+    const normPhotoTheme = sql.raw(`(
+      CASE
+        WHEN lower(trim(p.theme)) LIKE 'your %' THEN trim(substring(lower(trim(p.theme)) from 6))
+        WHEN lower(trim(p.theme)) LIKE 'an %' THEN trim(substring(lower(trim(p.theme)) from 4))
+        WHEN lower(trim(p.theme)) LIKE 'a %' THEN trim(substring(lower(trim(p.theme)) from 3))
+        ELSE lower(trim(p.theme))
+      END
+    )`);
     const tagsStr = typeof req.query.tags === "string" ? req.query.tags : "";
     const tags = tagsStr
       .split(",")
@@ -435,11 +468,12 @@ router.get("/photos/candidates", async (req, res) => {
     // ARRAY size.
     const subjectsStr =
       typeof req.query.subjects === "string" ? req.query.subjects : "";
-    const subjects = subjectsStr
+    const subjectsRaw = subjectsStr
       .split(",")
       .map((t) => t.trim().toLowerCase())
       .filter((t) => t.length > 0 && t.length <= 32)
       .slice(0, 12);
+    const subjects = expandSubjectsForQuery(subjectsRaw, 48);
     // Music vibe is whitelisted in /photos POST, so it's safe to trust
     // the value the client echoes back here. Empty string disables the
     // bonus for callers (e.g. subject-matter match) that don't send it.
@@ -543,8 +577,11 @@ router.get("/photos/candidates", async (req, res) => {
           cardinality(ARRAY(SELECT unnest(p.subjects) INTERSECT SELECT unnest(${subjectsExpr}))) AS subject_overlap,
           CASE
             WHEN ${theme} = '' THEN 0
-            WHEN p.theme = ${theme} THEN 10
-            WHEN p.theme ILIKE '%' || ${theme} || '%' OR ${theme} ILIKE '%' || p.theme || '%' THEN 4
+            WHEN ${normPhotoTheme} = ${theme} THEN 10
+            WHEN ${normPhotoTheme} = ANY(${themeExactExpr}) THEN 10
+            WHEN ${normPhotoTheme} = ANY(${themeAdjacentExpr}) THEN 6
+            WHEN ${theme} ILIKE '%' || ${normPhotoTheme} || '%'
+              OR ${normPhotoTheme} ILIKE '%' || ${theme} || '%' THEN 7
             ELSE 0
           END AS theme_score,
           CASE
@@ -581,8 +618,11 @@ router.get("/photos/candidates", async (req, res) => {
             ) * 2
             + CASE
                 WHEN ${theme} = '' THEN 0
-                WHEN p.theme = ${theme} THEN 10
-                WHEN p.theme ILIKE '%' || ${theme} || '%' OR ${theme} ILIKE '%' || p.theme || '%' THEN 4
+                WHEN ${normPhotoTheme} = ${theme} THEN 10
+                WHEN ${normPhotoTheme} = ANY(${themeExactExpr}) THEN 10
+                WHEN ${normPhotoTheme} = ANY(${themeAdjacentExpr}) THEN 6
+                WHEN ${theme} ILIKE '%' || ${normPhotoTheme} || '%'
+                  OR ${normPhotoTheme} ILIKE '%' || ${theme} || '%' THEN 7
                 ELSE 0
               END
             -- Shape overlap → 0..10 pts. In subject-matter mode
@@ -612,10 +652,15 @@ router.get("/photos/candidates", async (req, res) => {
             -- generic vibe tags alone.
             + CASE
                 WHEN ${theme} = '' THEN 0
-                WHEN p.theme = ${theme} THEN 0
-                WHEN p.theme ILIKE '%' || ${theme} || '%' OR ${theme} ILIKE '%' || p.theme || '%' THEN 0
+                WHEN ${normPhotoTheme} = ${theme} THEN 0
+                WHEN ${normPhotoTheme} = ANY(${themeExactExpr}) THEN 0
+                WHEN ${normPhotoTheme} = ANY(${themeAdjacentExpr}) THEN 0
+                WHEN ${theme} ILIKE '%' || ${normPhotoTheme} || '%'
+                  OR ${normPhotoTheme} ILIKE '%' || ${theme} || '%' THEN 0
                 WHEN cardinality(${subjectsExpr}) > 0
                   AND cardinality(ARRAY(SELECT unnest(p.subjects) INTERSECT SELECT unnest(${subjectsExpr}))) > 0
+                THEN 0
+                WHEN cardinality(ARRAY(SELECT unnest(p.tags) INTERSECT SELECT unnest(${tagsExpr}))) >= 2
                 THEN 0
                 ELSE -16
               END

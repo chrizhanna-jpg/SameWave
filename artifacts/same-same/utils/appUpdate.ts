@@ -9,20 +9,28 @@ const DISMISSED_KEY = "samesame_dismissed_update_vc";
 const DEFAULT_PLAY_STORE_URL =
   "https://play.google.com/store/apps/details?id=echo.samewaveripple.app";
 
+/** Dev-only: force update modal/banner in Expo Go (any platform). */
+export function isUpdatePreviewMode(): boolean {
+  return __DEV__ && process.env.EXPO_PUBLIC_PREVIEW_UPDATE_UI === "1";
+}
+
 export type AppUpdateInfo = {
   latestVersionCode: number;
   latestVersionName: string;
   playStoreUrl: string;
+  /** Optional server-provided copy for the update prompt. */
+  updateMessage?: string;
 };
 
 export function getInstalledAndroidVersionCode(): number | null {
+  if (isUpdatePreviewMode()) return 1;
   if (Platform.OS !== "android") return null;
   const vc = Constants.expoConfig?.android?.versionCode;
   return typeof vc === "number" && Number.isFinite(vc) ? vc : null;
 }
 
 export async function fetchAppUpdateInfo(): Promise<AppUpdateInfo | null> {
-  if (Platform.OS !== "android") return null;
+  if (Platform.OS !== "android" && !isUpdatePreviewMode()) return null;
   try {
     const base = getPublicApiOrigin();
     const res = await fetch(`${base}/api/public/app-config`, {
@@ -35,6 +43,7 @@ export async function fetchAppUpdateInfo(): Promise<AppUpdateInfo | null> {
         latestVersionCode?: unknown;
         latestVersionName?: unknown;
         playStoreUrl?: unknown;
+        updateMessage?: unknown;
       };
     };
     const rawCode = json.android?.latestVersionCode;
@@ -53,7 +62,12 @@ export async function fetchAppUpdateInfo(): Promise<AppUpdateInfo | null> {
       json.android.playStoreUrl.trim().length > 0
         ? json.android.playStoreUrl.trim()
         : DEFAULT_PLAY_STORE_URL;
-    return { latestVersionCode, latestVersionName, playStoreUrl };
+    const updateMessage =
+      typeof json.android?.updateMessage === "string" &&
+      json.android.updateMessage.trim().length > 0
+        ? json.android.updateMessage.trim()
+        : undefined;
+    return { latestVersionCode, latestVersionName, playStoreUrl, updateMessage };
   } catch {
     return null;
   }
@@ -91,7 +105,11 @@ export async function shouldShowUpdateBanner(): Promise<{
   }
 
   const dismissed = await getDismissedUpdateVersionCode();
-  if (dismissed != null && dismissed >= info.latestVersionCode) {
+  if (
+    !isUpdatePreviewMode() &&
+    dismissed != null &&
+    dismissed >= info.latestVersionCode
+  ) {
     return { show: false, info };
   }
 
