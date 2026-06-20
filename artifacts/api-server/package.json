@@ -13,6 +13,8 @@
     "audit:photo-themes:apply": "node ./scripts/audit-fix-photo-themes.mjs --apply",
     "replace:viral-coffee": "node ./scripts/replace-viral-coffee-photo.mjs",
     "replace:viral-coffee:apply": "node ./scripts/replace-viral-coffee-photo.mjs --apply",
+    "seed:stock-pool": "node ./scripts/seed-stock-pool.mjs",
+    "seed:stock-pool:apply": "node ./scripts/seed-stock-pool.mjs --apply",
     "dev": "node ./scripts/dev.mjs",
     "sync:clerk-publishable": "node ./scripts/sync-clerk-publishable.mjs",
     "build": "node ./build.mjs",
