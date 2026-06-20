@@ -152,10 +152,10 @@ export function buildDiscoveryFeed(
     const bPostedMin = happenedMinutesAgo - diff / 2;
     const aPostedAt = new Date(now - aPostedMin * 60_000).toISOString();
     const timeTier = getTimeTier(aPostedAt, Math.max(0, bPostedMin));
-    const geoTier =
-      a.captureCountryCode && b.captureCountryCode
-        ? getGeoTierForPhotos(a.captureCountryCode, b.captureCountryCode)
-        : getGeoTier(a.countryCode, b.countryCode);
+    const geoTier = getGeoTierForPhotos(
+      a.captureCountryCode,
+      b.captureCountryCode,
+    );
 
     const challenge = DAILY_CHALLENGES.find((c) => c.id === themeId);
 

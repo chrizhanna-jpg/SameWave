@@ -1,7 +1,6 @@
 import type { Match, MyPhoto } from "@/context/AppContext";
 import type { AtlasConnection } from "@/utils/api";
-import { COUNTRIES } from "@/data/countries";
-import { photoCountryDisplay } from "@/utils/photoCountry";
+import { photoCountryDisplay, resolveCaptureCountryCode } from "@/utils/photoCountry";
 
 /** ISO2 for Atlas arcs: profile country first, then capture / match snapshots. */
 export function resolveViewerIso2(
@@ -19,23 +18,16 @@ export function resolveViewerIso2(
     );
     return uploadedUtcDay === todayUtcDay;
   });
-  const fromToday = photoCountryDisplay(
-    todayPhoto?.captureCountryCode,
-    myCountryCode,
-  ).code;
+  const fromToday = photoCountryDisplay(todayPhoto?.captureCountryCode).code;
   if (fromToday && /^[A-Z]{2}$/.test(fromToday)) return fromToday;
 
-  const fromMatch = matches.find(
-    (m) => m.verdict === "same" && m.myCountryCode,
-  )?.myCountryCode;
-  if (fromMatch && /^[A-Z]{2}$/.test(fromMatch)) return fromMatch;
+  const fromCapture = matches.find(
+    (m) => m.verdict === "same" && m.myCaptureCountryCode?.trim(),
+  )?.myCaptureCountryCode;
+  const captureCode = (fromCapture ?? "").trim().toUpperCase();
+  if (/^[A-Z]{2}$/.test(captureCode)) return captureCode;
 
-  const label = matches.find((m) => m.verdict === "same")?.myCountry?.trim();
-  if (!label || label.toLowerCase() === "you") return undefined;
-  const hit = COUNTRIES.find(
-    (c) => c.name.toLowerCase() === label.toLowerCase(),
-  );
-  return hit?.code.toUpperCase();
+  return undefined;
 }
 
 /** Build device-side ripple arcs from match history (photos may be server URLs or empty). */
@@ -51,8 +43,11 @@ export function buildLocalRippleConnections(
   const added: AtlasConnection[] = [];
   for (const m of matches) {
     if (m.verdict !== "same") continue;
-    const to = (m.theirCountryCode ?? "").trim().toUpperCase();
-    if (!/^[A-Z]{2}$/.test(to) || to === mine) continue;
+    const to = resolveCaptureCountryCode(
+      m.theirCaptureCountryCode,
+      m.theirPhoto,
+    );
+    if (!to || to === mine) continue;
     const ts = Date.parse(m.timestamp);
     const fresh = Number.isFinite(ts) && now - ts < 48 * 60 * 60 * 1000;
     const theme = (m.theme ?? "").trim();

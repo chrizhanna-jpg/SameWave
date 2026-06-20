@@ -90,12 +90,12 @@ export default function PassesScreen() {
           </View>
         ) : (
           passedMatches.map((match) => {
-            const myFlag =
-              match.myCountryFlag ??
-              photoCountryDisplay(
-                match.myCaptureCountryCode,
-                match.myCountryCode,
-              ).flag;
+            const myFlag = photoCountryDisplay(match.myCaptureCountryCode, {
+              sampleUri: match.myPhoto,
+            }).flag;
+            const theirDisp = photoCountryDisplay(match.theirCaptureCountryCode, {
+              sampleUri: match.theirPhoto,
+            });
             return (
             <View
               key={match.id}
@@ -111,12 +111,12 @@ export default function PassesScreen() {
                   size={12}
                   color={colors.mutedForeground}
                 />
-                <Text style={styles.matchFlag}>{match.theirCountryFlag}</Text>
+                <Text style={styles.matchFlag}>{theirDisp.flag}</Text>
                 <Text
                   style={[styles.passedCountry, { color: colors.foreground }]}
                   numberOfLines={1}
                 >
-                  {match.theirCountry}
+                  {theirDisp.name}
                 </Text>
               </View>
 

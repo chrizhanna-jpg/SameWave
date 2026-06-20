@@ -39,10 +39,6 @@ import type { AtlasThemeCluster } from "@/utils/atlasWavefire";
 import type { AtlasFireMode } from "@/utils/atlasFireVisuals";
 import type { AtlasFireVisual } from "@/utils/atlasFireVisuals";
 import { markUserInteracted, playClip, stopIfLease } from "@/utils/audio";
-import {
-  pauseWavefireAmbienceForOverlay,
-  resumeWavefireAmbienceAfterOverlay,
-} from "@/utils/wavefireAmbience";
 
 type Props = {
   visible: boolean;
@@ -115,31 +111,15 @@ function ExploreAtlasPhoto({ uri }: { uri: string }) {
 
 function ImmersivePhotoViewer({
   tile,
-  accent,
   onClose,
 }: {
   tile: ExplorePhotoTile;
-  accent: string;
   onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const uploadedTheme = (tile.participant.theme || tile.theme).trim();
   const { title, emoji } = resolveThemeDisplay(uploadedTheme);
   const country = tile.participant.countryCode;
-  const clip = vibeUrl(tile.participant);
-  const playLease = useRef(0);
-
-  useEffect(() => {
-    void pauseWavefireAmbienceForOverlay();
-    markUserInteracted();
-    if (clip) {
-      playLease.current = playClip(clip);
-    }
-    return () => {
-      void stopIfLease(playLease.current);
-      void resumeWavefireAmbienceAfterOverlay();
-    };
-  }, [clip]);
 
   return (
     <Modal visible animationType="fade" presentationStyle="fullScreen">
@@ -167,14 +147,6 @@ function ImmersivePhotoViewer({
           <Text style={styles.immersiveCountry} numberOfLines={1}>
             {flagFor(country)} {nameFor(country) ?? country}
           </Text>
-          {clip ? (
-            <View style={styles.vibePill}>
-              <Icon name="play" size={14} color="#E8F4F8" />
-              <Text style={styles.vibePillText}>Playing this vibe</Text>
-            </View>
-          ) : (
-            <Text style={styles.immersiveNoVibe}>No vibe clip for this photo</Text>
-          )}
         </View>
       </View>
     </Modal>
@@ -204,7 +176,7 @@ function FullScreenPhotoPage({
       onPress={onOpen}
       style={[styles.page, { width: pageWidth, height: pageHeight }]}
       accessibilityRole="button"
-      accessibilityLabel={`${title}, ${nameFor(country) ?? country}. Tap for fullscreen and vibe.`}
+      accessibilityLabel={`${title}, ${nameFor(country) ?? country}. Tap for fullscreen.`}
     >
       <ExploreAtlasPhoto uri={tile.participant.uri} />
       <View style={styles.pageScrim} pointerEvents="none" />
@@ -220,7 +192,7 @@ function FullScreenPhotoPage({
         <Text style={styles.pageCountry} numberOfLines={1}>
           {flagFor(country)} {nameFor(country) ?? country}
         </Text>
-        <Text style={styles.pageHint}>Tap to open · hear the vibe</Text>
+        <Text style={styles.pageHint}>Tap to open</Text>
       </View>
     </Pressable>
   );
@@ -247,6 +219,7 @@ export function AtlasFireExploreModal({
   const [immersive, setImmersive] = useState<ExplorePhotoTile | null>(null);
   const [listViewportHeight, setListViewportHeight] = useState(0);
   const [photoIndex, setPhotoIndex] = useState(0);
+  const explorePlayLeaseRef = useRef(0);
 
   // Page height must match the measured list viewport — never guess from windowH or
   // paging/getItemLayout desync and the first slides render blank.
@@ -289,6 +262,8 @@ export function AtlasFireExploreModal({
 
   useEffect(() => {
     if (!visible) {
+      void stopIfLease(explorePlayLeaseRef.current);
+      explorePlayLeaseRef.current = 0;
       setImmersive(null);
       setPhotoTiles([]);
       setDebugReport(null);
@@ -338,7 +313,24 @@ export function AtlasFireExploreModal({
     viewerMyPhotos,
   ]);
 
+  // Auto-play the visible photo's vibe; switch clips when the user scrolls.
+  useEffect(() => {
+    if (!visible || photoTiles.length === 0) return;
+    const tile = photoTiles[photoIndex];
+    if (!tile) return;
+    markUserInteracted();
+    const clip = vibeUrl(tile.participant);
+    if (clip) {
+      explorePlayLeaseRef.current = playClip(clip);
+      return;
+    }
+    void stopIfLease(explorePlayLeaseRef.current);
+    explorePlayLeaseRef.current = 0;
+  }, [visible, photoIndex, photoTiles]);
+
   const handleClose = useCallback(() => {
+    void stopIfLease(explorePlayLeaseRef.current);
+    explorePlayLeaseRef.current = 0;
     setImmersive(null);
     onClose();
   }, [onClose]);
@@ -475,7 +467,6 @@ export function AtlasFireExploreModal({
       {immersive ? (
         <ImmersivePhotoViewer
           tile={immersive}
-          accent={visual.lineStroke}
           onClose={() => setImmersive(null)}
         />
       ) : null}
@@ -655,28 +646,5 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
     fontSize: 16,
     color: "rgba(232, 244, 248, 0.9)",
-    marginBottom: 12,
-  },
-  immersiveNoVibe: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    color: "rgba(232, 244, 248, 0.65)",
-  },
-  vibePill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    alignSelf: "flex-start",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.35)",
-    backgroundColor: "rgba(0, 16, 24, 0.45)",
-  },
-  vibePillText: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 13,
-    color: "#E8F4F8",
   },
 });

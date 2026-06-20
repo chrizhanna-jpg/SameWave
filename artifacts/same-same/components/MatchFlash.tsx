@@ -21,7 +21,7 @@ import { ConnectionMapPreview } from "@/components/ConnectionMapPreview";
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
 import { getGeoTierForPhotos, getTimeTier } from "@/utils/celebrations";
-import { photoCountryDisplay } from "@/utils/photoCountry";
+import { photoCountryDisplay, resolveCaptureCountryCode } from "@/utils/photoCountry";
 
 const FLASH_MAP_WIDTH = Dimensions.get("window").width - 48;
 
@@ -194,15 +194,14 @@ export function MatchFlash({
   // renders both — even the "Same Planet" baseline is part of the
   // story we're telling here.
   const timeTier = getTimeTier(myPhotoUploadedAt, theirPhotoMinutesAgo);
-  const myDisplay = photoCountryDisplay(myCaptureCountryCode, myCountryCode);
-  const theirDisplay = photoCountryDisplay(
+  const myCap = resolveCaptureCountryCode(myCaptureCountryCode, myPhotoUri);
+  const theirCap = resolveCaptureCountryCode(
     theirCaptureCountryCode,
-    theirCountryCode,
+    theirPhotoUri,
   );
-  const geoTier = getGeoTierForPhotos(
-    myCaptureCountryCode,
-    theirCaptureCountryCode,
-  );
+  const myDisplay = photoCountryDisplay(myCap);
+  const theirDisplay = photoCountryDisplay(theirCap);
+  const geoTier = getGeoTierForPhotos(myCap, theirCap);
   const dragScale = celebrationDragScale(dragY);
   const backdropDragOpacity = dragY.interpolate({
     inputRange: [-140, 0, 140],

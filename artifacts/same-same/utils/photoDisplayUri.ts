@@ -3,6 +3,7 @@ import { getPublicApiOrigin } from "@/utils/publicEnv";
 import { resolveMatchPhotoUris, pickDurablePhotoUri } from "@/utils/matchPhotoSnapshot";
 import { photoKey } from "@/utils/photoKey";
 import { lookupVoterPhotoForMatchSync } from "@/utils/voterPhotoByTarget";
+import { matchCountryFieldsFromCapture } from "@/utils/photoCountry";
 
 /** Authenticated stream URL for a server photo row. */
 export function serverPhotoImageUrl(photoId: string): string {
@@ -302,5 +303,10 @@ export function enrichMatchesForStorage(
   matches: Match[],
   myPhotos: MyPhoto[],
 ): Match[] {
-  return matches.map((m) => enrichMatchMyPhotoFields(m, myPhotos));
+  return matches.map((m) =>
+    enrichMatchMyPhotoFields(
+      { ...m, ...matchCountryFieldsFromCapture(m) },
+      myPhotos,
+    ),
+  );
 }

@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { EchoCard, Match } from "@/context/AppContext";
 import type { AtlasConnection, AtlasCountry } from "@/utils/api";
 import { photoKey } from "@/utils/photoKey";
+import { photoCountryDisplay } from "@/utils/photoCountry";
 
 const CELEBRATED_KEY = "samesame_celebrated_echo_ids";
 const ECHO_CACHE_KEY = "samesame_echo_cache";
@@ -100,7 +101,7 @@ export function parsePersistedEchoes(raw: unknown): EchoCard[] {
       mutualAt: typeof e.mutualAt === "string" ? e.mutualAt : null,
       youSentFirst:
         typeof e.youSentFirst === "boolean" ? e.youSentFirst : undefined,
-      mine: {
+      mine: refreshEchoSideCountry({
         id: typeof mine.id === "string" ? mine.id : "",
         uri: typeof mine.uri === "string" ? mine.uri : "",
         countryCode:
@@ -112,8 +113,8 @@ export function parsePersistedEchoes(raw: unknown): EchoCard[] {
         country: typeof mine.country === "string" ? mine.country : "",
         countryFlag: typeof mine.countryFlag === "string" ? mine.countryFlag : "",
         theme: typeof mine.theme === "string" ? mine.theme : undefined,
-      },
-      theirs: {
+      }),
+      theirs: refreshEchoSideCountry({
         id: typeof theirs.id === "string" ? theirs.id : "",
         uri: typeof theirs.uri === "string" ? theirs.uri : "",
         countryCode:
@@ -126,7 +127,7 @@ export function parsePersistedEchoes(raw: unknown): EchoCard[] {
         countryFlag:
           typeof theirs.countryFlag === "string" ? theirs.countryFlag : "",
         theme: typeof theirs.theme === "string" ? theirs.theme : undefined,
-      },
+      }),
     });
   }
   return out;
@@ -218,11 +219,24 @@ function stripEchoForCache(echo: EchoCard): CachedEchoCard {
   };
 }
 
+function refreshEchoSideCountry<T extends CachedPhotoSide>(side: T): T {
+  const disp = photoCountryDisplay(side.captureCountryCode);
+  return {
+    ...side,
+    country: disp.name,
+    countryFlag: disp.flag,
+    countryCode: disp.code ?? null,
+  };
+}
+
 export function hydrateEchoFromCache(cached: CachedEchoCard): EchoCard {
   return {
     ...cached,
-    mine: { ...cached.mine, uri: cached.mine.uri ?? "" },
-    theirs: { ...cached.theirs, uri: cached.theirs.uri ?? "" },
+    mine: refreshEchoSideCountry({ ...cached.mine, uri: cached.mine.uri ?? "" }),
+    theirs: refreshEchoSideCountry({
+      ...cached.theirs,
+      uri: cached.theirs.uri ?? "",
+    }),
   };
 }
 

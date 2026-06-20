@@ -18,6 +18,7 @@ import { Icon } from "@/components/Icon";
 import { OceanShimmer } from "@/components/OceanShimmer";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
+import { photoCountryDisplay } from "@/utils/photoCountry";
 import { BadgeCard } from "@/components/BadgeCard";
 import { CountryPickerModal } from "@/components/CountryPickerModal";
 import { tagEmoji, tagLabel } from "@/utils/interests";
@@ -422,7 +423,9 @@ export default function ProfileScreen() {
                     />
                     <View style={styles.recentMatchOverlay}>
                       <Text style={styles.recentMatchFlag}>
-                        {m.theirCountryFlag}
+                        {photoCountryDisplay(m.theirCaptureCountryCode, {
+                          sampleUri: m.theirPhoto,
+                        }).flag}
                       </Text>
                     </View>
                   </PressableScale>
@@ -430,6 +433,36 @@ export default function ProfileScreen() {
             </ScrollView>
           </View>
         )}
+
+        {/* Match History deep-link row — moved up so it sits right with
+            the recent-matches preview rather than buried below the world
+            map. The preview already shows a portion; this row gives the
+            full count + tap target. */}
+        <NavRow
+          icon="ripple"
+          tint={colors.teal}
+          title="Match History"
+          subtitle={
+            confirmedCount === 0
+              ? "No matches yet — start swiping to fill your journey"
+              : `${confirmedCount} ${confirmedCount === 1 ? "match" : "matches"} · tap to revisit or change`
+          }
+          onPress={() => router.push("/match-history")}
+          accessibilityLabel="Open full match history"
+        />
+
+        <NavRow
+          icon="x"
+          tint={colors.mutedForeground}
+          title="Recent Different"
+          subtitle={
+            passedCount === 0
+              ? "Nothing to reconsider"
+              : `${passedCount} ${passedCount === 1 ? "pass" : "passes"} · changed your mind?`
+          }
+          onPress={() => router.push("/passes")}
+          accessibilityLabel="Open recent passes"
+        />
 
         <PressableScale
           onPress={() => router.push("/connections")}
@@ -480,36 +513,6 @@ export default function ProfileScreen() {
           <Icon name="chevron-right" size={18} color={colors.mutedForeground} />
         </Surface>
         </PressableScale>
-
-        {/* Match History deep-link row — moved up so it sits right with
-            the recent-matches preview rather than buried below the world
-            map. The preview already shows a portion; this row gives the
-            full count + tap target. */}
-        <NavRow
-          icon="heart"
-          tint={colors.teal}
-          title="Match History"
-          subtitle={
-            confirmedCount === 0
-              ? "No matches yet — start swiping to fill your journey"
-              : `${confirmedCount} ${confirmedCount === 1 ? "match" : "matches"} · tap to revisit or change`
-          }
-          onPress={() => router.push("/match-history")}
-          accessibilityLabel="Open full match history"
-        />
-
-        <NavRow
-          icon="x"
-          tint={colors.mutedForeground}
-          title="Recent Different"
-          subtitle={
-            passedCount === 0
-              ? "Nothing to reconsider"
-              : `${passedCount} ${passedCount === 1 ? "pass" : "passes"} · changed your mind?`
-          }
-          onPress={() => router.push("/passes")}
-          accessibilityLabel="Open recent passes"
-        />
 
         {/* ─────────────── World Map (merged in from old World tab) ─────────────── */}
         <View style={styles.worldHeader}>

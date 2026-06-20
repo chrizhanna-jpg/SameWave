@@ -46,7 +46,7 @@ import {
   saveRipplefireLocalCache,
 } from "@/utils/syncCache";
 import { markTabVisited } from "@/utils/tabVisits";
-import { stopWavefireAmbience } from "@/utils/wavefireAmbience";
+import { stopWavefireAmbience, startWavefireAmbience } from "@/utils/wavefireAmbience";
 import type { MyPhoto } from "@/context/AppContext";
 
 /** Never replace a non-empty map with an empty/partial API payload (degraded refresh, races). */
@@ -276,6 +276,7 @@ export default function AtlasScreen() {
       atlasFocusedRef.current = true;
       markTabVisited("atlas");
       void load(hasCachedData || atlasHasLoadedOnceRef.current);
+      void startWavefireAmbience();
       return () => {
         setAtlasTabFocused(false);
         atlasFocusedRef.current = false;
@@ -292,6 +293,10 @@ export default function AtlasScreen() {
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (s) => {
+      if (s === "background") {
+        void stopWavefireAmbience();
+        return;
+      }
       if (s === "active" && atlasFocusedRef.current) void load(true);
     });
     return () => sub.remove();

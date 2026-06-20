@@ -28,7 +28,7 @@ import {
 } from "@/data/waveRippleGlossary";
 import { fetchRecentWavesFeed, type RecentWaveFeedItem } from "@/utils/api";
 import {
-  enrichMatchMyPhotoFields,
+  enrichMatchesForStorage,
   resolveEchoPhotoUri,
   resolveMatchMyPhotoUri,
   resolveMatchPhotoDisplay,
@@ -37,7 +37,7 @@ import { markTabVisited } from "@/utils/tabVisits";
 import { scrollPaddingAboveTabBar, tabBarTotalHeight } from "@/utils/tabBarSafeArea";
 import { timeAgo } from "@/utils/timeAgo";
 import { photoKey } from "@/utils/photoKey";
-import { photoCountryDisplay } from "@/utils/photoCountry";
+import { photoCountryDisplay, resolveCaptureCountryCode } from "@/utils/photoCountry";
 
 type WaveSectionId = "received" | "caught" | "sent" | "world";
 
@@ -45,29 +45,18 @@ function echoPairKey(a: string, b: string): string {
   return [a, b].sort().join(":");
 }
 
-type FlagSide = {
-  countryFlag?: string;
-  countryCode?: string | null;
-  captureCountryCode?: string | null;
-};
-
-function resolveSideFlag(side: FlagSide): string {
-  const trimmed = side.countryFlag?.trim();
-  if (trimmed) return trimmed;
-  return photoCountryDisplay(side.captureCountryCode, side.countryCode).flag;
-}
-
-function resolveMatchTheirFlag(match: Match): string {
-  const trimmed = match.theirCountryFlag?.trim();
-  if (trimmed) return trimmed;
-  return photoCountryDisplay(
-    match.theirCaptureCountryCode,
-    match.theirCountryCode,
-  ).flag;
-}
-
 function matchToCaughtEcho(match: Match, myPhotos: MyPhoto[]): EchoCard {
   const photos = resolveMatchPhotoDisplay(match, myPhotos);
+  const myCapture = resolveCaptureCountryCode(
+    match.myCaptureCountryCode,
+    photos.myPhoto,
+  );
+  const theirCapture = resolveCaptureCountryCode(
+    match.theirCaptureCountryCode,
+    photos.theirPhoto,
+  );
+  const myDisp = photoCountryDisplay(myCapture);
+  const theirDisp = photoCountryDisplay(theirCapture);
   return {
     id: `match-${match.id}`,
     state: "mutual",
@@ -78,24 +67,19 @@ function matchToCaughtEcho(match: Match, myPhotos: MyPhoto[]): EchoCard {
     mine: {
       id: match.myPhotoId ?? "",
       uri: photos.myPhoto,
-      countryCode: match.myCountryCode ?? null,
-      captureCountryCode: match.myCaptureCountryCode ?? null,
-      country: match.myCountry,
-      countryFlag:
-        match.myCountryFlag?.trim() ||
-        photoCountryDisplay(
-          match.myCaptureCountryCode,
-          match.myCountryCode,
-        ).flag,
+      countryCode: myDisp.code ?? null,
+      captureCountryCode: myCapture ?? null,
+      country: myDisp.name,
+      countryFlag: myDisp.flag,
       theme: match.theme,
     },
     theirs: {
       id: match.theirPhotoId ?? "",
       uri: photos.theirPhoto,
-      countryCode: match.theirCountryCode ?? null,
-      captureCountryCode: match.theirCaptureCountryCode ?? null,
-      country: match.theirCountry,
-      countryFlag: resolveMatchTheirFlag(match),
+      countryCode: theirDisp.code ?? null,
+      captureCountryCode: theirCapture ?? null,
+      country: theirDisp.name,
+      countryFlag: theirDisp.flag,
       theme: match.theirActualTheme ?? match.theme,
     },
   };
@@ -187,7 +171,7 @@ export default function WavesScreen() {
   );
 
   const ripplesSentDisplay = useMemo(
-    () => ripplesSent.map((m) => enrichMatchMyPhotoFields(m, myPhotos)),
+    () => enrichMatchesForStorage(ripplesSent, myPhotos),
     [ripplesSent, myPhotos],
   );
 
@@ -623,6 +607,9 @@ function PendingRippleCard({
 }) {
   const colors = useColors();
   const ago = timeAgo(new Date(echo.createdAt));
+  const theirDisp = photoCountryDisplay(echo.theirs.captureCountryCode, {
+    sampleUri: echo.theirs.uri,
+  });
   return (
     <View
       style={[
@@ -636,7 +623,7 @@ function PendingRippleCard({
       ]}
     >
       <View style={styles.cardHeader}>
-        <Text style={styles.bigFlag}>{resolveSideFlag(echo.theirs)}</Text>
+        <Text style={styles.bigFlag}>{theirDisp.flag}</Text>
         <View style={{ flex: 1, minWidth: 0 }}>
           <View style={styles.cardTitleRow}>
             <Icon name="ripple" size={14} color={colors.teal} />
@@ -644,7 +631,7 @@ function PendingRippleCard({
               style={[styles.cardTitle, { color: colors.foreground }]}
               numberOfLines={1}
             >
-              Someone in {echo.theirs.country}
+              Someone in {theirDisp.name}
             </Text>
           </View>
           <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>
@@ -705,6 +692,9 @@ function WaveCaughtCard({ echo }: { echo: EchoCard }) {
   const colors = useColors();
   const stamp = echo.mutualAt ? new Date(echo.mutualAt) : new Date(echo.createdAt);
   const ago = timeAgo(stamp);
+  const theirDisp = photoCountryDisplay(echo.theirs.captureCountryCode, {
+    sampleUri: echo.theirs.uri,
+  });
   return (
     <TouchableOpacity
       activeOpacity={0.85}
@@ -721,7 +711,7 @@ function WaveCaughtCard({ echo }: { echo: EchoCard }) {
       ]}
     >
       <View style={styles.cardHeader}>
-        <Text style={styles.bigFlag}>{resolveSideFlag(echo.theirs)}</Text>
+        <Text style={styles.bigFlag}>{theirDisp.flag}</Text>
         <View style={{ flex: 1, minWidth: 0 }}>
           <View style={styles.cardTitleRow}>
             <Icon name="wave-glyph" size={14} color={colors.gold} />
@@ -729,7 +719,7 @@ function WaveCaughtCard({ echo }: { echo: EchoCard }) {
               style={[styles.cardTitle, { color: colors.foreground }]}
               numberOfLines={1}
             >
-              {waveWithCountry(echo.theirs.country)}
+              {waveWithCountry(theirDisp.name)}
             </Text>
           </View>
           <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>
@@ -820,6 +810,12 @@ function RippleSentCard({
   const ago = timeAgo(new Date(match.timestamp));
   const myUri = resolveMatchMyPhotoUri(match, myPhotos);
   const theirUri = resolveMatchPhotoDisplay(match, myPhotos).theirPhoto;
+  const myDisp = photoCountryDisplay(match.myCaptureCountryCode, {
+    sampleUri: myUri,
+  });
+  const theirDisp = photoCountryDisplay(match.theirCaptureCountryCode, {
+    sampleUri: theirUri,
+  });
 
   return (
     <TouchableOpacity
@@ -840,7 +836,7 @@ function RippleSentCard({
       ]}
     >
       <View style={styles.cardHeader}>
-        <Text style={styles.bigFlag}>{resolveMatchTheirFlag(match)}</Text>
+        <Text style={styles.bigFlag}>{theirDisp.flag}</Text>
         <View style={{ flex: 1, minWidth: 0 }}>
           <View style={styles.cardTitleRow}>
             <Icon
@@ -853,8 +849,8 @@ function RippleSentCard({
               numberOfLines={1}
             >
               {isWave
-                ? waveWithCountry(match.theirCountry)
-                : `Ripple to ${match.theirCountry}`}
+                ? waveWithCountry(theirDisp.name)
+                : `Ripple to ${theirDisp.name}`}
             </Text>
           </View>
           <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>
@@ -883,7 +879,7 @@ function RippleSentCard({
             </View>
           )}
           <Text style={[styles.photoLabel, { color: colors.mutedForeground }]}>
-            yours
+            {myDisp.flag} yours
           </Text>
         </View>
         <Icon name="arrow-right" size={18} color={colors.mutedForeground} />
@@ -907,7 +903,7 @@ function RippleSentCard({
             </View>
           )}
           <Text style={[styles.photoLabel, { color: colors.mutedForeground }]}>
-            theirs
+            {theirDisp.flag} theirs
           </Text>
         </View>
       </View>
@@ -925,6 +921,12 @@ function PhotoPair({
   const colors = useColors();
   const mineUri = resolveEchoPhotoUri(mine);
   const theirsUri = resolveEchoPhotoUri(theirs);
+  const myDisp = photoCountryDisplay(mine.captureCountryCode, {
+    sampleUri: mineUri,
+  });
+  const theirDisp = photoCountryDisplay(theirs.captureCountryCode, {
+    sampleUri: theirsUri,
+  });
   return (
     <View style={styles.photosRow}>
       <View style={styles.photoCol}>
@@ -935,7 +937,7 @@ function PhotoPair({
           transitionMs={0}
         />
         <Text style={[styles.photoLabel, { color: colors.mutedForeground }]}>
-          yours
+          {myDisp.flag} yours
         </Text>
       </View>
       <Icon name="arrow-right" size={18} color={colors.mutedForeground} />
@@ -947,7 +949,7 @@ function PhotoPair({
           transitionMs={0}
         />
         <Text style={[styles.photoLabel, { color: colors.mutedForeground }]}>
-          theirs
+          {theirDisp.flag} theirs
         </Text>
       </View>
     </View>

@@ -187,11 +187,8 @@ export function EchoFlash({
   });
 
   const timeTier = getTimeTier(myPhotoUploadedAt, theirPhotoMinutesAgo);
-  const myDisplay = photoCountryDisplay(myCaptureCountryCode, myCountryCode);
-  const theirDisplay = photoCountryDisplay(
-    theirCaptureCountryCode,
-    theirCountryCode,
-  );
+  const myDisplay = photoCountryDisplay(myCaptureCountryCode);
+  const theirDisplay = photoCountryDisplay(theirCaptureCountryCode);
   const geoTier = getGeoTierForPhotos(
     myCaptureCountryCode,
     theirCaptureCountryCode,

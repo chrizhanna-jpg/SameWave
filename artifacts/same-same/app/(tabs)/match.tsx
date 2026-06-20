@@ -84,8 +84,7 @@ import {
   stopIfLease,
 } from "@/utils/audio";
 import { sampleMatchStats } from "@/utils/sampleStats";
-import { flagFor, nameFor } from "@/data/countries";
-import { photoCountryDisplay, displayCountryCode } from "@/utils/photoCountry";
+import { photoCountryDisplay } from "@/utils/photoCountry";
 import { resolveMyPhotoDisplayUri, pickVoterPhotoBackendId, serverPhotoImageUrl } from "@/utils/photoDisplayUri";
 import { stopWavefireAmbience } from "@/utils/wavefireAmbience";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
@@ -519,8 +518,11 @@ export default function SwipeScreen() {
       : undefined;
 
   const myPhotoDisplay = React.useMemo(
-    () => photoCountryDisplay(todaysPhoto?.captureCountryCode, myCountryCode),
-    [todaysPhoto?.captureCountryCode, myCountryCode],
+    () =>
+      photoCountryDisplay(todaysPhoto?.captureCountryCode, {
+        sampleUri: todaysPhoto?.uri,
+      }),
+    [todaysPhoto?.captureCountryCode, todaysPhoto?.uri],
   );
 
   // User's photo is LOCKED for the session — only changes when they upload a new one
@@ -710,9 +712,7 @@ export default function SwipeScreen() {
             c.captureCountryCode.length === 2
               ? c.captureCountryCode.toUpperCase()
               : undefined;
-          const code = (
-            displayCountryCode(c.captureCountryCode, c.countryCode) ?? "ZZ"
-          ).toUpperCase();
+          const disp = photoCountryDisplay(capture);
           const minutesAgo = Math.max(
             1,
             Math.round((Date.now() - new Date(c.createdAt).getTime()) / 60000),
@@ -721,9 +721,9 @@ export default function SwipeScreen() {
           return {
             id: `live-${c.id}`,
             uri: c.uri,
-            country: nameFor(code) ?? "Somewhere",
-            countryCode: code,
-            countryFlag: flagFor(code),
+            country: disp.name,
+            countryCode: disp.code ?? "",
+            countryFlag: disp.flag,
             captureCountryCode: capture,
             theme: c.theme || activeTheme,
             minutesAgo,
@@ -802,11 +802,10 @@ export default function SwipeScreen() {
   const [theirPhoto, setTheirPhoto] = useState(initial?.photo ?? PLACEHOLDER_PHOTO);
   const theirPhotoDisplay = React.useMemo(
     () =>
-      photoCountryDisplay(
-        theirPhoto.captureCountryCode,
-        theirPhoto.countryCode,
-      ),
-    [theirPhoto.captureCountryCode, theirPhoto.countryCode],
+      photoCountryDisplay(theirPhoto.captureCountryCode, {
+        sampleUri: theirPhoto.uri,
+      }),
+    [theirPhoto.captureCountryCode, theirPhoto.uri],
   );
   const [matchedTheme, setMatchedTheme] = useState<string>(initial?.matchedTheme ?? "");
   const [sharedTags, setSharedTags] = useState<string[]>(initial?.sharedTags ?? []);
@@ -1230,10 +1229,12 @@ export default function SwipeScreen() {
         // Build a match record for BOTH verdicts so the user can revisit
         // and flip a previous swipe from My Journey. Stats / countries /
         // badges only count "same" — the context handles that branching.
-        const myDisp = photoCountryDisplay(
-          todaysPhoto?.captureCountryCode,
-          myCountryCode,
-        );
+        const myDisp = photoCountryDisplay(todaysPhoto?.captureCountryCode, {
+          sampleUri: todaysPhoto?.uri,
+        });
+        const theirDisp = photoCountryDisplay(snapshotPhoto.captureCountryCode, {
+          sampleUri: snapshotPhoto.uri,
+        });
         const match: Match = {
           id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
           myPhoto: snapshotMyPhoto,
@@ -1241,9 +1242,9 @@ export default function SwipeScreen() {
           myCountry: myDisp.name,
           myCountryCode: myDisp.code,
           myCountryFlag: myDisp.flag,
-          theirCountry: snapshotPhoto.country,
-          theirCountryFlag: snapshotPhoto.countryFlag,
-          theirCountryCode: snapshotPhoto.countryCode,
+          theirCountry: theirDisp.name,
+          theirCountryFlag: theirDisp.flag,
+          theirCountryCode: theirDisp.code ?? "",
           myCaptureCountryCode: todaysPhoto?.captureCountryCode,
           theirCaptureCountryCode: snapshotPhoto.captureCountryCode,
           similarityScore: 0,
@@ -1740,10 +1741,7 @@ export default function SwipeScreen() {
                         c.captureCountryCode.length === 2
                           ? c.captureCountryCode.toUpperCase()
                           : undefined;
-                      const code = (
-                        displayCountryCode(c.captureCountryCode, c.countryCode) ??
-                        "ZZ"
-                      ).toUpperCase();
+                      const disp = photoCountryDisplay(capture);
                       const minutesAgo = Math.max(
                         1,
                         Math.round(
@@ -1755,9 +1753,9 @@ export default function SwipeScreen() {
                       return {
                         id: `live-${c.id}`,
                         uri: c.uri,
-                        country: nameFor(code) ?? "Somewhere",
-                        countryCode: code,
-                        countryFlag: flagFor(code),
+                        country: disp.name,
+                        countryCode: disp.code ?? "",
+                        countryFlag: disp.flag,
                         captureCountryCode: capture,
                         theme: c.theme || activeTheme,
                         minutesAgo,

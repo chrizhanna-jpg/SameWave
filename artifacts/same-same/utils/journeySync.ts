@@ -28,14 +28,8 @@ export function mapServerJourneyToMatch(
 ): Match {
   const img = (id: string) =>
     apiOrigin ? serverPhotoImageUrlAtOrigin(id, apiOrigin) : serverPhotoImageUrl(id);
-  const myDisp = photoCountryDisplay(
-    row.myCaptureCountryCode,
-    row.myCountryCode,
-  );
-  const theirDisp = photoCountryDisplay(
-    row.theirCaptureCountryCode,
-    row.theirCountryCode,
-  );
+  const myDisp = photoCountryDisplay(row.myCaptureCountryCode);
+  const theirDisp = photoCountryDisplay(row.theirCaptureCountryCode);
   const myPhoto = row.myPhotoId ? img(row.myPhotoId) : "";
   const theirPhoto = row.theirPhotoActive ? img(row.theirPhotoId) : "";
 

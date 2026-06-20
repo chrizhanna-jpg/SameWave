@@ -1,4 +1,5 @@
 import React from "react";
+import { SpiralIcon } from "@/components/SpiralIcon";
 import { WaveIcon, WaveGlyphIcon } from "@/components/WaveIcon";
 import {
   AlertCircle,
@@ -86,6 +87,7 @@ const ICONS: Record<string, IconComponent | LucideIcon> = {
   "refresh-cw": RefreshCw,
   "rotate-ccw": RotateCcw,
   share: Share2,
+  spiral: SpiralIcon,
   star: Star,
   user: User,
   volume2: Volume2,

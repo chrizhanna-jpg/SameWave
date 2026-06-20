@@ -111,9 +111,12 @@ export default function MatchHistoryScreen() {
   // multi-statement map callbacks (const + return) can trip Babel's
   // JSX parser during EAS export.
   const renderRippleRow = (match: Match) => {
-    const myFlag =
-      match.myCountryFlag ??
-      photoCountryDisplay(match.myCaptureCountryCode, match.myCountryCode).flag;
+    const myFlag = photoCountryDisplay(match.myCaptureCountryCode, {
+      sampleUri: match.myPhoto,
+    }).flag;
+    const theirDisp = photoCountryDisplay(match.theirCaptureCountryCode, {
+      sampleUri: match.theirPhoto,
+    });
     const openReveal = (action?: "share" | "paywall") => {
       Haptics.selectionAsync();
       router.push({
@@ -144,14 +147,12 @@ export default function MatchHistoryScreen() {
               size={12}
               color={colors.mutedForeground}
             />
-            <Text style={styles.matchFlag}>
-              {match.theirCountryFlag}
-            </Text>
+            <Text style={styles.matchFlag}>{theirDisp.flag}</Text>
           </View>
           <Text
             style={[styles.matchCountry, { color: colors.foreground }]}
           >
-            {match.theirCountry}
+            {theirDisp.name}
           </Text>
           <MatchTierChips match={match} myCountryCode={myCountryCode} />
 
@@ -370,12 +371,10 @@ export default function MatchHistoryScreen() {
                   const stamp = echo.mutualAt
                     ? new Date(echo.mutualAt)
                     : new Date(echo.createdAt);
-                  const myFlag =
-                    echo.mine.countryFlag ??
-                    photoCountryDisplay(
-                      echo.mine.captureCountryCode,
-                      echo.mine.countryCode,
-                    ).flag;
+                  const myFlag = photoCountryDisplay(
+                    echo.mine.captureCountryCode,
+                    { sampleUri: echo.mine.uri },
+                  ).flag;
                   return (
                     <TouchableOpacity
                       key={echo.id}
@@ -409,7 +408,9 @@ export default function MatchHistoryScreen() {
                             color={colors.mutedForeground}
                           />
                           <Text style={styles.matchFlag}>
-                            {echo.theirs.countryFlag}
+                            {photoCountryDisplay(echo.theirs.captureCountryCode, {
+                              sampleUri: echo.theirs.uri,
+                            }).flag}
                           </Text>
                         </View>
                         <Text
@@ -418,7 +419,9 @@ export default function MatchHistoryScreen() {
                             { color: colors.foreground },
                           ]}
                         >
-                          {echo.theirs.country}
+                          {photoCountryDisplay(echo.theirs.captureCountryCode, {
+                            sampleUri: echo.theirs.uri,
+                          }).name}
                         </Text>
                         <Text
                           style={[

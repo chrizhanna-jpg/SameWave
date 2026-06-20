@@ -21,6 +21,7 @@ import * as Sharing from "expo-sharing";
 import { captureRef } from "react-native-view-shot";
 import { Icon } from "@/components/Icon";
 import { MicBadge } from "@/components/MicBadge";
+import { AudioMuteButton } from "@/components/AudioMuteButton";
 import { ConnectionAtlasShareCard } from "@/components/ConnectionAtlasShareCard";
 import { SharePhotoCardPoster } from "@/components/SharePhotoCardPoster";
 import {
@@ -183,18 +184,21 @@ export default function EchoPairScreen() {
           the screen header read as repetition. The flex spacer keeps
           the close + share buttons pinned to the edges. */}
       <View style={{ flex: 1 }} />
-      <TouchableOpacity
-        onPress={handleShare}
-        disabled={!pair || sharing}
-        style={[
-          styles.iconBtn,
-          { borderColor: colors.border, opacity: pair ? 1 : 0.4 },
-        ]}
-        hitSlop={8}
-        accessibilityLabel="Share"
-      >
-        <Icon name="share" size={18} color={colors.foreground} />
-      </TouchableOpacity>
+      <View style={styles.headerActions}>
+        <AudioMuteButton />
+        <TouchableOpacity
+          onPress={handleShare}
+          disabled={!pair || sharing}
+          style={[
+            styles.iconBtn,
+            { borderColor: colors.border, opacity: pair ? 1 : 0.4 },
+          ]}
+          hitSlop={8}
+          accessibilityLabel="Share"
+        >
+          <Icon name="share" size={18} color={colors.foreground} />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 
@@ -479,6 +483,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   headerTitle: {
     flex: 1,

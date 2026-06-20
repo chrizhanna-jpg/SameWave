@@ -113,10 +113,7 @@ export default function MyPhotosScreen() {
         ) : (
           myPhotos.map((photo, i) => {
             const hasAudio = !!photo.customAudioUrl;
-            const loc = photoCountryDisplay(
-              photo.captureCountryCode,
-              photo.declaredCountryCode ?? myCountryCode,
-            );
+            const loc = photoCountryDisplay(photo.captureCountryCode);
             const rowKey = `${photo.uri}-${i}`;
             const rowStyle = [
               styles.photoRow,

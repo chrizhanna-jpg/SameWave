@@ -30,6 +30,7 @@ import {
   resolveMyPhotoDisplayUri,
   serverPhotoImageUrl,
 } from "@/utils/photoDisplayUri";
+import { matchCountryFieldsFromCapture, photoCountryDisplay } from "@/utils/photoCountry";
 import {
   hydrateVoterPhotoMap,
   importVoterPhotosFromJourney,
@@ -663,8 +664,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setState((prev) => {
       let changed = false;
       const matches = prev.matches.map((m) => {
-        const next = enrichMatchMyPhotoFields(m, prev.myPhotos);
-        if (next.myPhoto !== m.myPhoto || next.myPhotoId !== m.myPhotoId) {
+        const withCountry = { ...m, ...matchCountryFieldsFromCapture(m) };
+        const next = enrichMatchMyPhotoFields(withCountry, prev.myPhotos);
+        if (
+          next.myPhoto !== m.myPhoto ||
+          next.myPhotoId !== m.myPhotoId ||
+          next.myCountry !== m.myCountry ||
+          next.theirCountry !== m.theirCountry ||
+          next.myCountryFlag !== m.myCountryFlag ||
+          next.theirCountryFlag !== m.theirCountryFlag
+        ) {
           changed = true;
           return next;
         }
@@ -785,7 +794,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         );
         const hydratedPhotos = migratedPhotos.map(hydrateMyPhotoUri);
         const enrichedMatches = matches.map((m) =>
-          enrichMatchMyPhotoFields(m, hydratedPhotos),
+          enrichMatchMyPhotoFields(
+            { ...m, ...matchCountryFieldsFromCapture(m) },
+            hydratedPhotos,
+          ),
         );
         // Expire any pending requests whose 48h window has passed.
         const now = Date.now();
@@ -880,11 +892,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   ): { matchedCountries: MatchedCountry[]; badges: Badge[] } => {
     const byCode = new Map<string, MatchedCountry>();
     for (const m of confirmed) {
-      if (!byCode.has(m.theirCountryCode)) {
-        byCode.set(m.theirCountryCode, {
-          code: m.theirCountryCode,
-          name: m.theirCountry,
-          flag: m.theirCountryFlag,
+      const their = photoCountryDisplay(m.theirCaptureCountryCode, {
+        sampleUri: m.theirPhoto,
+      });
+      if (!their.code) continue;
+      if (!byCode.has(their.code)) {
+        byCode.set(their.code, {
+          code: their.code,
+          name: their.name,
+          flag: their.flag,
           matchedAt: m.timestamp,
         });
       }

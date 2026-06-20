@@ -70,7 +70,7 @@ export const WAVES_TAB = {
   wavesAroundEmpty: "No Waves from others yet. Check back soon.",
   ripplesReceivedTitle: "Ripples Received",
   ripplesReceivedSub:
-    "Someone felt the same about your moment — Ripple back if you agree it's truly alike.",
+    "Someone felt the same about your moment — Ripple back if you agree it's truly alike, to make a Wave.",
   wavesCaughtTitle: "Waves Caught",
   wavesCaughtSub:
     "Waves you made by Rippling back, and Waves made when someone Rippled back to you.",
@@ -78,9 +78,9 @@ export const WAVES_TAB = {
   wavesCaughtTheyRippledBack: "They rippled back to you",
   ripplesSentTitle: "Ripples Sent",
   ripplesSentSub: "Ripples you sent from the match deck.",
-  emptyTitle: "No Ripples or Waves yet",
+  emptyTitle: "No ripples received yet.",
   emptyBody:
-    "When someone sends you a Ripple, it appears here. Ripple back to catch a Wave.",
+    "When someone sends you a Ripple, it appears here. Ripple back to make a Wave.",
   pendingActionLabel: "Make a Wave",
   sectionReceivedChip: "Ripples Received",
   sectionCaughtChip: "Waves Caught",

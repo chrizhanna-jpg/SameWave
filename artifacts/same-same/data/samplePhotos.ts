@@ -11,7 +11,7 @@ export interface SamplePhoto {
   theme: string;
   minutesAgo: number;
   tags: string[];
-  /** GPS country at capture — geo ripples require this on both sides. */
+  /** Curated demo country (ISO2) — treated as capture for stock photo display. */
   captureCountryCode?: string;
   /**
    * Visual-form / composition tags (circles, vertical, layered…). Used
@@ -694,7 +694,11 @@ function enrichLaunchStockMetadata(photo: SamplePhoto): SamplePhoto {
   const uri = photo.uri.includes("images.unsplash.com")
     ? normalizeUnsplashUri(photo.uri)
     : photo.uri;
-  return { ...photo, uri, musicGenre, subjects };
+  const code = photo.countryCode?.trim().toUpperCase();
+  const captureCountryCode =
+    photo.captureCountryCode ??
+    (code && code.length === 2 ? code : undefined);
+  return { ...photo, uri, musicGenre, subjects, captureCountryCode };
 }
 
 for (let i = 0; i < SAMPLE_PHOTOS.length; i++) {
@@ -1074,6 +1078,7 @@ export function generateSyntheticCandidates(
       country: c.country,
       countryCode: c.code,
       countryFlag: c.flag,
+      captureCountryCode: c.code,
       theme: bucketKey,
       minutesAgo,
       tags: synthTags,

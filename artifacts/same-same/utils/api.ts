@@ -715,10 +715,7 @@ function decorateSide(side: {
   customAudioBase64?: string | null;
   customAudioMime?: string | null;
 }): ServerEchoSide {
-  const display = photoCountryDisplay(
-    side.captureCountryCode,
-    side.countryCode,
-  );
+  const display = photoCountryDisplay(side.captureCountryCode);
   const audio =
     side.customAudioBase64 && side.customAudioMime
       ? `data:${side.customAudioMime};base64,${side.customAudioBase64}`
@@ -1996,15 +1993,11 @@ function enrichExploreWithViewerPhotos(
   viewerPhotos: ViewerExplorePhoto[],
   viewerCountryCode?: string,
 ): AtlasFireMoment[] {
-  const profileViewer = (viewerCountryCode ?? "").trim().toUpperCase();
   const primary = viewerPhotos[0];
   if (!primary?.uri?.trim()) return moments;
 
-  const viewerDisplay = photoCountryDisplay(
-    primary.captureCountryCode,
-    profileViewer,
-  );
-  const viewer = viewerDisplay.code ?? profileViewer;
+  const viewerDisplay = photoCountryDisplay(primary.captureCountryCode);
+  const viewer = viewerDisplay.code ?? "";
 
   const primaryBackendId = primary.backendId?.trim();
   const viewerUriKeys = new Set(
@@ -2093,13 +2086,10 @@ export function buildLocalMatchExploreMoments(
       cluster.displayTheme ||
       "";
     const tags = [...(m.theirTags ?? []), ...(m.sharedTags ?? [])].filter(Boolean);
-    const myFromPhoto = photoCountryDisplay(
-      m.myCaptureCountryCode,
-      m.myCountryCode ?? viewer,
-    );
+    const myFromPhoto = photoCountryDisplay(m.myCaptureCountryCode);
     const from =
       myFromPhoto.code ??
-      (viewer && /^[A-Z]{2}$/.test(viewer) ? viewer : their);
+      (their && /^[A-Z]{2}$/.test(their) ? their : "");
 
     const participants: AtlasFireParticipant[] = [];
     if (myUri) {

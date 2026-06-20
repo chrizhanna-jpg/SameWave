@@ -32,6 +32,7 @@ import {
   stopIfLease,
 } from "@/utils/audio";
 import { CountryReveal } from "@/components/CountryReveal";
+import { AudioMuteButton } from "@/components/AudioMuteButton";
 import { ConnectSheet } from "@/components/ConnectSheet";
 import { ConnectionAtlasShareCard } from "@/components/ConnectionAtlasShareCard";
 import { SharePhotoCardPoster } from "@/components/SharePhotoCardPoster";
@@ -43,7 +44,7 @@ import { nameFor } from "@/data/countries";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
 import { formatDualWaveThemes } from "@/utils/shareThemeLabels";
 import { getGeoTierForPhotos, getTimeTier } from "@/utils/celebrations";
-import { photoCountryDisplay } from "@/utils/photoCountry";
+import { photoCountryDisplay, resolveCaptureCountryCode } from "@/utils/photoCountry";
 import { commonInterests, tagEmoji, tagLabel } from "@/utils/interests";
 import type { Match } from "@/context/AppContext";
 import {
@@ -383,7 +384,7 @@ export default function RevealScreen() {
             <Icon name="x" size={20} color={colors.foreground} />
           </TouchableOpacity>
           <View style={{ flex: 1 }} />
-          <View style={{ width: 40 }} />
+          <AudioMuteButton />
         </View>
         <View style={styles.matchMissingCenter}>
           <Text style={[styles.matchMissingText, { color: colors.mutedForeground }]}>
@@ -396,34 +397,34 @@ export default function RevealScreen() {
     );
   }
 
-  const isNewCountry = !matchedCountries.some(
-    (c) => c.code === match.theirCountryCode
+  const theirCap = resolveCaptureCountryCode(
+    match.theirCaptureCountryCode,
+    match.theirPhoto,
   );
+  const theirDisp = photoCountryDisplay(theirCap);
+  const isNewCountry =
+    !!theirDisp.code &&
+    !matchedCountries.some((c) => c.code === theirDisp.code);
 
   // Tiered celebrations: closer in time = bigger deal.
   const timeTier = getTimeTier(match.myPhotoUploadedAt, match.theirPhotoMinutesAgo);
-  // Geography tier — requires capture-time GPS on both photos.
-  const geoTier = getGeoTierForPhotos(
-    match.myCaptureCountryCode,
-    match.theirCaptureCountryCode,
+  const myPhotoForMatch = myPhotos.find((p) => p.uri === match.myPhoto);
+  const myCap = resolveCaptureCountryCode(
+    match.myCaptureCountryCode ?? myPhotoForMatch?.captureCountryCode,
+    match.myPhoto,
   );
+  // Geography tier — capture GPS or curated stock demo country.
+  const geoTier = getGeoTierForPhotos(myCap, theirCap);
   const isCelebrated = timeTier.rank >= 1; // anything from week up
 
   const myUploadTheme =
-    myPhotos.find((p) => p.uri === match.myPhoto)?.theme ?? match.theme;
+    myPhotoForMatch?.theme ?? match.theme;
   const { title: themeTitle, emoji: themeEmoji } = formatDualWaveThemes(
     myUploadTheme,
     match.theirActualTheme ?? match.theme,
   );
-  const myPhotoForMatch = myPhotos.find((p) => p.uri === match.myPhoto);
-  const myDisplay = photoCountryDisplay(
-    match.myCaptureCountryCode ?? myPhotoForMatch?.captureCountryCode,
-    match.myCountryCode ?? myCountryCode,
-  );
-  const theirDisplay = photoCountryDisplay(
-    match.theirCaptureCountryCode,
-    match.theirCountryCode,
-  );
+  const myDisplay = photoCountryDisplay(myCap);
+  const theirDisplay = theirDisp;
 
   // The "same X" chips that summarise WHY this match happened. These ride
   // inside the shareable card so the social-media image makes immediate
@@ -456,7 +457,7 @@ export default function RevealScreen() {
             in the screen header read as repetition. The empty spacer
             keeps the close button left-aligned and balanced. */}
         <View style={{ flex: 1 }} />
-        <View style={{ width: 40 }} />
+        <AudioMuteButton />
       </View>
 
       <ScrollView
@@ -809,8 +810,8 @@ export default function RevealScreen() {
         mode="send"
         defaultPlatform={myDefaultPlatform}
         defaultHandle={myDefaultHandle}
-        theirCountry={match.theirCountry}
-        theirCountryFlag={match.theirCountryFlag}
+        theirCountry={theirDisplay.name}
+        theirCountryFlag={theirDisplay.flag}
       />
     </View>
   );

@@ -36,6 +36,7 @@ function TabIcon({
   iconScale = 1,
   iconOffsetY = 0,
   showActiveDot = true,
+  dotSize = 5,
 }: {
   name: string;
   color: string;
@@ -48,26 +49,15 @@ function TabIcon({
   iconScale?: number;
   iconOffsetY?: number;
   showActiveDot?: boolean;
+  dotSize?: number;
 }) {
-  const iconBlock = (
-    <>
-      {showActiveDot ? (
-        <View
-          style={[
-            tabIconStyles.dot,
-            {
-              backgroundColor: focused ? activeColor : "transparent",
-            },
-          ]}
-        />
-      ) : null}
-      <Icon
-        name={name as never}
-        size={focused ? sizeFocused : sizeUnfocused}
-        color={color}
-        glyphFit={glyphFit}
-      />
-    </>
+  const iconEl = (
+    <Icon
+      name={name as never}
+      size={focused ? sizeFocused : sizeUnfocused}
+      color={color}
+      glyphFit={glyphFit}
+    />
   );
 
   return (
@@ -77,6 +67,20 @@ function TabIcon({
         wrapWidth != null ? { width: wrapWidth } : null,
       ]}
     >
+      {showActiveDot ? (
+        <View
+          style={[
+            tabIconStyles.dot,
+            {
+              width: dotSize,
+              height: dotSize,
+              borderRadius: dotSize / 2,
+              marginBottom: dotSize >= 5 ? 4 : 3,
+              backgroundColor: focused ? activeColor : "transparent",
+            },
+          ]}
+        />
+      ) : null}
       {iconScale !== 1 || iconOffsetY !== 0 ? (
         <View
           style={{
@@ -87,10 +91,10 @@ function TabIcon({
             alignItems: "center",
           }}
         >
-          {iconBlock}
+          {iconEl}
         </View>
       ) : (
-        iconBlock
+        iconEl
       )}
     </View>
   );
@@ -104,9 +108,6 @@ const tabIconStyles = StyleSheet.create({
     paddingTop: 2,
   },
   dot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
     marginBottom: 4,
   },
 });
@@ -273,11 +274,9 @@ export default function TabLayout() {
               color={color}
               focused={focused}
               activeColor={colors.primary}
-              iconScale={2.2}
-              iconOffsetY={2}
-              wrapWidth={56}
               glyphFit="square"
-              showActiveDot={false}
+              iconScale={2}
+              dotSize={5}
             />
           ),
         }}
@@ -288,10 +287,11 @@ export default function TabLayout() {
           title: "Atlas",
           tabBarIcon: ({ color, focused }) => (
             <TabIcon
-              name="map"
+              name="spiral"
               color={color}
               focused={focused}
               activeColor={colors.primary}
+              iconScale={1.1}
             />
           ),
         }}
@@ -317,7 +317,7 @@ export default function TabLayout() {
           title: "My Path",
           tabBarIcon: ({ color, focused }) => (
             <TabIcon
-              name="globe"
+              name="map"
               color={color}
               focused={focused}
               activeColor={colors.primary}

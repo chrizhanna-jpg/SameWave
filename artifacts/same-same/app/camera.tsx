@@ -33,6 +33,7 @@ import {
 import { analyzePhoto, reactivateMyPhoto, uploadPhoto } from "@/utils/api";
 import { requestAtlasRefresh } from "@/utils/atlasHub";
 import { detectPhotoOrigin, type PhotoSource } from "@/utils/photoOrigin";
+import { detectCountryFromPhotoExif } from "@/utils/gpsCountry";
 import { photoCountryDisplay } from "@/utils/photoCountry";
 import {
   findMyPhotoByUri,
@@ -643,8 +644,7 @@ export default function CameraScreen() {
   ) => {
     const verdict = detectPhotoOrigin(asset, source);
     resetForNewPhoto();
-    captureCountryRef.current =
-      source === "camera" ? captureCountryCode : undefined;
+    captureCountryRef.current = captureCountryCode;
     setIsAi(verdict.looksAi);
     if (verdict.looksAi) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -673,7 +673,11 @@ export default function CameraScreen() {
       exif: true,
     });
     if (!result.canceled && result.assets[0]) {
-      acceptPhoto(result.assets[0], "library");
+      const asset = result.assets[0];
+      const fromExif = await detectCountryFromPhotoExif(
+        asset.exif as Record<string, unknown> | null | undefined,
+      );
+      acceptPhoto(asset, "library", fromExif?.code);
     }
   };
 
@@ -703,6 +707,7 @@ export default function CameraScreen() {
       setCustomAudioUrl(photo.customAudioUrl);
     }
     setIsAi(photo.isAI === true);
+    captureCountryRef.current = photo.captureCountryCode;
   };
 
   const applyPostIntentSeed = useCallback(() => {
@@ -1660,10 +1665,7 @@ export default function CameraScreen() {
               >
                 {myPhotos.slice(0, 8).map((photo, i) => {
                   const displayUri = resolveMyPhotoDisplayUri(photo);
-                  const loc = photoCountryDisplay(
-                    photo.captureCountryCode,
-                    photo.declaredCountryCode ?? myCountryCode,
-                  );
+                  const loc = photoCountryDisplay(photo.captureCountryCode);
                   return (
                   <View key={photo.backendId ?? photo.uri ?? String(i)} style={styles.prevItem}>
                     <TouchableOpacity
