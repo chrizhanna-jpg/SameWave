@@ -310,6 +310,8 @@ export function EchoFlash({
 
         {themeTitle ? (
           <CelebrationMatchChips
+            countryName={theirDisplay.name}
+            countryFlag={theirDisplay.flag}
             themeTitle={themeTitle}
             themeEmoji={themeEmoji}
             timeTier={timeTier}

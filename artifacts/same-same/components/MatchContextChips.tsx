@@ -38,8 +38,6 @@ export function MatchContextChips({
   layout,
 }: MatchContextChipsProps) {
   const isShare = mode === "share";
-  const metaFill = onDark || isShare ? META_FILL_ON_DARK : META_FILL;
-  const metaBorder = onDark || isShare ? META_BORDER_ON_DARK : META_BORDER;
 
   const themeFont = layout
     ? Math.round(layout.chipThemeFont)
@@ -51,23 +49,38 @@ export function MatchContextChips({
     : isShare
       ? 17
       : 18;
-  const metaFont = layout ? layout.chipFont : 12;
-  const metaEmoji = layout ? layout.chipEmoji : 14;
-  const padH = layout?.chipPadH ?? 14;
-  const padV = layout?.chipPadV ?? 8;
+  const metaFont = layout ? layout.chipFont : mode === "flash" ? 14 : 12;
+  const metaEmoji = layout ? layout.chipEmoji : mode === "flash" ? 16 : 14;
+  const padH = layout?.chipPadH ?? (mode === "flash" ? 16 : 14);
+  const padV = layout?.chipPadV ?? (mode === "flash" ? 10 : 8);
   const padThemeV = layout?.chipThemePadV ?? padV + 2;
-  const minMetaH = layout?.chipMinH ?? 36;
+  const minMetaH = layout?.chipMinH ?? (mode === "flash" ? 42 : 36);
   const gap = layout?.gapXs ?? 6;
-  const rowGap = layout?.chipGap ?? 8;
+  const rowGap = layout?.chipGap ?? (mode === "flash" ? 10 : 8);
+
+  const metaFill =
+    onDark || isShare
+      ? META_FILL_ON_DARK
+      : mode === "flash"
+        ? "rgba(255, 255, 255, 0.96)"
+        : META_FILL;
+  const metaBorder =
+    onDark || isShare
+      ? META_BORDER_ON_DARK
+      : mode === "flash"
+        ? "rgba(0, 16, 24, 0.16)"
+        : META_BORDER;
 
   const metaPill = {
     paddingHorizontal: padH,
     paddingVertical: padV,
     borderRadius: layout?.radiusChip ?? 999,
-    borderWidth: layout?.chipBorder ?? 1,
+    borderWidth: mode === "flash" ? 1.5 : (layout?.chipBorder ?? 1),
     backgroundColor: metaFill,
     borderColor: metaBorder,
     minHeight: minMetaH,
+    flex: mode === "flash" ? 1 : undefined,
+    flexShrink: 1,
   };
 
   const themePill = isShare
@@ -122,6 +135,7 @@ export function MatchContextChips({
         style={[
           styles.metaRow,
           align === "left" && styles.metaRowLeft,
+          mode === "flash" && styles.metaRowFlash,
           { gap: rowGap },
         ]}
       >
@@ -165,9 +179,14 @@ const styles = StyleSheet.create({
   metaRowLeft: {
     justifyContent: "flex-start",
   },
+  metaRowFlash: {
+    alignSelf: "stretch",
+    width: "100%",
+  },
   pill: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     maxWidth: "100%",
     shadowColor: "#001018",
     shadowOffset: { width: 0, height: 1 },

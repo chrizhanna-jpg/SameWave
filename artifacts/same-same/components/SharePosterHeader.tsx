@@ -134,12 +134,14 @@ export function SharePosterTopSection({
 
       <SharePosterDivider layout={layout} />
 
-      <ShareMetaChips
-        layout={layout}
-        accentColor={accentColor}
-        timeTier={timeTier}
-        geoTier={geoTier}
-      />
+      <View style={topStyles.metaPanel}>
+        <ShareMetaChips
+          layout={layout}
+          accentColor={accentColor}
+          timeTier={timeTier}
+          geoTier={geoTier}
+        />
+      </View>
     </View>
   );
 }
@@ -182,5 +184,15 @@ const topStyles = StyleSheet.create({
     alignItems: "center",
     alignSelf: "stretch",
     width: "100%",
+  },
+  metaPanel: {
+    alignSelf: "stretch",
+    width: "100%",
+    backgroundColor: "rgba(255, 255, 255, 0.72)",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: SHARE_COLORS.chipBorder,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
   },
 });

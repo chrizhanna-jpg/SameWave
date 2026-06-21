@@ -39,11 +39,10 @@ import {
   buildLocalRippleConnections,
   mergeAtlasConnectionsById,
 } from "@/utils/atlasLocalRipples";
+import { isServerHeldAtlasConnection } from "@/utils/atlasWavefire";
 import {
   loadAtlasCache,
-  loadRipplefireLocalCache,
   saveAtlasCache,
-  saveRipplefireLocalCache,
 } from "@/utils/syncCache";
 import { markTabVisited } from "@/utils/tabVisits";
 import { stopWavefireAmbience, startWavefireAmbience } from "@/utils/wavefireAmbience";
@@ -82,7 +81,6 @@ export default function AtlasScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [hasCachedData, setHasCachedData] = useState(false);
-  const [localRippleArcs, setLocalRippleArcs] = useState<AtlasConnection[]>([]);
   const [atlasTabFocused, setAtlasTabFocused] = useState(false);
   const atlasHasLoadedOnceRef = useRef(false);
   const atlasFocusedRef = useRef(false);
@@ -154,12 +152,8 @@ export default function AtlasScreen() {
 
   const globeConnections = useMemo(
     () =>
-      mergeAtlasConnectionsById(
-        connections,
-        localRippleArcs,
-        liveLocalRipples,
-      ),
-    [connections, localRippleArcs, liveLocalRipples],
+      mergeAtlasConnectionsById(connections, liveLocalRipples),
+    [connections, liveLocalRipples],
   );
 
   const runConnectivityDiagnostics = useCallback(async () => {
@@ -237,33 +231,23 @@ export default function AtlasScreen() {
   }, [hasCachedData, hasHydrated]);
 
   useEffect(() => {
-    if (!hasHydrated) return;
-    if (globeConnections.length === 0 && summary.length === 0) return;
-    void saveAtlasCache(summary, globeConnections);
-  }, [globeConnections, summary, hasHydrated]);
-
-  useEffect(() => {
     let alive = true;
-    void Promise.all([loadAtlasCache(), loadRipplefireLocalCache()]).then(
-      ([cached, localRipples]) => {
+    void loadAtlasCache().then((cached) => {
         if (!alive) return;
-        if (localRipples.length > 0) {
-          setLocalRippleArcs(localRipples);
-        }
         if (!cached) return;
+        const serverCached = cached.connections.filter(isServerHeldAtlasConnection);
         setSummary((prev) =>
           prev.length > 0 ? prev : cached.countries,
         );
         setConnections((prev) =>
-          mergeAtlasConnectionsById(prev, cached.connections),
+          mergeAtlasConnectionsById(prev, serverCached),
         );
-        if (cached.countries.length > 0 || cached.connections.length > 0) {
+        if (cached.countries.length > 0 || serverCached.length > 0) {
           setHasCachedData(true);
           atlasHasLoadedOnceRef.current = true;
           setLoading(false);
         }
-      },
-    );
+      });
     return () => {
       alive = false;
     };
@@ -302,17 +286,15 @@ export default function AtlasScreen() {
     return () => sub.remove();
   }, [load]);
 
-  // Persist merged server + local ripple arcs so Ripplefire survives refresh/update.
+  // Persist server atlas snapshot only — Ripplefire rings are shared across users.
   useEffect(() => {
     if (!hasHydrated) return;
-    const ripples = globeConnections.filter((c) => c.kind === "ripple");
-    if (ripples.length === 0) return;
+    if (connections.length === 0 && summary.length === 0) return;
     const t = setTimeout(() => {
-      void saveRipplefireLocalCache(ripples);
-      void saveAtlasCache(summary, globeConnections);
+      void saveAtlasCache(summary, connections);
     }, 400);
     return () => clearTimeout(t);
-  }, [hasHydrated, globeConnections, summary]);
+  }, [hasHydrated, connections, summary]);
 
   const outerPad = 16;
   const topPadding = Platform.OS === "web" ? 56 : insets.top;
@@ -437,6 +419,7 @@ export default function AtlasScreen() {
             style={styles.globeFlex}
             width={width - outerPad * 2}
             connections={globeConnections}
+            fireClusterConnections={connections}
             countries={summary}
             isSignedIn={!!isSignedIn}
             isTabFocused={atlasTabFocused}

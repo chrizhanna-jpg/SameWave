@@ -325,9 +325,9 @@ export function MatchFlash({
           </Animated.View>
         </View>
 
-        <Text style={styles.country}>{theirDisplay.name}</Text>
-
         <CelebrationMatchChips
+          countryName={theirDisplay.name}
+          countryFlag={theirDisplay.flag}
           themeTitle={themeTitle}
           themeEmoji={themeEmoji}
           timeTier={timeTier}
@@ -399,7 +399,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   thumbWrap: {
     width: 100,
@@ -440,14 +440,6 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
     backgroundColor: "rgba(0,16,24,0.55)",
-  },
-  country: {
-    fontSize: 26,
-    fontWeight: "800",
-    color: "#001018",
-    marginBottom: 14,
-    textAlign: "center",
-    letterSpacing: 0.3,
   },
   ctaWrap: {
     width: "100%",

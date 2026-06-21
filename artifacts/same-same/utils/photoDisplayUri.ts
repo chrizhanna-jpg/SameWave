@@ -262,14 +262,33 @@ export function enrichMatchMyPhotoFields(
   return { ...match, myPhotoId: bid, myPhoto: server };
 }
 
+export type ResolveMyPhotoDisplayOptions = {
+  /**
+   * On Ripple, keep the in-app camera `file://` capture visible while
+   * upload sync runs — switching straight to the authed server URL
+   * flashes a loading spinner and makes the user's photo appear to vanish.
+   */
+  preferLocalCapture?: boolean;
+};
+
 /**
  * Prefer the durable server image when we have a backend id — local
  * `file://` captures can be purged after the app sits in background.
  */
-export function resolveMyPhotoDisplayUri(photo: Pick<MyPhoto, "uri" | "backendId">): string {
+export function resolveMyPhotoDisplayUri(
+  photo: Pick<MyPhoto, "uri" | "backendId">,
+  options?: ResolveMyPhotoDisplayOptions,
+): string {
+  const local = photo.uri?.trim() ?? "";
+  if (
+    options?.preferLocalCapture &&
+    (local.startsWith("file:") || local.startsWith("content:"))
+  ) {
+    return local;
+  }
   const bid = photo.backendId?.trim();
   if (bid) return serverPhotoImageUrl(bid);
-  return photo.uri?.trim() ?? "";
+  return local;
 }
 
 /** Backfill persisted rows that stripped `file://` but kept backendId. */

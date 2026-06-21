@@ -4,6 +4,12 @@ import { postDebugSessionLog } from "@/utils/debugSessionLog";
 import type { ServerJourneyMatch } from "@/utils/journeySync";
 import { resolveMatchPhotoUris } from "@/utils/matchPhotoSnapshot";
 import { photoKey } from "@/utils/photoKey";
+import { clusterThemesAlign } from "@/utils/atlasWavefire";
+import {
+  ATLAS_SOMEWHERE_ISO,
+  resolveTheirAtlasIso2,
+} from "@/utils/atlasLocalRipples";
+import { isThemeOnTopic, resolveChallengeThemeId } from "@/data/themeMatch";
 import {
   getPublicApiOrigin,
   getStagedProductionApiOrigin,
@@ -2038,23 +2044,6 @@ function enrichExploreWithViewerPhotos(
       return patched ?? p;
     });
 
-    const hasViewerTile = participants.some(
-      (p) => isViewerParticipant(p) && !!p.uri?.trim(),
-    );
-
-    if (
-      !hasViewerTile &&
-      viewer &&
-      (m.from === viewer || m.to === viewer)
-    ) {
-      const mine = viewerExploreParticipant(
-        primary,
-        viewer,
-        fallbackTheme,
-      );
-      if (mine) participants = [mine, ...participants];
-    }
-
     return { ...m, participants };
   });
 }
@@ -2082,8 +2071,14 @@ export function buildLocalMatchExploreMoments(
 
   for (const m of matches) {
     if (!matchIds.has(m.id) || m.verdict !== "same") continue;
-    const their = (m.theirCountryCode ?? "").trim().toUpperCase();
-    if (countrySet.size > 0 && their && !countrySet.has(their)) continue;
+    const their = resolveTheirAtlasIso2(m);
+    if (
+      countrySet.size > 0 &&
+      their !== ATLAS_SOMEWHERE_ISO &&
+      !countrySet.has(their)
+    ) {
+      continue;
+    }
     const stash = resolveMatchPhotoUris(m.id, {
       myPhoto: m.myPhoto ?? "",
       theirPhoto: m.theirPhoto ?? "",
@@ -2383,26 +2378,22 @@ async function exploreFallbackFromCountries(
   diag: AtlasFireExploreDiagnostics,
 ): Promise<AtlasFireMoment[]> {
   diag.fallback.attempted = true;
-  const themeHint = (cluster.displayTheme ?? "").trim().toLowerCase();
+  const themeHint = (cluster.displayTheme ?? "").trim();
   const moments: AtlasFireMoment[] = [];
   for (const code of cluster.countryCodes) {
+    if (code === ATLAS_SOMEWHERE_ISO) continue;
     const photos = await fetchAtlasCountryPhotos(code);
     let withUri = 0;
     let afterTheme = 0;
     for (const p of photos) {
       if (!p.uri) continue;
       withUri += 1;
-      if (themeHint.length >= 2) {
-        const pt = p.theme.toLowerCase();
-        const tagHit = (p.tags ?? []).some((t) => {
-          const x = t.toLowerCase();
-          return x.includes(themeHint) || themeHint.includes(x);
-        });
-        const themeHit =
-          pt.includes(themeHint) ||
-          themeHint.includes(pt) ||
-          tagHit;
-        if (!themeHit) continue;
+      if (
+        themeHint.length >= 2 &&
+        !isThemeOnTopic(themeHint, p.theme) &&
+        !(p.tags ?? []).some((t) => isThemeOnTopic(themeHint, t))
+      ) {
+        continue;
       }
       afterTheme += 1;
       moments.push({
@@ -2589,11 +2580,17 @@ export async function fetchAtlasFireExplore(
     return finish([], "Nothing to load for this cluster.");
   }
 
+  const exploreTheme = (() => {
+    const raw = (cluster?.displayTheme ?? "").trim();
+    if (!raw) return undefined;
+    return resolveChallengeThemeId(raw) || raw;
+  })();
+
   const exploreBody = {
     ids,
     kind: cluster?.kind,
-    countryCodes: cluster?.countryCodes,
-    theme: cluster?.displayTheme,
+    countryCodes: cluster?.countryCodes?.filter((c) => c !== ATLAS_SOMEWHERE_ISO),
+    theme: exploreTheme,
   };
 
   const bases = exploreApiBases();
@@ -2606,7 +2603,7 @@ export async function fetchAtlasFireExplore(
       diag.hints.push(`Retried explore on ${base}`);
     }
 
-    if (ids.length === 0) {
+    if (ids.length === 0 && !hasCluster) {
       break;
     }
 
@@ -2844,6 +2841,8 @@ export function flattenAtlasFireExplorePhotos(
     uriKey: string;
   } | null = null;
 
+  const clusterTheme = fallbackTheme.trim();
+
   const pushTile = (
     m: AtlasFireMoment,
     p: AtlasFireParticipant,
@@ -2851,9 +2850,19 @@ export function flattenAtlasFireExplorePhotos(
   ) => {
     const uriKey = photoKey(displayUri);
     if (!uriKey) return null;
+    const theme = p.theme.trim() || m.theme.trim() || fallbackTheme;
+    const isPairedRippleMoment =
+      m.id.startsWith("local-match-") || m.id.startsWith("local-wave-");
+    if (
+      clusterTheme &&
+      !isPairedRippleMoment &&
+      !clusterThemesAlign(clusterTheme, theme)
+    ) {
+      return null;
+    }
     return {
       key: `${m.id}:${uriKey}`,
-      theme: p.theme.trim() || m.theme.trim() || fallbackTheme,
+      theme,
       participant: { ...p, uri: displayUri },
       uriKey,
     };
@@ -2872,9 +2881,13 @@ export function flattenAtlasFireExplorePhotos(
       })
       .filter((x): x is NonNullable<typeof x> => x != null);
 
-    const counterparty = resolved.filter((r) => !r.isViewer);
-    if (counterparty[0]) {
-      const tile = pushTile(m, counterparty[0].participant, counterparty[0].displayUri);
+    const viewerInMoment = resolved.some((r) => r.isViewer);
+    const tilesForMoment = viewerInMoment
+      ? resolved.filter((r) => !r.isViewer).slice(0, 1)
+      : resolved;
+
+    for (const r of tilesForMoment) {
+      const tile = pushTile(m, r.participant, r.displayUri);
       if (tile && !seenUriKeys.has(tile.uriKey)) {
         seenUriKeys.add(tile.uriKey);
         counterpartyTiles.push(tile);

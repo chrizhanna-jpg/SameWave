@@ -1318,10 +1318,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           return p;
         }
         changed = true;
+        const localUri = p.uri?.trim() ?? "";
+        const keepLocalCapture =
+          localUri.startsWith("file:") || localUri.startsWith("content:");
         return {
           ...p,
           backendId: ack.backendId,
-          uri: serverPhotoImageUrl(ack.backendId),
+          uri: keepLocalCapture ? p.uri : serverPhotoImageUrl(ack.backendId),
           subjects: nextSubjects,
           theme: nextTheme,
           tags: nextTags,

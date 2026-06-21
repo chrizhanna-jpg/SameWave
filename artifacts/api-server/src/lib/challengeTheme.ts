@@ -216,3 +216,18 @@ export function themeExactMatchVariants(canonicalId: string): string[] {
 export function themeAdjacentIds(canonicalId: string): string[] {
   return (THEME_ADJACENCY[canonicalId] ?? []).filter((id) => id !== canonicalId);
 }
+
+/** LIKE needles for atlas explore when cluster theme is a tag or challenge label. */
+export function exploreThemeNeedles(themeHint: string): string[] {
+  const hint = themeHint.trim().toLowerCase();
+  if (hint.length < 2) return [];
+  const needles = new Set<string>([hint]);
+  const canonical = resolveChallengeThemeId(hint);
+  if (canonical) {
+    needles.add(canonical);
+    for (const v of themeExactMatchVariants(canonical)) {
+      needles.add(v.toLowerCase());
+    }
+  }
+  return [...needles].filter((n) => n.length >= 2);
+}

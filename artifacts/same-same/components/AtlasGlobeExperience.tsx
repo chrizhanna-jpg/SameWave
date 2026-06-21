@@ -116,6 +116,7 @@ import {
   detectRipplefireClusters,
   detectWavefireClusters,
   connectionsInFireWindow,
+  filterServerHeldAtlasConnections,
   orderWavefireRingCountryCodes,
   synthesizeRipplefireCluster,
   synthesizeWavefireCluster,
@@ -471,6 +472,8 @@ const WAVEFIRE_CHIP_SHADOW_IOS_ACTIVE = {
 interface Props {
   width: number;
   connections: AtlasConnection[];
+  /** Server echo rows — identical for every user; drives Ripplefire / Wavefire rings. */
+  fireClusterConnections?: AtlasConnection[];
   countries: AtlasCountry[];
   isSignedIn: boolean;
   /** False when another tab is focused — pauses Wavefire ambience. */
@@ -487,6 +490,7 @@ interface Props {
 export function AtlasGlobeExperience({
   width,
   connections,
+  fireClusterConnections,
   countries,
   isSignedIn,
   isTabFocused = true,
@@ -674,26 +678,31 @@ export function AtlasGlobeExperience({
     [connections],
   );
 
+  const serverHeld = useMemo(() => {
+    const raw = fireClusterConnections ?? connections;
+    return normalizeConnections(filterServerHeldAtlasConnections(raw));
+  }, [connections, fireClusterConnections]);
+
   const ripplefireClusters = useMemo(
     () =>
       detectRipplefireClusters(
-        normalized,
+        serverHeld,
         ATLAS_FIRE_WINDOW_MS,
         RIPPLEFIRE_MIN_EVENTS,
         RIPPLEFIRE_MIN_COUNTRIES,
       ),
-    [normalized],
+    [serverHeld],
   );
 
   const wavefireClusters = useMemo(
     () =>
       detectWavefireClusters(
-        normalized,
+        serverHeld,
         ATLAS_FIRE_WINDOW_MS,
         WAVEFIRE_MIN_EVENTS,
         WAVEFIRE_MIN_COUNTRIES,
       ),
-    [normalized],
+    [serverHeld],
   );
 
   const fireMode = atlasFireModeFromFilter(filter);
@@ -724,12 +733,12 @@ export function AtlasGlobeExperience({
   );
 
   const fireWindowRipples = useMemo(
-    () => connectionsInFireWindow(normalized, ATLAS_FIRE_WINDOW_MS, "ripple"),
-    [normalized],
+    () => connectionsInFireWindow(serverHeld, ATLAS_FIRE_WINDOW_MS, "ripple"),
+    [serverHeld],
   );
   const fireWindowWaves = useMemo(
-    () => connectionsInFireWindow(normalized, ATLAS_FIRE_WINDOW_MS, "wave"),
-    [normalized],
+    () => connectionsInFireWindow(serverHeld, ATLAS_FIRE_WINDOW_MS, "wave"),
+    [serverHeld],
   );
 
   const displayConnections = useMemo(() => {

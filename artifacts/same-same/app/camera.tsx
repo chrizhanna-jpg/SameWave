@@ -61,6 +61,7 @@ import {
   stopIfLease,
   togglePreview,
 } from "@/utils/audio";
+import { AiGeneratedBadge } from "@/components/AiGeneratedBadge";
 import { MicBadge } from "@/components/MicBadge";
 import { useProAccess } from "@/hooks/useProAccess";
 import { gateProFeature } from "@/lib/proFeatures";

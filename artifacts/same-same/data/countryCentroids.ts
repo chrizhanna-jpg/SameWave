@@ -199,6 +199,8 @@ export const COUNTRY_CENTROID_LON_LAT: Record<string, readonly [number, number]>
     MH: [171, 7],
     NR: [166.9, -0.5],
     TV: [179, -8],
+    /** Atlas arcs when counterparty capture country is unknown (Somewhere). */
+    ZZ: [-25, 0],
   };
 
 export function centroidLonLatForCountry(

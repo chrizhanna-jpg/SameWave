@@ -1,7 +1,22 @@
 import type { GeoProjection } from "d3-geo";
 
+import {
+  fireClusterThemesMatch,
+  resolveChallengeThemeId,
+} from "@/data/themeMatch";
 import type { AtlasConnection } from "@/utils/api";
 import { centroidLonLatForAtlas } from "@/utils/atlasCountryCentroids";
+
+/** Echo arcs from `GET /api/photos/atlas` (shared across all signed-in users). */
+export function isServerHeldAtlasConnection(c: AtlasConnection): boolean {
+  return !c.id.startsWith("local-");
+}
+
+export function filterServerHeldAtlasConnections(
+  connections: AtlasConnection[],
+): AtlasConnection[] {
+  return connections.filter(isServerHeldAtlasConnection);
+}
 
 export type AtlasThemeCluster = {
   /** Stable lowercase seed for ring animation / hashing (not always a single theme). */
@@ -16,6 +31,27 @@ export type AtlasThemeCluster = {
 export type WavefireCluster = AtlasThemeCluster;
 
 const THEME_MIN_LEN = 2;
+
+/** Vibe tags too broad to form a Ripplefire / Wavefire cluster on their own. */
+const GENERIC_CLUSTER_TAGS = new Set([
+  "warm",
+  "cozy",
+  "home",
+  "people",
+  "outdoors",
+  "art",
+  "city",
+  "travel",
+  "smile",
+  "friends",
+  "family",
+  "night",
+  "happy",
+  "fun",
+  "life",
+  "day",
+  "weekend",
+]);
 
 class UnionFind {
   private readonly parent: number[];
@@ -66,9 +102,18 @@ function toFeat(c: AtlasConnection): ConnFeat {
 }
 
 function themesOverlap(a: string, b: string): boolean {
+  if (a.startsWith("__solo_") || b.startsWith("__solo_")) return false;
   if (a.length < THEME_MIN_LEN || b.length < THEME_MIN_LEN) return false;
-  if (a === b) return true;
-  return a.includes(b) || b.includes(a);
+  return fireClusterThemesMatch(a, b);
+}
+
+function meaningfulTagOverlap(a: Set<string>, b: Set<string>): boolean {
+  if (a.size === 0 || b.size === 0) return false;
+  for (const t of a) {
+    if (GENERIC_CLUSTER_TAGS.has(t)) continue;
+    if (b.has(t)) return true;
+  }
+  return false;
 }
 
 function setsOverlap(a: Set<string>, b: Set<string>): boolean {
@@ -82,20 +127,41 @@ function setsOverlap(a: Set<string>, b: Set<string>): boolean {
 function linked(a: ConnFeat, b: ConnFeat): boolean {
   return (
     themesOverlap(a.theme, b.theme) ||
-    setsOverlap(a.tags, b.tags) ||
+    meaningfulTagOverlap(a.tags, b.tags) ||
     setsOverlap(a.subjects, b.subjects)
   );
 }
 
+/** Whether a photo's theme belongs in a fire-ring explore carousel. */
+export function clusterThemesAlign(
+  clusterTheme: string,
+  photoTheme: string,
+): boolean {
+  const cluster = clusterTheme.trim();
+  const photo = photoTheme.trim();
+  if (!cluster || !photo) return true;
+  return fireClusterThemesMatch(cluster, photo);
+}
+
 function pickDisplayTheme(list: AtlasConnection[]): string {
-  let bestTheme = "";
+  const idCounts = new Map<string, { count: number; bestLabel: string }>();
   for (const c of list) {
     const t = (c.theme ?? "").trim();
-    if (t.length >= THEME_MIN_LEN && t.length > bestTheme.length) {
-      bestTheme = t;
+    if (t.length < THEME_MIN_LEN) continue;
+    const id = resolveChallengeThemeId(t);
+    if (!id) continue;
+    const cur = idCounts.get(id);
+    if (!cur) idCounts.set(id, { count: 1, bestLabel: t });
+    else {
+      cur.count++;
+      if (t.length > cur.bestLabel.length) cur.bestLabel = t;
     }
   }
-  if (bestTheme) return bestTheme;
+  let best: { count: number; bestLabel: string } | null = null;
+  for (const entry of idCounts.values()) {
+    if (!best || entry.count > best.count) best = entry;
+  }
+  if (best) return best.bestLabel;
 
   const tagCounts = new Map<string, number>();
   for (const c of list) {

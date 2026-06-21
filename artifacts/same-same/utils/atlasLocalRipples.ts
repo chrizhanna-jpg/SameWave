@@ -2,6 +2,25 @@ import type { Match, MyPhoto } from "@/context/AppContext";
 import type { AtlasConnection } from "@/utils/api";
 import { photoCountryDisplay, resolveCaptureCountryCode } from "@/utils/photoCountry";
 
+/** ISO code for Atlas arcs when counterparty capture country is unknown. */
+export const ATLAS_SOMEWHERE_ISO = "ZZ";
+
+/** Resolve counterparty ISO2 for atlas arcs — capture GPS, stored code, or Somewhere. */
+export function resolveTheirAtlasIso2(match: {
+  theirCaptureCountryCode?: string | null;
+  theirPhoto?: string | null;
+  theirCountryCode?: string | null;
+}): string {
+  const capture = resolveCaptureCountryCode(
+    match.theirCaptureCountryCode,
+    match.theirPhoto,
+  );
+  if (capture) return capture;
+  const stored = (match.theirCountryCode ?? "").trim().toUpperCase();
+  if (/^[A-Z]{2}$/.test(stored)) return stored;
+  return ATLAS_SOMEWHERE_ISO;
+}
+
 /** ISO2 for Atlas arcs: profile country first, then capture / match snapshots. */
 export function resolveViewerIso2(
   myCountryCode: string | undefined,
@@ -43,11 +62,7 @@ export function buildLocalRippleConnections(
   const added: AtlasConnection[] = [];
   for (const m of matches) {
     if (m.verdict !== "same") continue;
-    const to = resolveCaptureCountryCode(
-      m.theirCaptureCountryCode,
-      m.theirPhoto,
-    );
-    if (!to || to === mine) continue;
+    const to = resolveTheirAtlasIso2(m);
     const ts = Date.parse(m.timestamp);
     const fresh = Number.isFinite(ts) && now - ts < 48 * 60 * 60 * 1000;
     const theme = (m.theme ?? "").trim();

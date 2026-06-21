@@ -29,6 +29,7 @@ import {
 import { getPhotoRetentionMs } from "../lib/photoRetention";
 import { fetchMyJourneyRows } from "../lib/myJourney";
 import {
+  exploreThemeNeedles,
   normalizeChallengeTheme,
   themeAdjacentIds,
   themeExactMatchVariants,
@@ -58,6 +59,9 @@ const ALLOWED_AUDIO_MIME_PREFIXES = ["audio/"];
 // Hide any photo flagged by ≥ this many distinct reports — pulled from the
 // candidate pool until a human reviews it (manual moderation phase 2).
 const REPORT_HIDE_THRESHOLD = 3;
+
+/** ISO2 when capture / profile country is unknown — keeps echo on the global Atlas. */
+const ATLAS_SOMEWHERE_ISO = "ZZ";
 
 /** Flatten nested drizzle/pg/node errors for classification (no PII). */
 function flattenUnknownError(err: unknown): string {
@@ -1287,6 +1291,8 @@ router.get("/photos/atlas", async (req, res) => {
       return /^[A-Z]{2}$/.test(u) ? u : null;
     };
 
+    const atlasEndpoint = (s: unknown) => iso2(s) ?? ATLAS_SOMEWHERE_ISO;
+
     const spotlightPhotoAt = (
       to: string,
       lc: string,
@@ -1320,9 +1326,8 @@ router.get("/photos/atlas", async (req, res) => {
     const freshMs = 48 * 60 * 60 * 1000;
 
     for (const raw of echoRows.rows as Array<Record<string, unknown>>) {
-      const lc = iso2(raw.lc);
-      const hc = iso2(raw.hc);
-      if (!lc || !hc) continue;
+      const lc = atlasEndpoint(raw.lc);
+      const hc = atlasEndpoint(raw.hc);
       const sameCountry = lc === hc;
       const state = String(raw.state ?? "");
       const id = String(raw.id ?? "");
@@ -1556,9 +1561,19 @@ router.post("/photos/atlas/explore", async (req, res) => {
       )}]::text[]`;
       const stateFilter =
         kind === "wave" ? sql`e.state = 'mutual'` : sql`e.state = 'pending'`;
+      const themeNeedles =
+        themeHint.length >= 2 ? exploreThemeNeedles(themeHint) : [];
+      const themeLikeClauses = themeNeedles.flatMap((n) => {
+        const pattern = `%${n}%`;
+        return [
+          sql`lower(coalesce(e.theme, '')) LIKE ${pattern}`,
+          sql`lower(coalesce(pl.theme, '')) LIKE ${pattern}`,
+          sql`lower(coalesce(ph.theme, '')) LIKE ${pattern}`,
+        ];
+      });
       const themeFilter =
-        themeHint.length >= 2
-          ? sql`AND lower(coalesce(e.theme, '')) LIKE ${`%${themeHint}%`}`
+        themeLikeClauses.length > 0
+          ? sql`AND (${sql.join(themeLikeClauses, sql` OR `)})`
           : sql``;
       echoRows = await db.execute(sql`
         WITH ${photoExposureCte}

@@ -348,6 +348,15 @@ export function isThemeOnTopic(
   return classifyThemeRelation(preferredRaw, candidateRaw) !== "none";
 }
 
+/** Ripplefire rings require same daily theme — not swipe-match adjacency. */
+export function fireClusterThemesMatch(a: string, b: string): boolean {
+  const al = a.trim();
+  const bl = b.trim();
+  if (!al || !bl) return true;
+  const rel = classifyThemeRelation(al, bl);
+  return rel === "exact" || rel === "fuzzy";
+}
+
 /**
  * Strong off-topic sink — only when themes are unrelated AND there is no
  * subject overlap and fewer than two shared vibe tags.

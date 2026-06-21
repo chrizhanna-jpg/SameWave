@@ -601,7 +601,7 @@ export default function SwipeScreen() {
   }>(() => {
     if (todaysPhoto) {
       return {
-        uri: resolveMyPhotoDisplayUri(todaysPhoto),
+        uri: resolveMyPhotoDisplayUri(todaysPhoto, { preferLocalCapture: true }),
         uploadedAt: todaysPhoto.uploadedAt,
         theme: todaysPhoto.theme,
         tags: todaysPhoto.tags ?? [],
@@ -619,6 +619,13 @@ export default function SwipeScreen() {
   }, [todaysPhoto]);
 
   const myPhotoUri = myPhotoData.uri;
+  /** Stable across local→server display URI swaps during upload sync. */
+  const myPhotoSessionKey =
+    todaysPhoto?.backendId?.trim() ||
+    todaysPhoto?.uploadedAt ||
+    photoKey(myPhotoUri) ||
+    myPhotoUri;
+  const myPhotoRecyclingKey = `match-my:${myPhotoSessionKey}`;
   const rawTheme = myPhotoData.theme;
   // Canonical id for scoring + /candidates (uploads may store "your hands").
   const activeTheme =
@@ -861,7 +868,7 @@ export default function SwipeScreen() {
   const PLACEHOLDER_PHOTO: SamplePhoto = React.useMemo(
     () => ({
       id: "placeholder",
-      uri: myPhotoUri, // re-use user's photo as a neutral background
+      uri: "",
       country: "",
       countryCode: "",
       countryFlag: "",
@@ -869,7 +876,7 @@ export default function SwipeScreen() {
       minutesAgo: 0,
       tags: [],
     }),
-    [myPhotoUri, activeTheme],
+    [activeTheme],
   );
   const initial = React.useMemo(
     () =>
@@ -1054,7 +1061,7 @@ export default function SwipeScreen() {
     setAnimatingOut(false);
     resetCardMotion(translateX, translateY, cardScale, sameLabelOpacity);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myPhotoUri, activeTheme, myTagsKey, mySubjectsKey, setAnimatingOut]);
+  }, [myPhotoSessionKey, activeTheme, myTagsKey, setAnimatingOut]);
 
   // Mark the currently-displayed photo as seen the moment it lands on
   // screen. This closes the swipe-right race window — the photo behind
@@ -1585,9 +1592,7 @@ export default function SwipeScreen() {
     if (!hasHydrated || !hasUploadedPhoto) return;
     if (deckInteractionBlocked()) return;
     const stuck =
-      noMore ||
-      theirPhotoRef.current.id === "placeholder" ||
-      theirPhotoRef.current.uri === myPhotoUriRef.current;
+      noMore || theirPhotoRef.current.id === "placeholder";
     if (!stuck) return;
     const next = pickDeckCandidate(
       photoKey(theirPhotoRef.current.uri) || undefined,
@@ -2062,7 +2067,7 @@ export default function SwipeScreen() {
                 style={styles.fillPhoto}
                 resizeMode="cover"
                 transitionMs={0}
-                recyclingKey={`match-my:${photoKey(myPhotoUri)}`}
+                recyclingKey={myPhotoRecyclingKey}
               />
               {isAiPhoto(myPhotoUri) ? <AiGeneratedBadge size="sm" /> : null}
               {myPhotoDisplay.code ? (
@@ -2090,8 +2095,17 @@ export default function SwipeScreen() {
 
             <Pressable
               style={styles.photoSection}
-              onPress={() => setFullscreenUri(theirPhoto.uri)}
+              onPress={() =>
+                theirPhoto.id !== "placeholder" && theirPhoto.uri
+                  ? setFullscreenUri(theirPhoto.uri)
+                  : undefined
+              }
             >
+              {theirPhoto.id === "placeholder" || !theirPhoto.uri ? (
+                <View style={[styles.fillPhoto, styles.candidateLoadingPane]}>
+                  <ActivityIndicator color={colors.mutedForeground} />
+                </View>
+              ) : (
               <RemotePhotoImage
                 uri={theirPhoto.uri}
                 style={styles.fillPhoto}
@@ -2099,6 +2113,9 @@ export default function SwipeScreen() {
                 transitionMs={0}
                 recyclingKey={`match-their:${photoKey(theirPhoto.uri)}`}
               />
+              )}
+              {theirPhoto.uri ? (
+                <>
               {isSamplePhoto(theirPhoto.uri) ? (
                 <StockPhotoWatermark size="md" />
               ) : null}
@@ -2159,6 +2176,8 @@ export default function SwipeScreen() {
                   </Text>
                 </View>
               )}
+                </>
+              ) : null}
             </Pressable>
 
             {/* Floating action buttons overlaid on the bottom of the card */}
@@ -2608,6 +2627,11 @@ const styles = StyleSheet.create({
   fillPhoto: {
     width: "100%",
     height: "100%",
+  },
+  candidateLoadingPane: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.25)",
   },
   micBadgeOverlay: {
     position: "absolute",
