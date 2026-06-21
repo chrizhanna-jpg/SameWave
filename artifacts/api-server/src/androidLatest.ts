@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+declare const __ANDROID_LATEST_JSON__: string | AndroidLatestFile;
+
 type AndroidLatestFile = {
   versionCode?: unknown;
   versionName?: unknown;
@@ -16,6 +18,23 @@ export type ResolvedAndroidLatest = {
 
 const DEFAULT_VERSION_CODE = 28;
 const DEFAULT_VERSION_NAME = "1.3.1";
+
+function getBundledConfig(): AndroidLatestFile | null {
+  try {
+    const raw: unknown = __ANDROID_LATEST_JSON__;
+    if (raw == null) return null;
+    if (typeof raw === "object" && !Array.isArray(raw)) {
+      return raw as AndroidLatestFile;
+    }
+    if (typeof raw === "string" && raw.length > 0) {
+      const parsed = JSON.parse(raw) as AndroidLatestFile;
+      return parsed && typeof parsed === "object" ? parsed : null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 function parseVersionCode(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value) && value > 0) {
@@ -37,16 +56,34 @@ function parseVersionName(value: unknown): string | null {
   return null;
 }
 
-function loadAndroidLatestFile(): AndroidLatestFile | null {
+function loadAndroidLatestFromDisk(): AndroidLatestFile | null {
+  const candidates: string[] = [];
   try {
     const here = path.dirname(fileURLToPath(import.meta.url));
     const apiServerRoot = path.resolve(here, "..");
-    const configPath = path.join(apiServerRoot, "config", "android-latest.json");
-    const raw = readFileSync(configPath, "utf8");
-    return JSON.parse(raw) as AndroidLatestFile;
+    candidates.push(path.join(apiServerRoot, "config", "android-latest.json"));
+    candidates.push(path.join(here, "config", "android-latest.json"));
   } catch {
-    return null;
+    // import.meta.url unavailable — try cwd-only paths below.
   }
+  candidates.push(path.join(process.cwd(), "config", "android-latest.json"));
+  candidates.push(
+    path.join(process.cwd(), "artifacts", "api-server", "config", "android-latest.json"),
+  );
+
+  for (const configPath of candidates) {
+    try {
+      const raw = readFileSync(configPath, "utf8");
+      return JSON.parse(raw) as AndroidLatestFile;
+    } catch {
+      // try next candidate
+    }
+  }
+  return null;
+}
+
+function loadAndroidLatestFile(): AndroidLatestFile | null {
+  return getBundledConfig() ?? loadAndroidLatestFromDisk();
 }
 
 let cachedFile: AndroidLatestFile | null | undefined;

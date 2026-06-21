@@ -1,18 +1,35 @@
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
-import { rm } from "node:fs/promises";
+import { cp, mkdir, rm } from "node:fs/promises";
 
 // Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
 
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
 
+function readAndroidLatestJsonForBuild() {
+  const configPath = path.resolve(artifactDir, "config", "android-latest.json");
+  try {
+    const raw = readFileSync(configPath, "utf8");
+    return JSON.stringify(JSON.parse(raw));
+  } catch (err) {
+    console.warn(
+      `[build] android-latest.json missing or invalid at ${configPath} — app-config will fall back to env/defaults`,
+    );
+    console.warn(err);
+    return "{}";
+  }
+}
+
 async function buildAll() {
   const distDir = path.resolve(artifactDir, "dist");
   await rm(distDir, { recursive: true, force: true });
+
+  const androidLatestJson = readAndroidLatestJsonForBuild();
 
   await esbuild({
     entryPoints: [
@@ -105,6 +122,9 @@ async function buildAll() {
       "electron",
     ],
     sourcemap: "linked",
+    define: {
+      __ANDROID_LATEST_JSON__: androidLatestJson,
+    },
     plugins: [
       // pino relies on workers to handle logging, instead of externalizing it we use a plugin to handle it
       esbuildPluginPino({ transports: ["pino-pretty"] })
@@ -121,6 +141,15 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     `,
     },
   });
+
+  const configSrc = path.resolve(artifactDir, "config", "android-latest.json");
+  const configDstDir = path.join(distDir, "config");
+  try {
+    await mkdir(configDstDir, { recursive: true });
+    await cp(configSrc, path.join(configDstDir, "android-latest.json"));
+  } catch (err) {
+    console.warn("[build] could not copy android-latest.json into dist/config", err);
+  }
 }
 
 buildAll().catch((err) => {
