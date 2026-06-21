@@ -131,7 +131,10 @@ $env:GRADLE_USER_HOME = Join-Path $env:USERPROFILE ".gradle"
 
 $appJsonPath = Join-Path $sameSame "app.json"
 $androidLatestPath = Join-Path $origAppRoot "artifacts\api-server\config\android-latest.json"
-if (Test-Path $appJsonPath) {
+# Do NOT auto-sync android-latest.json on every AAB build — that notifies users before
+# Play publishes. After the release is live on Play, run with SYNC_ANDROID_LATEST=1
+# or edit artifacts/api-server/config/android-latest.json manually, then deploy api-server.
+if ($env:SYNC_ANDROID_LATEST -eq "1" -and (Test-Path $appJsonPath)) {
   $appJson = Get-Content $appJsonPath -Raw | ConvertFrom-Json
   $syncVersionCode = $appJson.expo.android.versionCode
   $syncVersionName = $appJson.expo.version
@@ -147,10 +150,11 @@ if (Test-Path $appJsonPath) {
   if ($existingMessage) {
     $syncPayload.updateMessage = $existingMessage
   }
-  $syncPayload | ConvertTo-Json | Set-Content -Path $androidLatestPath -Encoding utf8
+  $json = ($syncPayload | ConvertTo-Json -Compress) + "`n"
+  [System.IO.File]::WriteAllText($androidLatestPath, $json, [System.Text.UTF8Encoding]::new($false))
   Write-Host "Synced android-latest.json: versionCode=$syncVersionCode versionName=$syncVersionName" -ForegroundColor Cyan
-} else {
-  Write-Warning "app.json not found at $appJsonPath — skipping android-latest.json sync"
+} elseif (Test-Path $androidLatestPath) {
+  Write-Host "Skipping android-latest.json sync (set SYNC_ANDROID_LATEST=1 after Play publish)" -ForegroundColor DarkGray
 }
 
 Write-Host "Running Gradle bundleRelease (may take several minutes)..."
