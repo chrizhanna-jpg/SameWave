@@ -85,21 +85,34 @@ export function echoPairExposurePenaltySql(
 }
 
 export type ExploreMoment = {
-  participants: Array<{ photoId: string }>;
+  participants: Array<{ photoId: string; userId?: string }>;
 };
 
-/** Limit how often one photo id appears in a single explore payload. */
+export type CapExplorePhotoRepeatsOptions = {
+  /** Viewer user id — their upload may appear in many ripples; do not cap it. */
+  exemptUserId?: string | null;
+};
+
+/** Limit how often the same counterparty photo spams explore (country fallback). */
 export function capExplorePhotoRepeats<T extends ExploreMoment>(
   moments: T[],
   maxPerPhoto = EXPLORE_MAX_PHOTO_REPEATS,
+  options?: CapExplorePhotoRepeatsOptions,
 ): T[] {
+  const exemptUserId = options?.exemptUserId?.trim() || null;
   const counts = new Map<string, number>();
   const out: T[] = [];
   for (const moment of moments) {
-    let blocked = false;
+    const cappedPhotoIds: string[] = [];
     for (const p of moment.participants) {
-      const id = p.photoId;
+      const id = p.photoId?.trim();
       if (!id) continue;
+      if (exemptUserId && p.userId?.trim() === exemptUserId) continue;
+      cappedPhotoIds.push(id);
+    }
+
+    let blocked = false;
+    for (const id of cappedPhotoIds) {
       const next = (counts.get(id) ?? 0) + 1;
       if (next > maxPerPhoto) {
         blocked = true;
@@ -107,9 +120,8 @@ export function capExplorePhotoRepeats<T extends ExploreMoment>(
       }
     }
     if (blocked) continue;
-    for (const p of moment.participants) {
-      const id = p.photoId;
-      if (!id) continue;
+
+    for (const id of cappedPhotoIds) {
       counts.set(id, (counts.get(id) ?? 0) + 1);
     }
     out.push(moment);

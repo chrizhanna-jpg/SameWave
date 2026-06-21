@@ -1,6 +1,7 @@
 import type { GeoProjection } from "d3-geo";
 
 import {
+  DAILY_CHALLENGES,
   fireClusterThemesMatch,
   resolveChallengeThemeId,
 } from "@/data/themeMatch";
@@ -130,6 +131,89 @@ function linked(a: ConnFeat, b: ConnFeat): boolean {
     meaningfulTagOverlap(a.tags, b.tags) ||
     setsOverlap(a.subjects, b.subjects)
   );
+}
+
+function challengeTitleForId(id: string): string {
+  const meta = DAILY_CHALLENGES.find((c) => c.id === id);
+  return meta?.title ?? id;
+}
+
+function buildThemeAnchoredCluster(
+  canonicalId: string,
+  list: AtlasConnection[],
+  minEvents: number,
+  minCountries: number,
+): AtlasThemeCluster | null {
+  if (list.length < minEvents) return null;
+  const countries = new Set<string>();
+  for (const c of list) {
+    countries.add(c.from);
+    countries.add(c.to);
+  }
+  if (countries.size < minCountries) return null;
+  const displayTheme = pickDisplayTheme(list) || challengeTitleForId(canonicalId);
+  return {
+    theme: canonicalId,
+    displayTheme,
+    connections: list,
+    countryCodes: [...countries],
+  };
+}
+
+/**
+ * Ripplefire rings anchor on one daily-challenge theme — not vibe-tag bridges
+ * (e.g. sky must not merge into nature via shared "outdoors" tags).
+ */
+export function detectThemeAnchoredRippleClusters(
+  connections: AtlasConnection[],
+  windowMs: number,
+  minEvents: number,
+  minCountries: number,
+): AtlasThemeCluster[] {
+  const now = Date.now();
+  const recentRipples = connections.filter((c) => {
+    if (c.kind !== "ripple") return false;
+    const t = Date.parse(c.createdAt);
+    return Number.isFinite(t) && now - t <= windowMs;
+  });
+
+  const buckets = new Map<string, AtlasConnection[]>();
+  const unscoped: AtlasConnection[] = [];
+
+  for (const c of recentRipples) {
+    const canonicalId = resolveChallengeThemeId((c.theme ?? "").trim());
+    if (canonicalId) {
+      const row = buckets.get(canonicalId);
+      if (row) row.push(c);
+      else buckets.set(canonicalId, [c]);
+    } else {
+      unscoped.push(c);
+    }
+  }
+
+  const clusters: AtlasThemeCluster[] = [];
+  for (const [canonicalId, list] of buckets) {
+    const cluster = buildThemeAnchoredCluster(
+      canonicalId,
+      list,
+      minEvents,
+      minCountries,
+    );
+    if (cluster) clusters.push(cluster);
+  }
+
+  // Ripples without a resolvable daily theme stay solo — never tag-merge across themes.
+  for (const c of unscoped) {
+    if (minEvents > 1) continue;
+    const cluster = buildThemeAnchoredCluster(`__solo_${c.id}`, [c], 1, minCountries);
+    if (cluster) {
+      cluster.displayTheme = pickDisplayTheme([c]);
+      clusters.push(cluster);
+    }
+  }
+
+  clusters.sort((a, b) => b.connections.length - a.connections.length);
+  return clusters;
 }
 
 /** Whether a photo's theme belongs in a fire-ring explore carousel. */
@@ -390,19 +474,18 @@ export function detectWavefireCluster(
   )[0] ?? null;
 }
 
-/** Ripplefire — one-way **ripples** only; same clustering rules, easier threshold. */
+/** Ripplefire — one-way **ripples** grouped by daily-challenge theme id. */
 export function detectRipplefireClusters(
   connections: AtlasConnection[],
   windowMs: number,
   minEvents: number,
   minCountries: number,
 ): AtlasThemeCluster[] {
-  return detectAtlasThemeClusters(
+  return detectThemeAnchoredRippleClusters(
     connections,
     windowMs,
     minEvents,
     minCountries,
-    "ripple",
   );
 }
 

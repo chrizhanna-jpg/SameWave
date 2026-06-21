@@ -80,7 +80,12 @@ export async function recordEchoOffer(input: {
     { userId: voterPhoto.userId, theme: voterPhoto.theme },
     { userId: targetPhoto.userId, theme: targetPhoto.theme },
   );
-  const echoTheme = pair.lowPayload.theme || pair.highPayload.theme || "";
+  const echoTheme =
+    voterPhoto.theme?.trim() ||
+    targetPhoto.theme?.trim() ||
+    pair.lowPayload.theme ||
+    pair.highPayload.theme ||
+    "";
 
   // Read the row's current state BEFORE we upsert so we can detect a
   // genuine state transition (no row → pending, or pending → mutual)

@@ -23,6 +23,7 @@ import {
   BANNED_PHOTO_B64_MD5,
   capExplorePhotoRepeats,
   echoPairExposurePenaltySql,
+  EXPLORE_MAX_PHOTO_REPEATS,
   exposurePenaltyExpr,
   photoExposureCte,
 } from "../lib/photoExposure";
@@ -31,6 +32,7 @@ import { fetchMyJourneyRows } from "../lib/myJourney";
 import {
   exploreThemeNeedles,
   normalizeChallengeTheme,
+  rippleArcTheme,
   themeAdjacentIds,
   themeExactMatchVariants,
 } from "../lib/challengeTheme";
@@ -1239,6 +1241,8 @@ router.get("/photos/atlas", async (req, res) => {
         e.created_at AS "createdAt",
         e.mutual_at AS "mutualAt",
         coalesce(e.theme, '') AS theme,
+        pl.theme AS pl_theme,
+        ph.theme AS ph_theme,
         pl.tags AS pl_tags,
         ph.tags AS ph_tags,
         pl.subjects AS pl_subjects,
@@ -1323,6 +1327,8 @@ router.get("/photos/atlas", async (req, res) => {
       const id = String(raw.id ?? "");
       if (!id) continue;
       const themeRaw = String(raw.theme ?? "");
+      const plTheme = String(raw.pl_theme ?? "");
+      const phTheme = String(raw.ph_theme ?? "");
       const { tags, subjects } = atlasMergeConnectionTagsSubjects(
         raw.pl_tags,
         raw.ph_tags,
@@ -1376,6 +1382,9 @@ router.get("/photos/atlas", async (req, res) => {
       const fresh = Number.isFinite(created) && now - created < freshMs;
       const mine =
         viewerId != null && (viewerId === ul || viewerId === uh);
+      const initiatorTheme = pf === ul ? plTheme : phTheme;
+      const otherTheme = pf === ul ? phTheme : plTheme;
+      const rippleTheme = rippleArcTheme(themeRaw, initiatorTheme, otherTheme);
       connections.push({
         id,
         kind: "ripple",
@@ -1383,10 +1392,10 @@ router.get("/photos/atlas", async (req, res) => {
         to,
         fresh,
         createdAt: createdIso,
-        theme: themeRaw,
+        theme: rippleTheme,
         tags,
         subjects,
-        color: atlasConnectionColor(themeRaw, "ripple", fresh),
+        color: atlasConnectionColor(rippleTheme, "ripple", fresh),
         spotlightPhotoId: spotlightPhotoAt(to, lc, hc, raw),
         ...(viewerId != null ? { mine } : {}),
       });
@@ -1436,6 +1445,7 @@ router.get("/photos/atlas", async (req, res) => {
 // Returns both participants' photos (theme, vibe clip, image) per moment.
 router.post("/photos/atlas/explore", async (req, res) => {
   try {
+    const viewer = await resolveUserFromRequest(req);
     const body = (req.body ?? {}) as {
       ids?: unknown;
       kind?: unknown;
@@ -1670,7 +1680,9 @@ router.post("/photos/atlas/explore", async (req, res) => {
       })
       .filter((m): m is NonNullable<typeof m> => m != null);
 
-    const momentsDeduped = capExplorePhotoRepeats(moments);
+    const momentsDeduped = capExplorePhotoRepeats(moments, EXPLORE_MAX_PHOTO_REPEATS, {
+      exemptUserId: viewer?.id ?? null,
+    });
 
     res.setHeader("Cache-Control", "private, no-store, max-age=0");
     res.json({ moments: momentsDeduped });

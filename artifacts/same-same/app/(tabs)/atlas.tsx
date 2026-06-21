@@ -156,6 +156,12 @@ export default function AtlasScreen() {
     [connections, liveLocalRipples],
   );
 
+  /** Server arcs + this device's ripples — rings must include all of the viewer's Same votes. */
+  const ripplefireClusterConnections = useMemo(
+    () => mergeAtlasConnectionsById(connections, liveLocalRipples),
+    [connections, liveLocalRipples],
+  );
+
   const runConnectivityDiagnostics = useCallback(async () => {
     setDiagBusy(true);
     try {
@@ -233,21 +239,21 @@ export default function AtlasScreen() {
   useEffect(() => {
     let alive = true;
     void loadAtlasCache().then((cached) => {
-        if (!alive) return;
-        if (!cached) return;
-        const serverCached = cached.connections.filter(isServerHeldAtlasConnection);
-        setSummary((prev) =>
-          prev.length > 0 ? prev : cached.countries,
-        );
-        setConnections((prev) =>
-          mergeAtlasConnectionsById(prev, serverCached),
-        );
-        if (cached.countries.length > 0 || serverCached.length > 0) {
-          setHasCachedData(true);
-          atlasHasLoadedOnceRef.current = true;
-          setLoading(false);
-        }
-      });
+      if (!alive) return;
+      if (!cached) return;
+      const serverCached = cached.connections.filter(isServerHeldAtlasConnection);
+      setSummary((prev) =>
+        prev.length > 0 ? prev : cached.countries,
+      );
+      setConnections((prev) =>
+        mergeAtlasConnectionsById(prev, serverCached),
+      );
+      if (cached.countries.length > 0 || serverCached.length > 0) {
+        setHasCachedData(true);
+        atlasHasLoadedOnceRef.current = true;
+        setLoading(false);
+      }
+    });
     return () => {
       alive = false;
     };
@@ -419,7 +425,7 @@ export default function AtlasScreen() {
             style={styles.globeFlex}
             width={width - outerPad * 2}
             connections={globeConnections}
-            fireClusterConnections={connections}
+            fireClusterConnections={ripplefireClusterConnections}
             countries={summary}
             isSignedIn={!!isSignedIn}
             isTabFocused={atlasTabFocused}

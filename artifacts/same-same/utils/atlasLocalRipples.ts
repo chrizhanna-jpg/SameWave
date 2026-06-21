@@ -65,7 +65,8 @@ export function buildLocalRippleConnections(
     const to = resolveTheirAtlasIso2(m);
     const ts = Date.parse(m.timestamp);
     const fresh = Number.isFinite(ts) && now - ts < 48 * 60 * 60 * 1000;
-    const theme = (m.theme ?? "").trim();
+    // Daily challenge the voter swiped on — not the counterparty AI label alone.
+    const theme = (m.theme ?? m.theirActualTheme ?? "").trim();
     added.push({
       id: `local-ripple-${m.id}`,
       kind: "ripple",

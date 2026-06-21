@@ -2105,7 +2105,7 @@ export function buildLocalMatchExploreMoments(
     const myUri = stash.myPhoto?.trim();
 
     const theme =
-      (m.theirActualTheme ?? m.theme ?? cluster.displayTheme ?? "").trim() ||
+      (m.theme ?? m.theirActualTheme ?? cluster.displayTheme ?? "").trim() ||
       cluster.displayTheme ||
       "";
     const tags = [...(m.theirTags ?? []), ...(m.sharedTags ?? [])].filter(Boolean);
@@ -2497,16 +2497,46 @@ export type AtlasFireExploreOptions = {
   viewerMyPhotos?: ViewerExplorePhoto[];
 };
 
+/** Include device ripples that match the cluster theme even if not yet on the server map. */
+export function expandExploreConnectionIds(
+  connectionIds: string[],
+  cluster: AtlasFireExploreCluster | undefined,
+  localMatches?: LocalRippleExploreMatch[],
+): string[] {
+  const out = new Set(
+    connectionIds.map((id) => id.trim()).filter((id) => id.length > 0),
+  );
+  if (!cluster || !localMatches?.length) return [...out];
+
+  const displayTheme = cluster.displayTheme?.trim() ?? "";
+  for (const m of localMatches) {
+    if (m.verdict !== "same") continue;
+    const localId = `local-ripple-${m.id}`;
+    if (out.has(localId)) continue;
+    const matchTheme = (m.theme ?? m.theirActualTheme ?? "").trim();
+    if (displayTheme && matchTheme && !clusterThemesAlign(displayTheme, matchTheme)) {
+      continue;
+    }
+    out.add(localId);
+  }
+  return [...out];
+}
+
 /** Load photos + vibes for Wavefire / Ripplefire cluster echo ids. */
 export async function fetchAtlasFireExplore(
   connectionIds: string[],
   cluster?: AtlasFireExploreCluster,
   options?: AtlasFireExploreOptions,
 ): Promise<AtlasFireExploreResult> {
-  const diag = exploreDiagBase(cluster, connectionIds);
+  const expandedConnectionIds = expandExploreConnectionIds(
+    connectionIds,
+    cluster,
+    options?.localMatches,
+  );
+  const diag = exploreDiagBase(cluster, expandedConnectionIds);
   const ids = [
     ...new Set(
-      connectionIds
+      expandedConnectionIds
         .map((id) => id.trim())
         .filter((id) => id.length > 0 && !id.startsWith("local-")),
     ),
@@ -2521,7 +2551,7 @@ export async function fetchAtlasFireExplore(
   const finish = (moments: AtlasFireMoment[], error: string | null) => {
     const merged = mergeExploreWithLocalMoments(
       moments,
-      connectionIds,
+      expandedConnectionIds,
       collectLocalDeviceMoments,
     );
     const withViewer = enrichExploreWithViewerPhotos(
@@ -2543,7 +2573,7 @@ export async function fetchAtlasFireExplore(
     if (!cluster) return [];
     const ripple = options?.localMatches?.length
       ? buildLocalMatchExploreMoments(
-          connectionIds,
+          expandedConnectionIds,
           options.localMatches,
           cluster,
           options.viewerCountryCode,
@@ -2551,7 +2581,7 @@ export async function fetchAtlasFireExplore(
       : [];
     const wave = options?.localWaves?.length
       ? buildLocalWaveExploreMoments(
-          connectionIds,
+          expandedConnectionIds,
           options.localWaves,
           cluster,
           options.viewerCountryCode,

@@ -138,6 +138,19 @@ export function normalizeChallengeTheme(raw: string): string {
   return resolveChallengeThemeId(raw);
 }
 
+/** Theme label for a pending ripple arc — prefer the initiator's upload theme. */
+export function rippleArcTheme(
+  echoTheme: string,
+  initiatorPhotoTheme: string,
+  otherPhotoTheme: string,
+): string {
+  const init = initiatorPhotoTheme.trim();
+  if (init) return init;
+  const echo = echoTheme.trim();
+  if (echo) return echo;
+  return otherPhotoTheme.trim();
+}
+
 export function resolveChallengeThemeId(theme: string): string {
   const t = theme.trim().toLowerCase();
   if (!t) return "";

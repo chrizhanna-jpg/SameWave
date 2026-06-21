@@ -678,20 +678,25 @@ export function AtlasGlobeExperience({
     [connections],
   );
 
-  const serverHeld = useMemo(() => {
-    const raw = fireClusterConnections ?? connections;
-    return normalizeConnections(filterServerHeldAtlasConnections(raw));
-  }, [connections, fireClusterConnections]);
+  const clusterSource = useMemo(
+    () => normalizeConnections(fireClusterConnections ?? connections),
+    [connections, fireClusterConnections],
+  );
+
+  const serverHeld = useMemo(
+    () => normalizeConnections(filterServerHeldAtlasConnections(connections)),
+    [connections],
+  );
 
   const ripplefireClusters = useMemo(
     () =>
       detectRipplefireClusters(
-        serverHeld,
+        clusterSource,
         ATLAS_FIRE_WINDOW_MS,
         RIPPLEFIRE_MIN_EVENTS,
         RIPPLEFIRE_MIN_COUNTRIES,
       ),
-    [serverHeld],
+    [clusterSource],
   );
 
   const wavefireClusters = useMemo(
@@ -733,8 +738,8 @@ export function AtlasGlobeExperience({
   );
 
   const fireWindowRipples = useMemo(
-    () => connectionsInFireWindow(serverHeld, ATLAS_FIRE_WINDOW_MS, "ripple"),
-    [serverHeld],
+    () => connectionsInFireWindow(clusterSource, ATLAS_FIRE_WINDOW_MS, "ripple"),
+    [clusterSource],
   );
   const fireWindowWaves = useMemo(
     () => connectionsInFireWindow(serverHeld, ATLAS_FIRE_WINDOW_MS, "wave"),
