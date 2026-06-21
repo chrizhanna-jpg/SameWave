@@ -129,6 +129,30 @@ $env:EXPO_USE_METRO_WORKSPACE_ROOT = "0"
 $env:NODE_ENV = "production"
 $env:GRADLE_USER_HOME = Join-Path $env:USERPROFILE ".gradle"
 
+$appJsonPath = Join-Path $sameSame "app.json"
+$androidLatestPath = Join-Path $origAppRoot "artifacts\api-server\config\android-latest.json"
+if (Test-Path $appJsonPath) {
+  $appJson = Get-Content $appJsonPath -Raw | ConvertFrom-Json
+  $syncVersionCode = $appJson.expo.android.versionCode
+  $syncVersionName = $appJson.expo.version
+  $existingMessage = $null
+  if (Test-Path $androidLatestPath) {
+    $existing = Get-Content $androidLatestPath -Raw | ConvertFrom-Json
+    $existingMessage = $existing.updateMessage
+  }
+  $syncPayload = [ordered]@{
+    versionCode = $syncVersionCode
+    versionName = $syncVersionName
+  }
+  if ($existingMessage) {
+    $syncPayload.updateMessage = $existingMessage
+  }
+  $syncPayload | ConvertTo-Json | Set-Content -Path $androidLatestPath -Encoding utf8
+  Write-Host "Synced android-latest.json: versionCode=$syncVersionCode versionName=$syncVersionName" -ForegroundColor Cyan
+} else {
+  Write-Warning "app.json not found at $appJsonPath — skipping android-latest.json sync"
+}
+
 Write-Host "Running Gradle bundleRelease (may take several minutes)..."
 Set-Location $gradleRoot
 try {

@@ -12,6 +12,7 @@ import legalRouter, {
   sendPrivacyPage,
   sendTermsPage,
 } from "./routes/legal";
+import { resolveAndroidLatest } from "./androidLatest";
 import { logger } from "./lib/logger";
 import {
   CLERK_PROXY_PATH,
@@ -51,14 +52,8 @@ app.get("/api/public/clerk-config", (_req, res) => {
 
 // Play Store update nudge — latest Android build the API knows about.
 app.get("/api/public/app-config", (_req, res) => {
-  const rawCode = process.env.ANDROID_LATEST_VERSION_CODE?.trim();
-  const parsedCode = rawCode ? Number(rawCode) : NaN;
-  const latestVersionCode =
-    Number.isFinite(parsedCode) && parsedCode > 0 ? Math.round(parsedCode) : 28;
-  const latestVersionName =
-    process.env.ANDROID_LATEST_VERSION_NAME?.trim() || "1.3.1";
-  const updateMessage =
-    process.env.ANDROID_UPDATE_MESSAGE?.trim() || undefined;
+  const { latestVersionCode, latestVersionName, updateMessage } =
+    resolveAndroidLatest();
   res.json({
     android: {
       latestVersionCode,

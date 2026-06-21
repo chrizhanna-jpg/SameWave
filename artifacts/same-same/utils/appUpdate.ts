@@ -22,11 +22,25 @@ export type AppUpdateInfo = {
   updateMessage?: string;
 };
 
+export function parseVersionCode(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return Math.round(value);
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed.length === 0) return null;
+    const n = Number(trimmed);
+    if (Number.isFinite(n) && n > 0) return Math.round(n);
+  }
+  return null;
+}
+
 export function getInstalledAndroidVersionCode(): number | null {
   if (isUpdatePreviewMode()) return 1;
   if (Platform.OS !== "android") return null;
-  const vc = Constants.expoConfig?.android?.versionCode;
-  return typeof vc === "number" && Number.isFinite(vc) ? vc : null;
+  const fromExpo = parseVersionCode(Constants.expoConfig?.android?.versionCode);
+  if (fromExpo != null) return fromExpo;
+  return parseVersionCode(Constants.nativeBuildVersion);
 }
 
 export async function fetchAppUpdateInfo(): Promise<AppUpdateInfo | null> {
@@ -46,11 +60,7 @@ export async function fetchAppUpdateInfo(): Promise<AppUpdateInfo | null> {
         updateMessage?: unknown;
       };
     };
-    const rawCode = json.android?.latestVersionCode;
-    const latestVersionCode =
-      typeof rawCode === "number" && Number.isFinite(rawCode)
-        ? Math.round(rawCode)
-        : null;
+    const latestVersionCode = parseVersionCode(json.android?.latestVersionCode);
     if (latestVersionCode == null || latestVersionCode <= 0) return null;
     const latestVersionName =
       typeof json.android?.latestVersionName === "string" &&
