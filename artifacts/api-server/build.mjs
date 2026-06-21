@@ -21,11 +21,11 @@ function readAndroidLatestJsonForBuild() {
     const raw = stripUtf8Bom(readFileSync(configPath, "utf8"));
     return JSON.stringify(JSON.parse(raw));
   } catch (err) {
-    console.warn(
-      `[build] android-latest.json missing or invalid at ${configPath} — app-config will fall back to env/defaults`,
+    console.error(
+      `[build] FATAL: android-latest.json missing or invalid at ${configPath}`,
     );
-    console.warn(err);
-    return "{}";
+    console.error(err);
+    process.exit(1);
   }
 }
 
@@ -127,7 +127,8 @@ async function buildAll() {
     ],
     sourcemap: "linked",
     define: {
-      __ANDROID_LATEST_JSON__: androidLatestJson,
+      // Inject as a JSON string so esbuild always emits valid JS across platforms.
+      __ANDROID_LATEST_JSON__: JSON.stringify(androidLatestJson),
     },
     plugins: [
       // pino relies on workers to handle logging, instead of externalizing it we use a plugin to handle it

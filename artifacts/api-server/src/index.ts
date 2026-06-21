@@ -3,6 +3,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { startPhotoRetentionCleanup } from "./lib/photoRetentionCleanup";
 import { getPhotoRetentionDays } from "./lib/photoRetention";
+import { getAndroidLatestDebugInfo } from "./androidLatest";
 
 const rawPort = process.env["PORT"];
 
@@ -22,10 +23,28 @@ if (Number.isNaN(port) || port <= 0) {
 const listenHost = process.env["LISTEN_HOST"]?.trim() || "0.0.0.0";
 
 const server = app.listen(port, listenHost, () => {
+  const androidLatest = getAndroidLatestDebugInfo();
   logger.info(
-    { port, listenHost, photoRetentionDays: getPhotoRetentionDays() },
+    {
+      port,
+      listenHost,
+      photoRetentionDays: getPhotoRetentionDays(),
+      androidLatestVersionCode: androidLatest.resolved.latestVersionCode,
+      androidLatestVersionName: androidLatest.resolved.latestVersionName,
+      androidLatestUsingDefaults: androidLatest.usingDefaults,
+    },
     "Server listening",
   );
+  if (androidLatest.usingDefaults) {
+    logger.warn(
+      {
+        bundledConfigLoaded: androidLatest.bundledConfigLoaded,
+        envVersionCode: androidLatest.envVersionCode,
+        fileVersionCode: androidLatest.fileVersionCode,
+      },
+      "android latest config fell back to defaults — set ANDROID_LATEST_VERSION_CODE on Render",
+    );
+  }
   startPhotoRetentionCleanup();
 });
 

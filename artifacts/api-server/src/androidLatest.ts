@@ -137,3 +137,30 @@ export function resolveAndroidLatest(): ResolvedAndroidLatest {
     ...(updateMessage ? { updateMessage } : {}),
   };
 }
+
+export type AndroidLatestDebugInfo = {
+  resolved: ResolvedAndroidLatest;
+  bundledConfigLoaded: boolean;
+  envVersionCode: number | null;
+  fileVersionCode: number | null;
+  usingDefaults: boolean;
+};
+
+export function getAndroidLatestDebugInfo(): AndroidLatestDebugInfo {
+  const envCode = parseVersionCode(process.env.ANDROID_LATEST_VERSION_CODE);
+  const file = getFileConfig();
+  const fileCode = file ? parseVersionCode(file.versionCode) : null;
+  const resolved = resolveAndroidLatest();
+  const usingDefaults =
+    resolved.latestVersionCode === DEFAULT_VERSION_CODE &&
+    envCode == null &&
+    fileCode == null;
+
+  return {
+    resolved,
+    bundledConfigLoaded: getBundledConfig() != null,
+    envVersionCode: envCode,
+    fileVersionCode: fileCode,
+    usingDefaults,
+  };
+}

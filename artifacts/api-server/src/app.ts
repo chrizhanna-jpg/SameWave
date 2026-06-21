@@ -12,7 +12,7 @@ import legalRouter, {
   sendPrivacyPage,
   sendTermsPage,
 } from "./routes/legal";
-import { resolveAndroidLatest } from "./androidLatest";
+import { resolveAndroidLatest, getAndroidLatestDebugInfo } from "./androidLatest";
 import { logger } from "./lib/logger";
 import {
   CLERK_PROXY_PATH,
@@ -73,6 +73,7 @@ app.get("/api/public/backend-status", async (_req, res) => {
     const clerkSecretConfigured = !!process.env.CLERK_SECRET_KEY?.trim();
     const clerkPublishableConfigured = !!process.env.CLERK_PUBLISHABLE_KEY?.trim();
     const { apiKey } = getOpenAIEnv();
+    const androidLatest = getAndroidLatestDebugInfo();
 
     let databaseReachable = false;
     let databaseError: string | null = null;
@@ -93,6 +94,12 @@ app.get("/api/public/backend-status", async (_req, res) => {
       clerkSecretConfigured,
       clerkPublishableConfigured,
       openAiConfigured: apiKey.length > 0,
+      androidLatestVersionCode: androidLatest.resolved.latestVersionCode,
+      androidLatestVersionName: androidLatest.resolved.latestVersionName,
+      androidLatestUsingDefaults: androidLatest.usingDefaults,
+      androidLatestBundledConfigLoaded: androidLatest.bundledConfigLoaded,
+      androidLatestEnvVersionCode: androidLatest.envVersionCode,
+      androidLatestFileVersionCode: androidLatest.fileVersionCode,
     });
   } catch (err) {
     logger.error({ err }, "backend-status handler failed");
