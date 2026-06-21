@@ -19,6 +19,10 @@ export type ResolvedAndroidLatest = {
 const DEFAULT_VERSION_CODE = 28;
 const DEFAULT_VERSION_NAME = "1.3.1";
 
+function stripUtf8Bom(text: string): string {
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
+
 function getBundledConfig(): AndroidLatestFile | null {
   try {
     const raw: unknown = __ANDROID_LATEST_JSON__;
@@ -73,7 +77,7 @@ function loadAndroidLatestFromDisk(): AndroidLatestFile | null {
 
   for (const configPath of candidates) {
     try {
-      const raw = readFileSync(configPath, "utf8");
+      const raw = stripUtf8Bom(readFileSync(configPath, "utf8"));
       return JSON.parse(raw) as AndroidLatestFile;
     } catch {
       // try next candidate

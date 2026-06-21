@@ -11,10 +11,14 @@ globalThis.require = createRequire(import.meta.url);
 
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
 
+function stripUtf8Bom(text) {
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
+
 function readAndroidLatestJsonForBuild() {
   const configPath = path.resolve(artifactDir, "config", "android-latest.json");
   try {
-    const raw = readFileSync(configPath, "utf8");
+    const raw = stripUtf8Bom(readFileSync(configPath, "utf8"));
     return JSON.stringify(JSON.parse(raw));
   } catch (err) {
     console.warn(
