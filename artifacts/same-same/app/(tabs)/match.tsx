@@ -70,6 +70,8 @@ import {
   fetchMatchStats,
   markPhotosSeen,
   matchByObject,
+  authedImageHeaders,
+  explorePhotoUriNeedsAuth,
   type CandidatePhoto,
 } from "@/utils/api";
 import { requestAtlasRefresh } from "@/utils/atlasHub";
@@ -333,10 +335,11 @@ function mapFetchedCandidates(
       1,
       Math.round((Date.now() - new Date(c.createdAt).getTime()) / 60000),
     );
-    ids.set(c.uri, c.id);
+    const streamUri = serverPhotoImageUrl(c.id);
+    ids.set(streamUri, c.id);
     return {
       id: `live-${c.id}`,
-      uri: c.uri,
+      uri: streamUri,
       country: disp.name,
       countryCode: disp.code ?? "",
       countryFlag: disp.flag,
@@ -804,6 +807,9 @@ export default function SwipeScreen() {
           cands.map((c) => ({ id: c.id, uri: c.uri })),
         );
         setRealPool(mapped);
+        for (const p of mapped.slice(0, 6)) {
+          if (p.uri) void prefetchPhotoUri(p.uri);
+        }
       })
       .catch(() => {
         if (!cancelled) setRealPool([]);
@@ -838,6 +844,9 @@ export default function SwipeScreen() {
           cands.map((c) => ({ id: c.id, uri: c.uri })),
         );
         setSuggestedPool(mapped);
+        for (const p of mapped.slice(0, 4)) {
+          if (p.uri) void prefetchPhotoUri(p.uri);
+        }
       })
       .catch(() => {
         if (!cancelled) setSuggestedPool([]);
@@ -1211,6 +1220,11 @@ export default function SwipeScreen() {
   const prefetchPhotoUri = useCallback((uri: string) => {
     const normalized = normalizeUnsplashUri(uri);
     if (!normalized) return Promise.resolve();
+    if (explorePhotoUriNeedsAuth(normalized)) {
+      return authedImageHeaders()
+        .then((headers) => Image.prefetch(normalized, { headers }))
+        .catch(() => {});
+    }
     return Image.prefetch(normalized).catch(() => {});
   }, []);
 
@@ -1254,12 +1268,9 @@ export default function SwipeScreen() {
       setAnimatingOut(false);
     };
     if (next?.photo.uri) {
-      void prefetchPhotoUri(next.photo.uri).finally(() => {
-        InteractionManager.runAfterInteractions(applyNext);
-      });
-    } else {
-      InteractionManager.runAfterInteractions(applyNext);
+      void prefetchPhotoUri(next.photo.uri);
     }
+    InteractionManager.runAfterInteractions(applyNext);
   }, [
     translateX,
     translateY,

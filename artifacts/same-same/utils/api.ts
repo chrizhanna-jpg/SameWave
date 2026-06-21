@@ -78,10 +78,28 @@ export function setAuthTokenGetter(getter: () => Promise<string | null>): void {
 }
 
 /** Bearer headers for authenticated image URLs (`/api/photos/:id/image`). */
+let authedImageHeadersCache: {
+  headers: Record<string, string>;
+  fetchedAt: number;
+} | null = null;
+const AUTH_IMAGE_HEADERS_TTL_MS = 5 * 60 * 1000;
+
 export async function authedImageHeaders(
   extra?: Record<string, string>,
 ): Promise<Record<string, string>> {
-  return authedHeaders(extra);
+  const now = Date.now();
+  if (
+    !extra &&
+    authedImageHeadersCache &&
+    now - authedImageHeadersCache.fetchedAt < AUTH_IMAGE_HEADERS_TTL_MS
+  ) {
+    return authedImageHeadersCache.headers;
+  }
+  const headers = await authedHeaders(extra);
+  if (!extra) {
+    authedImageHeadersCache = { headers, fetchedAt: now };
+  }
+  return headers;
 }
 
 async function authedHeaders(extra?: Record<string, string>): Promise<Record<string, string>> {

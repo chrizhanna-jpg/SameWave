@@ -1,9 +1,11 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useMemo } from "react";
 import {
   Image,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
@@ -25,9 +27,17 @@ import { scrollPaddingAboveTabBar } from "@/utils/tabBarSafeArea";
 export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { width: screenW, height: screenH } = useWindowDimensions();
   const { matches, matchedCountries, mutualEchoes, resetOnboarding, cloudSyncInProgress, syncCloudData } =
     useApp();
   const challenge = getTodaysChallenge();
+
+  /** Scale logo for narrow / short phones (Galaxy S21 ≈ 360×780dp). */
+  const logoSize = useMemo(
+    () => Math.round(Math.min(screenW * 0.48, screenH * 0.2, 240)),
+    [screenW, screenH],
+  );
+  const contentGap = screenH < 740 ? 12 : 16;
 
   useFocusEffect(
     useCallback(() => {
@@ -72,24 +82,23 @@ export default function HomeScreen() {
           accessibilityLabel="Sync ripples and waves"
         />
       </View>
-      <View
-        style={[
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[
           styles.content,
           {
             paddingTop: topPadding + 16,
             paddingBottom: scrollBottomPad,
+            gap: contentGap,
           },
         ]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        {/* Hero — static brand lockup (matches the app icon exactly).
-            Animated globe is paused for v1.2.0; the icon image already
-            contains the globe + wordmark + tagline + brand frame, so we
-            simply render it. Swap this back to <EchoGlobeLogo /> when
-            we're ready to bring the globe back to life. */}
         <View style={styles.hero}>
           <Image
             source={require("@/assets/images/samewave-logo.png")}
-            style={styles.logo}
+            style={{ width: logoSize, height: logoSize }}
             resizeMode="contain"
             accessibilityRole="image"
             accessibilityLabel="SameWave — Where minds meet"
@@ -104,7 +113,10 @@ export default function HomeScreen() {
             accessibilityRole="text"
             accessibilityLabel={`Ripples: ${totalMatches}. ${RIPPLE_ONE_LINER}`}
           >
-            <Text style={[styles.statNum, { color: colors.foreground }]}>
+            <Text
+              style={[styles.statNum, { color: colors.foreground }]}
+              maxFontSizeMultiplier={1.25}
+            >
               {matchesAnim}
             </Text>
             <View style={styles.statLabelRow}>
@@ -121,7 +133,10 @@ export default function HomeScreen() {
             accessibilityRole="text"
             accessibilityLabel={`Waves: ${totalWaves}. ${WAVE_ONE_LINER}`}
           >
-            <Text style={[styles.statNum, { color: colors.foreground }]}>
+            <Text
+              style={[styles.statNum, { color: colors.foreground }]}
+              maxFontSizeMultiplier={1.25}
+            >
               {wavesAnim}
             </Text>
             <View style={styles.statLabelRow}>
@@ -133,7 +148,10 @@ export default function HomeScreen() {
           </View>
           <View style={[styles.statDivider, { backgroundColor: colors.borderSubtle }]} />
           <View style={styles.statItem}>
-            <Text style={[styles.statNum, { color: colors.foreground }]}>
+            <Text
+              style={[styles.statNum, { color: colors.foreground }]}
+              maxFontSizeMultiplier={1.25}
+            >
               {countriesAnim}
             </Text>
             <View style={styles.statLabelRow}>
@@ -235,32 +253,27 @@ export default function HomeScreen() {
           </View>
         </PressableScale>
 
-      </View>
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  scroll: { flex: 1 },
   syncHeader: {
     position: "absolute",
     zIndex: 2,
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     alignItems: "center",
     paddingHorizontal: 20,
-    gap: 16,
   },
   fullWidth: { width: "100%" },
   hero: {
     alignItems: "center",
-    gap: 10,
-    paddingBottom: 4,
-  },
-  logo: {
-    width: 300,
-    height: 300,
+    paddingBottom: 2,
   },
   tagline: {
     fontSize: 14,

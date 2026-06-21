@@ -743,33 +743,23 @@ router.get("/photos/candidates", async (req, res) => {
     const photos = (rows.rows as Array<Record<string, unknown>>).map((r) => {
       const customAudioBase64 = (r.customAudioBase64 as string | null) ?? null;
       const customAudioMime = (r.customAudioMime as string | null) ?? null;
-      // Build a `data:` URL the audio singleton can play directly.
-      // Only emit when both fields are present so the playback path
-      // can fall back cleanly to the music_genre clip otherwise.
       const customAudioUrl =
         customAudioBase64 && customAudioMime
           ? `data:${customAudioMime};base64,${customAudioBase64}`
           : null;
+      const id = String(r.id);
       return {
-        id: String(r.id),
+        id,
         theme: String(r.theme ?? ""),
         tags: Array.isArray(r.tags) ? (r.tags as string[]) : [],
-        // Surface the candidate's shape tags so the client-side
-        // re-rank in scoreCandidates can compute shape overlap. Empty
-        // for legacy rows whose shape_tags was never populated; the
-        // client tolerates `[]` and just earns 0 shape points.
         shapeTags: Array.isArray(r.shapeTags) ? (r.shapeTags as string[]) : [],
-        // Free-form concrete subjects ("apple", "sculpture", "park"…).
-        // Same role as shapeTags above — surfaced so the client-side
-        // re-rank in scoreCandidates can compute subject overlap and
-        // award the heaviest single-axis bonus. Empty for legacy rows
-        // until POST /photos/backfill-subjects fills them in.
         subjects: Array.isArray(r.subjects) ? (r.subjects as string[]) : [],
         countryCode: (r.countryCode as string | null) ?? null,
         captureCountryCode: (r.captureCountryCode as string | null) ?? null,
         musicGenre: (r.musicGenre as string | null) ?? null,
         customAudioUrl,
-        uri: `data:${String(r.mimeType)};base64,${String(r.bytesBase64)}`,
+        // Stream via GET /api/photos/:id/image — never inline multi-MB base64 in JSON.
+        uri: `/api/photos/${encodeURIComponent(id)}/image`,
         createdAt: r.createdAt as string | Date,
         // Surface subject + vibe + theme + shape together so the client
         // knows how the row scored on the rebalanced multi-axis rank.
