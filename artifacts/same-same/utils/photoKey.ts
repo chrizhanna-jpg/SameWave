@@ -23,6 +23,8 @@ export function photoKey(uri: string | undefined | null): string {
     return `data-${(h >>> 0).toString(36)}`;
   }
   const noQuery = uri.split("?")[0].replace(/\/+$/, "");
+  const apiPhoto = noQuery.match(/\/api\/photos\/([^/]+)\/image$/);
+  if (apiPhoto) return `photo-${apiPhoto[1]}`;
   const unsplash = noQuery.match(/\/(photo-[A-Za-z0-9_-]+)/);
   if (unsplash) return unsplash[1];
   return noQuery;

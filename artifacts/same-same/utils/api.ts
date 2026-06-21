@@ -2559,8 +2559,12 @@ export async function fetchAtlasFireExplore(
       options?.viewerMyPhotos ?? [],
       options?.viewerCountryCode,
     );
-    const tiles = flattenAtlasFireExplorePhotos(
+    const capped = capExploreMomentsForFlatten(
       withViewer,
+      buildExploreFlattenOptions(options?.viewerMyPhotos),
+    );
+    const tiles = flattenAtlasFireExplorePhotos(
+      capped,
       cluster?.displayTheme ?? "",
       undefined,
       buildExploreFlattenOptions(options?.viewerMyPhotos),
@@ -2807,16 +2811,24 @@ export function resolveExplorePhotoDisplayUri(
 
   const photoId = participant.photoId?.trim() ?? "";
   const serverImage =
-    photoId && !photoId.startsWith("local-")
+    photoId &&
+    !photoId.startsWith("local-") &&
+    !photoId.startsWith(LOCAL_MY_PHOTO_ID_PREFIX)
       ? `${base}/api/photos/${encodeURIComponent(photoId)}/image`
       : "";
+
+  // Prefer authenticated stream URLs — faster decode and stable dedup keys.
+  if (serverImage) return serverImage;
 
   if (raw.startsWith("data:")) {
     if (raw.length <= EXPLORE_INLINE_DATA_URI_MAX) return raw;
     return serverImage || raw;
   }
 
-  if (serverImage) return serverImage;
+  if (raw.startsWith("/api/photos/") && raw.endsWith("/image")) {
+    return `${base}${raw}`;
+  }
+
   return raw;
 }
 
@@ -2862,6 +2874,56 @@ function isExploreViewerParticipant(
   return false;
 }
 
+/** Stable tile identity — photoId when known, else uri hash (handles data vs stream). */
+export function explorePhotoTileIdentity(
+  p: AtlasFireParticipant,
+  displayUri: string,
+): string {
+  const pid = p.photoId?.trim() ?? "";
+  if (pid.startsWith(LOCAL_MY_PHOTO_ID_PREFIX)) {
+    const uriKey = photoKey(displayUri);
+    return uriKey ? `viewer:${uriKey}` : `viewer:${pid}`;
+  }
+  if (pid && !pid.startsWith("local-")) return `photo:${pid}`;
+  const uriKey = photoKey(displayUri);
+  return uriKey ? `uri:${uriKey}` : "";
+}
+
+/** Limit counterparty photo repeats after local + server merge (mirrors server cap). */
+export function capExploreMomentsForFlatten(
+  moments: AtlasFireMoment[],
+  flattenOptions?: FlattenExploreOptions,
+  maxPerPhoto = 1,
+): AtlasFireMoment[] {
+  const exemptPhotoIds = flattenOptions?.viewerBackendPhotoIds;
+  const counts = new Map<string, number>();
+  const out: AtlasFireMoment[] = [];
+  for (const moment of moments) {
+    const cappedPhotoIds: string[] = [];
+    for (const p of moment.participants) {
+      const id = p.photoId?.trim();
+      if (!id) continue;
+      if (id.startsWith(LOCAL_MY_PHOTO_ID_PREFIX)) continue;
+      if (exemptPhotoIds?.has(id)) continue;
+      cappedPhotoIds.push(id);
+    }
+    let blocked = false;
+    for (const id of cappedPhotoIds) {
+      const next = (counts.get(id) ?? 0) + 1;
+      if (next > maxPerPhoto) {
+        blocked = true;
+        break;
+      }
+    }
+    if (blocked) continue;
+    for (const id of cappedPhotoIds) {
+      counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    out.push(moment);
+  }
+  return out;
+}
+
 /** Flatten explore moments into scrollable photo rows (one counterparty photo per arc). */
 export function flattenAtlasFireExplorePhotos(
   moments: AtlasFireMoment[],
@@ -2875,18 +2937,18 @@ export function flattenAtlasFireExplorePhotos(
     theme: string;
     participant: AtlasFireParticipant;
   }> = [];
-  const seenUriKeys = new Set<string>();
+  const seenTileIds = new Set<string>();
   const counterpartyTiles: Array<{
     key: string;
     theme: string;
     participant: AtlasFireParticipant;
-    uriKey: string;
+    tileId: string;
   }> = [];
   let viewerTile: {
     key: string;
     theme: string;
     participant: AtlasFireParticipant;
-    uriKey: string;
+    tileId: string;
   } | null = null;
 
   const clusterTheme = fallbackTheme.trim();
@@ -2896,8 +2958,8 @@ export function flattenAtlasFireExplorePhotos(
     p: AtlasFireParticipant,
     displayUri: string,
   ) => {
-    const uriKey = photoKey(displayUri);
-    if (!uriKey) return null;
+    const tileId = explorePhotoTileIdentity(p, displayUri);
+    if (!tileId) return null;
     const theme = p.theme.trim() || m.theme.trim() || fallbackTheme;
     const isPairedRippleMoment =
       m.id.startsWith("local-match-") || m.id.startsWith("local-wave-");
@@ -2909,10 +2971,10 @@ export function flattenAtlasFireExplorePhotos(
       return null;
     }
     return {
-      key: `${m.id}:${uriKey}`,
+      key: `${m.id}:${tileId}`,
       theme,
       participant: { ...p, uri: displayUri },
-      uriKey,
+      tileId,
     };
   };
 
@@ -2936,8 +2998,8 @@ export function flattenAtlasFireExplorePhotos(
 
     for (const r of tilesForMoment) {
       const tile = pushTile(m, r.participant, r.displayUri);
-      if (tile && !seenUriKeys.has(tile.uriKey)) {
-        seenUriKeys.add(tile.uriKey);
+      if (tile && !seenTileIds.has(tile.tileId)) {
+        seenTileIds.add(tile.tileId);
         counterpartyTiles.push(tile);
       }
     }
@@ -2956,13 +3018,13 @@ export function flattenAtlasFireExplorePhotos(
   }
 
   if (viewerTile && counterpartyTiles.length > 0) {
-    if (!seenUriKeys.has(viewerTile.uriKey)) {
+    if (!seenTileIds.has(viewerTile.tileId)) {
       out.push({
         key: viewerTile.key,
         theme: viewerTile.theme,
         participant: viewerTile.participant,
       });
-      seenUriKeys.add(viewerTile.uriKey);
+      seenTileIds.add(viewerTile.tileId);
     }
   }
 
@@ -2986,19 +3048,48 @@ export function flattenAtlasFireExplorePhotos(
 }
 
 /** Returns up to 30 recent photos for a given country code. */
+const atlasCountryPhotosCache = new Map<
+  string,
+  { fetchedAt: number; photos: AtlasPhoto[] }
+>();
+const ATLAS_COUNTRY_PHOTOS_TTL_MS = 3 * 60 * 1000;
+
 export async function fetchAtlasCountryPhotos(
   countryCode: string,
 ): Promise<AtlasPhoto[]> {
+  const code = countryCode.trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) return [];
+
+  const cached = atlasCountryPhotosCache.get(code);
+  const now = Date.now();
+  if (cached && now - cached.fetchedAt < ATLAS_COUNTRY_PHOTOS_TTL_MS) {
+    return cached.photos;
+  }
+
   try {
     const base = getApiBase();
     const res = await fetch(
-      `${base}/api/photos/atlas/${encodeURIComponent(countryCode)}`,
+      `${base}/api/photos/atlas/${encodeURIComponent(code)}`,
       { headers: await authedHeaders(), cache: "no-store" },
     );
-    if (!res.ok) return [];
+    if (!res.ok) return cached?.photos ?? [];
     const json = (await res.json()) as { photos?: AtlasPhoto[] };
-    return Array.isArray(json.photos) ? json.photos : [];
+    const raw = Array.isArray(json.photos) ? json.photos : [];
+    const photos = raw.map((p) => {
+      const uri = p.uri?.trim() ?? "";
+      const abs =
+        uri.startsWith("http") || uri.startsWith("data:") || uri.startsWith("file:")
+          ? uri
+          : uri.startsWith("/api/photos/")
+            ? `${base.replace(/\/$/, "")}${uri}`
+            : p.id
+              ? `${base}/api/photos/${encodeURIComponent(p.id)}/image`
+              : uri;
+      return { ...p, uri: abs };
+    });
+    atlasCountryPhotosCache.set(code, { fetchedAt: now, photos });
+    return photos;
   } catch {
-    return [];
+    return cached?.photos ?? [];
   }
 }

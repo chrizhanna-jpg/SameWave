@@ -72,25 +72,16 @@ function vibeUrl(p: AtlasFireParticipant): string | null {
 }
 
 /** Loads explore URIs — uses bearer headers for `/api/photos/:id/image` streams. */
-function ExploreAtlasPhoto({ uri }: { uri: string }) {
+function ExploreAtlasPhoto({
+  uri,
+  authHeaders,
+}: {
+  uri: string;
+  authHeaders?: Record<string, string>;
+}) {
   const needsAuth = explorePhotoUriNeedsAuth(uri);
-  const [headers, setHeaders] = useState<Record<string, string> | undefined>();
 
-  useEffect(() => {
-    if (!needsAuth) {
-      setHeaders(undefined);
-      return;
-    }
-    let cancelled = false;
-    void authedImageHeaders().then((h) => {
-      if (!cancelled) setHeaders(h);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [needsAuth, uri]);
-
-  if (needsAuth && !headers) {
+  if (needsAuth && !authHeaders) {
     return (
       <View style={styles.explorePhotoLoader}>
         <ActivityIndicator color="#E8F4F8" size="large" />
@@ -100,7 +91,7 @@ function ExploreAtlasPhoto({ uri }: { uri: string }) {
 
   return (
     <Image
-      source={needsAuth && headers ? { uri, headers } : { uri }}
+      source={needsAuth && authHeaders ? { uri, headers: authHeaders } : { uri }}
       style={StyleSheet.absoluteFillObject}
       contentFit="contain"
       cachePolicy="memory-disk"
@@ -112,9 +103,11 @@ function ExploreAtlasPhoto({ uri }: { uri: string }) {
 function ImmersivePhotoViewer({
   tile,
   onClose,
+  authHeaders,
 }: {
   tile: ExplorePhotoTile;
   onClose: () => void;
+  authHeaders?: Record<string, string>;
 }) {
   const insets = useSafeAreaInsets();
   const uploadedTheme = (tile.participant.theme || tile.theme).trim();
@@ -124,7 +117,7 @@ function ImmersivePhotoViewer({
   return (
     <Modal visible animationType="fade" presentationStyle="fullScreen">
       <View style={styles.immersiveRoot}>
-        <ExploreAtlasPhoto uri={tile.participant.uri} />
+        <ExploreAtlasPhoto uri={tile.participant.uri} authHeaders={authHeaders} />
         <View style={styles.immersiveScrim} pointerEvents="none" />
         <View style={[styles.immersiveTopBar, { top: insets.top + 12 }]}>
           <AudioMuteButton variant="overlay" iconSize={20} />
@@ -159,6 +152,7 @@ function FullScreenPhotoPage({
   pageHeight,
   captionBottomInset,
   onOpen,
+  authHeaders,
 }: {
   tile: ExplorePhotoTile;
   pageWidth: number;
@@ -166,6 +160,7 @@ function FullScreenPhotoPage({
   /** Safe area + breathing room so caption stays on screen. */
   captionBottomInset: number;
   onOpen: () => void;
+  authHeaders?: Record<string, string>;
 }) {
   const uploadedTheme = (tile.participant.theme || tile.theme).trim();
   const { title, emoji } = resolveThemeDisplay(uploadedTheme);
@@ -178,7 +173,7 @@ function FullScreenPhotoPage({
       accessibilityRole="button"
       accessibilityLabel={`${title}, ${nameFor(country) ?? country}. Tap for fullscreen.`}
     >
-      <ExploreAtlasPhoto uri={tile.participant.uri} />
+      <ExploreAtlasPhoto uri={tile.participant.uri} authHeaders={authHeaders} />
       <View style={styles.pageScrim} pointerEvents="none" />
       <View
         style={[
@@ -219,7 +214,31 @@ export function AtlasFireExploreModal({
   const [immersive, setImmersive] = useState<ExplorePhotoTile | null>(null);
   const [listViewportHeight, setListViewportHeight] = useState(0);
   const [photoIndex, setPhotoIndex] = useState(0);
+  const [exploreAuthHeaders, setExploreAuthHeaders] = useState<
+    Record<string, string> | undefined
+  >();
   const explorePlayLeaseRef = useRef(0);
+
+  useEffect(() => {
+    if (!visible || photoTiles.length === 0) {
+      setExploreAuthHeaders(undefined);
+      return;
+    }
+    const needsAuth = photoTiles.some((t) =>
+      explorePhotoUriNeedsAuth(t.participant.uri),
+    );
+    if (!needsAuth) {
+      setExploreAuthHeaders(undefined);
+      return;
+    }
+    let cancelled = false;
+    void authedImageHeaders().then((h) => {
+      if (!cancelled) setExploreAuthHeaders(h);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, photoTiles]);
 
   // Page height must match the measured list viewport — never guess from windowH or
   // paging/getItemLayout desync and the first slides render blank.
@@ -451,6 +470,7 @@ export function AtlasFireExploreModal({
                       pageHeight={pageHeight}
                       captionBottomInset={captionBottomInset}
                       onOpen={() => setImmersive(tile)}
+                      authHeaders={exploreAuthHeaders}
                     />
                   ))}
                 </ScrollView>
@@ -468,6 +488,7 @@ export function AtlasFireExploreModal({
         <ImmersivePhotoViewer
           tile={immersive}
           onClose={() => setImmersive(null)}
+          authHeaders={exploreAuthHeaders}
         />
       ) : null}
     </>

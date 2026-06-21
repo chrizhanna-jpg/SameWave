@@ -80,6 +80,7 @@ import {
   type LocalWaveExploreEcho,
   type ViewerExplorePhoto,
 } from "@/utils/api";
+import { getPublicApiOrigin } from "@/utils/publicEnv";
 import { flagFor, nameFor } from "@/data/countries";
 import { AtlasFireExploreModal } from "@/components/AtlasFireExploreModal";
 import { PressableScale } from "@/components/PressableScale";
@@ -1062,8 +1063,14 @@ export function AtlasGlobeExperience({
       return;
     }
     const inline = wfPhotoTile.thumbnailUrl?.trim() ?? "";
+    const apiBase = getPublicApiOrigin().replace(/\/$/, "");
     if (inline.startsWith("data:") || inline.startsWith("http")) {
       setWfPhotoUri(inline);
+      setWfPhotoLoading(false);
+      return;
+    }
+    if (inline.startsWith("/api/photos/")) {
+      setWfPhotoUri(`${apiBase}${inline}`);
       setWfPhotoLoading(false);
       return;
     }
@@ -1072,15 +1079,20 @@ export function AtlasGlobeExperience({
       setWfPhotoLoading(false);
       return;
     }
+    const spotlightId = wfPhotoTile.spotlightPhotoId?.trim();
+    if (spotlightId) {
+      setWfPhotoUri(
+        `${apiBase}/api/photos/${encodeURIComponent(spotlightId)}/image`,
+      );
+      setWfPhotoLoading(false);
+      return;
+    }
     let cancelled = false;
     setWfPhotoLoading(true);
     setWfPhotoUri(null);
     void fetchAtlasCountryPhotos(wfPhotoTile.countryCode).then((list) => {
       if (cancelled) return;
-      const spotlightId = wfPhotoTile.spotlightPhotoId?.trim();
-      const hit = spotlightId
-        ? list.find((p) => p.id === spotlightId)
-        : list[0];
+      const hit = list[0];
       setWfPhotoUri(hit?.uri ?? null);
       setWfPhotoLoading(false);
     });

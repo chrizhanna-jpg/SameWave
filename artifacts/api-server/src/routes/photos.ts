@@ -1504,7 +1504,6 @@ router.post("/photos/atlas/explore", async (req, res) => {
         pl.subjects AS pl_subjects,
         pl.music_genre AS pl_music,
         pl.mime_type AS pl_mime,
-        pl.bytes_base64 AS pl_bytes,
         pl.custom_audio_base64 AS pl_audio_b64,
         pl.custom_audio_mime AS pl_audio_mime,
         pl.user_id::text AS pl_user,
@@ -1519,7 +1518,6 @@ router.post("/photos/atlas/explore", async (req, res) => {
         ph.subjects AS ph_subjects,
         ph.music_genre AS ph_music,
         ph.mime_type AS ph_mime,
-        ph.bytes_base64 AS ph_bytes,
         ph.custom_audio_base64 AS ph_audio_b64,
         ph.custom_audio_mime AS ph_audio_mime,
         ph.user_id::text AS ph_user,
@@ -1605,8 +1603,7 @@ router.post("/photos/atlas/explore", async (req, res) => {
     };
 
     const mapSide = (r: Record<string, unknown>, prefix: "pl" | "ph") => {
-      const mime = String(r[`${prefix}_mime`] ?? "image/jpeg");
-      const b64 = String(r[`${prefix}_bytes`] ?? "");
+      const photoId = String(r[`${prefix}_id`] ?? "").trim();
       const audioB64 = (r[`${prefix}_audio_b64`] as string | null) ?? null;
       const audioMime = (r[`${prefix}_audio_mime`] as string | null) ?? null;
       const normTags = (v: unknown): string[] => {
@@ -1617,7 +1614,7 @@ router.post("/photos/atlas/explore", async (req, res) => {
           .filter(Boolean);
       };
       return {
-        photoId: String(r[`${prefix}_id`] ?? ""),
+        photoId,
         userId: String(r[`${prefix}_user`] ?? ""),
         countryCode: iso2(r[`${prefix}_country`]) ?? "",
         theme: String(r[`${prefix}_theme`] ?? ""),
@@ -1626,7 +1623,10 @@ router.post("/photos/atlas/explore", async (req, res) => {
         musicGenre: (r[`${prefix}_music`] as string | null) ?? null,
         customAudioUrl:
           audioB64 && audioMime ? `data:${audioMime};base64,${audioB64}` : null,
-        uri: b64.length > 0 ? `data:${mime};base64,${b64}` : "",
+        // Stream via GET /api/photos/:id/image — never inline multi-MB base64 in JSON.
+        uri: photoId
+          ? `/api/photos/${encodeURIComponent(photoId)}/image`
+          : "",
       };
     };
 
@@ -1753,8 +1753,6 @@ router.get("/photos/atlas/:countryCode", async (req, res) => {
       )
       SELECT
         id,
-        bytes_base64,
-        mime_type,
         theme,
         tags,
         music_genre,
@@ -1768,9 +1766,10 @@ router.get("/photos/atlas/:countryCode", async (req, res) => {
     const photos = (rows.rows as Array<Record<string, unknown>>).map((r) => {
       const audioBase64 = (r.custom_audio_base64 as string | null) ?? null;
       const audioMime   = (r.custom_audio_mime   as string | null) ?? null;
+      const id = String(r.id);
       return {
-        id:             String(r.id),
-        uri:            `data:${String(r.mime_type)};base64,${String(r.bytes_base64)}`,
+        id,
+        uri: `/api/photos/${encodeURIComponent(id)}/image`,
         theme:          String(r.theme ?? ""),
         tags:           Array.isArray(r.tags) ? (r.tags as string[]) : [],
         musicGenre:     (r.music_genre as string | null) ?? null,
