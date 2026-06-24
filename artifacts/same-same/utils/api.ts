@@ -4,6 +4,7 @@ import { postDebugSessionLog } from "@/utils/debugSessionLog";
 import type { ServerJourneyMatch } from "@/utils/journeySync";
 import { resolveMatchPhotoUris } from "@/utils/matchPhotoSnapshot";
 import { photoKey } from "@/utils/photoKey";
+import { withDisplayPhotoWidth, serverPhotoImageUrlAtOrigin } from "@/utils/photoDisplayUri";
 import { clusterThemesAlign } from "@/utils/atlasWavefire";
 import {
   ATLAS_SOMEWHERE_ISO,
@@ -83,6 +84,23 @@ let authedImageHeadersCache: {
   fetchedAt: number;
 } | null = null;
 const AUTH_IMAGE_HEADERS_TTL_MS = 5 * 60 * 1000;
+
+/** Synchronous read of cached auth headers (for instant image mount when cache is warm). */
+export function peekAuthedImageHeaders(): Record<string, string> | undefined {
+  const now = Date.now();
+  if (
+    authedImageHeadersCache &&
+    now - authedImageHeadersCache.fetchedAt < AUTH_IMAGE_HEADERS_TTL_MS
+  ) {
+    return authedImageHeadersCache.headers;
+  }
+  return undefined;
+}
+
+/** Fire-and-forget warm-up — call on Atlas / Ripple tab focus. */
+export function warmAuthedImageHeaders(): void {
+  void authedImageHeaders().catch(() => {});
+}
 
 export async function authedImageHeaders(
   extra?: Record<string, string>,
@@ -2570,7 +2588,7 @@ export async function fetchAtlasFireExplore(
       buildExploreFlattenOptions(options?.viewerMyPhotos),
     );
     finalizeExploreDiagnostics(diag, withViewer, tiles.length);
-    return { moments: withViewer, error, diagnostics: diag };
+    return { moments: capped, error, diagnostics: diag };
   };
 
   const collectLocalDeviceMoments = (): AtlasFireMoment[] => {
@@ -2814,7 +2832,7 @@ export function resolveExplorePhotoDisplayUri(
     photoId &&
     !photoId.startsWith("local-") &&
     !photoId.startsWith(LOCAL_MY_PHOTO_ID_PREFIX)
-      ? `${base}/api/photos/${encodeURIComponent(photoId)}/image`
+      ? serverPhotoImageUrlAtOrigin(photoId, base)
       : "";
 
   // Prefer authenticated stream URLs — faster decode and stable dedup keys.
@@ -2826,10 +2844,10 @@ export function resolveExplorePhotoDisplayUri(
   }
 
   if (raw.startsWith("/api/photos/") && raw.endsWith("/image")) {
-    return `${base}${raw}`;
+    return withDisplayPhotoWidth(`${base}${raw}`);
   }
 
-  return raw;
+  return withDisplayPhotoWidth(raw);
 }
 
 export function explorePhotoUriNeedsAuth(uri: string): boolean {
@@ -2960,7 +2978,7 @@ export function flattenAtlasFireExplorePhotos(
   ) => {
     const tileId = explorePhotoTileIdentity(p, displayUri);
     if (!tileId) return null;
-    const theme = p.theme.trim() || m.theme.trim() || fallbackTheme;
+    const theme = m.theme.trim() || p.theme.trim() || fallbackTheme;
     const isPairedRippleMoment =
       m.id.startsWith("local-match-") || m.id.startsWith("local-wave-");
     if (
@@ -3083,9 +3101,9 @@ export async function fetchAtlasCountryPhotos(
           : uri.startsWith("/api/photos/")
             ? `${base.replace(/\/$/, "")}${uri}`
             : p.id
-              ? `${base}/api/photos/${encodeURIComponent(p.id)}/image`
+              ? serverPhotoImageUrlAtOrigin(String(p.id), base)
               : uri;
-      return { ...p, uri: abs };
+      return { ...p, uri: withDisplayPhotoWidth(abs) };
     });
     atlasCountryPhotosCache.set(code, { fetchedAt: now, photos });
     return photos;

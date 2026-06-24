@@ -35,10 +35,23 @@ assert(
   "ripplefire no longer uses tag-linked wave clustering",
 );
 
+const challengeSrc = readFileSync(
+  path.join(here, "../../api-server/src/lib/challengeTheme.ts"),
+  "utf8",
+);
+assert(
+  challengeSrc.includes("prefer echo.theme"),
+  "server rippleArcTheme documents voter echo theme first",
+);
+assert(
+  /const echo = echoTheme\.trim\(\);\s*\n\s*if \(echo\) return echo;/.test(challengeSrc),
+  "server rippleArcTheme returns echo theme before initiator label",
+);
+
 const apiSrc = readFileSync(path.join(here, "../utils/api.ts"), "utf8");
 assert(
-  apiSrc.includes("(m.theme ?? m.theirActualTheme"),
-  "explore prefers voter challenge theme over counterparty label",
+  apiSrc.includes("m.theme.trim() || p.theme.trim()"),
+  "explore prefers moment (echo) theme over participant photo label",
 );
 
 const atlasLocal = readFileSync(path.join(here, "../utils/atlasLocalRipples.ts"), "utf8");

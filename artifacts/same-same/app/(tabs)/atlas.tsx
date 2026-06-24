@@ -26,6 +26,7 @@ import {
   fetchAtlasSummary,
   fetchAtlasTabDiagnostics,
   invalidateAtlasSummaryCache,
+  warmAuthedImageHeaders,
   type AtlasConnection,
   type AtlasCountry,
   type AtlasFireExploreOptions,
@@ -38,6 +39,7 @@ import { registerAtlasRefreshListener } from "@/utils/atlasHub";
 import {
   buildLocalRippleConnections,
   mergeAtlasConnectionsById,
+  reconcileServerAndLocalRipples,
 } from "@/utils/atlasLocalRipples";
 import { isServerHeldAtlasConnection } from "@/utils/atlasWavefire";
 import {
@@ -152,13 +154,13 @@ export default function AtlasScreen() {
 
   const globeConnections = useMemo(
     () =>
-      mergeAtlasConnectionsById(connections, liveLocalRipples),
+      reconcileServerAndLocalRipples(connections, liveLocalRipples),
     [connections, liveLocalRipples],
   );
 
   /** Server arcs + this device's ripples — rings must include all of the viewer's Same votes. */
   const ripplefireClusterConnections = useMemo(
-    () => mergeAtlasConnectionsById(connections, liveLocalRipples),
+    () => reconcileServerAndLocalRipples(connections, liveLocalRipples),
     [connections, liveLocalRipples],
   );
 
@@ -265,6 +267,7 @@ export default function AtlasScreen() {
       setAtlasTabFocused(true);
       atlasFocusedRef.current = true;
       markTabVisited("atlas");
+      warmAuthedImageHeaders();
       void load(hasCachedData || atlasHasLoadedOnceRef.current);
       void startWavefireAmbience();
       return () => {

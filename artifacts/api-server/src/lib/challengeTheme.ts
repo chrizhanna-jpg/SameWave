@@ -138,16 +138,16 @@ export function normalizeChallengeTheme(raw: string): string {
   return resolveChallengeThemeId(raw);
 }
 
-/** Theme label for a pending ripple arc — prefer the initiator's upload theme. */
+/** Theme label for a pending ripple arc — prefer echo.theme (voter's challenge at swipe). */
 export function rippleArcTheme(
   echoTheme: string,
   initiatorPhotoTheme: string,
   otherPhotoTheme: string,
 ): string {
-  const init = initiatorPhotoTheme.trim();
-  if (init) return init;
   const echo = echoTheme.trim();
   if (echo) return echo;
+  const init = initiatorPhotoTheme.trim();
+  if (init) return init;
   return otherPhotoTheme.trim();
 }
 

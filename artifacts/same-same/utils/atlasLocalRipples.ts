@@ -108,3 +108,35 @@ export function mergeAtlasConnectionsById(
     (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt),
   );
 }
+
+/**
+ * When the server already has a ripple for a counterparty photo, drop the
+ * device-only `local-ripple-*` duplicate so theme/country stay on one arc.
+ * Keeps local arcs until the server echo exists (instant swipe / slow network).
+ */
+export function reconcileServerAndLocalRipples(
+  serverConnections: AtlasConnection[],
+  localRipples: AtlasConnection[],
+): AtlasConnection[] {
+  const serverRippleKeys = new Set<string>();
+  for (const c of serverConnections) {
+    if (c.kind !== "ripple") continue;
+    const photoId = c.spotlightPhotoId?.trim();
+    if (!photoId) continue;
+    const route = `${c.from}->${c.to}`;
+    serverRippleKeys.add(`${photoId}:${route}`);
+    serverRippleKeys.add(`${photoId}:${c.to}`);
+  }
+
+  const filteredLocal = localRipples.filter((lc) => {
+    if (!lc.id.startsWith("local-ripple-")) return true;
+    const photoId = lc.spotlightPhotoId?.trim();
+    if (!photoId) return true;
+    const route = `${lc.from}->${lc.to}`;
+    if (serverRippleKeys.has(`${photoId}:${route}`)) return false;
+    if (serverRippleKeys.has(`${photoId}:${lc.to}`)) return false;
+    return true;
+  });
+
+  return mergeAtlasConnectionsById(serverConnections, filteredLocal);
+}
