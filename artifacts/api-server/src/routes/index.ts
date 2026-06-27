@@ -4,6 +4,7 @@ import photosRouter from "./photos";
 import echoesRouter from "./echoes";
 import pushTokensRouter from "./pushTokens";
 import usersRouter from "./users";
+import catalogRouter from "./catalog";
 
 const router: IRouter = Router();
 
@@ -12,5 +13,6 @@ router.use(photosRouter);
 router.use(echoesRouter);
 router.use(pushTokensRouter);
 router.use(usersRouter);
+router.use(catalogRouter);
 
 export default router;

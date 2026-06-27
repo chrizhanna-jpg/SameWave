@@ -38,6 +38,7 @@ export default defineConfig({
     schemaGlob("src/schema/reports.ts"),
     schemaGlob("src/schema/echoes.ts"),
     schemaGlob("src/schema/pushTokens.ts"),
+    schemaGlob("src/schema/themeCatalog.ts"),
     schemaGlob("src/schema/_vector.ts"),
   ],
   dialect: "postgresql",

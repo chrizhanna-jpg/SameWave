@@ -6,7 +6,7 @@
  * images.unsplash.com/photo-{id}?auto=format&fit=crop&w=400&q=80 (200 + >=5KB).
  *
  * Usage:
- *   node scripts/discover-unsplash-ids.mjs [--target 251] [--concurrency 8]
+ *   node scripts/discover-unsplash-ids.mjs [--target 251] [--concurrency 8] [--skip-search]
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -126,12 +126,14 @@ function parseArgs() {
   const args = process.argv.slice(2);
   let target = 251;
   let concurrency = 8;
+  let skipSearch = false;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--target" && args[i + 1]) target = Number(args[++i]);
     else if (args[i] === "--concurrency" && args[i + 1])
       concurrency = Number(args[++i]);
+    else if (args[i] === "--skip-search") skipSearch = true;
   }
-  return { target, concurrency };
+  return { target, concurrency, skipSearch };
 }
 
 /** @param {unknown} photo */
@@ -235,9 +237,10 @@ function sleep(ms) {
 }
 
 async function main() {
-  const { target, concurrency } = parseArgs();
+  const { target, concurrency, skipSearch } = parseArgs();
   const existing = loadExistingIds();
   const discoverySource = UNSPLASH_ACCESS_KEY ? "unsplash-api" : "unsplash-napi";
+  const candidatesPath = path.join(apiRoot, "scripts", "discovered-candidates.json");
 
   console.log(`Existing pool IDs (incl. samplePhotos + banned): ${existing.size}`);
   console.log(
@@ -250,49 +253,60 @@ async function main() {
   /** @type {Set<string>} */
   const allCandidates = new Set();
 
-  for (const [category, queries] of Object.entries(CATEGORY_QUERIES)) {
-    const set = new Set();
-    candidatesByCategory.set(category, set);
-
-    for (const query of queries) {
-      for (let page = 1; page <= 4; page++) {
-        let ids;
-        try {
-          ids = await searchPhotos(query, page, 30);
-        } catch (err) {
-          console.warn(`Search failed [${category}] "${query}" p${page}:`, err.message);
-          break;
-        }
-        if (ids.length === 0) break;
-        for (const id of ids) {
-          if (existing.has(id) || allCandidates.has(id)) continue;
-          set.add(id);
-          allCandidates.add(id);
-        }
-        await sleep(120);
-      }
+  if (skipSearch && fs.existsSync(candidatesPath)) {
+    const cached = JSON.parse(readText(candidatesPath));
+    for (const [category, ids] of Object.entries(cached.byCategory ?? {})) {
+      const set = new Set(
+        /** @type {string[]} */ (ids).filter((id) => !existing.has(id) && !BANNED.has(id)),
+      );
+      candidatesByCategory.set(category, set);
+      for (const id of set) allCandidates.add(id);
     }
-    console.log(`Candidates [${category}]: ${set.size}`);
+    console.log(`Loaded cached candidates: ${allCandidates.size} (${candidatesPath})`);
+  } else {
+    for (const [category, queries] of Object.entries(CATEGORY_QUERIES)) {
+      const set = new Set();
+      candidatesByCategory.set(category, set);
+
+      for (const query of queries) {
+        for (let page = 1; page <= 4; page++) {
+          let ids;
+          try {
+            ids = await searchPhotos(query, page, 30);
+          } catch (err) {
+            console.warn(`Search failed [${category}] "${query}" p${page}:`, err.message);
+            break;
+          }
+          if (ids.length === 0) break;
+          for (const id of ids) {
+            if (existing.has(id) || allCandidates.has(id)) continue;
+            set.add(id);
+            allCandidates.add(id);
+          }
+          await sleep(120);
+        }
+      }
+      console.log(`Candidates [${category}]: ${set.size}`);
+    }
+
+    fs.writeFileSync(
+      candidatesPath,
+      `${JSON.stringify(
+        {
+          generatedAt: new Date().toISOString(),
+          byCategory: Object.fromEntries(
+            [...candidatesByCategory.entries()].map(([k, s]) => [k, [...s]]),
+          ),
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    console.log(`Saved candidate lists: ${candidatesPath}`);
   }
 
   console.log(`\nTotal unique new candidates to verify: ${allCandidates.size}`);
-
-  const candidatesPath = path.join(apiRoot, "scripts", "discovered-candidates.json");
-  fs.writeFileSync(
-    candidatesPath,
-    `${JSON.stringify(
-      {
-        generatedAt: new Date().toISOString(),
-        byCategory: Object.fromEntries(
-          [...candidatesByCategory.entries()].map(([k, s]) => [k, [...s]]),
-        ),
-      },
-      null,
-      2,
-    )}\n`,
-    "utf8",
-  );
-  console.log(`Saved candidate lists: ${candidatesPath}`);
 
   /** @type {Map<string, string[]>} */
   const categoryQueues = new Map(

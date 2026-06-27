@@ -1,4 +1,5 @@
 import { DAILY_CHALLENGES } from "@/data/samplePhotos";
+import { getCatalogThemeEmoji } from "@/utils/serverCatalog";
 
 /** Matches camera theme input cap (`app/camera.tsx` maxLength). */
 export const UPLOAD_THEME_MAX_LENGTH = 40;
@@ -15,7 +16,11 @@ export function resolveThemeDisplay(raw: string): ThemeDisplay {
   const meta = DAILY_CHALLENGES.find(
     (c) => c.id === t || c.title.toLowerCase() === t.toLowerCase(),
   );
-  return { title: t, emoji: meta?.emoji ?? "✨" };
+  // Server-driven approved entries layer on top of the hardcoded presets:
+  // an owner-approved submitted word resolves to its assigned emoji. Presets
+  // remain the base; falls back to ✨ offline / when nothing matches.
+  const serverEmoji = getCatalogThemeEmoji(t);
+  return { title: t, emoji: serverEmoji ?? meta?.emoji ?? "✨" };
 }
 
 /**

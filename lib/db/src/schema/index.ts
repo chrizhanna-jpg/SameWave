@@ -5,3 +5,4 @@ export * from "./seenPhotos";
 export * from "./reports";
 export * from "./echoes";
 export * from "./pushTokens";
+export * from "./themeCatalog";

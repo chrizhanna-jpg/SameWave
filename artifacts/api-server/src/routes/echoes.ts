@@ -330,6 +330,8 @@ type EchoCard = {
     uri: string;
     countryCode: string | null;
     captureCountryCode: string | null;
+    capturedAt: string | null;
+    createdAt: string | null;
     theme: string;
   };
   theirs: {
@@ -337,14 +339,32 @@ type EchoCard = {
     uri: string;
     countryCode: string | null;
     captureCountryCode: string | null;
+    capturedAt: string | null;
+    createdAt: string | null;
     theme: string;
   };
 };
 
+/** Normalise a DB timestamp to an ISO string (or null) for JSON transport. */
+function isoOrNull(v: unknown): string | null {
+  if (v == null) return null;
+  const d = v instanceof Date ? v : new Date(String(v));
+  const ms = d.getTime();
+  return Number.isFinite(ms) ? d.toISOString() : null;
+}
+
 function photoSideFromRow(
   row: Record<string, unknown>,
   side: "low" | "high",
-): { id: string; uri: string; countryCode: string | null; captureCountryCode: string | null; theme: string } {
+): {
+  id: string;
+  uri: string;
+  countryCode: string | null;
+  captureCountryCode: string | null;
+  capturedAt: string | null;
+  createdAt: string | null;
+  theme: string;
+} {
   const captureRaw = row[`${side}CaptureCountry`] as string | null;
   const declaredRaw = row[`${side}Country`] as string | null;
   const capture =
@@ -360,6 +380,10 @@ function photoSideFromRow(
     uri: `data:${String(row[`${side}Mime`])};base64,${String(row[`${side}Bytes`])}`,
     countryCode: capture ?? declared,
     captureCountryCode: capture,
+    // Real capture instant of this side's photo; null falls back to its
+    // upload/share time (createdAt) for the temporal tier on the client.
+    capturedAt: isoOrNull(row[`${side}CapturedAt`]),
+    createdAt: isoOrNull(row[`${side}CreatedAt`]),
     theme: String(row[`${side}Theme`] ?? ""),
   };
 }
@@ -414,11 +438,15 @@ router.get("/echoes/inbox", async (req, res) => {
         pl.mime_type AS "lowMime",
         pl.country_code AS "lowCountry",
         pl.capture_country_code AS "lowCaptureCountry",
+        pl.captured_at AS "lowCapturedAt",
+        pl.created_at AS "lowCreatedAt",
         pl.theme AS "lowTheme",
         ph.bytes_base64 AS "highBytes",
         ph.mime_type AS "highMime",
         ph.country_code AS "highCountry",
         ph.capture_country_code AS "highCaptureCountry",
+        ph.captured_at AS "highCapturedAt",
+        ph.created_at AS "highCreatedAt",
         ph.theme AS "highTheme"
       FROM echoes e
       JOIN photos pl ON pl.id = e.photo_low_id
@@ -463,11 +491,15 @@ router.get("/echoes/mine", async (req, res) => {
         pl.mime_type AS "lowMime",
         pl.country_code AS "lowCountry",
         pl.capture_country_code AS "lowCaptureCountry",
+        pl.captured_at AS "lowCapturedAt",
+        pl.created_at AS "lowCreatedAt",
         pl.theme AS "lowTheme",
         ph.bytes_base64 AS "highBytes",
         ph.mime_type AS "highMime",
         ph.country_code AS "highCountry",
         ph.capture_country_code AS "highCaptureCountry",
+        ph.captured_at AS "highCapturedAt",
+        ph.created_at AS "highCreatedAt",
         ph.theme AS "highTheme",
         (
           SELECT v.voter_user_id
@@ -754,10 +786,14 @@ router.get("/echoes/recent-waves", async (req, res) => {
         pl.id AS "lowId",
         pl.country_code AS "lowCountry",
         pl.capture_country_code AS "lowCaptureCountry",
+        pl.captured_at AS "lowCapturedAt",
+        pl.created_at AS "lowCreatedAt",
         pl.user_id AS "lowUserId",
         ph.id AS "highId",
         ph.country_code AS "highCountry",
         ph.capture_country_code AS "highCaptureCountry",
+        ph.captured_at AS "highCapturedAt",
+        ph.created_at AS "highCreatedAt",
         ph.user_id AS "highUserId"
       FROM echoes e
       JOIN photos pl ON pl.id = e.photo_low_id
@@ -771,8 +807,20 @@ router.get("/echoes/recent-waves", async (req, res) => {
       echoId: string;
       theme: string;
       mutualAt: string | null;
-      a: { id: string; countryCode: string | null; captureCountryCode: string | null };
-      b: { id: string; countryCode: string | null; captureCountryCode: string | null };
+      a: {
+        id: string;
+        countryCode: string | null;
+        captureCountryCode: string | null;
+        capturedAt: string | null;
+        createdAt: string | null;
+      };
+      b: {
+        id: string;
+        countryCode: string | null;
+        captureCountryCode: string | null;
+        capturedAt: string | null;
+        createdAt: string | null;
+      };
     }> = [];
 
     for (const raw of rows.rows as Array<Record<string, unknown>>) {
@@ -798,11 +846,15 @@ router.get("/echoes/recent-waves", async (req, res) => {
           id: String(raw.lowId),
           countryCode: iso(raw.lowCountry),
           captureCountryCode: iso(raw.lowCaptureCountry),
+          capturedAt: isoOrNull(raw.lowCapturedAt),
+          createdAt: isoOrNull(raw.lowCreatedAt),
         },
         b: {
           id: String(raw.highId),
           countryCode: iso(raw.highCountry),
           captureCountryCode: iso(raw.highCaptureCountry),
+          capturedAt: isoOrNull(raw.highCapturedAt),
+          createdAt: isoOrNull(raw.highCreatedAt),
         },
       });
       if (waves.length >= limit) break;
@@ -865,6 +917,7 @@ router.get("/echoes/pair", async (req, res) => {
         mimeType: photosTable.mimeType,
         countryCode: photosTable.countryCode,
         captureCountryCode: photosTable.captureCountryCode,
+        capturedAt: photosTable.capturedAt,
         theme: photosTable.theme,
         tags: photosTable.tags,
         musicGenre: photosTable.musicGenre,
@@ -911,6 +964,7 @@ router.get("/echoes/pair", async (req, res) => {
         uri: `data:${a.mimeType};base64,${a.bytesBase64}`,
         countryCode: a.countryCode,
         captureCountryCode: a.captureCountryCode,
+        capturedAt: a.capturedAt,
         theme: a.theme,
         tags: a.tags ?? [],
         musicGenre: a.musicGenre,
@@ -923,6 +977,7 @@ router.get("/echoes/pair", async (req, res) => {
         uri: `data:${b.mimeType};base64,${b.bytesBase64}`,
         countryCode: b.countryCode,
         captureCountryCode: b.captureCountryCode,
+        capturedAt: b.capturedAt,
         theme: b.theme,
         tags: b.tags ?? [],
         musicGenre: b.musicGenre,

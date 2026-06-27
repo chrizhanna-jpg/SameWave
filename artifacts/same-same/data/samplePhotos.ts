@@ -11,6 +11,15 @@ export interface SamplePhoto {
   countryFlag: string;
   theme: string;
   minutesAgo: number;
+  /**
+   * Real capture time (ISO) for live candidates — `capturedAt ?? createdAt`
+   * resolved from the server row. Absent for curated sample data (which only
+   * carries the relative `minutesAgo`); the match screen derives a stable
+   * snapshot timestamp from `minutesAgo` at swipe time in that case.
+   */
+  capturedAt?: string;
+  /** Upload/share time (ISO) for live candidates — temporal-tier fallback. */
+  createdAt?: string;
   tags: string[];
   /** Curated demo country (ISO2) — treated as capture for stock photo display. */
   captureCountryCode?: string;
@@ -561,6 +570,29 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
     shapes: ["centered", "curves", "organic"],
     subjects: ["baby", "crying", "newborn"],
   },
+  // ── Launch expansion themes — one curated sample each (hobbies, interests,
+  //    passions, life moments). Mirrors the newly-seeded stock pool. ──
+  { id: "143", uri: unsplashPhotoUrl("1599631438215-75bc2640feb8"), country: "Costa Rica", countryCode: "CR", countryFlag: "🇨🇷", theme: "butterfly", minutesAgo: 64, tags: ["wildlife","animal","outdoors","flowers","garden"], shapes: ["centered","organic","curves"], subjects: ["butterfly","wings","flower"], musicGenre: "wonder" },
+  { id: "144", uri: unsplashPhotoUrl("1711239309681-48b74254ca73"), country: "Japan", countryCode: "JP", countryFlag: "🇯🇵", theme: "moth", minutesAgo: 88, tags: ["wildlife","animal","outdoors","night"], shapes: ["centered","organic","symmetry"], subjects: ["moth","wings","insect"], musicGenre: "calm" },
+  { id: "145", uri: unsplashPhotoUrl("1541961017774-22349e4a1262"), country: "France", countryCode: "FR", countryFlag: "🇫🇷", theme: "art", minutesAgo: 53, tags: ["art","crafts","hobby","museum"], shapes: ["layered","busy","organic"], subjects: ["painting","canvas","art studio"], musicGenre: "fascinated" },
+  { id: "146", uri: unsplashPhotoUrl("1509440159596-0249088772ff"), country: "Italy", countryCode: "IT", countryFlag: "🇮🇹", theme: "baking", minutesAgo: 37, tags: ["baking","cooking","bread","dessert","food"], shapes: ["circles","layered","organic"], subjects: ["baking","dough","bread"], musicGenre: "yum" },
+  { id: "147", uri: unsplashPhotoUrl("1611843467160-25afb8df1074"), country: "Netherlands", countryCode: "NL", countryFlag: "🇳🇱", theme: "garden", minutesAgo: 142, tags: ["garden","plants","flowers","outdoors"], shapes: ["organic","layered","vertical"], subjects: ["garden","plants","gardening"], musicGenre: "calm" },
+  { id: "148", uri: unsplashPhotoUrl("1541742425281-c1d3fc8aff96"), country: "Canada", countryCode: "CA", countryFlag: "🇨🇦", theme: "fishing", minutesAgo: 96, tags: ["outdoors","water","lake","sports"], shapes: ["horizontal","organic","minimal"], subjects: ["fishing rod","river","fisherman"], musicGenre: "relaxed" },
+  { id: "149", uri: unsplashPhotoUrl("1501554728187-ce583db33af7"), country: "Norway", countryCode: "NO", countryFlag: "🇳🇴", theme: "hiking", minutesAgo: 71, tags: ["hiking","outdoors","mountains","trees","fitness"], shapes: ["vertical","layered","organic"], subjects: ["hiking trail","backpack","mountains"], musicGenre: "elated" },
+  { id: "150", uri: unsplashPhotoUrl("1506126613408-eca07ce68773"), country: "India", countryCode: "IN", countryFlag: "🇮🇳", theme: "yoga", minutesAgo: 49, tags: ["yoga","fitness","home","outdoors"], shapes: ["centered","curves","vertical"], subjects: ["yoga pose","yoga mat","stretch"], musicGenre: "calm" },
+  { id: "151", uri: unsplashPhotoUrl("1526506118085-60ce8714f8c5"), country: "United States", countryCode: "US", countryFlag: "🇺🇸", theme: "gym", minutesAgo: 33, tags: ["fitness","sports","people"], shapes: ["geometric","centered","lines"], subjects: ["dumbbells","weights","workout"], musicGenre: "passion" },
+  { id: "152", uri: unsplashPhotoUrl("1504280390367-361c6d9f38f4"), country: "New Zealand", countryCode: "NZ", countryFlag: "🇳🇿", theme: "camping", minutesAgo: 158, tags: ["outdoors","travel","trees","mountains","night"], shapes: ["centered","organic","layered"], subjects: ["tent","campfire","campsite"], musicGenre: "calm" },
+  { id: "153", uri: unsplashPhotoUrl("1504150558240-0b4fd8946624"), country: "Thailand", countryCode: "TH", countryFlag: "🇹🇭", theme: "travel", minutesAgo: 81, tags: ["travel","city","outdoors","people"], shapes: ["centered","layered","horizontal"], subjects: ["suitcase","passport","map"], musicGenre: "wonder" },
+  { id: "154", uri: unsplashPhotoUrl("1491378630646-3440efa57c3b"), country: "Australia", countryCode: "AU", countryFlag: "🇦🇺", theme: "beach", minutesAgo: 60, tags: ["beach","water","outdoors","travel","sunset"], shapes: ["horizontal","layered","organic"], subjects: ["beach","sand","waves"], musicGenre: "wonder" },
+  { id: "155", uri: unsplashPhotoUrl("1562016600-ece13e8ba570"), country: "Spain", countryCode: "ES", countryFlag: "🇪🇸", theme: "swimming", minutesAgo: 44, tags: ["water","sports","fitness","outdoors","travel"], shapes: ["horizontal","curves","organic"], subjects: ["swimming pool","swimmer","water"], musicGenre: "joy" },
+  { id: "156", uri: unsplashPhotoUrl("1665035212282-3e117d618b36"), country: "Germany", countryCode: "DE", countryFlag: "🇩🇪", theme: "concert", minutesAgo: 27, tags: ["concert","music","party","people","city"], shapes: ["busy","vertical","layered"], subjects: ["concert crowd","stage lights","band"], musicGenre: "passion" },
+  { id: "157", uri: unsplashPhotoUrl("1533174072545-7a4b6ad7a6c3"), country: "Brazil", countryCode: "BR", countryFlag: "🇧🇷", theme: "festival", minutesAgo: 113, tags: ["concert","music","party","people","celebration"], shapes: ["busy","layered","vertical"], subjects: ["festival crowd","stage","lights"], musicGenre: "passion" },
+  { id: "158", uri: unsplashPhotoUrl("1606800052052-a08af7148866"), country: "Mexico", countryCode: "MX", countryFlag: "🇲🇽", theme: "wedding", minutesAgo: 39, tags: ["wedding","celebration","people","family","friends"], shapes: ["centered","curves","layered"], subjects: ["wedding","rings","bride"], musicGenre: "romance" },
+  { id: "159", uri: unsplashPhotoUrl("1510154221590-ff63e90a136f"), country: "Sweden", countryCode: "SE", countryFlag: "🇸🇪", theme: "baby", minutesAgo: 22, tags: ["kids","family","people","smile"], shapes: ["centered","curves","organic"], subjects: ["baby","newborn","tiny hands"], musicGenre: "love" },
+  { id: "160", uri: unsplashPhotoUrl("1627556704302-624286467c65"), country: "South Korea", countryCode: "KR", countryFlag: "🇰🇷", theme: "graduation", minutesAgo: 105, tags: ["celebration","people","friends","study"], shapes: ["centered","vertical","layered"], subjects: ["graduation cap","gown","diploma"], musicGenre: "pride" },
+  { id: "161", uri: unsplashPhotoUrl("1545696563-af8f6ec2295a"), country: "United Kingdom", countryCode: "GB", countryFlag: "🇬🇧", theme: "birthday", minutesAgo: 58, tags: ["birthday","celebration","party","people","dessert"], shapes: ["circles","centered","busy"], subjects: ["birthday cake","candles","balloons"], musicGenre: "joy" },
+  { id: "162", uri: unsplashPhotoUrl("1560518883-ce09059eeffa"), country: "Poland", countryCode: "PL", countryFlag: "🇵🇱", theme: "newhome", minutesAgo: 130, tags: ["home","city","people","cozy"], shapes: ["centered","geometric","minimal"], subjects: ["house keys","moving boxes","new home"], musicGenre: "content" },
+  { id: "163", uri: unsplashPhotoUrl("1556911261-6bd341186b2f"), country: "Vietnam", countryCode: "VN", countryFlag: "🇻🇳", theme: "cooking", minutesAgo: 47, tags: ["cooking","food","home","meal","people"], shapes: ["vertical","layered","busy"], subjects: ["cooking","kitchen","pan"], musicGenre: "yum" },
 ];
 
 /** Maps launch QA slots → primary stock photo id (existing + new). */
@@ -1242,6 +1274,24 @@ export const SUGGESTED_TAGS_BY_THEME: Record<string, string[]> = {
   chores: ["chores", "cleaning", "laundry", "home", "cozy"],
   shoes: ["shoes", "sneakers", "boots", "feet", "outdoors", "city"],
   coffee: ["coffee", "tea", "drink", "cafe", "warm", "breakfast"],
+  // ── Launch expansion themes — camera tag chips ──
+  butterfly: ["wildlife", "animal", "outdoors", "flowers", "garden"],
+  moth: ["wildlife", "animal", "outdoors", "night"],
+  art: ["art", "crafts", "photography", "museum", "hobby"],
+  baking: ["baking", "cooking", "bread", "dessert", "food"],
+  garden: ["garden", "plants", "flowers", "outdoors"],
+  fishing: ["outdoors", "water", "lake", "sports"],
+  hiking: ["hiking", "outdoors", "mountains", "trees", "fitness"],
+  yoga: ["yoga", "fitness", "outdoors"],
+  gym: ["fitness", "sports"],
+  camping: ["outdoors", "travel", "trees", "mountains", "night"],
+  beach: ["beach", "water", "outdoors", "travel", "sunset"],
+  swimming: ["water", "sports", "fitness", "outdoors"],
+  festival: ["concert", "music", "party", "people", "celebration"],
+  baby: ["kids", "family", "people", "smile"],
+  graduation: ["celebration", "people", "friends", "study"],
+  newhome: ["home", "cozy", "city", "people"],
+  cooking: ["cooking", "food", "meal", "bread", "home"],
 };
 
 export {

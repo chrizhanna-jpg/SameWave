@@ -28,6 +28,13 @@ import {
   photoExposureCte,
 } from "../lib/photoExposure";
 import { getPhotoRetentionMs } from "../lib/photoRetention";
+import {
+  getCachedDisplayBytes,
+  invalidateCachedDisplayBytes,
+  parseDisplayMaxWidth,
+  putCachedDisplayBytes,
+  resizePhotoForDisplay,
+} from "../lib/photoImageResize";
 import { fetchMyJourneyRows } from "../lib/myJourney";
 import {
   exploreThemeNeedles,
@@ -205,7 +212,7 @@ function approxBase64Bytes(b64: string): number {
 
 // ---- POST /api/photos -----------------------------------------------------
 // Body: { imageBase64, mimeType?, countryCode?, captureCountryCode?,
-//         theme?, tags?, subjects?, shapes? }
+//         capturedAt?, theme?, tags?, subjects?, shapes? }
 // Header: X-Device-Id (required) — stable client UUID.
 router.post("/photos", async (req, res) => {
   try {
@@ -214,6 +221,7 @@ router.post("/photos", async (req, res) => {
       mimeType?: unknown;
       countryCode?: unknown;
       captureCountryCode?: unknown;
+      capturedAt?: unknown;
       musicGenre?: unknown;
       customAudioBase64?: unknown;
       customAudioMime?: unknown;
@@ -244,6 +252,24 @@ router.post("/photos", async (req, res) => {
       body.captureCountryCode.length === 2
         ? body.captureCountryCode.toUpperCase()
         : null;
+
+    // Real capture instant (EXIF DateTimeOriginal for library picks, or the
+    // in-app camera shutter moment). Stored honestly: only persisted when the
+    // client sends a parseable timestamp, otherwise left null so the temporal
+    // tier can detect the share-time fallback downstream. We also clamp out
+    // absurd future dates (bad device clocks / parsing) — anything more than a
+    // day ahead of server time is treated as unknown rather than poisoning the
+    // tier with a date the photo couldn't actually have been taken.
+    const capturedAt = (() => {
+      if (typeof body.capturedAt !== "string" || body.capturedAt.trim() === "") {
+        return null;
+      }
+      const t = new Date(body.capturedAt);
+      const ms = t.getTime();
+      if (!Number.isFinite(ms)) return null;
+      if (ms > Date.now() + 24 * 60 * 60 * 1000) return null;
+      return t;
+    })();
 
     const user = await resolveUserFromRequest(req, { countryCode });
     if (!user) {
@@ -362,6 +388,7 @@ router.post("/photos", async (req, res) => {
         subjects,
         countryCode: effectiveCountryCode,
         captureCountryCode,
+        capturedAt,
         musicGenre,
         customAudioBase64,
         customAudioMime,
@@ -608,9 +635,18 @@ router.get("/photos/candidates", async (req, res) => {
           p.music_genre AS "musicGenre",
           p.custom_audio_base64 AS "customAudioBase64",
           p.custom_audio_mime AS "customAudioMime",
-          p.bytes_base64 AS "bytesBase64",
           p.mime_type AS "mimeType",
           p.created_at AS "createdAt",
+          -- Real capture instant (EXIF / camera shutter); null when the photo
+          -- carried no capture metadata. The client uses this as the temporal
+          -- match basis and falls back to created_at (share time) when null.
+          p.captured_at AS "capturedAt",
+          -- Dedup key only. We intentionally do NOT select p.bytes_base64:
+          -- the multi-MB base64 column was previously pulled back for every
+          -- candidate from the remote DB but never read in JS (images stream
+          -- via GET /photos/:id/image). The content hash is computed in SQL so
+          -- DISTINCT ON dedup behaviour is preserved while the response stays
+          -- small — this is the main first-card latency fix.
           md5(substring(p.bytes_base64 from 1 for 4096)) AS content_hash,
           cardinality(ARRAY(SELECT unnest(p.tags) INTERSECT SELECT unnest(${tagsExpr}))) AS tag_overlap,
           cardinality(ARRAY(SELECT unnest(p.shape_tags) INTERSECT SELECT unnest(${shapesExpr}))) AS shape_overlap,
@@ -763,6 +799,9 @@ router.get("/photos/candidates", async (req, res) => {
         // Stream via GET /api/photos/:id/image — never inline multi-MB base64 in JSON.
         uri: `/api/photos/${encodeURIComponent(id)}/image`,
         createdAt: r.createdAt as string | Date,
+        // Real capture time when known; null → client falls back to createdAt
+        // (share time) for the temporal tier and shows the soft note.
+        capturedAt: (r.capturedAt as string | Date | null) ?? null,
         // Surface subject + vibe + theme + shape together so the client
         // knows how the row scored on the rebalanced multi-axis rank.
         // Mirrors the weighted server-side rank: subject =
@@ -1259,6 +1298,8 @@ router.get("/photos/atlas", async (req, res) => {
         ))) AS hc,
         pl.id::text AS "photoLowId",
         ph.id::text AS "photoHighId",
+        md5(substring(pl.bytes_base64 from 1 for 4096)) AS "photoLowHash",
+        md5(substring(ph.bytes_base64 from 1 for 4096)) AS "photoHighHash",
         e.pending_from_user_id AS pf,
         e.user_low_id AS ul,
         e.user_high_id AS uh
@@ -1300,6 +1341,21 @@ router.get("/photos/atlas", async (req, res) => {
       return lowId || highId || undefined;
     };
 
+    // Content hash of whichever photo is the arc's spotlight side — lets the
+    // client orbit collapse the same image stored under several photo ids.
+    const spotlightHashAt = (
+      to: string,
+      lc: string,
+      hc: string,
+      raw: Record<string, unknown>,
+    ) => {
+      const lowHash = String(raw.photoLowHash ?? "").trim();
+      const highHash = String(raw.photoHighHash ?? "").trim();
+      if (to === lc && lowHash) return lowHash;
+      if (to === hc && highHash) return highHash;
+      return lowHash || highHash || undefined;
+    };
+
     const connections: Array<{
       id: string;
       kind: "ripple" | "wave";
@@ -1314,6 +1370,7 @@ router.get("/photos/atlas", async (req, res) => {
       /** Present when the request is authenticated; true if this row involves the viewer (either side of a ripple or wave). */
       mine?: boolean;
       spotlightPhotoId?: string;
+      spotlightContentHash?: string;
     }> = [];
 
     const now = Date.now();
@@ -1366,6 +1423,7 @@ router.get("/photos/atlas", async (req, res) => {
           subjects,
           color: atlasConnectionColor(themeRaw, "wave", false),
           spotlightPhotoId: spotlightPhotoAt(to, lc, hc, raw),
+          spotlightContentHash: spotlightHashAt(to, lc, hc, raw),
           ...(viewerId != null ? { mine } : {}),
         });
         continue;
@@ -1397,6 +1455,7 @@ router.get("/photos/atlas", async (req, res) => {
         subjects,
         color: atlasConnectionColor(rippleTheme, "ripple", fresh),
         spotlightPhotoId: spotlightPhotoAt(to, lc, hc, raw),
+        spotlightContentHash: spotlightHashAt(to, lc, hc, raw),
         ...(viewerId != null ? { mine } : {}),
       });
     }
@@ -1507,6 +1566,7 @@ router.post("/photos/atlas/explore", async (req, res) => {
         pl.custom_audio_base64 AS pl_audio_b64,
         pl.custom_audio_mime AS pl_audio_mime,
         pl.user_id::text AS pl_user,
+        md5(substring(pl.bytes_base64 from 1 for 4096)) AS pl_hash,
         upper(trim(both from coalesce(
           nullif(trim(both from pl.capture_country_code), ''),
           nullif(trim(both from pl.country_code), ''),
@@ -1521,6 +1581,7 @@ router.post("/photos/atlas/explore", async (req, res) => {
         ph.custom_audio_base64 AS ph_audio_b64,
         ph.custom_audio_mime AS ph_audio_mime,
         ph.user_id::text AS ph_user,
+        md5(substring(ph.bytes_base64 from 1 for 4096)) AS ph_hash,
         upper(trim(both from coalesce(
           nullif(trim(both from ph.capture_country_code), ''),
           nullif(trim(both from ph.country_code), ''),
@@ -1613,11 +1674,16 @@ router.post("/photos/atlas/explore", async (req, res) => {
           .map((s) => s.trim())
           .filter(Boolean);
       };
+      const contentHash = String(r[`${prefix}_hash`] ?? "").trim();
       return {
         photoId,
         userId: String(r[`${prefix}_user`] ?? ""),
         countryCode: iso2(r[`${prefix}_country`]) ?? "",
         theme: String(r[`${prefix}_theme`] ?? ""),
+        // Stable identity for near-identical re-uploads / seed dupes — lets
+        // explore collapse the same image stored under several photo ids,
+        // mirroring the DISTINCT ON (content_hash) dedup in /candidates.
+        contentHash: contentHash || undefined,
         tags: normTags(r[`${prefix}_tags`]),
         subjects: normTags(r[`${prefix}_subjects`]),
         musicGenre: (r[`${prefix}_music`] as string | null) ?? null,
@@ -1849,6 +1915,21 @@ router.get("/photos/:id/image", async (req, res) => {
       return;
     }
 
+    const maxWidth = parseDisplayMaxWidth(req.query.w ?? req.query.maxWidth);
+    const cacheWidth = maxWidth ?? 0;
+
+    // Fast path: serve already-encoded display bytes without touching the DB.
+    // The Ripple deck prefetches several cards ahead and the same photo is
+    // streamed to many voters, so skipping the multi-MB base64 fetch + decode
+    // + sharp here is what removes the multi-second stalls.
+    const cached = getCachedDisplayBytes(photoId, cacheWidth);
+    if (cached) {
+      res.setHeader("Content-Type", cached.mime);
+      res.setHeader("Cache-Control", "private, max-age=3600");
+      res.send(cached.buf);
+      return;
+    }
+
     const rows = await db.execute(sql`
       SELECT mime_type, bytes_base64
       FROM photos
@@ -1869,8 +1950,15 @@ router.get("/photos/:id/image", async (req, res) => {
       res.status(404).json({ error: "photo not found" });
       return;
     }
-    const buf = Buffer.from(b64, "base64");
-    res.setHeader("Content-Type", mime);
+    let buf: Buffer = Buffer.from(b64, "base64");
+    let outMime = mime;
+    if (maxWidth != null) {
+      const resized = await resizePhotoForDisplay(buf, mime, maxWidth);
+      buf = resized.buf;
+      outMime = resized.mime;
+    }
+    putCachedDisplayBytes(photoId, cacheWidth, buf, outMime);
+    res.setHeader("Content-Type", outMime);
     res.setHeader("Cache-Control", "private, max-age=3600");
     res.send(buf);
   } catch (err) {
@@ -2209,6 +2297,7 @@ router.delete("/photos/:id", async (req, res) => {
       return;
     }
     await db.delete(photosTable).where(eq(photosTable.id, photoId));
+    invalidateCachedDisplayBytes(photoId);
     res.json({ ok: true });
   } catch (err) {
     req.log.error({ err }, "photo delete failed");
@@ -2249,6 +2338,13 @@ router.post("/photos/:id/report", async (req, res) => {
         .where(eq(photosTable.id, photoId))
         .returning({ reportCount: photosTable.reportCount });
       const reportCount = countRow?.reportCount ?? 0;
+      // Once the photo crosses the hide threshold the image route's WHERE
+      // clause stops returning it, but a cached display buffer would keep
+      // streaming until TTL — drop it now so a reported photo disappears
+      // immediately for everyone.
+      if (reportCount >= REPORT_HIDE_THRESHOLD) {
+        invalidateCachedDisplayBytes(photoId);
+      }
       if (reportCount > 1) {
         void sendPhotoReportAlert(req.log, {
           photoId,

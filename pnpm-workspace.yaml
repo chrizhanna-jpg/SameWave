@@ -75,6 +75,7 @@ onlyBuiltDependencies:
   - esbuild
   - msw
   - protobufjs
+  - sharp
   - unrs-resolver
 
 overrides:
@@ -168,3 +169,4 @@ allowBuilds:
   core-js: true
   esbuild: true
   protobufjs: true
+  sharp: true

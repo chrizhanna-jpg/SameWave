@@ -2,6 +2,7 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { MatchContextChips } from "@/components/MatchContextChips";
+import { CaptureTimeNote } from "@/components/CaptureTimeNote";
 import type { GeoTier, TimeTier } from "@/utils/celebrations";
 import type { ShareLayoutTokens } from "@/utils/shareLayoutTokens";
 
@@ -54,6 +55,13 @@ export function CelebrationMatchChips({
         timeTier={props.timeTier}
         geoTier={props.geoTier}
       />
+
+      {/* Soft, neutral note + camera nudge — only when the tier fell back to
+          share time because a photo had no capture date. Lives on the light
+          celebration panel, so use the on-light ink. */}
+      {props.timeTier.usedShareFallback ? (
+        <CaptureTimeNote onLight align="center" />
+      ) : null}
     </View>
   );
 }

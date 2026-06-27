@@ -83,7 +83,13 @@ let authedImageHeadersCache: {
   headers: Record<string, string>;
   fetchedAt: number;
 } | null = null;
-const AUTH_IMAGE_HEADERS_TTL_MS = 5 * 60 * 1000;
+// Clerk session JWTs are short-lived (~60s). The 5-minute cache we used to
+// keep here meant a header set warmed early in a tab session would carry an
+// already-expired Bearer for minutes, and every `/api/photos/:id/image`
+// request would 401 until the cache aged out — the "your photo stays blank"
+// failure. Keep the cache short so a stale token is corrected quickly, and
+// pair it with `refreshAuthedImageHeaders()` for an explicit 401 re-warm.
+const AUTH_IMAGE_HEADERS_TTL_MS = 60 * 1000;
 
 /** Synchronous read of cached auth headers (for instant image mount when cache is warm). */
 export function peekAuthedImageHeaders(): Record<string, string> | undefined {
@@ -100,6 +106,21 @@ export function peekAuthedImageHeaders(): Record<string, string> | undefined {
 /** Fire-and-forget warm-up — call on Atlas / Ripple tab focus. */
 export function warmAuthedImageHeaders(): void {
   void authedImageHeaders().catch(() => {});
+}
+
+/**
+ * Force a fresh fetch of the auth headers, bypassing (and overwriting) the
+ * TTL cache. Call this after an authed image request 401s: the cached Bearer
+ * may have expired, and re-reading it from the cache would just resend the
+ * same dead token. `authTokenGetter` (Clerk `getToken()`) hands back a fresh,
+ * unexpired JWT here, so the immediate retry can succeed.
+ */
+export async function refreshAuthedImageHeaders(): Promise<
+  Record<string, string>
+> {
+  const headers = await authedHeaders();
+  authedImageHeadersCache = { headers, fetchedAt: Date.now() };
+  return headers;
 }
 
 export async function authedImageHeaders(
@@ -362,6 +383,12 @@ export async function uploadPhoto(input: {
   countryCode?: string;
   /** Coarse GPS country at in-app camera capture — omitted for library picks. */
   captureCountryCode?: string;
+  /**
+   * Real capture time (ISO) — EXIF DateTimeOriginal for library picks, or the
+   * in-app camera shutter instant. Omitted when no capture metadata exists;
+   * the server then stores null and the temporal tier falls back to share time.
+   */
+  capturedAt?: string;
   musicGenre?: string;
   /** Optional user-recorded vibe clip — base64-encoded audio. */
   customAudioBase64?: string;
@@ -434,6 +461,12 @@ export interface CandidatePhoto {
   customAudioUrl: string | null;
   uri: string; // data: URI (MVP) — server returns inline base64
   createdAt: string;
+  /**
+   * Real capture time (ISO) of the candidate's photo, or null when unknown.
+   * The match screen snapshots `capturedAt ?? createdAt` as the candidate's
+   * temporal-match basis so the tier is computed from a fixed instant.
+   */
+  capturedAt: string | null;
   score: number;
 }
 
@@ -501,7 +534,29 @@ export async function fetchCandidates(input: {
     });
     if (!res.ok) return [];
     const json = (await res.json()) as { photos?: CandidatePhoto[] };
-    return Array.isArray(json.photos) ? json.photos : [];
+    if (!Array.isArray(json.photos)) return [];
+    // Geo-tier policy: a candidate's effective capture country is its real
+    // GPS capture if known, otherwise the uploader's declared home country.
+    // We normalise it here (rather than in the swipe screen) so every
+    // consumer reading `captureCountryCode` reaches the Same Country /
+    // Same Continent tiers for GPS-off uploads instead of "Same Planet".
+    return json.photos.map((p) => {
+      const capture =
+        typeof p.captureCountryCode === "string" &&
+        p.captureCountryCode.trim().length === 2
+          ? p.captureCountryCode.trim().toUpperCase()
+          : null;
+      const home =
+        typeof p.countryCode === "string" &&
+        p.countryCode.trim().length === 2
+          ? p.countryCode.trim().toUpperCase()
+          : null;
+      const capturedAt =
+        typeof p.capturedAt === "string" && p.capturedAt.length > 0
+          ? p.capturedAt
+          : null;
+      return { ...p, captureCountryCode: capture ?? home, capturedAt };
+    });
   } catch {
     return [];
   }
@@ -588,11 +643,11 @@ export async function votePhoto(
     };
     const echo =
       json.echo === "mutual" || json.echo === "pending" ? json.echo : "skipped";
-    const voterPhotoId =
+    const resolvedVoterPhotoId =
       typeof json.voterPhotoId === "string" && json.voterPhotoId.length > 0
         ? json.voterPhotoId
         : null;
-    return { ok: true, echo, voterPhotoId };
+    return { ok: true, echo, voterPhotoId: resolvedVoterPhotoId };
   } catch {
     return { ok: false, echo: "skipped" };
   }
@@ -734,6 +789,10 @@ export interface ServerEchoSide {
   uri: string;
   countryCode: string | null;
   captureCountryCode: string | null;
+  /** Real capture time (ISO) of this side's photo, or null when unknown. */
+  capturedAt: string | null;
+  /** Upload/share time (ISO) of this side's photo — temporal-tier fallback. */
+  createdAt: string | null;
   country: string;
   countryFlag: string;
   theme?: string;
@@ -763,11 +822,28 @@ function decorateSide(side: {
   uri: string;
   countryCode: string | null;
   captureCountryCode?: string | null;
+  capturedAt?: string | null;
+  createdAt?: string | null;
   theme?: string;
   customAudioBase64?: string | null;
   customAudioMime?: string | null;
 }): ServerEchoSide {
-  const display = photoCountryDisplay(side.captureCountryCode);
+  // Geo-tier policy: prefer real capture-time GPS country, else fall back
+  // to the uploader's declared home country so an echo from a GPS-off
+  // photo still reaches the Same Country / Same Continent tiers instead of
+  // collapsing to "Same Planet".
+  const captureGps =
+    typeof side.captureCountryCode === "string" &&
+    side.captureCountryCode.trim().length === 2
+      ? side.captureCountryCode.trim().toUpperCase()
+      : null;
+  const home =
+    typeof side.countryCode === "string" &&
+    side.countryCode.trim().length === 2
+      ? side.countryCode.trim().toUpperCase()
+      : null;
+  const effectiveCapture = captureGps ?? home;
+  const display = photoCountryDisplay(effectiveCapture);
   const audio =
     side.customAudioBase64 && side.customAudioMime
       ? `data:${side.customAudioMime};base64,${side.customAudioBase64}`
@@ -776,10 +852,14 @@ function decorateSide(side: {
     id: side.id,
     uri: side.uri,
     countryCode: display.code ?? null,
-    captureCountryCode:
-      typeof side.captureCountryCode === "string" &&
-      side.captureCountryCode.trim().length === 2
-        ? side.captureCountryCode.trim().toUpperCase()
+    captureCountryCode: effectiveCapture,
+    capturedAt:
+      typeof side.capturedAt === "string" && side.capturedAt.length > 0
+        ? side.capturedAt
+        : null,
+    createdAt:
+      typeof side.createdAt === "string" && side.createdAt.length > 0
+        ? side.createdAt
         : null,
     country: display.name,
     countryFlag: display.flag,
@@ -800,6 +880,8 @@ function decorateEcho(raw: {
     uri: string;
     countryCode: string | null;
     captureCountryCode?: string | null;
+    capturedAt?: string | null;
+    createdAt?: string | null;
     theme?: string;
     customAudioBase64?: string | null;
     customAudioMime?: string | null;
@@ -809,6 +891,8 @@ function decorateEcho(raw: {
     uri: string;
     countryCode: string | null;
     captureCountryCode?: string | null;
+    capturedAt?: string | null;
+    createdAt?: string | null;
     theme?: string;
     customAudioBase64?: string | null;
     customAudioMime?: string | null;
@@ -1024,11 +1108,15 @@ export async function fetchRecentWavesFeed(
           id: string;
           countryCode: string | null;
           captureCountryCode?: string | null;
+          capturedAt?: string | null;
+          createdAt?: string | null;
         };
         b: {
           id: string;
           countryCode: string | null;
           captureCountryCode?: string | null;
+          capturedAt?: string | null;
+          createdAt?: string | null;
         };
       }>;
     };
@@ -1042,12 +1130,16 @@ export async function fetchRecentWavesFeed(
         uri: `${base}/api/photos/${encodeURIComponent(w.a.id)}/image`,
         countryCode: w.a.countryCode,
         captureCountryCode: w.a.captureCountryCode,
+        capturedAt: w.a.capturedAt,
+        createdAt: w.a.createdAt,
       }),
       b: decorateSide({
         id: w.b.id,
         uri: `${base}/api/photos/${encodeURIComponent(w.b.id)}/image`,
         countryCode: w.b.countryCode,
         captureCountryCode: w.b.captureCountryCode,
+        capturedAt: w.b.capturedAt,
+        createdAt: w.b.createdAt,
       }),
     }));
   } catch {
@@ -1084,6 +1176,7 @@ export async function fetchPair(aId: string, bId: string): Promise<PhotoPairResu
         uri: string;
         countryCode: string | null;
         captureCountryCode?: string | null;
+        capturedAt?: string | null;
         theme: string;
         tags?: string[];
         musicGenre?: string | null;
@@ -1096,6 +1189,7 @@ export async function fetchPair(aId: string, bId: string): Promise<PhotoPairResu
         uri: string;
         countryCode: string | null;
         captureCountryCode?: string | null;
+        capturedAt?: string | null;
         theme: string;
         tags?: string[];
         musicGenre?: string | null;
@@ -1254,6 +1348,12 @@ export interface AtlasConnection {
   thumbnailUrl?: string;
   /** Remote echo photo id (the spotlight side of the arc). */
   spotlightPhotoId?: string;
+  /**
+   * Content hash (md5 of the image bytes) of the spotlight photo. Stable across
+   * the same image stored under several photo ids (seed dupes / re-uploads), so
+   * Ripplefire tiles collapse identical photos even when their ids differ.
+   */
+  spotlightContentHash?: string;
 }
 
 export interface AtlasSummaryPayload {
@@ -1579,6 +1679,11 @@ async function fetchAtlasSummaryOnce(
           c.spotlightPhotoId.trim().length > 0
             ? c.spotlightPhotoId.trim()
             : undefined,
+        spotlightContentHash:
+          typeof c.spotlightContentHash === "string" &&
+          c.spotlightContentHash.trim().length > 0
+            ? c.spotlightContentHash.trim()
+            : undefined,
       }));
     // #region agent log
     postDebugSessionLog({
@@ -1839,6 +1944,8 @@ export type AtlasFireParticipant = {
   musicGenre: string | null;
   customAudioUrl: string | null;
   uri: string;
+  /** md5 of the image bytes — stable identity for near-identical re-uploads. */
+  contentHash?: string;
 };
 
 export type AtlasFireMoment = {
@@ -2902,6 +3009,10 @@ export function explorePhotoTileIdentity(
     const uriKey = photoKey(displayUri);
     return uriKey ? `viewer:${uriKey}` : `viewer:${pid}`;
   }
+  // Prefer content hash so the same image under several photo ids (seed dupes /
+  // re-uploads) collapses to one tile, matching the server's content_hash dedup.
+  const hash = p.contentHash?.trim();
+  if (hash) return `hash:${hash}`;
   if (pid && !pid.startsWith("local-")) return `photo:${pid}`;
   const uriKey = photoKey(displayUri);
   return uriKey ? `uri:${uriKey}` : "";
@@ -2917,25 +3028,28 @@ export function capExploreMomentsForFlatten(
   const counts = new Map<string, number>();
   const out: AtlasFireMoment[] = [];
   for (const moment of moments) {
-    const cappedPhotoIds: string[] = [];
+    // Cap on content hash when present so re-uploads / seed dupes of one image
+    // (distinct photo ids, same bytes) collapse to a single explore moment.
+    const cappedKeys: string[] = [];
     for (const p of moment.participants) {
       const id = p.photoId?.trim();
       if (!id) continue;
       if (id.startsWith(LOCAL_MY_PHOTO_ID_PREFIX)) continue;
       if (exemptPhotoIds?.has(id)) continue;
-      cappedPhotoIds.push(id);
+      const hash = p.contentHash?.trim();
+      cappedKeys.push(hash ? `hash:${hash}` : `id:${id}`);
     }
     let blocked = false;
-    for (const id of cappedPhotoIds) {
-      const next = (counts.get(id) ?? 0) + 1;
+    for (const key of cappedKeys) {
+      const next = (counts.get(key) ?? 0) + 1;
       if (next > maxPerPhoto) {
         blocked = true;
         break;
       }
     }
     if (blocked) continue;
-    for (const id of cappedPhotoIds) {
-      counts.set(id, (counts.get(id) ?? 0) + 1);
+    for (const key of cappedKeys) {
+      counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     out.push(moment);
   }

@@ -10,8 +10,8 @@ import {
   View,
 } from "react-native";
 import * as Haptics from "expo-haptics";
-import { Image } from "expo-image";
 import { CelebrationMatchChips } from "@/components/CelebrationMatchChips";
+import { RemotePhotoImage } from "@/components/RemotePhotoImage";
 import {
   CelebrationSwipeDismissHint,
   CelebrationSwipeHandle,
@@ -44,9 +44,20 @@ interface Props {
   /** Thumbnail of the user's photo and the matched photo. */
   myPhotoUri?: string;
   theirPhotoUri?: string;
-  /** Used to compute the "Same Minute / Hour / Day" tier badge. */
-  myPhotoUploadedAt?: string;
-  theirPhotoMinutesAgo?: number;
+  /**
+   * Durable server image (`/api/photos/:id/image`) for the user's own photo.
+   * A `file://` capture can be purged while the app is backgrounded, so we
+   * hand `RemotePhotoImage` this authed fallback rather than letting the
+   * thumbnail collapse to a blank square.
+   */
+  myPhotoFallbackUri?: string;
+  // Absolute timestamps for the calendar time tier (Same Hour / Day / Week /
+  // Month). Each side prefers its real capture time, falling back to its
+  // upload/share time. Snapshotted at swipe time so the tier never drifts.
+  myPhotoCapturedAt?: string;
+  myPhotoSharedAt?: string;
+  theirPhotoCapturedAt?: string;
+  theirPhotoSharedAt?: string;
   onDone: () => void;
   /** Called with the requested action (or undefined for plain open). */
   onOpenFull: (action?: MatchFlashAction) => void;
@@ -78,8 +89,11 @@ export function MatchFlash({
   themeEmoji,
   myPhotoUri,
   theirPhotoUri,
-  myPhotoUploadedAt,
-  theirPhotoMinutesAgo,
+  myPhotoFallbackUri,
+  myPhotoCapturedAt,
+  myPhotoSharedAt,
+  theirPhotoCapturedAt,
+  theirPhotoSharedAt,
   onDone,
   onOpenFull,
 }: Props) {
@@ -189,11 +203,14 @@ export function MatchFlash({
   });
   const flagOpacity = flagPop;
 
-  // Tier badges: "Same Minute / Hour / Day / Week" (time) and
+  // Tier badges: "Same Hour / Day / Week / Month" (time) and
   // "Same Country / Continent / Planet" (geography). The flash always
   // renders both — even the "Same Planet" baseline is part of the
   // story we're telling here.
-  const timeTier = getTimeTier(myPhotoUploadedAt, theirPhotoMinutesAgo);
+  const timeTier = getTimeTier(
+    { capturedAt: myPhotoCapturedAt, sharedAt: myPhotoSharedAt },
+    { capturedAt: theirPhotoCapturedAt, sharedAt: theirPhotoSharedAt },
+  );
   const myCap = resolveCaptureCountryCode(myCaptureCountryCode, myPhotoUri);
   const theirCap = resolveCaptureCountryCode(
     theirCaptureCountryCode,
@@ -276,12 +293,13 @@ export function MatchFlash({
             ]}
           >
             {myPhotoUri ? (
-              <Image
-                source={{ uri: myPhotoUri }}
+              <RemotePhotoImage
+                uri={myPhotoUri}
+                fallbackUri={myPhotoFallbackUri}
                 style={styles.thumb}
-                contentFit="cover"
-                cachePolicy="memory-disk"
-                recyclingKey={myPhotoUri}
+                resizeMode="cover"
+                transitionMs={0}
+                recyclingKey={`flash-my:${myPhotoFallbackUri ?? myPhotoUri}`}
               />
             ) : (
               <View style={[styles.thumb, styles.thumbFallback]}>
@@ -307,12 +325,12 @@ export function MatchFlash({
             ]}
           >
             {theirPhotoUri ? (
-              <Image
-                source={{ uri: theirPhotoUri }}
+              <RemotePhotoImage
+                uri={theirPhotoUri}
                 style={styles.thumb}
-                contentFit="cover"
-                cachePolicy="memory-disk"
-                recyclingKey={theirPhotoUri}
+                resizeMode="cover"
+                transitionMs={0}
+                recyclingKey={`flash-their:${theirPhotoUri}`}
               />
             ) : (
               <View style={[styles.thumb, styles.thumbFallback]}>

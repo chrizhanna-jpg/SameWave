@@ -1986,6 +1986,47 @@ const OVERRIDES = {
   },
 };
 
+// ── Launch-expansion themes: per-theme labels applied to every discovered
+//    id (from new-theme-ids.json). Keeps the 126 new ids hand-labelled
+//    without 126 literal blocks. Merged into OVERRIDES below. ──
+const NEW_THEME_META = {
+  butterfly: { tags: ["wildlife", "animal", "outdoors", "flowers", "garden"], subjects: ["butterfly", "wings", "flower", "wildlife"], shapes: ["centered", "organic", "curves", "minimal"] },
+  moth: { tags: ["wildlife", "animal", "outdoors", "night"], subjects: ["moth", "wings", "insect", "macro"], shapes: ["centered", "organic", "symmetry", "minimal"] },
+  art: { tags: ["art", "crafts", "hobby", "museum"], subjects: ["painting", "canvas", "art studio", "brushes"], shapes: ["layered", "busy", "organic", "centered"] },
+  baking: { tags: ["baking", "cooking", "bread", "dessert", "food"], subjects: ["baking", "dough", "bread", "oven"], shapes: ["circles", "layered", "organic", "centered"] },
+  garden: { tags: ["garden", "plants", "flowers", "outdoors"], subjects: ["garden", "plants", "soil", "gardening"], shapes: ["organic", "layered", "vertical", "centered"] },
+  fishing: { tags: ["outdoors", "water", "lake", "sports"], subjects: ["fishing rod", "river", "fisherman", "lake"], shapes: ["horizontal", "organic", "minimal", "centered"] },
+  hiking: { tags: ["hiking", "outdoors", "mountains", "trees", "fitness"], subjects: ["hiking trail", "backpack", "mountains", "forest"], shapes: ["vertical", "layered", "organic", "lines"] },
+  yoga: { tags: ["yoga", "fitness", "home", "outdoors"], subjects: ["yoga pose", "yoga mat", "stretch", "balance"], shapes: ["centered", "curves", "vertical", "minimal"] },
+  gym: { tags: ["fitness", "sports", "people"], subjects: ["dumbbells", "weights", "workout", "gym"], shapes: ["geometric", "centered", "lines", "vertical"] },
+  camping: { tags: ["outdoors", "travel", "trees", "mountains", "night"], subjects: ["tent", "campfire", "campsite", "forest"], shapes: ["centered", "organic", "layered", "vertical"] },
+  travel: { tags: ["travel", "city", "outdoors", "people"], subjects: ["suitcase", "passport", "map", "airport"], shapes: ["centered", "layered", "horizontal", "geometric"] },
+  beach: { tags: ["beach", "water", "outdoors", "travel", "sunset"], subjects: ["beach", "sand", "waves", "ocean"], shapes: ["horizontal", "layered", "organic", "minimal"] },
+  swimming: { tags: ["water", "sports", "fitness", "outdoors", "travel"], subjects: ["swimming pool", "swimmer", "water", "underwater"], shapes: ["horizontal", "curves", "organic", "minimal"] },
+  concert: { tags: ["concert", "music", "party", "people", "city"], subjects: ["concert crowd", "stage lights", "band", "audience"], shapes: ["busy", "vertical", "layered", "lines"] },
+  festival: { tags: ["concert", "music", "party", "people", "celebration"], subjects: ["festival crowd", "stage", "lights", "celebration"], shapes: ["busy", "layered", "vertical", "organic"] },
+  wedding: { tags: ["wedding", "celebration", "people", "family", "friends"], subjects: ["wedding", "rings", "bride", "bouquet"], shapes: ["centered", "curves", "layered", "minimal"] },
+  baby: { tags: ["kids", "family", "people", "smile"], subjects: ["baby", "newborn", "tiny hands", "infant"], shapes: ["centered", "curves", "organic", "minimal"] },
+  graduation: { tags: ["celebration", "people", "friends", "study"], subjects: ["graduation cap", "gown", "diploma", "ceremony"], shapes: ["centered", "vertical", "layered", "minimal"] },
+  birthday: { tags: ["birthday", "celebration", "party", "people", "dessert"], subjects: ["birthday cake", "candles", "balloons", "party"], shapes: ["circles", "centered", "busy", "layered"] },
+  newhome: { tags: ["home", "city", "people", "cozy"], subjects: ["house keys", "moving boxes", "new home", "interior"], shapes: ["centered", "geometric", "minimal", "layered"] },
+  cooking: { tags: ["cooking", "food", "home", "meal", "people"], subjects: ["cooking", "kitchen", "pan", "preparing food"], shapes: ["vertical", "layered", "busy", "centered"] },
+};
+
+{
+  const newIdsPath = path.join(__dirname, "new-theme-ids.json");
+  if (fs.existsSync(newIdsPath)) {
+    const byTheme = JSON.parse(fs.readFileSync(newIdsPath, "utf8"));
+    for (const [theme, ids] of Object.entries(byTheme)) {
+      const meta = NEW_THEME_META[theme];
+      if (!meta) continue;
+      for (const id of ids) {
+        if (!OVERRIDES[id]) OVERRIDES[id] = meta;
+      }
+    }
+  }
+}
+
 function filterTags(tags) {
   return [...new Set(tags.filter((t) => ALLOWED_TAGS.has(t)))].slice(0, 6);
 }

@@ -5,20 +5,41 @@ import { photoKey } from "@/utils/photoKey";
 import { lookupVoterPhotoForMatchSync } from "@/utils/voterPhotoByTarget";
 import { matchCountryFieldsFromCapture } from "@/utils/photoCountry";
 
+/** Default max width for in-app photo streams (Ripple deck, explore, echoes). */
+export const DISPLAY_PHOTO_MAX_WIDTH = 960;
+
 /** Authenticated stream URL for a server photo row. */
-export function serverPhotoImageUrl(photoId: string): string {
-  return serverPhotoImageUrlAtOrigin(photoId, getPublicApiOrigin());
+export function serverPhotoImageUrl(
+  photoId: string,
+  maxWidth: number = DISPLAY_PHOTO_MAX_WIDTH,
+): string {
+  return serverPhotoImageUrlAtOrigin(photoId, getPublicApiOrigin(), maxWidth);
 }
 
 /** Same as {@link serverPhotoImageUrl} but pinned to a specific API origin. */
 export function serverPhotoImageUrlAtOrigin(
   photoId: string,
   origin: string,
+  maxWidth: number = DISPLAY_PHOTO_MAX_WIDTH,
 ): string {
   const id = photoId.trim();
   if (!id) return "";
   const base = origin.replace(/\/$/, "");
-  return `${base}/api/photos/${encodeURIComponent(id)}/image`;
+  const url = `${base}/api/photos/${encodeURIComponent(id)}/image`;
+  if (!Number.isFinite(maxWidth) || maxWidth <= 0) return url;
+  return `${url}?w=${Math.round(maxWidth)}`;
+}
+
+/** Append display width to an existing `/api/photos/:id/image` URL if missing. */
+export function withDisplayPhotoWidth(
+  uri: string,
+  maxWidth: number = DISPLAY_PHOTO_MAX_WIDTH,
+): string {
+  const trimmed = uri.trim();
+  if (!trimmed || !/\/api\/photos\/[^/]+\/image/.test(trimmed)) return trimmed;
+  if (/[?&]w=\d+/.test(trimmed)) return trimmed;
+  const w = Math.round(maxWidth);
+  return trimmed.includes("?") ? `${trimmed}&w=${w}` : `${trimmed}?w=${w}`;
 }
 
 /** Echo / wave card side — prefer inline uri, fall back to authenticated stream. */

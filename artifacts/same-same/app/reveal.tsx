@@ -41,10 +41,11 @@ import {
   ShareLayoutModeToggle,
   type ShareLayoutMode,
 } from "@/components/ShareLayoutModeToggle";
+import { CaptureTimeNote } from "@/components/CaptureTimeNote";
 import { nameFor } from "@/data/countries";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
 import { formatDualWaveThemes } from "@/utils/shareThemeLabels";
-import { getGeoTierForPhotos, getTimeTier } from "@/utils/celebrations";
+import { getGeoTierForPhotos, getTimeTierForMatch } from "@/utils/celebrations";
 import { photoCountryDisplay, resolveCaptureCountryCode } from "@/utils/photoCountry";
 import { commonInterests, tagEmoji, tagLabel } from "@/utils/interests";
 import type { Match } from "@/context/AppContext";
@@ -409,7 +410,7 @@ export default function RevealScreen() {
     !matchedCountries.some((c) => c.code === theirDisp.code);
 
   // Tiered celebrations: closer in time = bigger deal.
-  const timeTier = getTimeTier(match.myPhotoUploadedAt, match.theirPhotoMinutesAgo);
+  const timeTier = getTimeTierForMatch(match);
   const myPhotoForMatch = myPhotos.find((p) => p.uri === match.myPhoto);
   const myCap = resolveCaptureCountryCode(
     match.myCaptureCountryCode ?? myPhotoForMatch?.captureCountryCode,
@@ -538,6 +539,13 @@ export default function RevealScreen() {
         </View>
         </Animated.View>
 
+        {/* Soft, neutral note when the temporal tier fell back to share time
+            because a photo had no capture date. Rendered OUTSIDE the ViewShot
+            so it never bakes into the exported share image. */}
+        {timeTier.usedShareFallback ? (
+          <CaptureTimeNote style={styles.captureNote} />
+        ) : null}
+
         {/* Visual separator between the shareable image above and the
             interactive actions below. Makes it obvious which part of the
             screen ends up in the exported share image. */}
@@ -653,37 +661,23 @@ export default function RevealScreen() {
             </TouchableOpacity>
           ) : null}
 
-          {!proActive && (
-            <TouchableOpacity
-              style={[styles.upsellBtn, { borderColor: colors.gold }]}
-              onPress={() => {
-                if (!gateProFeature("SameWave Pro")) return;
-                setPaywallOpen(true);
-              }}
-              activeOpacity={0.85}
+          {/* Compact "Pro" pill. Non-interactive for now — a future update
+              will let this open the watermark / Pro info. Kept to a single
+              short word so the action row never overflows. */}
+          <View
+            style={[
+              styles.proBadge,
+              { backgroundColor: colors.gold + "22", borderColor: colors.gold },
+            ]}
+          >
+            <Icon name="wave" size={16} color={colors.gold} />
+            <Text
+              style={[styles.upsellText, { color: colors.gold }]}
+              numberOfLines={1}
             >
-              <Icon name="wave" size={16} color={colors.gold} />
-              <Text style={[styles.upsellText, { color: colors.gold }]}>
-                {/* Show the live store price ("£1.00", "$1.29", …) so
-                    the button always matches what the user will pay.
-                    While the SDK is still resolving the offering we
-                    fall back to a generic label so the button isn't
-                    blank. */}
-                {priceString
-                  ? `Remove watermark · ${priceString}`
-                  : "Remove watermark"}
-              </Text>
-            </TouchableOpacity>
-          )}
-
-          {proActive && (
-            <View style={[styles.proBadge, { backgroundColor: colors.gold + "22", borderColor: colors.gold }]}>
-              <Icon name="wave" size={16} color={colors.gold} />
-              <Text style={[styles.upsellText, { color: colors.gold }]}>
-                Pro · no watermark
-              </Text>
-            </View>
-          )}
+              Pro
+            </Text>
+          </View>
         </View>
 
         <TouchableOpacity
@@ -866,6 +860,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     marginTop: -6,
     marginBottom: 2,
+  },
+  captureNote: {
+    marginTop: 10,
+    marginBottom: 2,
+    paddingHorizontal: 16,
   },
   shareCard: {
     borderRadius: 18,

@@ -784,9 +784,9 @@ function DiscoveryCard({
 }) {
   const colors = useColors();
   const headlineColor =
-    item.timeTier.kind === "minute"
+    item.timeTier.kind === "hour"
       ? colors.gold
-      : item.timeTier.kind === "hour"
+      : item.timeTier.kind === "day"
       ? colors.teal
       : colors.mutedForeground;
 
@@ -805,7 +805,7 @@ function DiscoveryCard({
         {
           backgroundColor: colors.card,
           borderColor:
-            item.timeTier.kind === "minute"
+            item.timeTier.kind === "hour"
               ? colors.gold + "55"
               : colors.border,
         },

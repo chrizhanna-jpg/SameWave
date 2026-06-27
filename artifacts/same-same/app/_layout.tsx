@@ -364,6 +364,10 @@ function RootLayoutNav() {
           theirCountryFlag={pendingFlashEcho.theirs.countryFlag}
           theirCountryCode={pendingFlashEcho.theirs.countryCode ?? undefined}
           theirCaptureCountryCode={pendingFlashEcho.theirs.captureCountryCode ?? undefined}
+          myPhotoCapturedAt={pendingFlashEcho.mine.capturedAt ?? undefined}
+          myPhotoSharedAt={pendingFlashEcho.mine.createdAt ?? undefined}
+          theirPhotoCapturedAt={pendingFlashEcho.theirs.capturedAt ?? undefined}
+          theirPhotoSharedAt={pendingFlashEcho.theirs.createdAt ?? undefined}
           themeTitle={flashThemeTitle}
           themeEmoji={flashThemeEmoji}
           onDone={dismissFlashEcho}

@@ -1,7 +1,7 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useColors } from "@/hooks/useColors";
-import { getGeoTierForPhotos, getTimeTier } from "@/utils/celebrations";
+import { getGeoTierForPhotos, getTimeTierForMatch } from "@/utils/celebrations";
 import type { Match } from "@/context/AppContext";
 
 /**
@@ -17,15 +17,17 @@ export function MatchTierChips({
   myCountryCode?: string;
 }) {
   const colors = useColors();
-  const time = getTimeTier(match.myPhotoUploadedAt, match.theirPhotoMinutesAgo);
+  const time = getTimeTierForMatch(match);
   const geo = getGeoTierForPhotos(
     match.myCaptureCountryCode,
     match.theirCaptureCountryCode,
   );
+  // "Same Hour" is now the rarest/premium emitted tier (the calendar ladder
+  // no longer produces "minute"); give it gold, "Same Day" teal, rest muted.
   const timeColor =
-    time.kind === "minute"
+    time.kind === "hour"
       ? colors.gold
-      : time.kind === "hour"
+      : time.kind === "day"
       ? colors.teal
       : colors.mutedForeground;
   const geoShort =

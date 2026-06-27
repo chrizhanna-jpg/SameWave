@@ -33,7 +33,11 @@ import {
 } from "@/data/samplePhotos";
 import { analyzePhoto, reactivateMyPhoto, uploadPhoto } from "@/utils/api";
 import { requestAtlasRefresh } from "@/utils/atlasHub";
-import { detectPhotoOrigin, type PhotoSource } from "@/utils/photoOrigin";
+import {
+  detectPhotoOrigin,
+  extractCaptureDateIso,
+  type PhotoSource,
+} from "@/utils/photoOrigin";
 import { detectCountryFromPhotoExif } from "@/utils/gpsCountry";
 import { photoCountryDisplay } from "@/utils/photoCountry";
 import {
@@ -289,6 +293,11 @@ export default function CameraScreen() {
   const themeEditedRef = useRef(false);
   const pickedAssetRef = useRef<ImagePicker.ImagePickerAsset | null>(null);
   const captureCountryRef = useRef<string | undefined>(undefined);
+  // Real capture time (ISO) for the picked/captured photo — EXIF
+  // DateTimeOriginal for library picks, shutter instant for in-app camera.
+  // Undefined when the photo carried no capture metadata, in which case the
+  // temporal tier falls back to upload/share time + shows the soft note.
+  const captureAtRef = useRef<string | undefined>(undefined);
   // Tracks the latest analysis call so older in-flight responses don't
   // overwrite tags for a newer photo pick.
   const analyzeReqIdRef = useRef(0);
@@ -648,6 +657,7 @@ export default function CameraScreen() {
     const verdict = detectPhotoOrigin(asset, source);
     resetForNewPhoto();
     captureCountryRef.current = captureCountryCode;
+    captureAtRef.current = extractCaptureDateIso(asset, source);
     setIsAi(verdict.looksAi);
     if (verdict.looksAi) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -711,6 +721,7 @@ export default function CameraScreen() {
     }
     setIsAi(photo.isAI === true);
     captureCountryRef.current = photo.captureCountryCode;
+    captureAtRef.current = photo.capturedAt;
   };
 
   const applyPostIntentSeed = useCallback(() => {
@@ -735,6 +746,7 @@ export default function CameraScreen() {
 
   const resetForNewPhoto = () => {
     pickedAssetRef.current = null;
+    captureAtRef.current = undefined;
     setSelectedTags([]);
     setAiTags([]);
     aiThemeRef.current = "";
@@ -1079,6 +1091,16 @@ export default function CameraScreen() {
         })
         .catch(() => {});
     } else {
+      // Geo-tier policy: prefer the real capture-time GPS country, but
+      // when it's unavailable (permission denied, no EXIF, web preview)
+      // fall back to the user's declared home country so the match still
+      // reaches the Same Country / Same Continent tiers instead of
+      // collapsing to "Same Planet". The pure GPS value is still sent to
+      // the server below so the stored capture_country_code stays honest.
+      const homeFallbackCc =
+        typeof myCountryCode === "string" && myCountryCode.length === 2
+          ? myCountryCode.toUpperCase()
+          : undefined;
       addMyPhoto(
         localUri,
         finalTheme,
@@ -1087,8 +1109,9 @@ export default function CameraScreen() {
         finalGenre,
         recordedUrl ?? undefined,
         aiSubjectsRef.current,
-        captureCountryRef.current,
+        captureCountryRef.current ?? homeFallbackCc,
         myCountryCode,
+        captureAtRef.current,
       );
       if (captured?.base64) {
         uploadPhoto({
@@ -1096,6 +1119,7 @@ export default function CameraScreen() {
           mimeType: captured.mimeType,
           countryCode: myCountryCode,
           captureCountryCode: captureCountryRef.current,
+          capturedAt: captureAtRef.current,
           musicGenre: finalGenre,
           customAudioBase64: recordedBase64 ?? undefined,
           customAudioMime: recordedBase64 ? RECORDING_MIME : undefined,

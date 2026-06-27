@@ -44,8 +44,12 @@ interface Props {
   /** Theme that produced the echo (e.g. "Coffee", "Sunset"). */
   themeTitle?: string;
   themeEmoji?: string;
-  myPhotoUploadedAt?: string;
-  theirPhotoMinutesAgo?: number;
+  // Absolute timestamps for the calendar time tier. Each side prefers its
+  // real capture time, falling back to its upload/share time.
+  myPhotoCapturedAt?: string;
+  myPhotoSharedAt?: string;
+  theirPhotoCapturedAt?: string;
+  theirPhotoSharedAt?: string;
   /** Called when the flash is dismissed without opening / sharing. */
   onDone: () => void;
   /** Called when the user wants to open the full echo-pair view. */
@@ -86,8 +90,10 @@ export function EchoFlash({
   theirPhotoUri,
   themeTitle,
   themeEmoji = "✨",
-  myPhotoUploadedAt,
-  theirPhotoMinutesAgo,
+  myPhotoCapturedAt,
+  myPhotoSharedAt,
+  theirPhotoCapturedAt,
+  theirPhotoSharedAt,
   onDone,
   onOpen,
 }: Props) {
@@ -186,7 +192,10 @@ export function EchoFlash({
     outputRange: [0.5, 1],
   });
 
-  const timeTier = getTimeTier(myPhotoUploadedAt, theirPhotoMinutesAgo);
+  const timeTier = getTimeTier(
+    { capturedAt: myPhotoCapturedAt, sharedAt: myPhotoSharedAt },
+    { capturedAt: theirPhotoCapturedAt, sharedAt: theirPhotoSharedAt },
+  );
   const myDisplay = photoCountryDisplay(myCaptureCountryCode);
   const theirDisplay = photoCountryDisplay(theirCaptureCountryCode);
   const geoTier = getGeoTierForPhotos(

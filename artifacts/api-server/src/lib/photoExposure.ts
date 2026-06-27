@@ -85,7 +85,7 @@ export function echoPairExposurePenaltySql(
 }
 
 export type ExploreMoment = {
-  participants: Array<{ photoId: string; userId?: string }>;
+  participants: Array<{ photoId: string; userId?: string; contentHash?: string }>;
 };
 
 export type CapExplorePhotoRepeatsOptions = {
@@ -103,17 +103,20 @@ export function capExplorePhotoRepeats<T extends ExploreMoment>(
   const counts = new Map<string, number>();
   const out: T[] = [];
   for (const moment of moments) {
-    const cappedPhotoIds: string[] = [];
+    // Key on content_hash when present so the same image stored under several
+    // photo ids (seed dupes / identical re-uploads) is capped as one photo.
+    const cappedKeys: string[] = [];
     for (const p of moment.participants) {
       const id = p.photoId?.trim();
       if (!id) continue;
       if (exemptUserId && p.userId?.trim() === exemptUserId) continue;
-      cappedPhotoIds.push(id);
+      const hash = p.contentHash?.trim();
+      cappedKeys.push(hash ? `hash:${hash}` : `id:${id}`);
     }
 
     let blocked = false;
-    for (const id of cappedPhotoIds) {
-      const next = (counts.get(id) ?? 0) + 1;
+    for (const key of cappedKeys) {
+      const next = (counts.get(key) ?? 0) + 1;
       if (next > maxPerPhoto) {
         blocked = true;
         break;
@@ -121,8 +124,8 @@ export function capExplorePhotoRepeats<T extends ExploreMoment>(
     }
     if (blocked) continue;
 
-    for (const id of cappedPhotoIds) {
-      counts.set(id, (counts.get(id) ?? 0) + 1);
+    for (const key of cappedKeys) {
+      counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     out.push(moment);
   }

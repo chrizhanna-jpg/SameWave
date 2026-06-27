@@ -274,6 +274,28 @@ export default function ProfileScreen() {
   );
   const worldCoverage = getWorldMapCoverage();
 
+  // Hidden owner entry point: 7 quick taps on the copyright label opens the
+  // server-driven catalog admin screen. It is intentionally undiscoverable in
+  // normal use and stays unusable without the admin token (the screen gates on
+  // it and the server enforces X-Admin-Token).
+  const secretTapRef = React.useRef<{
+    count: number;
+    timer: ReturnType<typeof setTimeout> | null;
+  }>({ count: 0, timer: null });
+  const handleSecretAdminTap = React.useCallback(() => {
+    const s = secretTapRef.current;
+    s.count += 1;
+    if (s.timer) clearTimeout(s.timer);
+    s.timer = setTimeout(() => {
+      s.count = 0;
+    }, 1500);
+    if (s.count >= 7) {
+      s.count = 0;
+      if (s.timer) clearTimeout(s.timer);
+      router.push("/admin-catalog");
+    }
+  }, []);
+
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const scrollBottomPad = scrollPaddingAboveTabBar(insets, 24);
 
@@ -837,6 +859,8 @@ export default function ProfileScreen() {
         <View style={styles.studioFooterRow}>
           <View style={styles.studioFooterCol}>
             <Text
+              onPress={handleSecretAdminTap}
+              suppressHighlighting
               style={[styles.studioFooterLabel, { color: colors.mutedForeground }]}
             >
               {COPYRIGHT_FOOTER_LABEL}

@@ -81,6 +81,7 @@ import {
   type ViewerExplorePhoto,
 } from "@/utils/api";
 import { getPublicApiOrigin } from "@/utils/publicEnv";
+import { serverPhotoImageUrlAtOrigin, withDisplayPhotoWidth } from "@/utils/photoDisplayUri";
 import { flagFor, nameFor } from "@/data/countries";
 import { AtlasFireExploreModal } from "@/components/AtlasFireExploreModal";
 import { PressableScale } from "@/components/PressableScale";
@@ -1070,7 +1071,7 @@ export function AtlasGlobeExperience({
       return;
     }
     if (inline.startsWith("/api/photos/")) {
-      setWfPhotoUri(`${apiBase}${inline}`);
+      setWfPhotoUri(withDisplayPhotoWidth(`${apiBase}${inline}`));
       setWfPhotoLoading(false);
       return;
     }
@@ -1081,9 +1082,7 @@ export function AtlasGlobeExperience({
     }
     const spotlightId = wfPhotoTile.spotlightPhotoId?.trim();
     if (spotlightId) {
-      setWfPhotoUri(
-        `${apiBase}/api/photos/${encodeURIComponent(spotlightId)}/image`,
-      );
+      setWfPhotoUri(serverPhotoImageUrlAtOrigin(spotlightId, apiBase));
       setWfPhotoLoading(false);
       return;
     }

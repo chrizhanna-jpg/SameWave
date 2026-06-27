@@ -31,6 +31,7 @@ import {
   serverPhotoImageUrl,
 } from "@/utils/photoDisplayUri";
 import { matchCountryFieldsFromCapture, photoCountryDisplay } from "@/utils/photoCountry";
+import { getTimeTierForMatch } from "@/utils/celebrations";
 import {
   hydrateVoterPhotoMap,
   importVoterPhotosFromJourney,
@@ -124,6 +125,14 @@ export interface MyPhoto {
    * geo ripples and match display prefer this over profile country.
    */
   captureCountryCode?: string;
+  /**
+   * Real capture time of the photo (ISO) — EXIF DateTimeOriginal for library
+   * picks, or the in-app camera shutter instant. Preferred basis for the
+   * temporal match tier; absent when the photo carried no capture metadata,
+   * in which case the tier falls back to `uploadedAt` (share time) and the
+   * soft "matched by when you shared it" note fires.
+   */
+  capturedAt?: string;
   /** Profile country at upload time — fallback when capture is unknown. */
   declaredCountryCode?: string;
   /**
@@ -155,7 +164,14 @@ export function isAiPhoto(uri: string): boolean {
 export interface Match {
   id: string;
   myPhoto: string;
+  /** My photo's upload/share time (ISO) — share-time fallback for the temporal tier. */
   myPhotoUploadedAt?: string;
+  /**
+   * My photo's REAL capture time (ISO) — EXIF DateTimeOriginal for library
+   * picks, or the in-app camera shutter instant. Preferred basis for the
+   * temporal tier; falls back to `myPhotoUploadedAt` when unknown.
+   */
+  myPhotoCapturedAt?: string;
   theirPhoto: string;
   // Backend (DB) ID of the matched photo, when known. Persisted on
   // every match created from a live discovery candidate so that later
@@ -179,7 +195,24 @@ export interface Match {
   verdict: "same" | "different" | null;
   timestamp: string;
   theme?: string;
+  /**
+   * @deprecated Relative "minutes ago" snapshot from the old rolling-window
+   * tier. Superseded by the absolute `theirPhotoCapturedAt` /
+   * `theirPhotoSharedAt` timestamps (which the calendar tier uses so it can't
+   * drift). Still written for backwards-compat with older persisted matches /
+   * the same-day badge fallback; NOT used by `getTimeTier` anymore.
+   */
   theirPhotoMinutesAgo?: number;
+  /**
+   * Their photo's REAL capture time (ISO), snapshotted at swipe time —
+   * `capturedAt ?? createdAt` of the candidate. Preferred basis for the tier.
+   */
+  theirPhotoCapturedAt?: string;
+  /**
+   * Their photo's upload/share time (ISO), snapshotted at swipe time — the
+   * share-time fallback when capture time is unknown.
+   */
+  theirPhotoSharedAt?: string;
   sharedTags?: string[];
   // Broader "vibe" of the matched user (their photo's tags expanded with a
   // couple of lifestyle/hobby tags) — used to surface similar interests
@@ -252,6 +285,10 @@ export interface PhotoSide {
   uri: string;
   countryCode: string | null;
   captureCountryCode?: string | null;
+  /** Real capture time (ISO) of this side's photo — preferred tier basis. */
+  capturedAt?: string | null;
+  /** Upload/share time (ISO) — temporal-tier fallback when capture unknown. */
+  createdAt?: string | null;
   country: string;
   countryFlag: string;
   theme?: string;
@@ -287,14 +324,22 @@ interface AppState {
   onboardingComplete: boolean;
   /**
    * Cold-start counter, bumped once per process load inside `loadState`.
-   * Used by `app/index.tsx` to redirect new users to the tutorial on
-   * their first few app opens (currently the first 3) so the brand
-   * + flow has a chance to land before they're dropped on the home
-   * tab. Existing users who had already finished onboarding before
-   * this counter existed are seeded above the threshold so they do
-   * not regress into seeing the tutorial again.
+   * Used by `app/index.tsx` (with `tutorialLaunchAck`) to replay the
+   * tutorial on the user's first TWO app opens so the brand + flow has a
+   * chance to land before they're dropped on the home tab. Existing users
+   * who had already finished onboarding before this counter existed are
+   * seeded above the threshold so they do not regress into the tutorial.
    */
   appOpenCount: number;
+  /**
+   * The `appOpenCount` value captured the last time the user finished or
+   * skipped the tutorial. Used by `app/index.tsx` to replay the tutorial
+   * a second time: we show it on launch 1 (via `onboardingComplete`) and
+   * again on launch 2 (when this ack still trails the current open count),
+   * then leave it alone from launch 3 onward. Seeded at 0 so a brand-new
+   * install always trails the first open.
+   */
+  tutorialLaunchAck: number;
   proUnlocked: boolean;
   connectRequests: ConnectRequest[];
   /** Pending offers waiting on me to respond (other side tapped first). */
@@ -357,6 +402,8 @@ interface AppContextValue extends AppState {
     subjects?: string[],
     captureCountryCode?: string,
     declaredCountryCode?: string,
+    /** Real capture time (ISO) — EXIF for library picks, shutter instant for camera. */
+    capturedAt?: string,
   ) => void;
   /**
    * Patch a previously-added local photo with the backend ID returned by
@@ -504,6 +551,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     myPhotos: [],
     onboardingComplete: false,
     appOpenCount: 0,
+    tutorialLaunchAck: 0,
     proUnlocked: false,
     connectRequests: [],
     pendingEchoes: [],
@@ -915,11 +963,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const matchedCountries = [...byCode.values()];
     const codes = matchedCountries.map((c) => c.code);
     const sameDayEarned = confirmed.some((m) => {
-      const myAgeMin = m.myPhotoUploadedAt
-        ? (Date.now() - new Date(m.myPhotoUploadedAt).getTime()) / 60000
-        : 9999;
-      const theirAgeMin = m.theirPhotoMinutesAgo ?? 9999;
-      return myAgeMin < 1440 && theirAgeMin < 1440;
+      // Use the same stable calendar tier as the UI so the badge can't drift.
+      // `getTimeTierForMatch` reconstructs legacy matches' share instant from
+      // the match's own (fixed) timestamp, not Date.now().
+      const tier = getTimeTierForMatch(m);
+      return tier.kind === "hour" || tier.kind === "day";
     });
     // Earned badges stick — we never take them away on undo.
     const badges = existingBadges.map((b) => {
@@ -1233,10 +1281,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     subjects?: string[],
     captureCountryCode?: string,
     declaredCountryCode?: string,
+    capturedAt?: string,
   ) => {
     const photo: MyPhoto = {
       uri,
       uploadedAt: new Date().toISOString(),
+      capturedAt,
       theme,
       tags: tags ?? [],
       // Persist subjects on the local record. Empty array (rather than
@@ -1477,6 +1527,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         snapshot = {
           ...prev,
           onboardingComplete: true,
+          // Remember which launch the tutorial was satisfied on so the
+          // index gate stops replaying it for the current open but can
+          // still show it once more on the next launch (until it catches
+          // up to the open count — see `tutorialLaunchAck`).
+          tutorialLaunchAck: prev.appOpenCount,
           ...(country
             ? {
                 myCountryCode: country.code,

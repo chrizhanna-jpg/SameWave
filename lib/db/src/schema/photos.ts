@@ -63,6 +63,18 @@ export const photosTable = pgTable(
     // time (library uploads, legacy rows). Geo ripples require capture.
     captureCountryCode: varchar("capture_country_code", { length: 2 }),
 
+    // Real capture time of the moment — EXIF DateTimeOriginal for library
+    // picks, or the shutter instant for in-app camera shots. This is the
+    // honest "when this photo was actually taken" signal used by the
+    // temporal match tiers (Same Hour / Day / Week / Month). Nullable:
+    // many shared photos (messaging apps, screenshots, downloads) have no
+    // capture metadata, and legacy rows predate this column. When null,
+    // the client falls back to `created_at` (upload/share time) at
+    // compute time and surfaces a soft "matched by when you shared it"
+    // note — we deliberately store null here rather than backfilling with
+    // upload time so the fallback stays detectable downstream.
+    capturedAt: timestamp("captured_at"),
+
     // Music vibe (the "vibe clip" feature). Lower-case genre id from
     // artifacts/same-same/data/musicLibrary.ts (e.g. "classic", "rock").
     // Nullable so the column is backwards-compatible with photos

@@ -37,10 +37,17 @@ type Step = {
   title: string | null;
   subtitle: string | null;
   body: string | null;
-  bodyKind?: "ripple-wave";
+  bodyKind?: "ripple-wave" | "vibe-moment";
 };
 
 const STEPS: Step[] = [
+  {
+    kind: "intro",
+    title: "What is SameWave?",
+    subtitle: null,
+    body: null,
+    bodyKind: "vibe-moment",
+  },
   {
     kind: "intro",
     title: null,
@@ -242,6 +249,24 @@ export default function OnboardingScreen() {
                 inline with the text just like the ripple icon above —
                 no transform needed; the icon's natural baseline aligns
                 with the surrounding sentence. */}
+            <Icon name="wave-glyph" size={22} color={colors.gold} />.
+          </Text>
+        ) : currentStep.bodyKind === "vibe-moment" ? (
+          // "Add a vibe." explanation — the Ripple icon lands after the
+          // first sentence and the Wave glyph closes the paragraph,
+          // matching where the user marked them in the copy. Icons sit
+          // inline at the surrounding text baseline (same treatment as
+          // the ripple-wave step above).
+          <Text
+            style={[
+              styles.body,
+              styles.bodyVibeMoment,
+              { color: colors.mutedForeground },
+            ]}
+            accessibilityLabel="Upload a photo with a vibe — music or a recording — and see if someone out there is having a moment that feels like yours (Ripple). No likes, no performance, just a fleeting sense that someone else, somewhere in the world, recently shared the same kind of moment or was doing something similar — and if they feel it too, they can send a reaction back (Wave)."
+          >
+            Upload a photo with a vibe — music or a recording — and see if someone out there is having a moment that feels like yours{" "}
+            <Icon name="ripple" size={18} color={colors.teal} />. No likes, no performance, just a fleeting sense that someone else, somewhere in the world, recently shared the same kind of moment or was doing something similar — and if they feel it too, they can send a reaction back{" "}
             <Icon name="wave-glyph" size={22} color={colors.gold} />.
           </Text>
         ) : (
@@ -495,6 +520,13 @@ const styles = StyleSheet.create({
   // lines spaced evenly regardless of which one carries an icon.
   bodyRippleWave: {
     lineHeight: 36,
+  },
+  // "Add a vibe." paragraph is longer than the ripple-wave beat, so it
+  // reflows naturally rather than using forced line breaks. Slightly
+  // taller line height than the default body keeps the inline ripple
+  // (18px) and wave glyph (22px) from crowding adjacent lines.
+  bodyVibeMoment: {
+    lineHeight: 26,
   },
   // Spacing above the "Send a ripple. / Catch a wave." flourish that
   // sits BELOW the explanation paragraph on the ripple-wave step —

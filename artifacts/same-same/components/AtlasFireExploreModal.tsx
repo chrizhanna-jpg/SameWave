@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  FlatList,
   Modal,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -29,11 +30,14 @@ import {
   fetchAtlasFireExplore,
   flattenAtlasFireExplorePhotos,
   formatAtlasFireExploreDiagnostics,
+  peekAuthedImageHeaders,
+  warmAuthedImageHeaders,
   type AtlasFireParticipant,
   type LocalRippleExploreMatch,
   type LocalWaveExploreEcho,
   type ViewerExplorePhoto,
 } from "@/utils/api";
+import { withDisplayPhotoWidth } from "@/utils/photoDisplayUri";
 import { getPublicApiOrigin } from "@/utils/publicEnv";
 import type { AtlasThemeCluster } from "@/utils/atlasWavefire";
 import type { AtlasFireMode } from "@/utils/atlasFireVisuals";
@@ -79,9 +83,20 @@ function ExploreAtlasPhoto({
   uri: string;
   authHeaders?: Record<string, string>;
 }) {
-  const needsAuth = explorePhotoUriNeedsAuth(uri);
+  const displayUri = useMemo(() => withDisplayPhotoWidth(uri), [uri]);
+  const needsAuth = explorePhotoUriNeedsAuth(displayUri);
+  const headers = authHeaders ?? peekAuthedImageHeaders();
 
-  if (needsAuth && !authHeaders) {
+  useEffect(() => {
+    if (!needsAuth) return;
+    if (headers) {
+      void Image.prefetch(displayUri, { headers }).catch(() => {});
+      return;
+    }
+    warmAuthedImageHeaders();
+  }, [displayUri, headers, needsAuth]);
+
+  if (needsAuth && !headers) {
     return (
       <View style={styles.explorePhotoLoader}>
         <ActivityIndicator color="#E8F4F8" size="large" />
@@ -91,11 +106,15 @@ function ExploreAtlasPhoto({
 
   return (
     <Image
-      source={needsAuth && authHeaders ? { uri, headers: authHeaders } : { uri }}
+      source={
+        needsAuth && headers ? { uri: displayUri, headers } : { uri: displayUri }
+      }
       style={StyleSheet.absoluteFillObject}
       contentFit="contain"
       cachePolicy="memory-disk"
-      recyclingKey={uri}
+      recyclingKey={displayUri}
+      placeholder={{ blurhash: "L6PZfSi_.AyE_3t7t7R**0o#DgR4" }}
+      transition={200}
     />
   );
 }
@@ -220,15 +239,14 @@ export function AtlasFireExploreModal({
   const explorePlayLeaseRef = useRef(0);
 
   useEffect(() => {
-    if (!visible || photoTiles.length === 0) {
+    if (!visible) {
       setExploreAuthHeaders(undefined);
       return;
     }
-    const needsAuth = photoTiles.some((t) =>
-      explorePhotoUriNeedsAuth(t.participant.uri),
-    );
-    if (!needsAuth) {
-      setExploreAuthHeaders(undefined);
+    warmAuthedImageHeaders();
+    const cached = peekAuthedImageHeaders();
+    if (cached) {
+      setExploreAuthHeaders(cached);
       return;
     }
     let cancelled = false;
@@ -238,10 +256,24 @@ export function AtlasFireExploreModal({
     return () => {
       cancelled = true;
     };
-  }, [visible, photoTiles]);
+  }, [visible]);
 
-  // Page height must match the measured list viewport — never guess from windowH or
-  // paging/getItemLayout desync and the first slides render blank.
+  useEffect(() => {
+    if (!visible || photoTiles.length === 0) return;
+    const headers = exploreAuthHeaders ?? peekAuthedImageHeaders();
+    if (!headers) return;
+    for (const tile of photoTiles) {
+      const uri = withDisplayPhotoWidth(tile.participant.uri);
+      if (!uri) continue;
+      if (explorePhotoUriNeedsAuth(uri)) {
+        void Image.prefetch(uri, { headers }).catch(() => {});
+      } else {
+        void Image.prefetch(uri).catch(() => {});
+      }
+    }
+  }, [visible, photoTiles, exploreAuthHeaders]);
+
+  // Page height must match the measured list viewport
   const pageHeight = Math.max(1, listViewportHeight);
   const listPagingReady = listViewportHeight > 0;
   const captionBottomInset = insets.bottom + 20;
@@ -450,8 +482,10 @@ export function AtlasFireExploreModal({
               }}
             >
               {listPagingReady ? (
-                <ScrollView
+                <FlatList
                   key={`explore-pager-${pageHeight}`}
+                  data={photoTiles}
+                  keyExtractor={(tile) => tile.key}
                   pagingEnabled
                   showsVerticalScrollIndicator={false}
                   snapToAlignment="start"
@@ -461,10 +495,17 @@ export function AtlasFireExploreModal({
                   nestedScrollEnabled
                   onScroll={onPhotoScroll}
                   scrollEventThrottle={16}
-                >
-                  {photoTiles.map((tile, index) => (
+                  initialNumToRender={1}
+                  maxToRenderPerBatch={2}
+                  windowSize={3}
+                  removeClippedSubviews
+                  getItemLayout={(_, index) => ({
+                    length: pageHeight,
+                    offset: pageHeight * index,
+                    index,
+                  })}
+                  renderItem={({ item: tile }) => (
                     <FullScreenPhotoPage
-                      key={tile.key}
                       tile={tile}
                       pageWidth={width}
                       pageHeight={pageHeight}
@@ -472,8 +513,8 @@ export function AtlasFireExploreModal({
                       onOpen={() => setImmersive(tile)}
                       authHeaders={exploreAuthHeaders}
                     />
-                  ))}
-                </ScrollView>
+                  )}
+                />
               ) : (
                 <View style={styles.centered}>
                   <ActivityIndicator color={visual.lineStroke} size="large" />
@@ -588,6 +629,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "#0a0a0a",
   },
   pageScrim: {
     ...StyleSheet.absoluteFillObject,

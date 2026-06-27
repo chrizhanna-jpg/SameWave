@@ -114,6 +114,18 @@ export async function resetPlaybackMode(): Promise<void> {
   await audioModePromise;
 }
 
+/**
+ * Warm the global audio session up front (idempotent). Call this once when
+ * the Ripple screen gains focus so the FIRST `playClip()` of the session
+ * doesn't pay the `setAudioModeAsync` native-bridge cost inline — that
+ * setup is the dominant fixed delay on the very first vibe clip. Also arms
+ * the AppState background hook so a later play doesn't have to.
+ */
+export function warmAudioSession(): void {
+  void audioModeReady();
+  ensureAppStateHook();
+}
+
 function ensureAppStateHook() {
   if (appStateSub) return;
   appStateSub = AppState.addEventListener("change", (s: AppStateStatus) => {
@@ -142,6 +154,82 @@ async function unloadActive() {
   try {
     await s.unloadAsync();
   } catch {}
+}
+
+// ── Prewarm cache ────────────────────────────────────────────────────
+// Remote vibe clips are streamed + decoded by expo-av on demand, so the
+// FIRST `playClip()` of a given URL pays the full network-fetch + decode
+// latency before any sound is heard. To make a swipe near-instant we
+// preload the *upcoming* card's clip ahead of time: create its
+// Audio.Sound paused (loaded + decoded, shouldPlay:false) and stash it
+// here. When `playClip()` later asks for that URL it adopts the already-
+// loaded sound instead of creating a new one.
+//
+// The cache is intentionally tiny — we only need the next card or two —
+// and self-evicts the oldest entry (unloading its native resources) so
+// it can never leak. Insertion order of a Map IS LRU-by-creation here,
+// which is all we need given the bounded size.
+const MAX_PREWARM = 3;
+const prewarmed = new Map<string, Audio.Sound>();
+// In-flight prewarm loads keyed by URL, so a `playClip()` that races a
+// prewarm of the same clip can await (and adopt) it instead of kicking
+// off a duplicate fetch.
+const prewarmInFlight = new Map<string, Promise<void>>();
+
+function evictPrewarmOverflow(): void {
+  while (prewarmed.size > MAX_PREWARM) {
+    const oldest = prewarmed.keys().next().value as string | undefined;
+    if (oldest == null) break;
+    const s = prewarmed.get(oldest);
+    prewarmed.delete(oldest);
+    if (s) void s.unloadAsync().catch(() => {});
+  }
+}
+
+/** Unload + drop every prewarmed sound. Called on full stop to free native memory. */
+function clearPrewarm(): void {
+  for (const s of prewarmed.values()) {
+    void s.unloadAsync().catch(() => {});
+  }
+  prewarmed.clear();
+}
+
+/**
+ * Best-effort preload of a clip so a subsequent `playClip(url)` starts
+ * with no fetch/decode delay. Safe to call repeatedly (de-duped against
+ * the active clip, the cache, and any in-flight load) and a no-op until
+ * the user has interacted — we never touch the network for audio before
+ * the cold-start gesture gate opens. Fire-and-forget; failures are
+ * swallowed (the clip just loads on demand later as before).
+ */
+export function prewarmClip(url: string | undefined | null): void {
+  if (!url) return;
+  if (!userInteracted) return;
+  if (activeUrl === url) return;
+  if (prewarmed.has(url) || prewarmInFlight.has(url)) return;
+  const p = (async () => {
+    await audioModeReady();
+    // Re-check after the await: the clip may have become active or been
+    // prewarmed by a racing call while the session warmed up.
+    if (activeUrl === url || prewarmed.has(url)) return;
+    try {
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: url },
+        { shouldPlay: false, isLooping: true, volume: 0.55 },
+      );
+      if (activeUrl === url || prewarmed.has(url)) {
+        // Someone started/loaded this URL while we decoded — discard the dupe.
+        try { await sound.unloadAsync(); } catch {}
+        return;
+      }
+      prewarmed.set(url, sound);
+      evictPrewarmOverflow();
+    } catch {
+      // 404 / network blip / codec mismatch — leave it to load on demand.
+    }
+  })();
+  prewarmInFlight.set(url, p);
+  void p.finally(() => prewarmInFlight.delete(url));
 }
 
 /**
@@ -203,9 +291,40 @@ async function _doPlay(url: string, lease: number): Promise<void> {
     return;
   }
 
+  // If a prewarm of this exact clip is still in-flight, wait for it so we
+  // adopt the already-decoded sound below instead of racing a duplicate
+  // fetch. This is rare in practice — prewarm runs when the prior card
+  // landed, so it's usually done by swipe time.
+  const inflight = prewarmInFlight.get(url);
+  if (inflight) {
+    try { await inflight; } catch {}
+    if (lease !== playToken) return;
+  }
+
   // Tear down whatever's currently playing before loading the new clip.
   await unloadActive();
   if (lease !== playToken) return; // user moved on while we were tearing down
+
+  // Fast path: adopt a prewarmed, already-decoded sound — playback starts
+  // immediately with no network fetch or decode. This is what makes a
+  // swipe to the next card near-instant.
+  const pre = prewarmed.get(url);
+  if (pre) {
+    prewarmed.delete(url);
+    activeSound = pre;
+    activeUrl = url;
+    try {
+      await pre.setStatusAsync({
+        shouldPlay: !muted,
+        isLooping: true,
+        volume: 0.55,
+      });
+    } catch {}
+    const nowPlaying = !muted;
+    activePlaying = nowPlaying;
+    notifyPlayback();
+    return;
+  }
 
   try {
     const { sound } = await Audio.Sound.createAsync(
@@ -258,6 +377,7 @@ export async function pause(): Promise<void> {
 /** Stop and fully release the active clip. Call on screen unmount. */
 export async function stop(): Promise<void> {
   playToken++; // invalidate any in-flight loads
+  clearPrewarm(); // release preloaded clips so they can't leak native memory
   await unloadActive();
 }
 

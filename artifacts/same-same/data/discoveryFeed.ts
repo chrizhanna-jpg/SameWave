@@ -151,7 +151,16 @@ export function buildDiscoveryFeed(
     const aPostedMin = happenedMinutesAgo + diff / 2;
     const bPostedMin = happenedMinutesAgo - diff / 2;
     const aPostedAt = new Date(now - aPostedMin * 60_000).toISOString();
-    const timeTier = getTimeTier(aPostedAt, Math.max(0, bPostedMin));
+    const bPostedAt = new Date(
+      now - Math.max(0, bPostedMin) * 60_000,
+    ).toISOString();
+    // Synthetic feed: both posts are share-time only (no capture metadata),
+    // so feed each side's instant in as `sharedAt`. Both derive from the same
+    // `now`, so the relative gap the profile picked is preserved.
+    const timeTier = getTimeTier(
+      { sharedAt: aPostedAt },
+      { sharedAt: bPostedAt },
+    );
     const geoTier = getGeoTierForPhotos(
       a.captureCountryCode,
       b.captureCountryCode,
@@ -169,7 +178,9 @@ export function buildDiscoveryFeed(
       happenedMinutesAgo,
       geoTier,
       timeTier,
-      sameMinute: timeTier.kind === "minute",
+      // Rarest emitted tier is now "hour" (the calendar ladder dropped the
+      // sub-hour "minute" bucket); treat that as the premium highlight.
+      sameMinute: timeTier.kind === "hour",
       // Deterministic 60% Ripple / 40% Wave split per pair so the feed
       // mixes both interaction types without churning between renders.
       // Sort the IDs so the kind is stable regardless of which photo

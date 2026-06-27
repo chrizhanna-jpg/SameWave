@@ -24,6 +24,7 @@ import { MicBadge } from "@/components/MicBadge";
 import { AudioMuteButton } from "@/components/AudioMuteButton";
 import { ConnectionAtlasShareCard } from "@/components/ConnectionAtlasShareCard";
 import { SharePhotoCardPoster } from "@/components/SharePhotoCardPoster";
+import { CaptureTimeNote } from "@/components/CaptureTimeNote";
 import {
   ShareLayoutModeToggle,
   type ShareLayoutMode,
@@ -235,15 +236,14 @@ export default function EchoPairScreen() {
     pair.b.theme,
   );
 
-  // Time tier reuses the shared celebrations helper. We feed it `a` as
-  // "mine" and convert `b.createdAt` into minutes-ago so the diff math is
-  // the same as the match flow. If either timestamp is missing we get a
-  // "distant" tier back, which we then drop from the chip row.
-  const bMinutesAgo =
-    pair.b.createdAt != null
-      ? (Date.now() - new Date(pair.b.createdAt).getTime()) / 60000
-      : undefined;
-  const timeTier = getTimeTier(pair.a.createdAt ?? undefined, bMinutesAgo);
+  // Time tier reuses the shared celebrations helper, fed two FIXED instants
+  // (each side's real capture time when known, else its upload/share time) so
+  // the calendar tier is stable and never drifts. If either side can't be
+  // resolved we get a "distant" tier back, which we then drop from the chip row.
+  const timeTier = getTimeTier(
+    { capturedAt: pair.a.capturedAt, sharedAt: pair.a.createdAt },
+    { capturedAt: pair.b.capturedAt, sharedAt: pair.b.createdAt },
+  );
   const geoTier = getGeoTierForPhotos(
     pair.a.captureCountryCode,
     pair.b.captureCountryCode,
@@ -372,6 +372,13 @@ export default function EchoPairScreen() {
           )}
           </View>
         </Animated.View>
+
+        {/* Soft, neutral note when the temporal tier fell back to share time
+            because a photo had no capture date. Outside the ViewShot so it
+            never bakes into the exported share image. */}
+        {timeTier.usedShareFallback ? (
+          <CaptureTimeNote style={styles.captureNote} />
+        ) : null}
 
         {/* Visual separator between the shareable image above and the
             interactive controls below. Makes it obvious which part of
@@ -716,6 +723,11 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     letterSpacing: 0.4,
     textTransform: "lowercase",
+  },
+  captureNote: {
+    marginTop: 10,
+    marginBottom: 2,
+    paddingHorizontal: 16,
   },
   sectionDivider: {
     flexDirection: "row",

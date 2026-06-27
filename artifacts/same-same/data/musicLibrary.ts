@@ -24,6 +24,7 @@ import {
   bestTokenMatchScore,
   tokenMatchesAnyQuery,
 } from "@/utils/tokenSearch";
+import { getCatalogMusicRef } from "@/utils/serverCatalog";
 
 // We keep the type alias name `MusicGenre` because it's already
 // threaded through camera.tsx, match.tsx, AppContext, and the API
@@ -764,6 +765,21 @@ const THEME_HINTS: Record<string, MusicGenre> = {
   chores: "stress",
   laundry: "stress",
   cleaning: "stress",
+  // ── Launch expansion themes → vibe ──
+  butterfly: "wonder",
+  moth: "calm",
+  art: "fascinated",
+  fishing: "relaxed",
+  hiking: "elated",
+  yoga: "calm",
+  gym: "passion",
+  camping: "calm",
+  travel: "wonder",
+  beach: "wonder",
+  swimming: "joy",
+  festival: "passion",
+  birthday: "joy",
+  newhome: "content",
 };
 
 /**
@@ -918,10 +934,29 @@ export function resolveMusicUrl(input: {
 }): string | null {
   if (input.customAudioUrl) return input.customAudioUrl;
   const seed = input.seed ?? "";
+  const stored = input.musicGenre ?? undefined;
+  // The user's explicit, still-valid preset vibe always wins.
+  const storedGenre = stored ? getGenre(stored)?.id : undefined;
+
+  // Server-driven approved entry supplies "the music that goes with it" for a
+  // previously-unknown word — but only when the user hasn't picked a valid
+  // preset vibe. A non-preset stored vibe word may map to a vibe entry;
+  // otherwise the theme word may map to a theme entry. `musicRef` is either a
+  // preset vibe id (seed-picked below) or a direct https track URL.
+  let catalogRef: string | null = null;
+  if (!storedGenre) {
+    catalogRef =
+      (stored ? getCatalogMusicRef("vibe", stored) : null) ??
+      (input.theme ? getCatalogMusicRef("theme", input.theme) : null);
+  }
+  // A direct track URL is seed-independent — play it as-is.
+  if (catalogRef && /^https?:\/\//i.test(catalogRef)) return catalogRef;
+
   if (!seed) return null;
-  const stored = input.musicGenre;
+  const catalogGenre = catalogRef ? getGenre(catalogRef)?.id : undefined;
   const genre: MusicGenre =
-    (stored && getGenre(stored)?.id) ||
+    storedGenre ||
+    catalogGenre ||
     suggestGenre(input.theme ?? undefined, input.tags ?? undefined);
   return pickClipForSeed(genre, seed).url;
 }

@@ -23,6 +23,10 @@ function parseCreatedMs(c: AtlasConnection): number {
 }
 
 function spotlightKey(c: AtlasConnection): string {
+  // Content hash first: the same image stored under several photo ids (seed
+  // dupes / re-uploads) collapses to one ring tile even when its ids differ.
+  const hash = (c.spotlightContentHash ?? "").trim();
+  if (hash) return `hash:${hash}`;
   const id = (c.spotlightPhotoId ?? "").trim();
   if (id) return `photo:${id}`;
   const thumb = (c.thumbnailUrl ?? "").trim();
