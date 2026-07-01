@@ -25,6 +25,15 @@ export const BANNED_PHOTO_B64_MD5 = [
 ] as const;
 
 /**
+ * md5(substring(bytes_base64, 1, 4096)) for the same banned toast image.
+ * Used in /candidates instead of the full-bytes md5 so Postgres only reads
+ * the first 4 KB prefix from TOAST instead of the entire multi-MB column.
+ */
+export const BANNED_PHOTO_PREFIX_MD5 = [
+  "69e5dadb6d52d9974dc34d70db86d62d",
+] as const;
+
+/**
  * CTE: per-photo exposure tallies from votes + seen ledger.
  * Join as `LEFT JOIN photo_exposure pe ON pe.photo_id = p.id`.
  */

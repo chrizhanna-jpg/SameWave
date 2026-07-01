@@ -20,7 +20,7 @@ import { recordEchoOffer, revokeEchoForUnvote } from "./echoes";
 import { normalizeMusicGenre } from "../lib/allowedMusicGenres";
 import { sendPhotoReportAlert } from "../lib/moderationEmail";
 import {
-  BANNED_PHOTO_B64_MD5,
+  BANNED_PHOTO_PREFIX_MD5,
   capExplorePhotoRepeats,
   echoPairExposurePenaltySql,
   EXPLORE_MAX_PHOTO_REPEATS,
@@ -34,7 +34,9 @@ import {
   parseDisplayMaxWidth,
   putCachedDisplayBytes,
   resizePhotoForDisplay,
+  withDisplayImageSlot,
 } from "../lib/photoImageResize";
+import { prioritizeWarmPhotoIds } from "../lib/warmStockDisplayCache";
 import { fetchMyJourneyRows } from "../lib/myJourney";
 import {
   exploreThemeNeedles,
@@ -45,10 +47,10 @@ import {
 } from "../lib/challengeTheme";
 import { expandSubjectsForQuery } from "../lib/subjectMatch";
 
-const bannedB64Md5Expr =
-  BANNED_PHOTO_B64_MD5.length > 0
+const bannedPrefixMd5Expr =
+  BANNED_PHOTO_PREFIX_MD5.length > 0
     ? sql`ARRAY[${sql.join(
-        BANNED_PHOTO_B64_MD5.map((h) => sql`${h}`),
+        BANNED_PHOTO_PREFIX_MD5.map((h) => sql`${h}`),
         sql`, `,
       )}]::text[]`
     : sql`ARRAY[]::text[]`;
@@ -749,7 +751,7 @@ router.get("/photos/candidates", async (req, res) => {
           AND p.user_id <> ${user.id}
           AND p.report_count < ${REPORT_HIDE_THRESHOLD}
           AND (p.expires_at IS NULL OR p.expires_at > now())
-          AND md5(p.bytes_base64) <> ALL(${bannedB64Md5Expr})
+          AND md5(substring(p.bytes_base64 from 1 for 4096)) <> ALL(${bannedPrefixMd5Expr})
           AND p.id NOT IN (
             SELECT v.photo_id FROM votes v WHERE v.voter_user_id = ${user.id}
             UNION ALL
@@ -831,6 +833,8 @@ router.get("/photos/candidates", async (req, res) => {
         })(),
       };
     });
+
+    prioritizeWarmPhotoIds(photos.slice(0, 4).map((p) => p.id));
 
     res.json({ photos });
   } catch (err) {
@@ -1930,37 +1934,47 @@ router.get("/photos/:id/image", async (req, res) => {
       return;
     }
 
-    const rows = await db.execute(sql`
-      SELECT mime_type, bytes_base64
-      FROM photos
-      WHERE id::text = ${photoId}
-        AND status = 'active'
-        AND report_count < ${REPORT_HIDE_THRESHOLD}
-        AND (expires_at IS NULL OR expires_at > now())
-      LIMIT 1
-    `);
-    const r = rows.rows[0] as Record<string, unknown> | undefined;
-    if (!r) {
-      res.status(404).json({ error: "photo not found" });
-      return;
-    }
-    const mime = String(r.mime_type ?? "image/jpeg");
-    const b64 = String(r.bytes_base64 ?? "");
-    if (!b64) {
-      res.status(404).json({ error: "photo not found" });
-      return;
-    }
-    let buf: Buffer = Buffer.from(b64, "base64");
-    let outMime = mime;
-    if (maxWidth != null) {
-      const resized = await resizePhotoForDisplay(buf, mime, maxWidth);
-      buf = resized.buf;
-      outMime = resized.mime;
-    }
-    putCachedDisplayBytes(photoId, cacheWidth, buf, outMime);
-    res.setHeader("Content-Type", outMime);
-    res.setHeader("Cache-Control", "private, max-age=3600");
-    res.send(buf);
+    await withDisplayImageSlot(async () => {
+      const hit = getCachedDisplayBytes(photoId, cacheWidth);
+      if (hit) {
+        res.setHeader("Content-Type", hit.mime);
+        res.setHeader("Cache-Control", "private, max-age=3600");
+        res.send(hit.buf);
+        return;
+      }
+
+      const rows = await db.execute(sql`
+        SELECT mime_type, bytes_base64
+        FROM photos
+        WHERE id::text = ${photoId}
+          AND status = 'active'
+          AND report_count < ${REPORT_HIDE_THRESHOLD}
+          AND (expires_at IS NULL OR expires_at > now())
+        LIMIT 1
+      `);
+      const r = rows.rows[0] as Record<string, unknown> | undefined;
+      if (!r) {
+        res.status(404).json({ error: "photo not found" });
+        return;
+      }
+      const mime = String(r.mime_type ?? "image/jpeg");
+      const b64 = String(r.bytes_base64 ?? "");
+      if (!b64) {
+        res.status(404).json({ error: "photo not found" });
+        return;
+      }
+      let buf: Buffer = Buffer.from(b64, "base64");
+      let outMime = mime;
+      if (maxWidth != null) {
+        const resized = await resizePhotoForDisplay(buf, mime, maxWidth);
+        buf = resized.buf;
+        outMime = resized.mime;
+      }
+      putCachedDisplayBytes(photoId, cacheWidth, buf, outMime);
+      res.setHeader("Content-Type", outMime);
+      res.setHeader("Cache-Control", "private, max-age=3600");
+      res.send(buf);
+    });
   } catch (err) {
     req.log.error({ err }, "photo image failed");
     res.status(500).json({ error: "photo image failed" });

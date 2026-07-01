@@ -178,3 +178,50 @@ export function hasStockDisplayBytes(photoId: string, maxWidth: number): boolean
 export function stockDisplayCacheSize(): number {
   return stockDisplayCache.size;
 }
+
+// ---- cold-path concurrency cap --------------------------------------------
+// A prefetch storm from the Ripple deck can queue many simultaneous cache
+// misses, each paying a multi-MB DB read + sharp resize on a single CPU.
+// Cap concurrent cold work so one card's image can finish instead of all
+// requests piling up behind each other for 60+ seconds.
+const MAX_CONCURRENT_COLD =
+  Math.min(
+    Math.max(
+      parseInt(process.env.DISPLAY_IMAGE_MAX_CONCURRENT ?? "", 10) || 2,
+      1,
+    ),
+    6,
+  );
+let coldSlots = 0;
+const coldWaiters: Array<() => void> = [];
+
+function acquireColdSlot(): Promise<void> {
+  if (coldSlots < MAX_CONCURRENT_COLD) {
+    coldSlots++;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    coldWaiters.push(() => {
+      coldSlots++;
+      resolve();
+    });
+  });
+}
+
+function releaseColdSlot(): void {
+  coldSlots = Math.max(0, coldSlots - 1);
+  const next = coldWaiters.shift();
+  if (next) next();
+}
+
+/** Run a cache-miss image encode with bounded concurrency. */
+export async function withDisplayImageSlot<T>(
+  fn: () => Promise<T>,
+): Promise<T> {
+  await acquireColdSlot();
+  try {
+    return await fn();
+  } finally {
+    releaseColdSlot();
+  }
+}

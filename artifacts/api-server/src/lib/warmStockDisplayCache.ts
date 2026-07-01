@@ -11,17 +11,22 @@ import {
 // The mobile deck streams every image at this width (DISPLAY_PHOTO_MAX_WIDTH on
 // the client). Warm the same key so the first viewer of a stock card hits the
 // pinned cache instead of a multi-MB DB read + sharp resize.
-const WARM_WIDTH = 960;
+export const WARM_DISPLAY_WIDTH = 960;
 
-// Deliberately gentle: one row at a time, with a short yield between rows, and
-// only after a startup grace period. On the dev remote-DB setup each stock row
-// is a multi-MB read — warming several at once (or right at boot) contended
-// with live image requests and briefly blanked the whole UI. Sequential + a
-// per-row delay keeps at most one extra DB read in flight so live traffic is
-// never starved; on Render (colocated DB) the whole warm still finishes fast.
-const WARM_CONCURRENCY = 1;
-const WARM_ROW_DELAY_MS = 40;
-const WARM_START_DELAY_MS = 5_000;
+const isProd = process.env.NODE_ENV === "production";
+const WARM_CONCURRENCY = Math.min(
+  Math.max(
+    parseInt(process.env.WARM_CONCURRENCY ?? "", 10) || (isProd ? 4 : 1),
+    1,
+  ),
+  8,
+);
+const WARM_ROW_DELAY_MS =
+  parseInt(process.env.WARM_ROW_DELAY_MS ?? "", 10) ||
+  (isProd ? 0 : 40);
+const WARM_START_DELAY_MS =
+  parseInt(process.env.WARM_START_DELAY_MS ?? "", 10) ||
+  (isProd ? 250 : 5_000);
 
 // Recent real-user uploads (non-stock) are warmed after the stock pool so the
 // first non-stock cards a user sees also stream from memory. Kept to a bounded
@@ -29,26 +34,79 @@ const WARM_START_DELAY_MS = 5_000;
 // buffers), and started only after the stock warm finishes so the two passes
 // never stack DB reads on the remote-DB dev setup.
 const RECENT_WARM_LIMIT = 150;
-const RECENT_WARM_GAP_MS = 2_000;
+const RECENT_WARM_GAP_MS = isProd ? 500 : 2_000;
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 let started = false;
+const priorityIds = new Set<string>();
+let priorityDrainRunning = false;
 
 type StockRow = { id: string; mime_type: string; bytes_base64: string };
 
 async function warmOne(row: StockRow): Promise<void> {
-  if (hasStockDisplayBytes(row.id, WARM_WIDTH)) return;
+  if (hasStockDisplayBytes(row.id, WARM_DISPLAY_WIDTH)) return;
   const mime = String(row.mime_type ?? "image/jpeg");
   const b64 = String(row.bytes_base64 ?? "");
   if (!b64) return;
   const buf = Buffer.from(b64, "base64");
-  const resized = await resizePhotoForDisplay(buf, mime, WARM_WIDTH);
-  putStockDisplayBytes(row.id, WARM_WIDTH, resized.buf, resized.mime);
+  const resized = await resizePhotoForDisplay(buf, mime, WARM_DISPLAY_WIDTH);
+  putStockDisplayBytes(row.id, WARM_DISPLAY_WIDTH, resized.buf, resized.mime);
 }
 
-// Gentle sequential warm: one row at a time with a per-row yield so background
-// warming never starves live image requests on the remote-DB dev setup.
+async function warmOneById(photoId: string): Promise<void> {
+  if (hasStockDisplayBytes(photoId, WARM_DISPLAY_WIDTH)) return;
+  const rows = await db.execute(sql`
+    SELECT id::text AS id, mime_type, bytes_base64
+    FROM photos
+    WHERE id::text = ${photoId}
+      AND status = 'active'
+      AND (expires_at IS NULL OR expires_at > now())
+    LIMIT 1
+  `);
+  const r = rows.rows[0] as Record<string, unknown> | undefined;
+  if (!r) return;
+  await warmOne({
+    id: String(r.id),
+    mime_type: String(r.mime_type ?? "image/jpeg"),
+    bytes_base64: String(r.bytes_base64 ?? ""),
+  });
+}
+
+async function drainPriorityQueue(): Promise<void> {
+  if (priorityDrainRunning) return;
+  priorityDrainRunning = true;
+  try {
+    while (priorityIds.size > 0) {
+      const id = priorityIds.values().next().value as string;
+      priorityIds.delete(id);
+      try {
+        await warmOneById(id);
+      } catch (err) {
+        logger.warn({ err, id }, "priority display warm: row failed");
+      }
+    }
+  } finally {
+    priorityDrainRunning = false;
+    if (priorityIds.size > 0) void drainPriorityQueue();
+  }
+}
+
+/**
+ * Jump the line: warm display bytes for photos about to appear in the deck
+ * (from a fresh /candidates response) before the background stock sweep
+ * reaches them.
+ */
+export function prioritizeWarmPhotoIds(ids: string[]): void {
+  for (const raw of ids) {
+    const id = String(raw ?? "").trim();
+    if (!id || id.length > 64) continue;
+    if (hasStockDisplayBytes(id, WARM_DISPLAY_WIDTH)) continue;
+    priorityIds.add(id);
+  }
+  void drainPriorityQueue();
+}
+
 async function warmList(list: StockRow[], label: string): Promise<number> {
   let cursor = 0;
   const worker = async (): Promise<void> => {
@@ -70,9 +128,6 @@ async function warmList(list: StockRow[], label: string): Promise<number> {
   return list.length;
 }
 
-// Pin display bytes for the most recent active non-stock uploads so the first
-// real-user cards in the deck stream from memory on first sight. Bounded to the
-// newest RECENT_WARM_LIMIT rows to cap memory. Runs after the stock warm.
 async function warmRecentUploads(): Promise<void> {
   const startedAt = Date.now();
   try {
@@ -115,8 +170,6 @@ export function warmStockDisplayCache(): void {
   started = true;
 
   void (async () => {
-    // Let the server settle and serve any reconnect burst before we add
-    // background DB reads.
     await sleep(WARM_START_DELAY_MS);
     const startedAt = Date.now();
     try {
@@ -139,6 +192,7 @@ export function warmStockDisplayCache(): void {
         {
           stockRows: list.length,
           pinned: stockDisplayCacheSize(),
+          warmConcurrency: WARM_CONCURRENCY,
           ms: Date.now() - startedAt,
         },
         "stock display cache warmed",
@@ -147,9 +201,6 @@ export function warmStockDisplayCache(): void {
       logger.error({ err }, "stock display cache warm failed");
     }
 
-    // Chain the recent-upload warm after the stock pool so the two passes never
-    // stack background DB reads. A short gap lets any post-stock-warm request
-    // burst drain first.
     await sleep(RECENT_WARM_GAP_MS);
     await warmRecentUploads();
   })();

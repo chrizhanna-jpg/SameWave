@@ -825,13 +825,11 @@ export default function SwipeScreen() {
           cands.map((c) => ({ id: c.id, uri: c.uri })),
         );
         setRealPool(mapped);
-        // Warm the first few cards so the opening image is ready by the time
-        // the deck picks it. Capped at 4 (was an unbounded 6-wide burst) so
-        // we don't fire a pile of concurrent resize jobs at the image
-        // endpoint — the per-id server cache keeps repeat hits cheap.
-        for (const p of mapped.slice(0, 4)) {
-          if (p.uri) void prefetchPhotoUri(p.uri);
-        }
+        // Warm only the opening card — the server priority-warms the first few
+        // IDs from this response; fanning more here queues concurrent cold
+        // resizes and was the main cause of 60s+ photo stalls.
+        const first = mapped[0];
+        if (first?.uri) void prefetchPhotoUri(first.uri);
       })
       .catch(() => {
         // Keep the last-good deck on a transient fetch failure (API restart /
@@ -848,7 +846,9 @@ export default function SwipeScreen() {
     // the candidate fetch re-runs after `setMyPhotoBackendId` patches
     // the local photo with the upload-time subjects, so the deck
     // re-ranks against the authoritative subjects.
-  }, [activeTheme, myTagsKey, mySubjectsKey]);
+    // seenPhotoIds: re-fetch when the local seen ledger grows so we never
+    // surface a card the device already swiped past (belt over server gaps).
+  }, [activeTheme, myTagsKey, mySubjectsKey, seenPhotoIds]);
 
   useEffect(() => {
     if (!usingSuggestedThemeFallback || !suggestedThemeId) return;
@@ -871,9 +871,8 @@ export default function SwipeScreen() {
           cands.map((c) => ({ id: c.id, uri: c.uri })),
         );
         setSuggestedPool(mapped);
-        for (const p of mapped.slice(0, 3)) {
-          if (p.uri) void prefetchPhotoUri(p.uri);
-        }
+        const first = mapped[0];
+        if (first?.uri) void prefetchPhotoUri(first.uri);
       })
       .catch(() => {
         // Preserve the last-good suggested pool on a transient failure rather
@@ -1168,15 +1167,29 @@ export default function SwipeScreen() {
   // changes; the previous card's clip keeps playing smoothly until the new
   // card's image resolves (no gap-pause on the handoff).
   const [candidateImageReady, setCandidateImageReady] = useState(false);
+  // After a slow image load, don't leave the previous card's vibe playing
+  // forever — open the audio gate after a short timeout so music can advance
+  // even when the photo endpoint is backed up.
+  const IMAGE_AUDIO_GATE_MS = 2800;
+  const [candidateImageGateOpen, setCandidateImageGateOpen] = useState(false);
   // Ref mirror so the focus effect (stable closure) can read the latest
   // ready-state without being re-created and without re-introducing the
   // gate logic — it must apply the same "only start once the image is on
   // screen" rule as the main audio effect.
-  const candidateImageReadyRef = useRef(candidateImageReady);
-  candidateImageReadyRef.current = candidateImageReady;
+  const candidateImageGateOpenRef = useRef(candidateImageGateOpen);
+  candidateImageGateOpenRef.current = candidateImageGateOpen;
   useEffect(() => {
     setCandidateImageReady(false);
+    setCandidateImageGateOpen(false);
+    const t = setTimeout(
+      () => setCandidateImageGateOpen(true),
+      IMAGE_AUDIO_GATE_MS,
+    );
+    return () => clearTimeout(t);
   }, [theirPhoto.uri]);
+  useEffect(() => {
+    if (candidateImageReady) setCandidateImageGateOpen(true);
+  }, [candidateImageReady]);
   useEffect(() => {
     if (!theirPhoto?.uri) return;
     // Keep the matched card's vibe during the Ripple celebration overlay.
@@ -1204,7 +1217,7 @@ export default function SwipeScreen() {
     //                not yanked after) — and a slow-but-fine image that
     //                resolves late just starts a touch later, no stutter.
     //   • resolved → start once, below.
-    if (!candidateImageReady) return;
+    if (!candidateImageGateOpen) return;
     // Single source of truth: `resolveMusicUrl` is the same helper the
     // /reveal screen uses, so the URL we play here is byte-identical to
     // the one /reveal will play after a tap on Open or Share. That's
@@ -1228,7 +1241,7 @@ export default function SwipeScreen() {
     noMore,
     fullscreenUri,
     flashMatch,
-    candidateImageReady,
+    candidateImageGateOpen,
   ]);
 
   // Stop audio when the screen unmounts (tab switch, navigation
@@ -1280,7 +1293,7 @@ export default function SwipeScreen() {
       if (!photo?.uri || photo.id === "placeholder" || noMore || !todaysPhoto) return;
       // Same start-gate as the main audio effect: never start a clip over a
       // card whose real image hasn't resolved (still skeleton / stock).
-      if (!candidateImageReadyRef.current) return;
+      if (!candidateImageGateOpenRef.current) return;
       const url = resolveMusicUrl({
         customAudioUrl: photo.customAudioUrl,
         musicGenre: photo.musicGenre,
@@ -1298,15 +1311,24 @@ export default function SwipeScreen() {
     Haptics.selectionAsync().catch(() => {});
   }, []);
 
+  const prefetchInflightRef = useRef(new Set<string>());
   const prefetchPhotoUri = useCallback((uri: string) => {
     const normalized = withDisplayPhotoWidth(normalizeUnsplashUri(uri));
     if (!normalized) return Promise.resolve();
+    if (prefetchInflightRef.current.has(normalized)) {
+      return Promise.resolve();
+    }
+    prefetchInflightRef.current.add(normalized);
+    const release = () => {
+      prefetchInflightRef.current.delete(normalized);
+    };
     if (explorePhotoUriNeedsAuth(normalized)) {
       return authedImageHeaders()
         .then((headers) => Image.prefetch(normalized, { headers }))
-        .catch(() => {});
+        .catch(() => {})
+        .finally(release);
     }
-    return Image.prefetch(normalized).catch(() => {});
+    return Image.prefetch(normalized).catch(() => {}).finally(release);
   }, []);
 
   // Audio analogue of prefetchPhotoUri: preload an upcoming card's vibe
@@ -1371,7 +1393,7 @@ export default function SwipeScreen() {
         setMatchedTheme(next.matchedTheme);
         setSharedTags(next.sharedTags);
         setNoMore(false);
-        prefetchDeckAhead(2, next.photo.uri);
+        prefetchDeckAhead(1, next.photo.uri);
       } else {
         setNoMore(true);
       }
@@ -1403,14 +1425,14 @@ export default function SwipeScreen() {
       // instead of waiting on an on-demand network fetch + decode.
       prewarmAudioForPhoto(next.photo);
     }
-    prefetchDeckAhead(2);
+    // Next card only — prefetchDeckAhead here used to stack 3+ concurrent
+    // cold image jobs on the server and stall the visible card.
   }, [
     theirPhoto.uri,
     theirPhoto.id,
     noMore,
     pickDeckCandidate,
     prefetchPhotoUri,
-    prefetchDeckAhead,
     prewarmAudioForPhoto,
   ]);
 
@@ -1418,12 +1440,14 @@ export default function SwipeScreen() {
   // effects above don't re-run (theirPhoto.uri is unchanged after returning
   // from another tab), so upcoming cards can be cold. Re-warm the current card
   // plus a small lead of upcoming cards so the first swipes after focus stay
-  // warm. Image.prefetch is idempotent/cached, so a small lead (3) is enough
+  // warm. Image.prefetch is idempotent/cached, so one card ahead is enough
   // and never re-downloads what's already warm — no over-fetch.
   useFocusEffect(
     useCallback(() => {
       // Pay the audio-session setup cost (setAudioModeAsync) up front so the
       // first vibe clip after focus doesn't carry that fixed delay inline.
+      // Opening Ripple counts as consent for vibe clips (tab tap is a gesture).
+      markUserInteracted();
       warmAudioSession();
       const current = theirPhotoRef.current;
       if (current?.uri && current.id !== "placeholder") {
@@ -1436,7 +1460,7 @@ export default function SwipeScreen() {
         );
         if (next?.photo.uri) prewarmAudioForPhoto(next.photo);
       }
-      prefetchDeckAhead(3);
+      prefetchDeckAhead(1);
     }, [
       prefetchPhotoUri,
       prefetchDeckAhead,
@@ -1492,7 +1516,7 @@ export default function SwipeScreen() {
         snapshotPhoto.createdAt ??
         new Date(Date.now() - snapshotPhoto.minutesAgo * 60000).toISOString();
 
-      prefetchDeckAhead(2, snapshotPhoto.uri);
+      prefetchDeckAhead(1, snapshotPhoto.uri);
 
       const onSwipeOutComplete = () => {
         const voterPhotoId = pickVoterPhotoBackendId(myPhotos, {
