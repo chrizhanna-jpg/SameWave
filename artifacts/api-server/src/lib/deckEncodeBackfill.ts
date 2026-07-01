@@ -8,10 +8,51 @@ import {
 import { putCachedDisplayBytes } from "./photoImageResize";
 import { isStockPhotoCdnEligible } from "./stockPhotoCdn";
 
-const BACKFILL_LIMIT = 200;
+const BACKFILL_BATCH = 80;
 const BACKFILL_CONCURRENCY = 2;
+const BACKFILL_BATCH_GAP_MS = 3_000;
+const BACKFILL_MAX_BATCHES_PER_BOOT = 40;
 
 let backfillStarted = false;
+
+async function fetchBackfillBatch(): Promise<
+  Array<{ id: string; mime_type: string; bytes_base64: string }>
+> {
+  const rows = await db.execute(sql`
+    SELECT id::text AS id, mime_type, bytes_base64
+    FROM photos
+    WHERE id NOT LIKE 'stock_%'
+      AND status = 'active'
+      AND (expires_at IS NULL OR expires_at > now())
+      AND (display_bytes_base64 IS NULL OR deck_preview_base64 IS NULL)
+      AND length(bytes_base64) > 0
+    ORDER BY created_at DESC
+    LIMIT ${BACKFILL_BATCH}
+  `);
+  return (rows.rows as Array<Record<string, unknown>>).map((r) => ({
+    id: String(r.id),
+    mime_type: String(r.mime_type ?? "image/jpeg"),
+    bytes_base64: String(r.bytes_base64 ?? ""),
+  }));
+}
+
+async function warmBatch(
+  list: Array<{ id: string; mime_type: string; bytes_base64: string }>,
+): Promise<void> {
+  let cursor = 0;
+  const worker = async (): Promise<void> => {
+    while (cursor < list.length) {
+      const row = list[cursor++]!;
+      await backfillOne(row);
+    }
+  };
+  await Promise.all(
+    Array.from(
+      { length: Math.min(BACKFILL_CONCURRENCY, list.length) },
+      () => worker(),
+    ),
+  );
+}
 
 async function backfillOne(row: {
   id: string;
@@ -45,9 +86,10 @@ async function backfillOne(row: {
 }
 
 /**
- * Background pass: encode deck display + preview columns for recent uploads
- * that predate the column (or failed upload-time encode). Makes user-upload
- * matching cards instant without waiting for an on-demand cold resize.
+ * Background pass: encode deck display + preview columns for every active
+ * user upload that predates the column (or failed upload-time encode).
+ * Runs in gentle batches until the queue is empty or a per-boot cap is hit
+ * so a large backlog cannot starve live matching traffic.
  */
 export function startDeckEncodeBackfill(): void {
   if (backfillStarted) return;
@@ -55,41 +97,27 @@ export function startDeckEncodeBackfill(): void {
 
   void (async () => {
     await new Promise((r) => setTimeout(r, 8_000));
+    const startedAt = Date.now();
+    let total = 0;
     try {
-      const rows = await db.execute(sql`
-        SELECT id::text AS id, mime_type, bytes_base64
-        FROM photos
-        WHERE id NOT LIKE 'stock_%'
-          AND status = 'active'
-          AND (expires_at IS NULL OR expires_at > now())
-          AND (display_bytes_base64 IS NULL OR deck_preview_base64 IS NULL)
-          AND length(bytes_base64) > 0
-        ORDER BY created_at DESC
-        LIMIT ${BACKFILL_LIMIT}
-      `);
-      const list = (rows.rows as Array<Record<string, unknown>>).map((r) => ({
-        id: String(r.id),
-        mime_type: String(r.mime_type ?? "image/jpeg"),
-        bytes_base64: String(r.bytes_base64 ?? ""),
-      }));
-      let cursor = 0;
-      const worker = async () => {
-        while (cursor < list.length) {
-          const row = list[cursor++]!;
-          await backfillOne(row);
+      for (let batch = 0; batch < BACKFILL_MAX_BATCHES_PER_BOOT; batch++) {
+        const list = await fetchBackfillBatch();
+        if (list.length === 0) break;
+        await warmBatch(list);
+        total += list.length;
+        if (list.length < BACKFILL_BATCH) break;
+        if (BACKFILL_BATCH_GAP_MS > 0) {
+          await new Promise((r) => setTimeout(r, BACKFILL_BATCH_GAP_MS));
         }
-      };
-      await Promise.all(
-        Array.from(
-          { length: Math.min(BACKFILL_CONCURRENCY, list.length) },
-          () => worker(),
-        ),
-      );
-      if (list.length > 0) {
-        logger.info({ rows: list.length }, "deck encode backfill finished");
+      }
+      if (total > 0) {
+        logger.info(
+          { rows: total, ms: Date.now() - startedAt },
+          "deck encode backfill finished",
+        );
       }
     } catch (err) {
-      logger.error({ err }, "deck encode backfill failed");
+      logger.error({ err, rowsDone: total }, "deck encode backfill failed");
     }
   })();
 }
