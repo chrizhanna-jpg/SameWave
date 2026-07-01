@@ -96,6 +96,15 @@ export const photosTable = pgTable(
     // Retention window from upload for free users (server default 90 days via
     // PHOTO_RETENTION_DAYS); null for Pro (kept indefinitely).
     expiresAt: timestamp("expires_at"),
+
+    // Pre-encoded deck sizes generated once at upload (or backfill). Avoids
+    // reading multi-MB bytes_base64 + sharp on every Ripple stream.
+    displayBytesBase64: text("display_bytes_base64"),
+    displayMime: varchar("display_mime", { length: 32 }),
+    // Smaller inline preview (480w) embedded in /candidates JSON as a data:
+    // URI so the matching deck paints with zero extra image round-trips.
+    deckPreviewBase64: text("deck_preview_base64"),
+    deckPreviewMime: varchar("deck_preview_mime", { length: 32 }),
   },
   (t) => ({
     statusIdx: index("photos_status_idx").on(t.status),

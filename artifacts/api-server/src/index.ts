@@ -5,6 +5,7 @@ import { startPhotoRetentionCleanup } from "./lib/photoRetentionCleanup";
 import { getPhotoRetentionDays } from "./lib/photoRetention";
 import { getAndroidLatestDebugInfo } from "./androidLatest";
 import { warmStockDisplayCache } from "./lib/warmStockDisplayCache";
+import { startDeckEncodeBackfill } from "./lib/deckEncodeBackfill";
 
 const rawPort = process.env["PORT"];
 
@@ -50,6 +51,7 @@ const server = app.listen(port, listenHost, () => {
   // Background: pre-resize the curated stock pool so the bulk of the matching
   // deck streams from memory instead of paying a per-card DB read + sharp.
   warmStockDisplayCache();
+  startDeckEncodeBackfill();
 });
 
 server.on("error", (err) => {

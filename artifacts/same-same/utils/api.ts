@@ -459,7 +459,12 @@ export interface CandidatePhoto {
    * clip — same player, just a different URL.
    */
   customAudioUrl: string | null;
-  uri: string; // data: URI (MVP) — server returns inline base64
+  /**
+   * Inline data: URI (480w) from the server — paints instantly in the Ripple
+   * deck with no extra image fetch. User uploads only; stock uses CDN https.
+   */
+  previewUri?: string | null;
+  uri: string;
   createdAt: string;
   /**
    * Real capture time (ISO) of the candidate's photo, or null when unknown.

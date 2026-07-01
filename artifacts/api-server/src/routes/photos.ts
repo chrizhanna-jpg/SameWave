@@ -38,6 +38,11 @@ import {
 } from "../lib/photoImageResize";
 import { prioritizeWarmPhotoIds } from "../lib/warmStockDisplayCache";
 import { stockPhotoCdnUrl } from "../lib/stockPhotoCdn";
+import { fetchDeckPreviewsByIds } from "../lib/deckEncodeBackfill";
+import {
+  DECK_DISPLAY_WIDTH,
+  encodeDeckPhotoSizes,
+} from "../lib/photoDisplayEncode";
 import { fetchMyJourneyRows } from "../lib/myJourney";
 import {
   exploreThemeNeedles,
@@ -379,6 +384,14 @@ router.post("/photos", async (req, res) => {
       }
     }
 
+    let deckEncoded: Awaited<ReturnType<typeof encodeDeckPhotoSizes>> | null =
+      null;
+    try {
+      deckEncoded = await encodeDeckPhotoSizes(stripped, mimeType);
+    } catch (encodeErr) {
+      req.log.warn({ err: encodeErr }, "deck encode at upload failed");
+    }
+
     const [row] = await db
       .insert(photosTable)
       .values({
@@ -395,6 +408,10 @@ router.post("/photos", async (req, res) => {
         musicGenre,
         customAudioBase64,
         customAudioMime,
+        displayBytesBase64: deckEncoded?.displayB64,
+        displayMime: deckEncoded?.displayMime,
+        deckPreviewBase64: deckEncoded?.previewB64,
+        deckPreviewMime: deckEncoded?.previewMime,
         status: "active",
         expiresAt: new Date(Date.now() + getPhotoRetentionMs()),
       })
@@ -420,6 +437,15 @@ router.post("/photos", async (req, res) => {
         .where(eq(seenPhotosTable.userId, user.id));
     } catch (clearErr) {
       req.log.warn({ err: clearErr }, "seen-photos clear after upload failed");
+    }
+
+    if (deckEncoded) {
+      putCachedDisplayBytes(
+        row.id,
+        DECK_DISPLAY_WIDTH,
+        deckEncoded.displayBuf,
+        deckEncoded.displayMime,
+      );
     }
 
     res.status(201).json({
@@ -836,14 +862,25 @@ router.get("/photos/candidates", async (req, res) => {
       };
     });
 
+    const previewMap = await fetchDeckPreviewsByIds(photos.map((p) => p.id)).catch(
+      (err) => {
+        req.log.warn({ err }, "deck preview fetch failed");
+        return new Map<string, { previewUri: string }>();
+      },
+    );
+    const withPreviews = photos.map((p) => {
+      const preview = previewMap.get(p.id);
+      return preview ? { ...p, previewUri: preview.previewUri } : p;
+    });
+
     prioritizeWarmPhotoIds(
-      photos
-        .filter((p) => !p.uri.startsWith("https://"))
+      withPreviews
+        .filter((p) => !p.uri.startsWith("https://") && !p.previewUri)
         .slice(0, 4)
         .map((p) => p.id),
     );
 
-    res.json({ photos });
+    res.json({ photos: withPreviews });
   } catch (err) {
     req.log.error({ err }, "candidates query failed");
     res.status(500).json({ error: "query failed" });
@@ -1951,7 +1988,7 @@ router.get("/photos/:id/image", async (req, res) => {
       }
 
       const rows = await db.execute(sql`
-        SELECT mime_type, bytes_base64
+        SELECT mime_type, bytes_base64, display_bytes_base64, display_mime
         FROM photos
         WHERE id::text = ${photoId}
           AND status = 'active'
@@ -1965,6 +2002,19 @@ router.get("/photos/:id/image", async (req, res) => {
         return;
       }
       const mime = String(r.mime_type ?? "image/jpeg");
+      const displayB64 = String(r.display_bytes_base64 ?? "");
+      const displayMime = String(r.display_mime ?? "image/jpeg");
+      if (
+        displayB64 &&
+        (maxWidth == null || maxWidth === DECK_DISPLAY_WIDTH)
+      ) {
+        const buf = Buffer.from(displayB64, "base64");
+        putCachedDisplayBytes(photoId, cacheWidth, buf, displayMime);
+        res.setHeader("Content-Type", displayMime);
+        res.setHeader("Cache-Control", "private, max-age=3600");
+        res.send(buf);
+        return;
+      }
       const b64 = String(r.bytes_base64 ?? "");
       if (!b64) {
         res.status(404).json({ error: "photo not found" });

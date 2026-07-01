@@ -325,6 +325,8 @@ function countThemeRelevantCandidates(
 }
 
 function resolveLiveCandidateUri(c: CandidatePhoto): string {
+  const preview = c.previewUri?.trim() ?? "";
+  if (preview.startsWith("data:")) return preview;
   const raw = c.uri?.trim() ?? "";
   if (raw.startsWith("https://")) {
     return withDisplayPhotoWidth(normalizeUnsplashUri(raw) ?? raw);
