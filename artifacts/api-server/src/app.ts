@@ -22,6 +22,7 @@ import {
 import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { getOpenAIEnv } from "./lib/openaiEnv";
+import { stockDisplayCacheSize } from "./lib/photoImageResize";
 
 const app: Express = express();
 
@@ -63,6 +64,16 @@ app.get("/api/public/app-config", (_req, res) => {
         "https://play.google.com/store/apps/details?id=echo.samewaveripple.app",
       ...(updateMessage ? { updateMessage } : {}),
     },
+  });
+});
+
+// Stock display cache warm progress — lets dev/Expo confirm pre-sized stock
+// photos are pinned before testing Ripple load times.
+app.get("/api/public/stock-cache-status", (_req, res) => {
+  res.json({
+    timestamp: Date.now(),
+    warmWidth: 960,
+    pinnedStockDisplayEntries: stockDisplayCacheSize(),
   });
 });
 

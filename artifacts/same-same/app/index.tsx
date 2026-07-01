@@ -1,5 +1,5 @@
 import { Redirect } from "expo-router";
-import { useAuth } from "@clerk/expo";
+import { isDevAuthBypassEnabled, useEffectiveAuth } from "@/hooks/useEffectiveAuth";
 import { useApp } from "@/context/AppContext";
 
 // Single decision point for "where should the user land right now?"
@@ -19,7 +19,11 @@ import { useApp } from "@/context/AppContext";
 export default function Index() {
   const { hasHydrated, onboardingComplete, appOpenCount, tutorialLaunchAck } =
     useApp();
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn } = useEffectiveAuth();
+
+  if (isDevAuthBypassEnabled()) {
+    return <Redirect href="/(tabs)/match" />;
+  }
 
   // Route from local cache as soon as AsyncStorage hydrates — do not wait
   // for Clerk or server sync (Home / Atlas show a header sync spinner).
