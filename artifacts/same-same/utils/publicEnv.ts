@@ -157,10 +157,58 @@ function inferLanApiOriginFromExpLinks(): string | null {
   return null;
 }
 
+function isLoopbackOrigin(url: string): boolean {
+  try {
+    const u = new URL(url.includes("://") ? url : `http://${url}`);
+    const h = u.hostname.toLowerCase();
+    return h === "localhost" || h === "127.0.0.1" || h === "0.0.0.0";
+  } catch {
+    return false;
+  }
+}
+
+/** Metro is tunnelled (exp.direct / ngrok) — :8787 on that host is not your api-server. */
+function isTunnelDevSession(): boolean {
+  try {
+    const refs = [
+      (Constants.expoConfig as { hostUri?: string } | null | undefined)?.hostUri,
+      (Constants.expoGoConfig as { debuggerHost?: string } | null | undefined)
+        ?.debuggerHost,
+      NativeModules.SourceCode?.scriptURL as string | undefined,
+      (Constants as { experienceUrl?: string }).experienceUrl,
+      (Constants as { linkingUri?: string }).linkingUri,
+    ].filter((s): s is string => typeof s === "string" && s.length > 0);
+    return refs.some((r) => /exp\.direct|ngrok|\.exp\.dev/i.test(r));
+  } catch {
+    return false;
+  }
+}
+
+function resolveHostedApiOriginForDevice(): string | null {
+  const hostedOnly = process.env.EXPO_PUBLIC_HOSTED_API_URL?.trim();
+  if (hostedOnly && !isLoopbackOrigin(hostedOnly)) {
+    return stripTrailingSlashes(hostedOnly);
+  }
+  const apiUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
+  if (apiUrl && !isLoopbackOrigin(apiUrl)) {
+    return stripTrailingSlashes(apiUrl);
+  }
+  const domain = process.env.EXPO_PUBLIC_DOMAIN?.trim();
+  if (domain) {
+    const host = domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
+    return stripTrailingSlashes(`https://${host}`);
+  }
+  return null;
+}
+
 export function getPublicApiOrigin(): string {
   if (__DEV__) {
+    const onDevice = Constants.isDevice;
     const dev = process.env.EXPO_PUBLIC_DEV_API_URL?.trim();
-    if (dev) return stripTrailingSlashes(dev);
+    // On a physical phone, 127.0.0.1 / localhost is the phone itself — never use it.
+    if (dev && !(onDevice && isLoopbackOrigin(dev))) {
+      return stripTrailingSlashes(dev);
+    }
 
     const inferred =
       inferLanApiOriginFromExpoDev() ??
@@ -170,7 +218,7 @@ export function getPublicApiOrigin(): string {
     if (inferred) return stripTrailingSlashes(inferred);
 
     // Emulator / simulator only — never use these hosts on a physical device.
-    if (!Constants.isDevice) {
+    if (!onDevice) {
       const fallback =
         Platform.OS === "android"
           ? "http://10.0.2.2:8787"
@@ -178,9 +226,16 @@ export function getPublicApiOrigin(): string {
       return stripTrailingSlashes(fallback);
     }
 
-    // Physical device — no LAN inference (tunnel, etc.).
+    // Physical device on Expo tunnel (or LAN inference failed) → hosted API.
+    if (isTunnelDevSession()) {
+      const hosted = resolveHostedApiOriginForDevice();
+      if (hosted) return hosted;
+    }
+
     const apiUrlFallback = process.env.EXPO_PUBLIC_API_URL?.trim();
-    if (apiUrlFallback) return stripTrailingSlashes(apiUrlFallback);
+    if (apiUrlFallback && !isLoopbackOrigin(apiUrlFallback)) {
+      return stripTrailingSlashes(apiUrlFallback);
+    }
 
     const domainFallback = process.env.EXPO_PUBLIC_DOMAIN?.trim();
     if (domainFallback) {
@@ -189,7 +244,7 @@ export function getPublicApiOrigin(): string {
     }
 
     console.warn(
-      "[SameWave] Set EXPO_PUBLIC_DEV_API_URL=http://<your-pc-lan-ip>:8787 in artifacts/same-same/.env (physical device could not infer Metro host).",
+      "[SameWave] Physical device: set EXPO_PUBLIC_DEV_API_URL=http://<your-pc-lan-ip>:8787 (same Wi‑Fi, `pnpm dev:lan`) or EXPO_PUBLIC_HOSTED_API_URL for tunnel.",
     );
     return stripTrailingSlashes("http://127.0.0.1:8787");
   }

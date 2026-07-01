@@ -12,6 +12,7 @@
     "dev:usb": "pnpm exec expo start --go --localhost --clear",
     "dev:android": "pnpm exec expo start --android",
     "dev:lan": "pnpm exec expo start --go --host lan",
+    "dev:phone": "pnpm exec expo start --go --host lan --clear",
     "dev:preview-update": "pnpm exec expo start --go --host lan --clear",
     "dev:macro": "node ./scripts/expo-macro.mjs",
     "android": "pnpm exec expo run:android",
