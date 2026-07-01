@@ -792,6 +792,7 @@ export default function SwipeScreen() {
 
   useEffect(() => {
     let cancelled = false;
+    setCandidatesLoading(true);
     fetchCandidates({
       theme: activeTheme,
       tags: myTags,
@@ -825,6 +826,9 @@ export default function SwipeScreen() {
           cands.map((c) => ({ id: c.id, uri: c.uri })),
         );
         setRealPool(mapped);
+        if (mapped.length === 0) {
+          setNoMore(true);
+        }
         // Warm the first few cards so the opening image is ready by the time
         // the deck picks it. Capped at 4 (was an unbounded 6-wide burst) so
         // we don't fire a pile of concurrent resize jobs at the image
@@ -840,6 +844,9 @@ export default function SwipeScreen() {
         // to empty when we have nothing shown yet (the stock/synthetic pool
         // and the stuck-recovery effect still fill the deck in that case).
         if (!cancelled && realPoolRef.current.length === 0) setRealPool([]);
+      })
+      .finally(() => {
+        if (!cancelled) setCandidatesLoading(false);
       });
     return () => {
       cancelled = true;
@@ -848,7 +855,9 @@ export default function SwipeScreen() {
     // the candidate fetch re-runs after `setMyPhotoBackendId` patches
     // the local photo with the upload-time subjects, so the deck
     // re-ranks against the authoritative subjects.
-  }, [activeTheme, myTagsKey, mySubjectsKey]);
+    // myPhotoSessionKey: new upload → clear pool and show the deck
+    // immediately while this fetch warms.
+  }, [activeTheme, myTagsKey, mySubjectsKey, myPhotoSessionKey]);
 
   useEffect(() => {
     if (!usingSuggestedThemeFallback || !suggestedThemeId) return;
@@ -961,6 +970,8 @@ export default function SwipeScreen() {
   // hydrated — before that, null just means "still loading the seen-ledger"
   // and we want the loading placeholder card, NOT the empty state.
   const [noMore, setNoMore] = useState<boolean>(hasHydrated && initial == null);
+  /** True while /candidates is in flight after a theme/tag/session change. */
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
   // Inline celebration shown right on the swipe card after a "same same"
   // verdict. Replaces the older auto-navigate-to-/reveal flow so swipes
   // stay in flow. The full /reveal screen remains accessible via the
@@ -1096,12 +1107,14 @@ export default function SwipeScreen() {
     sessionSwipeCountRef.current = 0;
     setUsingSuggestedThemeFallback(false);
     setSuggestedPool([]);
+    setRealPool([]);
+    setCandidatesLoading(true);
     const next = getTheirPhoto(
       activeTheme,
       myTags,
       buildExcludeKeys(),
       undefined,
-      realPool,
+      [],
       [],
       mySubjects,
     );
@@ -1111,7 +1124,13 @@ export default function SwipeScreen() {
       setSharedTags(next.sharedTags);
       setNoMore(false);
     } else {
-      setNoMore(true);
+      // Pool is still loading — keep the swipe deck visible with the user's
+      // photo on top and a spinner in the opponent pane. Don't flash "all
+      // caught up" while /candidates is in flight.
+      setTheirPhoto(PLACEHOLDER_PHOTO);
+      setMatchedTheme("");
+      setSharedTags([]);
+      setNoMore(false);
     }
     setAnimatingOut(false);
     resetCardMotion(translateX, translateY, cardScale, sameLabelOpacity);
@@ -1461,7 +1480,7 @@ export default function SwipeScreen() {
     (dir: "left" | "right", animateOut = true) => {
       if (isAnimatingOutRef.current) return;
       // Don't record a swipe when there's nothing to swipe on.
-      if (noMore) return;
+      if (noMore || theirPhotoRef.current.id === "placeholder") return;
       setAnimatingOut(true);
 
       // A swipe is an explicit user gesture — open the audio gate so
@@ -1759,6 +1778,7 @@ export default function SwipeScreen() {
   // returned. Re-pick when the live pool fills or we're on placeholder/empty.
   useEffect(() => {
     if (!hasHydrated || !hasUploadedPhoto) return;
+    if (candidatesLoading) return;
     if (deckInteractionBlocked()) return;
     const stuck =
       noMore || theirPhotoRef.current.id === "placeholder";
@@ -1776,6 +1796,7 @@ export default function SwipeScreen() {
   }, [
     hasHydrated,
     hasUploadedPhoto,
+    candidatesLoading,
     realPool.length,
     noMore,
     buildExcludeKeys,
@@ -1891,7 +1912,7 @@ export default function SwipeScreen() {
             </PressableScale>
           </View>
         )}
-        {hasUploadedPhoto && noMore && (
+        {hasUploadedPhoto && noMore && !candidatesLoading && (
           <View style={[styles.cardWrapper, styles.emptyStateWrapper]}>
             <View
               style={[
@@ -2207,7 +2228,7 @@ export default function SwipeScreen() {
             </Text>
           </View>
         )}
-        {hasUploadedPhoto && !noMore && (
+        {hasUploadedPhoto && (!noMore || candidatesLoading) && (
         <GestureDetector gesture={panGesture}>
         <Reanimated.View
           style={[styles.cardWrapper, cardAnimatedStyle]}

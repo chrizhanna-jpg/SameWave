@@ -88,7 +88,7 @@ const MAX_TAGS = 4;
 /** After this wait we still navigate to Ripple; upload still gets server AI. */
 const SUBMIT_ANALYSIS_WAIT_CAP_MS = 5000;
 /** Short beat so “posted” flashes before switching tabs (~stack transition). */
-const NAV_TO_RIPPLE_MS = 380;
+const NAV_TO_RIPPLE_MS = 120;
 const QUICK_THEMES: { label: string; emoji: string }[] = [
   { label: "morning coffee", emoji: "☕" },
   { label: "morning tea", emoji: "🍵" },
