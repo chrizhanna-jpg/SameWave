@@ -37,6 +37,7 @@ import {
   withDisplayImageSlot,
 } from "../lib/photoImageResize";
 import { prioritizeWarmPhotoIds } from "../lib/warmStockDisplayCache";
+import { stockPhotoCdnUrl } from "../lib/stockPhotoCdn";
 import { fetchMyJourneyRows } from "../lib/myJourney";
 import {
   exploreThemeNeedles,
@@ -788,6 +789,7 @@ router.get("/photos/candidates", async (req, res) => {
           ? `data:${customAudioMime};base64,${customAudioBase64}`
           : null;
       const id = String(r.id);
+      const cdnUri = stockPhotoCdnUrl(id, 960);
       return {
         id,
         theme: String(r.theme ?? ""),
@@ -798,8 +800,8 @@ router.get("/photos/candidates", async (req, res) => {
         captureCountryCode: (r.captureCountryCode as string | null) ?? null,
         musicGenre: (r.musicGenre as string | null) ?? null,
         customAudioUrl,
-        // Stream via GET /api/photos/:id/image — never inline multi-MB base64 in JSON.
-        uri: `/api/photos/${encodeURIComponent(id)}/image`,
+        // Stock pool: Unsplash CDN (instant on mobile). User uploads: authed stream.
+        uri: cdnUri ?? `/api/photos/${encodeURIComponent(id)}/image`,
         createdAt: r.createdAt as string | Date,
         // Real capture time when known; null → client falls back to createdAt
         // (share time) for the temporal tier and shows the soft note.
@@ -834,7 +836,12 @@ router.get("/photos/candidates", async (req, res) => {
       };
     });
 
-    prioritizeWarmPhotoIds(photos.slice(0, 4).map((p) => p.id));
+    prioritizeWarmPhotoIds(
+      photos
+        .filter((p) => !p.uri.startsWith("https://"))
+        .slice(0, 4)
+        .map((p) => p.id),
+    );
 
     res.json({ photos });
   } catch (err) {

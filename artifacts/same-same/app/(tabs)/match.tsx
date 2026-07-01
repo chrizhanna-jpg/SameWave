@@ -324,6 +324,14 @@ function countThemeRelevantCandidates(
   ).length;
 }
 
+function resolveLiveCandidateUri(c: CandidatePhoto): string {
+  const raw = c.uri?.trim() ?? "";
+  if (raw.startsWith("https://")) {
+    return withDisplayPhotoWidth(normalizeUnsplashUri(raw) ?? raw);
+  }
+  return serverPhotoImageUrl(c.id);
+}
+
 function mapFetchedCandidates(
   cands: CandidatePhoto[],
   fallbackTheme: string,
@@ -340,7 +348,7 @@ function mapFetchedCandidates(
       1,
       Math.round((Date.now() - new Date(c.createdAt).getTime()) / 60000),
     );
-    const streamUri = serverPhotoImageUrl(c.id);
+    const streamUri = resolveLiveCandidateUri(c);
     ids.set(streamUri, c.id);
     return {
       id: `live-${c.id}`,

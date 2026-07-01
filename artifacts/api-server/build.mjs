@@ -33,6 +33,9 @@ async function buildAll() {
   const distDir = path.resolve(artifactDir, "dist");
   await rm(distDir, { recursive: true, force: true });
 
+  // Stock CDN map for instant Ripple deck loads (must exist before bundle).
+  await import(path.resolve(artifactDir, "scripts/gen-stock-cdn-map.mjs"));
+
   const androidLatestJson = readAndroidLatestJsonForBuild();
 
   await esbuild({

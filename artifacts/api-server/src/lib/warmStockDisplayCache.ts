@@ -7,6 +7,7 @@ import {
   resizePhotoForDisplay,
   stockDisplayCacheSize,
 } from "./photoImageResize";
+import { isStockPhotoCdnEligible } from "./stockPhotoCdn";
 
 // The mobile deck streams every image at this width (DISPLAY_PHOTO_MAX_WIDTH on
 // the client). Warm the same key so the first viewer of a stock card hits the
@@ -26,7 +27,7 @@ const WARM_ROW_DELAY_MS =
   (isProd ? 0 : 40);
 const WARM_START_DELAY_MS =
   parseInt(process.env.WARM_START_DELAY_MS ?? "", 10) ||
-  (isProd ? 250 : 5_000);
+  (isProd ? 0 : 5_000);
 
 // Recent real-user uploads (non-stock) are warmed after the stock pool so the
 // first non-stock cards a user sees also stream from memory. Kept to a bounded
@@ -45,6 +46,7 @@ let priorityDrainRunning = false;
 type StockRow = { id: string; mime_type: string; bytes_base64: string };
 
 async function warmOne(row: StockRow): Promise<void> {
+  if (isStockPhotoCdnEligible(row.id)) return;
   if (hasStockDisplayBytes(row.id, WARM_DISPLAY_WIDTH)) return;
   const mime = String(row.mime_type ?? "image/jpeg");
   const b64 = String(row.bytes_base64 ?? "");
@@ -55,6 +57,7 @@ async function warmOne(row: StockRow): Promise<void> {
 }
 
 async function warmOneById(photoId: string): Promise<void> {
+  if (isStockPhotoCdnEligible(photoId)) return;
   if (hasStockDisplayBytes(photoId, WARM_DISPLAY_WIDTH)) return;
   const rows = await db.execute(sql`
     SELECT id::text AS id, mime_type, bytes_base64
@@ -101,6 +104,7 @@ export function prioritizeWarmPhotoIds(ids: string[]): void {
   for (const raw of ids) {
     const id = String(raw ?? "").trim();
     if (!id || id.length > 64) continue;
+    if (isStockPhotoCdnEligible(id)) continue;
     if (hasStockDisplayBytes(id, WARM_DISPLAY_WIDTH)) continue;
     priorityIds.add(id);
   }
