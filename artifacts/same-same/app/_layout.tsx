@@ -10,6 +10,7 @@ import {
   ClerkProvider,
   useAuth,
 } from "@clerk/expo";
+import { useEffectiveAuth } from "@/hooks/useEffectiveAuth";
 import { tokenCache } from "@clerk/expo/token-cache";
 import { Redirect, router, Stack, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -279,7 +280,7 @@ function HostedApiWarmup() {
 // stay parked on /sign-in. Renders `null` while resolving auth or
 // redirecting so the user never sees a flash of the wrong tree.
 function AuthGate({ children }: { children: React.ReactNode }) {
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn } = useEffectiveAuth();
   const { hasHydrated } = useApp();
   const segments = useSegments();
 

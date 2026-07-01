@@ -141,20 +141,27 @@ export default function InCameraScreen() {
         Alert.alert("Couldn't save photo", "Please try again.");
         return;
       }
-      const detected = await captureCountryPromise;
+      // Navigate immediately — don't block the post screen on GPS (up to 8s).
+      // Country is patched in when the fix resolves; upload falls back to
+      // declared home country when still unknown at submit time.
       setPendingCapture({
         uri: cropped.uri,
         base64: cropped.base64,
         mimeType: "image/jpeg",
-        captureCountryCode: detected?.code,
+        captureCountryCode: undefined,
+      });
+      void captureCountryPromise.then((detected) => {
+        if (!detected?.code) return;
+        setPendingCapture({
+          uri: cropped.uri,
+          base64: cropped.base64,
+          mimeType: "image/jpeg",
+          captureCountryCode: detected.code,
+        });
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
         () => {},
       );
-      // When opened directly from the home screen, go to the camera/upload
-      // screen so it can pick up the capture and start the matching flow.
-      // When opened from camera.tsx (the normal in-app path), go back so
-      // camera.tsx regains focus and its useFocusEffect drains the bus.
       if (from === "home" || intent) {
         const q = new URLSearchParams();
         if (from === "home") q.set("from", "home");

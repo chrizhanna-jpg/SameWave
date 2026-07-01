@@ -24,10 +24,48 @@ import type { Request } from "express";
 const DEVICE_HEADER = "x-device-id";
 const DEVICE_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
 
+const DEV_AUTH_ID = "dev_bypass_local";
+const DEV_DEVICE_ID = "devbypass01local";
+
+function devAuthBypassEnabled(): boolean {
+  return (
+    process.env.NODE_ENV === "development" &&
+    process.env.DEV_BYPASS_AUTH === "1"
+  );
+}
+
+/** Local-only: fixed user so Expo can hit the API without Clerk secrets. */
+async function resolveDevBypassUser(): Promise<{ id: string; authId: string }> {
+  const existing = await selectByAuthId(DEV_AUTH_ID);
+  if (existing) return { id: existing, authId: DEV_AUTH_ID };
+
+  const inserted = await db
+    .insert(usersTable)
+    .values({
+      authId: DEV_AUTH_ID,
+      deviceId: DEV_DEVICE_ID,
+      countryCode: "GB",
+    })
+    .onConflictDoNothing({ target: usersTable.authId })
+    .returning({ id: usersTable.id });
+
+  if (inserted.length > 0) {
+    return { id: inserted[0].id, authId: DEV_AUTH_ID };
+  }
+
+  const raced = await selectByAuthId(DEV_AUTH_ID);
+  if (raced) return { id: raced, authId: DEV_AUTH_ID };
+  throw new Error("dev bypass user insert failed");
+}
+
 export async function resolveUserFromRequest(
   req: Request,
   opts?: { countryCode?: string | null },
 ): Promise<{ id: string; authId: string } | null> {
+  if (devAuthBypassEnabled()) {
+    return resolveDevBypassUser();
+  }
+
   // app.ts only mounts clerkMiddleware when CLERK_SECRET_KEY is set; getAuth()
   // throws if called without it (e.g. public /api/photos/atlas with optional "mine").
   if (!process.env.CLERK_SECRET_KEY?.trim()) {
