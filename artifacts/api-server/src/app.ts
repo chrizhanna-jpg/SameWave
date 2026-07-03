@@ -22,6 +22,7 @@ import {
 import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { getOpenAIEnv } from "./lib/openaiEnv";
+import { getDeckPreviewSchemaStatus } from "./lib/ensureDeckPreviewSchema";
 
 const app: Express = express();
 
@@ -77,9 +78,14 @@ app.get("/api/public/backend-status", async (_req, res) => {
 
     let databaseReachable = false;
     let databaseError: string | null = null;
+    let deckPreviewColumnsReady = false;
+    let deckPreviewsMissing = -1;
     try {
       await db.execute(sql`SELECT 1`);
       databaseReachable = true;
+      const deck = await getDeckPreviewSchemaStatus();
+      deckPreviewColumnsReady = deck.columnsReady;
+      deckPreviewsMissing = deck.missingPreviewCount;
     } catch (err) {
       databaseError =
         err instanceof Error
@@ -100,6 +106,8 @@ app.get("/api/public/backend-status", async (_req, res) => {
       androidLatestBundledConfigLoaded: androidLatest.bundledConfigLoaded,
       androidLatestEnvVersionCode: androidLatest.envVersionCode,
       androidLatestFileVersionCode: androidLatest.fileVersionCode,
+      deckPreviewColumnsReady,
+      deckPreviewsMissing,
     });
   } catch (err) {
     logger.error({ err }, "backend-status handler failed");
