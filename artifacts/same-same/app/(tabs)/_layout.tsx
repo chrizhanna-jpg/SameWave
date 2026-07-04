@@ -179,6 +179,8 @@ export default function TabLayout() {
         tabBarInactiveTintColor: colors.mutedForeground,
         headerShown: false,
         tabBarShowLabel: true,
+        // Instant tab switches — no slide/fade between bottom tabs.
+        animation: "none",
         tabBarLabelStyle: {
           fontSize: 10,
           fontFamily: "Inter_600SemiBold",

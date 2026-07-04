@@ -46,6 +46,7 @@ import {
   saveAtlasCache,
 } from "@/utils/syncCache";
 import { markTabVisited } from "@/utils/tabVisits";
+import { runAfterTabFocus } from "@/utils/deferTabFocus";
 import { stopWavefireAmbience, startWavefireAmbience } from "@/utils/wavefireAmbience";
 import type { MyPhoto } from "@/context/AppContext";
 
@@ -267,14 +268,18 @@ export default function AtlasScreen() {
       atlasFocusedRef.current = true;
       markTabVisited("atlas");
       warmAuthedImageHeaders();
-      void load(hasCachedData || atlasHasLoadedOnceRef.current);
+      const deferred = runAfterTabFocus(() => {
+        // Cache-first refresh — avoid invalidating atlas data on every tab tap.
+        void load(false);
+      });
       void startWavefireAmbience();
       return () => {
+        deferred.cancel();
         setAtlasTabFocused(false);
         atlasFocusedRef.current = false;
         void stopWavefireAmbience();
       };
-    }, [load, hasCachedData, hasHydrated]),
+    }, [load, hasHydrated]),
   );
 
   useEffect(() => {

@@ -27,6 +27,7 @@ import Reanimated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
 import { markTabVisited } from "@/utils/tabVisits";
+import { runAfterTabFocus } from "@/utils/deferTabFocus";
 import { tabBarTotalHeight } from "@/utils/tabBarSafeArea";
 import { Icon } from "@/components/Icon";
 import { MicBadge } from "@/components/MicBadge";
@@ -1454,23 +1455,26 @@ export default function SwipeScreen() {
   // and never re-downloads what's already warm — no over-fetch.
   useFocusEffect(
     useCallback(() => {
-      // Pay the audio-session setup cost (setAudioModeAsync) up front so the
-      // first vibe clip after focus doesn't carry that fixed delay inline.
-      // Opening Ripple counts as consent for vibe clips (tab tap is a gesture).
-      markUserInteracted();
-      warmAudioSession();
-      const current = theirPhotoRef.current;
-      if (current?.uri && current.id !== "placeholder") {
-        void prefetchPhotoUri(current.uri);
-        // Preload the upcoming card's vibe too so the first swipe after
-        // returning to Ripple starts its music instantly.
-        const next = pickDeckCandidate(
-          photoKey(current.uri),
-          photoKey(current.uri),
-        );
-        if (next?.photo.uri) prewarmAudioForPhoto(next.photo);
-      }
-      prefetchDeckAhead(1);
+      const deferred = runAfterTabFocus(() => {
+        // Pay the audio-session setup cost (setAudioModeAsync) up front so the
+        // first vibe clip after focus doesn't carry that fixed delay inline.
+        // Opening Ripple counts as consent for vibe clips (tab tap is a gesture).
+        markUserInteracted();
+        warmAudioSession();
+        const current = theirPhotoRef.current;
+        if (current?.uri && current.id !== "placeholder") {
+          void prefetchPhotoUri(current.uri);
+          // Preload the upcoming card's vibe too so the first swipe after
+          // returning to Ripple starts its music instantly.
+          const next = pickDeckCandidate(
+            photoKey(current.uri),
+            photoKey(current.uri),
+          );
+          if (next?.photo.uri) prewarmAudioForPhoto(next.photo);
+        }
+        prefetchDeckAhead(1);
+      });
+      return () => deferred.cancel();
     }, [
       prefetchPhotoUri,
       prefetchDeckAhead,

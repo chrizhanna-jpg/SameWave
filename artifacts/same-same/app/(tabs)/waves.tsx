@@ -35,6 +35,10 @@ import {
   photoStreamFallbackUri,
 } from "@/utils/photoDisplayUri";
 import { markTabVisited } from "@/utils/tabVisits";
+import {
+  runAfterTabFocus,
+  shouldRunThrottledFocusWork,
+} from "@/utils/deferTabFocus";
 import { scrollPaddingAboveTabBar, tabBarTotalHeight } from "@/utils/tabBarSafeArea";
 import { timeAgo } from "@/utils/timeAgo";
 import { photoKey } from "@/utils/photoKey";
@@ -227,12 +231,18 @@ export default function WavesScreen() {
   useFocusEffect(
     useCallback(() => {
       markTabVisited("waves");
-      reconcileMatchPhotos();
-      void refreshEchoes();
-      void syncCloudData();
-      void loadWorldWaves();
+      const deferred = runAfterTabFocus(() => {
+        if (!shouldRunThrottledFocusWork("waves-sync", 30_000)) return;
+        reconcileMatchPhotos();
+        void refreshEchoes();
+        void syncCloudData();
+        void loadWorldWaves();
+      });
       const t = setTimeout(() => markAllEchoesSeen(), 900);
-      return () => clearTimeout(t);
+      return () => {
+        deferred.cancel();
+        clearTimeout(t);
+      };
     }, [
       refreshEchoes,
       syncCloudData,
