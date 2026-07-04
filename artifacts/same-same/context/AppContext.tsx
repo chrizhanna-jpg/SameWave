@@ -31,6 +31,7 @@ import {
   repairMyPhotos,
   resolveMyPhotoDisplayUri,
   serverPhotoImageUrl,
+  uploadTimesEqual,
 } from "@/utils/photoDisplayUri";
 import {
   createMyPhotoLocalId,
@@ -1497,7 +1498,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const ackPhoto = newPhotos.find((p) => p.backendId === ack.backendId);
       let newMatches = prev.matches;
       if (ackPhoto) {
-        newMatches = prev.matches.map((m) => enrichMatchMyPhotoFields(m, newPhotos));
+        newMatches = prev.matches.map((m) => {
+          if (m.myPhotoId?.trim()) return m;
+          const linkedByTime = uploadTimesEqual(
+            m.myPhotoUploadedAt,
+            ackPhoto.uploadedAt,
+          );
+          const linkedByUri =
+            !!m.myPhoto?.trim() &&
+            (m.myPhoto === ackPhoto.uri ||
+              photoKey(m.myPhoto) === photoKey(ackPhoto.uri) ||
+              photoKey(m.myPhoto) === photoKey(resolveMyPhotoDisplayUri(ackPhoto)));
+          if (!linkedByTime && !linkedByUri) return m;
+          return enrichMatchMyPhotoFields(m, newPhotos);
+        });
         const matchesChanged = newMatches.some(
           (m, i) =>
             m.myPhoto !== prev.matches[i]?.myPhoto ||

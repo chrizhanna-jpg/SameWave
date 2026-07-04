@@ -32,6 +32,8 @@ import {
   enrichMatchesForStorage,
   resolveEchoPhotoUri,
   resolveMatchMyPhotoUri,
+  resolveMatchMyPhotoThumbnailUri,
+  resolveMatchMyPhotoFallbackUri,
   resolveMatchPhotoDisplay,
   photoStreamFallbackUri,
 } from "@/utils/photoDisplayUri";
@@ -821,7 +823,8 @@ function RippleSentCard({
 }) {
   const colors = useColors();
   const ago = timeAgo(new Date(match.timestamp));
-  const myUri = resolveMatchMyPhotoUri(match, myPhotos);
+  const myUri = resolveMatchMyPhotoThumbnailUri(match, myPhotos);
+  const myFallbackUri = resolveMatchMyPhotoFallbackUri(match, myPhotos);
   const theirUri = resolveMatchPhotoDisplay(match, myPhotos).theirPhoto;
   const myDisp = photoCountryDisplay(match.myCaptureCountryCode, {
     sampleUri: myUri,
@@ -876,9 +879,9 @@ function RippleSentCard({
           {myUri ? (
             <RemotePhotoImage
               uri={myUri}
-              fallbackUri={photoStreamFallbackUri(match.myPhotoId)}
+              fallbackUri={myFallbackUri}
               style={styles.photo}
-              recyclingKey={match.myPhotoId || myUri}
+              recyclingKey={`waves-my:${match.id}`}
               displayWidth={FEED_THUMB_WIDTH}
               priority="thumbnail"
               transitionMs={0}
@@ -905,7 +908,7 @@ function RippleSentCard({
               uri={theirUri}
               fallbackUri={photoStreamFallbackUri(match.theirPhotoId)}
               style={styles.photo}
-              recyclingKey={match.theirPhotoId || theirUri}
+              recyclingKey={`waves-their:${match.id}`}
               displayWidth={FEED_THUMB_WIDTH}
               priority="thumbnail"
               transitionMs={0}
