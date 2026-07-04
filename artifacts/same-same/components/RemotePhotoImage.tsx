@@ -203,17 +203,29 @@ export function RemotePhotoImage({
       return;
     }
     const cached = peekAuthedImageHeaders();
-    if (cached) {
+    if (cached?.Authorization?.startsWith("Bearer ")) {
       setAuthHeaders(cached);
       return;
     }
     warmAuthedImageHeaders();
     let cancelled = false;
-    void authedImageHeaders().then((h) => {
-      if (!cancelled) setAuthHeaders(h);
-    });
+    let attempt = 0;
+    const loadAuth = () => {
+      const run = attempt === 0 ? authedImageHeaders() : refreshAuthedImageHeaders();
+      void run.then((h) => {
+        if (cancelled) return;
+        setAuthHeaders(h);
+        if (!h.Authorization?.startsWith("Bearer ") && attempt < 6) {
+          attempt += 1;
+          authRetryTimer.current = setTimeout(loadAuth, 350 * attempt);
+        }
+      });
+    };
+    const authRetryTimer = { current: null as ReturnType<typeof setTimeout> | null };
+    loadAuth();
     return () => {
       cancelled = true;
+      if (authRetryTimer.current) clearTimeout(authRetryTimer.current);
     };
   }, [needsAuth, activeUri]);
 

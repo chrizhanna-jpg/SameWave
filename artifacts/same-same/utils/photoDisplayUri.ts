@@ -110,10 +110,13 @@ export function resolveMyPhotoThumbnailUri(
   photo: Pick<MyPhoto, "uri" | "backendId" | "uploadState">,
 ): string {
   const local = photo.uri?.trim() ?? "";
-  const bid = photo.backendId?.trim();
+  const bid =
+    photo.backendId?.trim() || extractPhotoStreamId(local) || undefined;
+  // Once the server has an id, never keep showing a dead local capture.
   const stillUploading =
-    photo.uploadState === "pending" ||
-    (photo.uploadState !== "ok" && !bid);
+    !bid &&
+    (photo.uploadState === "pending" ||
+      (photo.uploadState !== "ok" && !photo.backendId?.trim()));
 
   if (
     stillUploading &&
@@ -407,13 +410,15 @@ export function resolveMyPhotoDisplayUri(
   options?: ResolveMyPhotoDisplayOptions,
 ): string {
   const local = photo.uri?.trim() ?? "";
-  const bid = photo.backendId?.trim();
+  const bid =
+    photo.backendId?.trim() || extractPhotoStreamId(local) || undefined;
   // Keep the in-app capture only while upload is still running. Once we
   // have a backend id the OS may purge file:// when leaving Ripple — use
   // the authed server stream so the photo survives tab switches.
   const stillUploading =
-    photo.uploadState === "pending" ||
-    (photo.uploadState !== "ok" && !bid);
+    !bid &&
+    (photo.uploadState === "pending" ||
+      (photo.uploadState !== "ok" && !photo.backendId?.trim()));
 
   if (
     options?.preferLocalCapture &&
@@ -423,7 +428,46 @@ export function resolveMyPhotoDisplayUri(
     return local;
   }
   if (bid) return serverPhotoImageUrl(bid);
+  if (
+    local.startsWith("http://") ||
+    local.startsWith("https://") ||
+    local.startsWith("/api/photos/")
+  ) {
+    return canonicalizePhotoStreamUri(local);
+  }
   return local;
+}
+
+/** Backfill backendId/uploadState and HTTPS uri on persisted myPhotos rows. */
+export function repairMyPhotos(photos: MyPhoto[], matches: Match[]): MyPhoto[] {
+  return photos.map((raw) => {
+    let photo: MyPhoto = { ...raw };
+    let bid =
+      photo.backendId?.trim() ||
+      extractPhotoStreamId(photo.uri?.trim() ?? "") ||
+      undefined;
+
+    if (!bid) {
+      for (const m of matches) {
+        const mid = m.myPhotoId?.trim();
+        if (!mid) continue;
+        if (uploadTimesEqual(m.myPhotoUploadedAt, photo.uploadedAt)) {
+          bid = mid;
+          break;
+        }
+      }
+    }
+
+    if (bid) {
+      const patch: Partial<MyPhoto> = { backendId: bid };
+      if (photo.uploadState !== "failed") {
+        patch.uploadState = "ok";
+      }
+      photo = { ...photo, ...patch };
+    }
+
+    return hydrateMyPhotoUri(photo);
+  });
 }
 
 /** Backfill persisted rows that stripped `file://` but kept backendId. */

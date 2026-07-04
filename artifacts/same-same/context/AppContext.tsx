@@ -17,6 +17,7 @@ import {
   respondEcho as respondEchoApi,
   unvotePhoto,
   deleteMyPhoto,
+  warmAuthedImageHeaders,
   type ServerEcho,
 } from "@/utils/api";
 import { requestAtlasRefresh } from "@/utils/atlasHub";
@@ -27,6 +28,7 @@ import {
   enrichMatchMyPhotoFields,
   enrichMatchesForStorage,
   hydrateMyPhotoUri,
+  repairMyPhotos,
   resolveMyPhotoDisplayUri,
   serverPhotoImageUrl,
 } from "@/utils/photoDisplayUri";
@@ -717,10 +719,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const reconcileMatchPhotos = useCallback(() => {
     if (!hasHydratedRef.current) return;
     setState((prev) => {
-      let changed = false;
+      const repairedPhotos = repairMyPhotos(prev.myPhotos, prev.matches);
+      let photosChanged = repairedPhotos.length !== prev.myPhotos.length;
+      if (!photosChanged) {
+        for (let i = 0; i < repairedPhotos.length; i++) {
+          const a = repairedPhotos[i];
+          const b = prev.myPhotos[i];
+          if (
+            a.backendId !== b.backendId ||
+            a.uri !== b.uri ||
+            a.uploadState !== b.uploadState
+          ) {
+            photosChanged = true;
+            break;
+          }
+        }
+      }
+      let changed = photosChanged;
       const matches = prev.matches.map((m) => {
         const withCountry = { ...m, ...matchCountryFieldsFromCapture(m) };
-        const next = enrichMatchMyPhotoFields(withCountry, prev.myPhotos);
+        const next = enrichMatchMyPhotoFields(withCountry, repairedPhotos);
         if (
           next.myPhoto !== m.myPhoto ||
           next.myPhotoId !== m.myPhotoId ||
@@ -735,7 +753,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return m;
       });
       if (!changed) return prev;
-      const newState = { ...prev, matches };
+      const newState = { ...prev, myPhotos: repairedPhotos, matches };
       saveState(newState);
       return newState;
     });
@@ -847,13 +865,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             };
           }
         );
-        const hydratedPhotos = migratedPhotos.map(hydrateMyPhotoUri);
+        const prelimPhotos = migratedPhotos.map(hydrateMyPhotoUri);
         const enrichedMatches = matches.map((m) =>
           enrichMatchMyPhotoFields(
             { ...m, ...matchCountryFieldsFromCapture(m) },
-            hydratedPhotos,
+            prelimPhotos,
           ),
         );
+        const hydratedPhotos = repairMyPhotos(prelimPhotos, enrichedMatches);
         // Expire any pending requests whose 48h window has passed.
         const now = Date.now();
         const migratedRequests: ConnectRequest[] = (parsed.connectRequests ?? [])
@@ -1886,6 +1905,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Background cloud sync after local cache is ready — never blocks the UI.
   React.useEffect(() => {
     if (!hasHydrated || !clerkLoaded || !isSignedIn) return;
+    warmAuthedImageHeaders();
     void syncCloudData();
     const id = setInterval(() => {
       void syncCloudData();

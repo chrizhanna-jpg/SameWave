@@ -10,6 +10,7 @@ import {
   canonicalizePhotoStreamUri,
   enrichMatchMyPhotoFields,
   myPhotoRowKey,
+  repairMyPhotos,
   resolveMatchMyPhotoUri,
   shouldCanonicalizePhotoStreamUri,
 } from "../utils/photoDisplayUri";
@@ -183,6 +184,35 @@ const unique = new Set(keys);
 assert(
   "myPhotoRowKey all unique",
   unique.size === keys.length ? "ok" : "",
+  true,
+);
+
+// H10: repair backfills backendId from match history when uri was stripped
+const repaired = repairMyPhotos(
+  [
+    {
+      uri: "",
+      uploadedAt: "2026-06-19T11:00:00.000Z",
+      theme: "morning",
+      uploadState: "pending",
+    },
+  ],
+  [
+    {
+      ...baseMatch,
+      myPhotoId: "recovered-photo-id",
+      myPhotoUploadedAt: "2026-06-19T11:00:00.000Z",
+    },
+  ],
+);
+assert(
+  "repairMyPhotos backfills backendId",
+  repaired[0]?.backendId === "recovered-photo-id" ? "ok" : "",
+  true,
+);
+assert(
+  "repairMyPhotos sets stream uri",
+  repaired[0]?.uri.includes("/api/photos/recovered-photo-id/image") ? repaired[0].uri : "",
   true,
 );
 
