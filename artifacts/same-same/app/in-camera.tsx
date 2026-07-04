@@ -1,20 +1,11 @@
-// In-app square-viewfinder camera. Replaces the system crop step that
-// expo-image-picker used to launch (with allowsEditing + aspect [1,1])
-// — the user complained that the crop sheet felt like an unnecessary
-// extra step when the upload is always square anyway.
-//
-// What you see in the viewfinder IS the photo: the live preview is
-// constrained to a centred square the size of the screen width, and
-// the captured image is cropped server-side to match exactly that
-// region (camera sensors return 4:3 portraits, so we drop the top and
-// bottom strips before handing the bytes back).
-//
-// Pinch-to-zoom and a two-tap zoom shortcut (1× / 2×) replace the
-// cropping interaction. The user can still flip between front and
-// back cameras.
+// In-app square-viewfinder camera. The live preview fills a centred square;
+// we crop to square on capture (sensors are typically 4:3). Do NOT set
+// ratio="1:1" on CameraView — it switches Android preview to FIT and often
+// yields a black or mis-sized surface; square framing is done via layout clip.
 
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Dimensions,
   Platform,
@@ -29,7 +20,7 @@ import {
   State as GHState,
   type PinchGestureHandlerGestureEvent,
 } from "react-native-gesture-handler";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
   CameraView,
   useCameraPermissions,
@@ -42,12 +33,19 @@ import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
 import { setPendingCapture } from "@/utils/captureBus";
 import { detectCountryFromGPS } from "@/utils/gpsCountry";
+import {
+  acquireCameraSession,
+  bumpCameraSessionGeneration,
+  getCameraSessionGeneration,
+  isCameraSessionOwnedBy,
+  releaseCameraSession,
+} from "@/utils/cameraSession";
+import { recordCameraEvent } from "@/utils/cameraTelemetry";
 
+const CAMERA_OWNER_ID = "in-camera";
 const SCREEN_WIDTH = Dimensions.get("window").width;
-// Pinch sensitivity. expo-camera's zoom prop is 0-1; a single full
-// pinch (scale 0 → 4) walks the whole range, which feels natural on
-// both iOS and Android.
 const PINCH_SCALE_FACTOR = 0.25;
+const MAX_MOUNT_RETRIES = 2;
 
 export default function InCameraScreen() {
   const colors = useColors();
@@ -58,31 +56,64 @@ export default function InCameraScreen() {
   }>();
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<CameraType>("back");
-  const [zoom, setZoom] = useState(0); // 0..1
+  const [zoom, setZoom] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+  const [viewfinderReady, setViewfinderReady] = useState(false);
+  const [previewReady, setPreviewReady] = useState(false);
+  const [mountError, setMountError] = useState<string | null>(null);
+  const [sessionKey, setSessionKey] = useState(0);
+  const mountRetries = useRef(0);
   const cameraRef = useRef<CameraView | null>(null);
-  // Snapshot of zoom at the start of a pinch so the gesture is
-  // additive rather than absolute (otherwise releasing the pinch
-  // immediately snaps back to whatever scale the next gesture starts
-  // at).
   const pinchStartZoomRef = useRef(0);
 
-  const onPinch = useCallback(
-    (e: PinchGestureHandlerGestureEvent) => {
-      const next =
-        pinchStartZoomRef.current +
-        (e.nativeEvent.scale - 1) * PINCH_SCALE_FACTOR;
-      const clamped = Math.max(0, Math.min(1, next));
-      setZoom(clamped);
-    },
-    [],
+  useEffect(() => {
+    if (permission === null) {
+      recordCameraEvent("camera.permission.pending");
+    }
+  }, [permission]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!acquireCameraSession(CAMERA_OWNER_ID)) {
+        recordCameraEvent("camera.open.failure", { reason: "camera_busy" });
+        setMountError("Camera is in use. Close other camera screens and retry.");
+        return () => {};
+      }
+      setIsFocused(true);
+      setPreviewReady(false);
+      setViewfinderReady(true);
+      setMountError(null);
+      mountRetries.current = 0;
+      setSessionKey(getCameraSessionGeneration());
+      recordCameraEvent("camera.open.start");
+      return () => {
+        setIsFocused(false);
+        setPreviewReady(false);
+        releaseCameraSession(CAMERA_OWNER_ID);
+        recordCameraEvent("camera.release");
+      };
+    }, []),
   );
+
+  const remountCamera = useCallback(() => {
+    bumpCameraSessionGeneration();
+    setSessionKey(getCameraSessionGeneration());
+    setPreviewReady(false);
+    setMountError(null);
+    mountRetries.current = 0;
+    recordCameraEvent("camera.retry");
+  }, []);
+
+  const onPinch = useCallback((e: PinchGestureHandlerGestureEvent) => {
+    const next =
+      pinchStartZoomRef.current +
+      (e.nativeEvent.scale - 1) * PINCH_SCALE_FACTOR;
+    setZoom(Math.max(0, Math.min(1, next)));
+  }, []);
 
   const onPinchStateChange = useCallback(
     (e: PinchGestureHandlerGestureEvent) => {
-      // Capture the current zoom at the moment the pinch becomes
-      // active, so subsequent move deltas build on top of it instead
-      // of resetting to wherever the last gesture ended.
       if (e.nativeEvent.state === GHState.ACTIVE) {
         pinchStartZoomRef.current = zoom;
       }
@@ -97,12 +128,16 @@ export default function InCameraScreen() {
 
   const flipCamera = () => {
     Haptics.selectionAsync().catch(() => {});
+    setPreviewReady(false);
     setFacing((f) => (f === "back" ? "front" : "back"));
+    bumpCameraSessionGeneration();
+    setSessionKey(getCameraSessionGeneration());
   };
 
   const capture = async () => {
-    if (!cameraRef.current || busy) return;
+    if (!cameraRef.current || busy || !previewReady) return;
     setBusy(true);
+    recordCameraEvent("camera.capture.start");
     const captureCountryPromise = detectCountryFromGPS();
     try {
       const shot = await cameraRef.current.takePictureAsync({
@@ -115,9 +150,6 @@ export default function InCameraScreen() {
         setBusy(false);
         return;
       }
-      // Sensor returns the full frame (typically 4:3). Crop a centred
-      // square so the saved photo matches the square the user framed
-      // in the viewfinder.
       const w = shot.width ?? 0;
       const h = shot.height ?? 0;
       const side = Math.min(w, h);
@@ -125,11 +157,7 @@ export default function InCameraScreen() {
       const originY = Math.max(0, Math.round((h - side) / 2));
       const cropped = await ImageManipulator.manipulateAsync(
         shot.uri,
-        [
-          {
-            crop: { originX, originY, width: side, height: side },
-          },
-        ],
+        [{ crop: { originX, originY, width: side, height: side } }],
         {
           compress: 0.85,
           format: ImageManipulator.SaveFormat.JPEG,
@@ -137,8 +165,8 @@ export default function InCameraScreen() {
         },
       );
       if (!cropped.base64) {
-        setBusy(false);
         Alert.alert("Couldn't save photo", "Please try again.");
+        recordCameraEvent("camera.capture.failure", { reason: "empty_base64" });
         return;
       }
       const detected = await captureCountryPromise;
@@ -148,13 +176,10 @@ export default function InCameraScreen() {
         mimeType: "image/jpeg",
         captureCountryCode: detected?.code,
       });
+      recordCameraEvent("camera.capture.success");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
         () => {},
       );
-      // When opened directly from the home screen, go to the camera/upload
-      // screen so it can pick up the capture and start the matching flow.
-      // When opened from camera.tsx (the normal in-app path), go back so
-      // camera.tsx regains focus and its useFocusEffect drains the bus.
       if (from === "home" || intent) {
         const q = new URLSearchParams();
         if (from === "home") q.set("from", "home");
@@ -164,7 +189,10 @@ export default function InCameraScreen() {
       } else {
         router.back();
       }
-    } catch {
+    } catch (err) {
+      recordCameraEvent("camera.capture.failure", {
+        reason: err instanceof Error ? err.message : "unknown",
+      });
       Alert.alert("Couldn't capture photo", "Please try again.");
     } finally {
       setBusy(false);
@@ -173,77 +201,50 @@ export default function InCameraScreen() {
 
   const topPadding = Platform.OS === "web" ? 24 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 24 : insets.bottom;
-  // Reserve enough room at the bottom for the controls, and centre
-  // the square viewfinder in what's left. Falls back to the screen
-  // width when that fits, which it always does on phone-sized devices
-  // in portrait.
   const viewfinderSize = SCREEN_WIDTH;
+  const canRenderCamera =
+    permission?.granted &&
+    isFocused &&
+    viewfinderReady &&
+    !mountError &&
+    isCameraSessionOwnedBy(CAMERA_OWNER_ID);
 
   // Permission flow ─────────────────────────────────────────────────
   if (!permission) {
-    return <View style={[styles.container, { backgroundColor: "#000" }]} />;
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <ActivityIndicator color="#fff" size="large" />
+        <Text style={styles.permissionHint}>Checking camera access…</Text>
+      </View>
+    );
   }
+
   if (!permission.granted) {
     return (
-      <View
-        style={[
-          styles.container,
-          {
-            backgroundColor: "#000",
-            alignItems: "center",
-            justifyContent: "center",
-            paddingHorizontal: 32,
-          },
-        ]}
-      >
+      <View style={[styles.container, styles.centered, { paddingHorizontal: 32 }]}>
         <Icon name="camera" size={48} color={colors.mutedForeground} />
-        <Text
-          style={{
-            color: colors.foreground,
-            fontFamily: "Inter_700Bold",
-            fontSize: 18,
-            marginTop: 18,
-            textAlign: "center",
-          }}
-        >
+        <Text style={[styles.permissionTitle, { color: colors.foreground }]}>
           Camera access needed
         </Text>
-        <Text
-          style={{
-            color: colors.mutedForeground,
-            fontFamily: "Inter_400Regular",
-            fontSize: 14,
-            marginTop: 8,
-            textAlign: "center",
-            lineHeight: 20,
-          }}
-        >
+        <Text style={[styles.permissionBody, { color: colors.mutedForeground }]}>
           SameWave needs your camera so you can take a photo of today.
         </Text>
         <TouchableOpacity
-          style={{
-            marginTop: 24,
-            backgroundColor: colors.primary,
-            paddingHorizontal: 28,
-            paddingVertical: 12,
-            borderRadius: 24,
+          style={[styles.allowBtn, { backgroundColor: colors.primary }]}
+          onPress={() => {
+            void requestPermission().then((res) => {
+              recordCameraEvent(
+                res.granted ? "camera.permission.granted" : "camera.permission.denied",
+              );
+            });
           }}
-          onPress={requestPermission}
         >
-          <Text
-            style={{
-              color: colors.primaryForeground,
-              fontFamily: "Inter_700Bold",
-              fontSize: 14,
-            }}
-          >
+          <Text style={[styles.allowBtnText, { color: colors.primaryForeground }]}>
             Allow camera
           </Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 14 }}>
-          <Text style={{ color: colors.mutedForeground, fontSize: 14 }}>
-            Cancel
-          </Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 14 }}>Cancel</Text>
         </TouchableOpacity>
       </View>
     );
@@ -252,9 +253,6 @@ export default function InCameraScreen() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: "#000" }}>
       <View style={[styles.container, { paddingTop: topPadding }]}>
-        {/* Header — close button only. The square viewfinder makes the
-            "what you see is what you get" promise visually obvious; no
-            need for an extra label. */}
         <View style={styles.header}>
           <TouchableOpacity
             onPress={() => router.back()}
@@ -273,37 +271,71 @@ export default function InCameraScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Square viewfinder — the live preview IS the final photo. */}
         <View
           style={[
             styles.viewfinderWrap,
             { width: viewfinderSize, height: viewfinderSize },
           ]}
+          onLayout={() => {
+            setViewfinderReady(true);
+            recordCameraEvent("camera.surface.ready", {
+              w: viewfinderSize,
+              h: viewfinderSize,
+            });
+          }}
         >
+          {canRenderCamera ? (
+            <CameraView
+              key={`cam-${sessionKey}-${facing}`}
+              ref={cameraRef}
+              style={StyleSheet.absoluteFill}
+              facing={facing}
+              zoom={zoom}
+              active={isFocused}
+              onCameraReady={() => {
+                setPreviewReady(true);
+                recordCameraEvent("camera.open.success", { facing });
+              }}
+              onMountError={(e) => {
+                const msg = e.message?.trim() || "Camera failed to start";
+                recordCameraEvent("camera.open.failure", { message: msg });
+                if (mountRetries.current < MAX_MOUNT_RETRIES) {
+                  mountRetries.current += 1;
+                  remountCamera();
+                  return;
+                }
+                setMountError(msg);
+                setPreviewReady(false);
+              }}
+            />
+          ) : null}
+
           <PinchGestureHandler
             onGestureEvent={onPinch}
             onHandlerStateChange={onPinchStateChange}
           >
-            <View style={StyleSheet.absoluteFill}>
-              <CameraView
-                ref={cameraRef}
-                style={StyleSheet.absoluteFill}
-                facing={facing}
-                zoom={zoom}
-                ratio="1:1"
-              />
-            </View>
+            <View style={StyleSheet.absoluteFill} pointerEvents="box-only" />
           </PinchGestureHandler>
+
+          {!previewReady && !mountError ? (
+            <View style={styles.previewPlaceholder} pointerEvents="none">
+              <ActivityIndicator color="#fff" size="large" />
+              <Text style={styles.previewPlaceholderText}>Starting camera…</Text>
+            </View>
+          ) : null}
+
+          {mountError ? (
+            <View style={styles.previewPlaceholder}>
+              <Icon name="camera" size={36} color="rgba(255,255,255,0.7)" />
+              <Text style={styles.errorText}>{mountError}</Text>
+              <TouchableOpacity style={styles.retryBtn} onPress={remountCamera}>
+                <Text style={styles.retryBtnText}>Retry camera</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </View>
 
-        {/* Controls. Zoom shortcut chips above the shutter, mirroring
-            the native iOS Camera app's 1×/2× pills. */}
-        <View
-          style={[
-            styles.controls,
-            { paddingBottom: bottomPadding + 24 },
-          ]}
-        >
+        <View style={[styles.controls, { paddingBottom: bottomPadding + 24 }]}>
           <View style={styles.zoomRow}>
             {[
               { label: "1×", value: 0 },
@@ -327,15 +359,7 @@ export default function InCameraScreen() {
                     },
                   ]}
                 >
-                  <Text
-                    style={{
-                      color: "#fff",
-                      fontFamily: "Inter_700Bold",
-                      fontSize: 13,
-                    }}
-                  >
-                    {z.label}
-                  </Text>
+                  <Text style={styles.zoomChipText}>{z.label}</Text>
                 </TouchableOpacity>
               );
             })}
@@ -345,11 +369,8 @@ export default function InCameraScreen() {
             <View style={{ width: 56 }} />
             <TouchableOpacity
               onPress={capture}
-              disabled={busy}
-              style={[
-                styles.shutter,
-                { opacity: busy ? 0.5 : 1 },
-              ]}
+              disabled={busy || !previewReady}
+              style={[styles.shutter, { opacity: busy || !previewReady ? 0.45 : 1 }]}
             >
               <View style={styles.shutterInner} />
             </TouchableOpacity>
@@ -369,6 +390,39 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#000",
+  },
+  centered: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  permissionHint: {
+    color: "rgba(255,255,255,0.7)",
+    marginTop: 16,
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+  },
+  permissionTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 18,
+    marginTop: 18,
+    textAlign: "center",
+  },
+  permissionBody: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    marginTop: 8,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  allowBtn: {
+    marginTop: 24,
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+    borderRadius: 24,
+  },
+  allowBtnText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 14,
   },
   header: {
     flexDirection: "row",
@@ -390,6 +444,38 @@ const styles = StyleSheet.create({
     backgroundColor: "#111",
     marginTop: 12,
   },
+  previewPlaceholder: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#111",
+    paddingHorizontal: 24,
+    gap: 12,
+  },
+  previewPlaceholderText: {
+    color: "rgba(255,255,255,0.65)",
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+  },
+  errorText: {
+    color: "rgba(255,255,255,0.85)",
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    textAlign: "center",
+    lineHeight: 18,
+  },
+  retryBtn: {
+    marginTop: 4,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.16)",
+  },
+  retryBtnText: {
+    color: "#fff",
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+  },
   controls: {
     flex: 1,
     alignItems: "center",
@@ -406,6 +492,11 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: 16,
     borderWidth: 1,
+  },
+  zoomChipText: {
+    color: "#fff",
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
   },
   shutterRow: {
     flexDirection: "row",
