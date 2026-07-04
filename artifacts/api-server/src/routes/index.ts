@@ -5,6 +5,7 @@ import echoesRouter from "./echoes";
 import pushTokensRouter from "./pushTokens";
 import usersRouter from "./users";
 import catalogRouter from "./catalog";
+import adminRouter from "./admin";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(echoesRouter);
 router.use(pushTokensRouter);
 router.use(usersRouter);
 router.use(catalogRouter);
+router.use(adminRouter);
 
 export default router;
