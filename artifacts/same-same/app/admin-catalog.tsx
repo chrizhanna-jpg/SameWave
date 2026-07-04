@@ -35,6 +35,30 @@ const ADMIN_TOKEN_KEY = "samesame_admin_token";
 type Submission = { word: string; kind: CatalogKind; count: number; sample: string };
 type ApprovedEntry = ServerCatalogEntry & { id: string };
 
+type PlatformStats = {
+  users: {
+    total: number;
+    real: number;
+    signedIn: number;
+    pro: number;
+    stockSynthetic: number;
+    atlasDemoSynthetic: number;
+  };
+  photos: {
+    active: number;
+    userUploadsActive: number;
+    stockActive: number;
+    atlasDemoActive: number;
+    userUploadsAll: number;
+    stockAll: number;
+  };
+  clientBundle: {
+    sampleDeckPhotos: number;
+    note: string;
+  };
+  fetchedAt: string;
+};
+
 type RowDraft = { emoji: string; music: string; title: string };
 
 function apiBase(): string {
@@ -65,6 +89,8 @@ export default function AdminCatalogScreen() {
   const [error, setError] = React.useState<string | null>(null);
   const [drafts, setDrafts] = React.useState<Record<string, RowDraft>>({});
   const [busy, setBusy] = React.useState<Record<string, boolean>>({});
+  const [stats, setStats] = React.useState<PlatformStats | null>(null);
+  const [statsLoading, setStatsLoading] = React.useState(false);
 
   React.useEffect(() => {
     void (async () => {
@@ -94,10 +120,30 @@ export default function AdminCatalogScreen() {
     [],
   );
 
+  const loadStats = React.useCallback(async (tok: string) => {
+    setStatsLoading(true);
+    try {
+      const res = await fetch(`${apiBase()}/api/admin/stats`, {
+        headers: await adminHeaders(tok),
+      });
+      if (!res.ok) {
+        setStats(null);
+        return;
+      }
+      const json = (await res.json()) as PlatformStats;
+      setStats(json);
+    } catch {
+      setStats(null);
+    } finally {
+      setStatsLoading(false);
+    }
+  }, []);
+
   const load = React.useCallback(
     async (which: CatalogKind, tok: string) => {
       setLoading(true);
       setError(null);
+      void loadStats(tok);
       try {
         const headers = await adminHeaders(tok);
         const [subsRes, approvedRes] = await Promise.all([
@@ -130,7 +176,7 @@ export default function AdminCatalogScreen() {
         setLoading(false);
       }
     },
-    [],
+    [loadStats],
   );
 
   React.useEffect(() => {
@@ -255,7 +301,7 @@ export default function AdminCatalogScreen() {
           <TouchableOpacity onPress={() => router.back()} hitSlop={12}>
             <Text style={[styles.back, { color: colors.primary }]}>‹ Back</Text>
           </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.foreground }]}>Catalog admin</Text>
+          <Text style={[styles.title, { color: colors.foreground }]}>Platform admin</Text>
           <View style={{ width: 48 }} />
         </View>
         <View style={styles.gate}>
@@ -263,8 +309,9 @@ export default function AdminCatalogScreen() {
             Enter admin token
           </Text>
           <Text style={[styles.gateHint, { color: colors.mutedForeground }]}>
-            This screen is owner-only. Paste the BACKFILL_ADMIN_TOKEN value. It
-            is stored only on this device and sent as X-Admin-Token.
+            Owner-only tools. Paste BACKFILL_ADMIN_TOKEN from Render (stored on
+            this device as X-Admin-Token). Open via My Path → tap the copyright
+            label 7 times quickly.
           </Text>
           <TextInput
             value={tokenInput}
@@ -307,7 +354,7 @@ export default function AdminCatalogScreen() {
         <TouchableOpacity onPress={() => router.back()} hitSlop={12}>
           <Text style={[styles.back, { color: colors.primary }]}>‹ Back</Text>
         </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.foreground }]}>Catalog admin</Text>
+        <Text style={[styles.title, { color: colors.foreground }]}>Platform admin</Text>
         <TouchableOpacity onPress={clearToken} hitSlop={12}>
           <Text style={[styles.back, { color: colors.mutedForeground }]}>Lock</Text>
         </TouchableOpacity>
@@ -346,6 +393,63 @@ export default function AdminCatalogScreen() {
         contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 48, gap: 12 }}
         keyboardShouldPersistTaps="handled"
       >
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.cardHead}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+              Platform stats
+            </Text>
+            <TouchableOpacity
+              onPress={() => token && void loadStats(token)}
+              hitSlop={8}
+              disabled={statsLoading}
+            >
+              <Text style={[styles.back, { color: colors.primary }]}>
+                {statsLoading ? "…" : "Refresh"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          {stats ? (
+            <>
+              <Text style={[styles.statGroup, { color: colors.mutedForeground }]}>Users</Text>
+              <Text style={[styles.statLine, { color: colors.foreground }]}>
+                Real users: {stats.users.real.toLocaleString()}
+              </Text>
+              <Text style={[styles.statLine, { color: colors.foreground }]}>
+                Signed in (Clerk): {stats.users.signedIn.toLocaleString()}
+              </Text>
+              <Text style={[styles.statLine, { color: colors.foreground }]}>
+                Pro: {stats.users.pro.toLocaleString()}
+              </Text>
+              <Text style={[styles.statSub, { color: colors.mutedForeground }]}>
+                Synthetic stock/demo users:{" "}
+                {(stats.users.stockSynthetic + stats.users.atlasDemoSynthetic).toLocaleString()}
+              </Text>
+
+              <Text style={[styles.statGroup, { color: colors.mutedForeground }]}>Photos (active)</Text>
+              <Text style={[styles.statLine, { color: colors.foreground }]}>
+                User uploads: {stats.photos.userUploadsActive.toLocaleString()}
+              </Text>
+              <Text style={[styles.statLine, { color: colors.foreground }]}>
+                Stock pool: {stats.photos.stockActive.toLocaleString()}
+              </Text>
+              <Text style={[styles.statLine, { color: colors.foreground }]}>
+                Atlas demo seed: {stats.photos.atlasDemoActive.toLocaleString()}
+              </Text>
+              <Text style={[styles.statSub, { color: colors.mutedForeground }]}>
+                App sample deck (not in DB):{" "}
+                {stats.clientBundle.sampleDeckPhotos.toLocaleString()} Unsplash photos
+              </Text>
+              <Text style={[styles.statSub, { color: colors.mutedForeground }]}>
+                Updated {new Date(stats.fetchedAt).toLocaleString()}
+              </Text>
+            </>
+          ) : (
+            <Text style={[styles.muted, { color: colors.mutedForeground }]}>
+              {statsLoading ? "Loading stats…" : "Stats unavailable — tap Refresh."}
+            </Text>
+          )}
+        </View>
+
         {loading && <ActivityIndicator color={colors.primary} />}
 
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
@@ -521,6 +625,15 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   error: { paddingHorizontal: 16, paddingVertical: 6, fontSize: 13 },
   sectionTitle: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  statGroup: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    marginTop: 4,
+  },
+  statLine: { fontSize: 14, fontFamily: "Inter_500Medium" },
+  statSub: { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 17 },
   muted: { fontSize: 13, fontFamily: "Inter_400Regular" },
   card: { borderWidth: 1, borderRadius: 14, padding: 14, gap: 10 },
   cardHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },

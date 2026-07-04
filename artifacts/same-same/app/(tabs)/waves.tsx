@@ -19,6 +19,7 @@ import { Icon } from "@/components/Icon";
 import { OceanShimmer } from "@/components/OceanShimmer";
 import { SyncRefreshButton } from "@/components/SyncRefreshButton";
 import { RemotePhotoImage } from "@/components/RemotePhotoImage";
+import { FEED_THUMB_WIDTH } from "@/utils/photoDisplayUri";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import type { EchoCard, Match, MyPhoto } from "@/context/AppContext";
@@ -32,8 +33,13 @@ import {
   resolveEchoPhotoUri,
   resolveMatchMyPhotoUri,
   resolveMatchPhotoDisplay,
+  photoStreamFallbackUri,
 } from "@/utils/photoDisplayUri";
 import { markTabVisited } from "@/utils/tabVisits";
+import {
+  runAfterTabFocus,
+  shouldRunThrottledFocusWork,
+} from "@/utils/deferTabFocus";
 import { scrollPaddingAboveTabBar, tabBarTotalHeight } from "@/utils/tabBarSafeArea";
 import { timeAgo } from "@/utils/timeAgo";
 import { photoKey } from "@/utils/photoKey";
@@ -226,12 +232,18 @@ export default function WavesScreen() {
   useFocusEffect(
     useCallback(() => {
       markTabVisited("waves");
-      reconcileMatchPhotos();
-      void refreshEchoes();
-      void syncCloudData();
-      void loadWorldWaves();
+      const deferred = runAfterTabFocus(() => {
+        if (!shouldRunThrottledFocusWork("waves-sync", 30_000)) return;
+        reconcileMatchPhotos();
+        void refreshEchoes();
+        void syncCloudData();
+        void loadWorldWaves();
+      });
       const t = setTimeout(() => markAllEchoesSeen(), 900);
-      return () => clearTimeout(t);
+      return () => {
+        deferred.cancel();
+        clearTimeout(t);
+      };
     }, [
       refreshEchoes,
       syncCloudData,
@@ -277,7 +289,7 @@ export default function WavesScreen() {
           </Text>
         </View>
         <SyncRefreshButton
-          syncing={refreshing || cloudSyncInProgress}
+          syncing={refreshing || cloudSyncInProgress || worldLoading}
           onPress={() => void onRefresh()}
           accessibilityLabel="Refresh Ripples and Waves"
         />
@@ -396,11 +408,6 @@ export default function WavesScreen() {
               title={WAVES_TAB.wavesAroundTitle}
               subtitle={WAVES_TAB.wavesAroundSub}
             />
-            {worldLoading && worldWaves.length === 0 ? (
-              <Text style={[styles.loadingHint, { color: colors.mutedForeground }]}>
-                Loading Waves…
-              </Text>
-            ) : null}
             {!worldLoading && worldWaves.length === 0 ? (
               <SectionEmpty
                 icon="wave-glyph"
@@ -772,8 +779,11 @@ function WorldWaveCard({ wave }: { wave: RecentWaveFeedItem }) {
         <View style={styles.photoCol}>
           <RemotePhotoImage
             uri={wave.a.uri}
+            fallbackUri={photoStreamFallbackUri(wave.a.id)}
             style={styles.photo}
             recyclingKey={wave.a.id}
+            displayWidth={FEED_THUMB_WIDTH}
+            priority="thumbnail"
             transitionMs={0}
           />
           <Text style={[styles.photoLabel, { color: colors.mutedForeground }]}>
@@ -784,8 +794,11 @@ function WorldWaveCard({ wave }: { wave: RecentWaveFeedItem }) {
         <View style={styles.photoCol}>
           <RemotePhotoImage
             uri={wave.b.uri}
+            fallbackUri={photoStreamFallbackUri(wave.b.id)}
             style={styles.photo}
             recyclingKey={wave.b.id}
+            displayWidth={FEED_THUMB_WIDTH}
+            priority="thumbnail"
             transitionMs={0}
           />
           <Text style={[styles.photoLabel, { color: colors.mutedForeground }]}>
@@ -863,8 +876,11 @@ function RippleSentCard({
           {myUri ? (
             <RemotePhotoImage
               uri={myUri}
+              fallbackUri={photoStreamFallbackUri(match.myPhotoId)}
               style={styles.photo}
               recyclingKey={match.myPhotoId || myUri}
+              displayWidth={FEED_THUMB_WIDTH}
+              priority="thumbnail"
               transitionMs={0}
             />
           ) : (
@@ -887,8 +903,11 @@ function RippleSentCard({
           {theirUri ? (
             <RemotePhotoImage
               uri={theirUri}
+              fallbackUri={photoStreamFallbackUri(match.theirPhotoId)}
               style={styles.photo}
               recyclingKey={match.theirPhotoId || theirUri}
+              displayWidth={FEED_THUMB_WIDTH}
+              priority="thumbnail"
               transitionMs={0}
             />
           ) : (
@@ -932,8 +951,11 @@ function PhotoPair({
       <View style={styles.photoCol}>
         <RemotePhotoImage
           uri={mineUri}
+          fallbackUri={photoStreamFallbackUri(mine.id)}
           style={styles.photo}
           recyclingKey={mine.id || mineUri}
+          displayWidth={FEED_THUMB_WIDTH}
+          priority="thumbnail"
           transitionMs={0}
         />
         <Text style={[styles.photoLabel, { color: colors.mutedForeground }]}>
@@ -944,8 +966,11 @@ function PhotoPair({
       <View style={styles.photoCol}>
         <RemotePhotoImage
           uri={theirsUri}
+          fallbackUri={photoStreamFallbackUri(theirs.id)}
           style={styles.photo}
           recyclingKey={theirs.id || theirsUri}
+          displayWidth={FEED_THUMB_WIDTH}
+          priority="thumbnail"
           transitionMs={0}
         />
         <Text style={[styles.photoLabel, { color: colors.mutedForeground }]}>
@@ -1072,12 +1097,6 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     marginTop: 2,
     lineHeight: 16,
-  },
-  loadingHint: {
-    fontSize: 13,
-    fontFamily: "Inter_400Regular",
-    textAlign: "center",
-    paddingVertical: 12,
   },
   card: {
     padding: 14,

@@ -1,12 +1,20 @@
 import type { Match, MyPhoto } from "@/context/AppContext";
-import { getPublicApiOrigin } from "@/utils/publicEnv";
+import { getPublicApiOrigin, isLocalDevApiOrigin } from "@/utils/publicEnv";
 import { resolveMatchPhotoUris, pickDurablePhotoUri } from "@/utils/matchPhotoSnapshot";
 import { photoKey } from "@/utils/photoKey";
 import { lookupVoterPhotoForMatchSync } from "@/utils/voterPhotoByTarget";
 import { matchCountryFieldsFromCapture } from "@/utils/photoCountry";
+import {
+  DISPLAY_PHOTO_MAX_WIDTH,
+  FEED_THUMB_WIDTH,
+  HERO_DISPLAY_WIDTH,
+} from "@/constants/imageLoading";
 
-/** Default max width for in-app photo streams (Ripple deck, explore, echoes). */
-export const DISPLAY_PHOTO_MAX_WIDTH = 960;
+export {
+  DISPLAY_PHOTO_MAX_WIDTH,
+  FEED_THUMB_WIDTH,
+  HERO_DISPLAY_WIDTH,
+} from "@/constants/imageLoading";
 
 /** Authenticated stream URL for a server photo row. */
 export function serverPhotoImageUrl(
@@ -42,13 +50,122 @@ export function withDisplayPhotoWidth(
   return trimmed.includes("?") ? `${trimmed}&w=${w}` : `${trimmed}?w=${w}`;
 }
 
+/** Extract backend photo id from any `/api/photos/:id/image` reference. */
+export function extractPhotoStreamId(uri: string): string | null {
+  const trimmed = uri.trim();
+  if (!trimmed) return null;
+  const m = trimmed.match(/\/api\/photos\/([^/?#]+)\/image(?:[/?#]|$)/);
+  if (!m?.[1]) return null;
+  try {
+    return decodeURIComponent(m[1]).trim() || null;
+  } catch {
+    return m[1].trim() || null;
+  }
+}
+
+/**
+ * Re-pin authed stream URLs to the current API origin. Persisted rows often
+ * keep stale LAN dev hosts (`http://192.168.x.x:8787/...`) that fail on
+ * device while Unsplash stock URLs still load.
+ */
+export function shouldCanonicalizePhotoStreamUri(uri: string): boolean {
+  const trimmed = uri.trim();
+  if (!trimmed || !extractPhotoStreamId(trimmed)) return false;
+  if (trimmed.startsWith("/api/photos/")) return true;
+  try {
+    const parsed = new URL(
+      trimmed.includes("://") ? trimmed : `https://placeholder${trimmed}`,
+    );
+    return isLocalDevApiOrigin(parsed.origin);
+  } catch {
+    return false;
+  }
+}
+
+export function canonicalizePhotoStreamUri(uri: string): string {
+  const trimmed = uri.trim();
+  if (!trimmed) return trimmed;
+  if (!shouldCanonicalizePhotoStreamUri(trimmed)) return trimmed;
+  const id = extractPhotoStreamId(trimmed);
+  if (!id) return trimmed;
+  try {
+    const parsed = new URL(
+      trimmed.includes("://") ? trimmed : `https://placeholder${trimmed}`,
+    );
+    const wRaw = parsed.searchParams.get("w");
+    const w = wRaw ? parseInt(wRaw, 10) : DISPLAY_PHOTO_MAX_WIDTH;
+    return serverPhotoImageUrl(
+      id,
+      Number.isFinite(w) && w > 0 ? w : DISPLAY_PHOTO_MAX_WIDTH,
+    );
+  } catch {
+    return serverPhotoImageUrl(id);
+  }
+}
+
+/** Authenticated fallback when a local `file://` capture is gone. */
+export function photoStreamFallbackUri(
+  photoId: string | undefined | null,
+): string | undefined {
+  const id = photoId?.trim();
+  return id ? serverPhotoImageUrl(id) : undefined;
+}
+
+const RECENT_PHOTO_THUMB_WIDTH = 320;
+
+/** Smaller stream for recent-photo picker thumbnails. */
+export function resolveMyPhotoThumbnailUri(
+  photo: Pick<MyPhoto, "uri" | "backendId" | "uploadState">,
+): string {
+  const local = photo.uri?.trim() ?? "";
+  const bid =
+    photo.backendId?.trim() || extractPhotoStreamId(local) || undefined;
+  // Once the server has an id, never keep showing a dead local capture.
+  const stillUploading =
+    !bid &&
+    (photo.uploadState === "pending" ||
+      (photo.uploadState !== "ok" && !photo.backendId?.trim()));
+
+  if (
+    stillUploading &&
+    (local.startsWith("file:") || local.startsWith("content:"))
+  ) {
+    return local;
+  }
+  if (bid) return serverPhotoImageUrl(bid, RECENT_PHOTO_THUMB_WIDTH);
+  if (
+    local.startsWith("http://") ||
+    local.startsWith("https://") ||
+    local.startsWith("/api/photos/")
+  ) {
+    return canonicalizePhotoStreamUri(local);
+  }
+  return local;
+}
+
+/** Stable unique key for recent-photo rows (duplicate backendIds can exist). */
+export function myPhotoRowKey(
+  photo: Pick<MyPhoto, "backendId" | "uploadedAt" | "uri">,
+  index: number,
+): string {
+  const bid = photo.backendId?.trim();
+  if (bid) return `bid:${bid}:${index}`;
+  const at = photo.uploadedAt?.trim();
+  if (at) return `at:${at}:${index}`;
+  const uri = photo.uri?.trim();
+  if (uri) return `uri:${uri}:${index}`;
+  return `idx:${index}`;
+}
+
 /** Echo / wave card side — prefer inline uri, fall back to authenticated stream. */
 export function resolveEchoPhotoUri(side: {
   id?: string;
   uri?: string | null;
 }): string {
   const uri = side.uri?.trim() ?? "";
-  if (uri.length > 0 && !uri.startsWith("file:")) return uri;
+  if (uri.length > 0 && !uri.startsWith("file:") && !uri.startsWith("content:")) {
+    return canonicalizePhotoStreamUri(uri);
+  }
   const id = side.id?.trim();
   if (id) return serverPhotoImageUrl(id);
   return uri;
@@ -297,19 +414,68 @@ export type ResolveMyPhotoDisplayOptions = {
  * `file://` captures can be purged after the app sits in background.
  */
 export function resolveMyPhotoDisplayUri(
-  photo: Pick<MyPhoto, "uri" | "backendId">,
+  photo: Pick<MyPhoto, "uri" | "backendId" | "uploadState">,
   options?: ResolveMyPhotoDisplayOptions,
 ): string {
   const local = photo.uri?.trim() ?? "";
+  const bid =
+    photo.backendId?.trim() || extractPhotoStreamId(local) || undefined;
+  // Keep the in-app capture only while upload is still running. Once we
+  // have a backend id the OS may purge file:// when leaving Ripple — use
+  // the authed server stream so the photo survives tab switches.
+  const stillUploading =
+    !bid &&
+    (photo.uploadState === "pending" ||
+      (photo.uploadState !== "ok" && !photo.backendId?.trim()));
+
   if (
     options?.preferLocalCapture &&
+    stillUploading &&
     (local.startsWith("file:") || local.startsWith("content:"))
   ) {
     return local;
   }
-  const bid = photo.backendId?.trim();
   if (bid) return serverPhotoImageUrl(bid);
+  if (
+    local.startsWith("http://") ||
+    local.startsWith("https://") ||
+    local.startsWith("/api/photos/")
+  ) {
+    return canonicalizePhotoStreamUri(local);
+  }
   return local;
+}
+
+/** Backfill backendId/uploadState and HTTPS uri on persisted myPhotos rows. */
+export function repairMyPhotos(photos: MyPhoto[], matches: Match[]): MyPhoto[] {
+  return photos.map((raw) => {
+    let photo: MyPhoto = { ...raw };
+    let bid =
+      photo.backendId?.trim() ||
+      extractPhotoStreamId(photo.uri?.trim() ?? "") ||
+      undefined;
+
+    if (!bid) {
+      for (const m of matches) {
+        const mid = m.myPhotoId?.trim();
+        if (!mid) continue;
+        if (uploadTimesEqual(m.myPhotoUploadedAt, photo.uploadedAt)) {
+          bid = mid;
+          break;
+        }
+      }
+    }
+
+    if (bid) {
+      const patch: Partial<MyPhoto> = { backendId: bid };
+      if (photo.uploadState !== "failed") {
+        patch.uploadState = "ok";
+      }
+      photo = { ...photo, ...patch };
+    }
+
+    return hydrateMyPhotoUri(photo);
+  });
 }
 
 /** Backfill persisted rows that stripped `file://` but kept backendId. */

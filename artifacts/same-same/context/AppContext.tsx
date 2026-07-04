@@ -17,6 +17,7 @@ import {
   respondEcho as respondEchoApi,
   unvotePhoto,
   deleteMyPhoto,
+  warmAuthedImageHeaders,
   type ServerEcho,
 } from "@/utils/api";
 import { requestAtlasRefresh } from "@/utils/atlasHub";
@@ -27,9 +28,16 @@ import {
   enrichMatchMyPhotoFields,
   enrichMatchesForStorage,
   hydrateMyPhotoUri,
+  repairMyPhotos,
   resolveMyPhotoDisplayUri,
   serverPhotoImageUrl,
 } from "@/utils/photoDisplayUri";
+import {
+  createMyPhotoLocalId,
+  findMyPhotoRow,
+  mergeMyPhotos,
+  myPhotosFromMatchHistory,
+} from "@/utils/myPhotoPersistence";
 import { matchCountryFieldsFromCapture, photoCountryDisplay } from "@/utils/photoCountry";
 import { getTimeTierForMatch } from "@/utils/celebrations";
 import {
@@ -91,6 +99,11 @@ export interface MyPhoto {
    * for AI photos (never uploaded) or while an upload is still in flight.
    */
   backendId?: string;
+  /**
+   * Stable client row id — used to patch upload acks when `uri` is
+   * rewritten or stripped from persisted storage before the server responds.
+   */
+  localId?: string;
   /**
    * Tracks the upload to the server so the match screen can distinguish
    * "still uploading" from "upload failed" — before this field, both
@@ -612,14 +625,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     hasHydratedRef.current = hasHydrated;
   }, [hasHydrated]);
 
-  useEffect(() => {
-    loadState().finally(() => {
-      hasHydratedRef.current = true;
-      setHasHydrated(true);
-    });
-  }, []);
-
-  // Server-side mirror of the seen ledger. We learn IDs on launch (the
+  // Server-side mirror of the seen ledger.
   // server tracks per-user seen photos), but local dedup is keyed by
   // photoKey(uri) — so we hold onto the IDs and translate to URIs as
   // candidate fetches come back. See `primeSeenFromCandidates` below.
@@ -680,6 +686,67 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [state.myPhotos]);
 
   const persistChainRef = React.useRef(Promise.resolve());
+
+  const serializeMyPhotosForStorage = useCallback((photos: MyPhoto[]) => {
+    return photos.map((p) => ({
+      ...p,
+      uri: shouldPersistRemoteUri(p.uri) ? p.uri.trim() : "",
+      customAudioUrl: shouldPersistRemoteUri(p.customAudioUrl)
+        ? p.customAudioUrl!.trim()
+        : undefined,
+    }));
+  }, []);
+
+  /** Write myPhotos even before full hydration — merge-read avoids wiping matches. */
+  const persistMyPhotosEarly = useCallback(
+    async (photos: MyPhoto[]) => {
+      try {
+        const stored = await AsyncStorage.getItem("samesame_state");
+        const base = stored ? (JSON.parse(stored) as Record<string, unknown>) : {};
+        const existingRaw = Array.isArray(base.myPhotos) ? base.myPhotos : [];
+        const existing: MyPhoto[] = existingRaw.map((p: string | Partial<MyPhoto>) => {
+          if (typeof p === "string") {
+            return {
+              uri: p,
+              uploadedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+              theme: "joy",
+            };
+          }
+          return {
+            uri: p.uri ?? "",
+            uploadedAt: p.uploadedAt ?? new Date().toISOString(),
+            theme: p.theme ?? "joy",
+            tags: p.tags ?? [],
+            subjects: Array.isArray(p.subjects) ? p.subjects : [],
+            isAI: p.isAI ?? false,
+            backendId: p.backendId,
+            localId: p.localId,
+            uploadState: p.uploadState,
+            musicGenre: p.musicGenre,
+            customAudioUrl: p.customAudioUrl,
+            captureCountryCode: p.captureCountryCode,
+            declaredCountryCode: p.declaredCountryCode,
+            capturedAt: p.capturedAt,
+            suggestedTheme: p.suggestedTheme,
+          };
+        });
+        const merged = mergeMyPhotos(existing, photos);
+        await AsyncStorage.setItem(
+          "samesame_state",
+          JSON.stringify({
+            ...base,
+            myPhotos: serializeMyPhotosForStorage(merged),
+          }),
+        );
+      } catch (err) {
+        if (__DEV__) {
+          console.warn("[SameWave] persistMyPhotosEarly failed", err);
+        }
+      }
+    },
+    [serializeMyPhotosForStorage],
+  );
+
   const persistState = useCallback(async (newState: AppState) => {
     persistChainRef.current = persistChainRef.current.then(async () => {
       try {
@@ -689,38 +756,56 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           matches: enrichMatchesForStorage(newState.matches, newState.myPhotos).map(
             stripHeavyUrisFromMatch,
           ),
-          myPhotos: newState.myPhotos.map((p) => ({
-            ...p,
-            uri: shouldPersistRemoteUri(p.uri) ? p.uri.trim() : "",
-            customAudioUrl: shouldPersistRemoteUri(p.customAudioUrl)
-              ? p.customAudioUrl!.trim()
-              : undefined,
-          })),
+          myPhotos: serializeMyPhotosForStorage(newState.myPhotos),
         };
         await AsyncStorage.setItem("samesame_state", JSON.stringify(forStorage));
         await saveMatchesCache(enrichMatchesForStorage(newState.matches, newState.myPhotos));
-      } catch {}
+      } catch (err) {
+        if (__DEV__) {
+          console.warn("[SameWave] persistState failed", err);
+        }
+      }
     });
     await persistChainRef.current;
-  }, []);
+  }, [serializeMyPhotosForStorage]);
 
   const saveState = useCallback(
     (newState: AppState) => {
-      // Never persist before hydration — pre-load effects (e.g. seen-photo
-      // IDs) would otherwise write the empty initial slice and wipe matches.
-      if (!hasHydratedRef.current) return;
+      if (!hasHydratedRef.current) {
+        void persistMyPhotosEarly(newState.myPhotos);
+        return;
+      }
       void persistState(newState);
     },
-    [persistState],
+    [persistMyPhotosEarly, persistState],
   );
 
   const reconcileMatchPhotos = useCallback(() => {
     if (!hasHydratedRef.current) return;
     setState((prev) => {
-      let changed = false;
+      const repairedPhotos = repairMyPhotos(
+        mergeMyPhotos(prev.myPhotos, myPhotosFromMatchHistory(prev.matches)),
+        prev.matches,
+      );
+      let photosChanged = repairedPhotos.length !== prev.myPhotos.length;
+      if (!photosChanged) {
+        for (let i = 0; i < repairedPhotos.length; i++) {
+          const a = repairedPhotos[i];
+          const b = prev.myPhotos[i];
+          if (
+            a.backendId !== b.backendId ||
+            a.uri !== b.uri ||
+            a.uploadState !== b.uploadState
+          ) {
+            photosChanged = true;
+            break;
+          }
+        }
+      }
+      let changed = photosChanged;
       const matches = prev.matches.map((m) => {
         const withCountry = { ...m, ...matchCountryFieldsFromCapture(m) };
-        const next = enrichMatchMyPhotoFields(withCountry, prev.myPhotos);
+        const next = enrichMatchMyPhotoFields(withCountry, repairedPhotos);
         if (
           next.myPhoto !== m.myPhoto ||
           next.myPhotoId !== m.myPhotoId ||
@@ -735,7 +820,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return m;
       });
       if (!changed) return prev;
-      const newState = { ...prev, matches };
+      const newState = { ...prev, myPhotos: repairedPhotos, matches };
       saveState(newState);
       return newState;
     });
@@ -774,12 +859,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ...stateRef.current,
           appOpenCount: 1,
           matches: mergeMatchesById([], cachedMatches),
+          myPhotos: mergeMyPhotos(stateRef.current.myPhotos),
         };
         await persistState(fresh);
         setState((prev) => ({
           ...prev,
           appOpenCount: 1,
           matches: fresh.matches,
+          myPhotos: mergeMyPhotos(prev.myPhotos),
           pendingEchoes: cachedPending,
           mutualEchoes: cachedMutual,
         }));
@@ -827,6 +914,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                 typeof p.backendId === "string" && p.backendId.length > 0
                   ? p.backendId
                   : undefined,
+              localId:
+                typeof p.localId === "string" && p.localId.length > 0
+                  ? p.localId
+                  : undefined,
               // Faithfully restore uploadState: a persisted backendId
               // means the upload succeeded in a prior session, so the
               // match screen should treat it as "ok" (not "still
@@ -847,12 +938,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             };
           }
         );
-        const hydratedPhotos = migratedPhotos.map(hydrateMyPhotoUri);
+        const prelimPhotos = migratedPhotos.map(hydrateMyPhotoUri);
         const enrichedMatches = matches.map((m) =>
           enrichMatchMyPhotoFields(
             { ...m, ...matchCountryFieldsFromCapture(m) },
-            hydratedPhotos,
+            prelimPhotos,
           ),
+        );
+        const hydratedPhotos = repairMyPhotos(
+          mergeMyPhotos(prelimPhotos, myPhotosFromMatchHistory(enrichedMatches)),
+          enrichedMatches,
         );
         // Expire any pending requests whose 48h window has passed.
         const now = Date.now();
@@ -912,7 +1007,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           appOpenCount: nextOpenCount,
           onboardingComplete,
           matches: enrichedMatches,
-          myPhotos: hydratedPhotos,
+          myPhotos: mergeMyPhotos(hydratedPhotos, prev.myPhotos),
           connectRequests: migratedRequests,
           pendingEchoes,
           mutualEchoes,
@@ -937,6 +1032,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     } catch {}
   };
+
+  useEffect(() => {
+    loadState().finally(() => {
+      hasHydratedRef.current = true;
+      setHasHydrated(true);
+      void persistState(stateRef.current);
+    });
+  }, [persistState]);
 
   // Pure helper: compute country list + badges given the set of all
   // CONFIRMED ("same") matches. Used by addMatch / removeMatch /
@@ -1285,6 +1388,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   ) => {
     const photo: MyPhoto = {
       uri,
+      localId: createMyPhotoLocalId(),
       uploadedAt: new Date().toISOString(),
       capturedAt,
       theme,
@@ -1326,6 +1430,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const setMyPhotoBackendId = useCallback((uri: string, ack: MyPhotoUploadAck) => {
     setState((prev) => {
+      const target = findMyPhotoRow(prev.myPhotos, { uri });
+      if (!target) return prev;
       let changed = false;
       const tagsEqual = (a: string[] | undefined, b: string[] | undefined) => {
         const aa = a ?? [];
@@ -1334,7 +1440,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return aa.every((t, i) => t === bb[i]);
       };
       const newPhotos = prev.myPhotos.map((p) => {
-        if (p.uri !== uri) return p;
+        const sameRow =
+          (target.localId && p.localId === target.localId) ||
+          p.uploadedAt === target.uploadedAt ||
+          p.uri === target.uri;
+        if (!sameRow) return p;
         const nextSubjects =
           ack.subjects && ack.subjects.length > 0
             ? ack.subjects
@@ -1438,9 +1548,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setMyPhotoUploadState = useCallback(
     (uri: string, uploadState: NonNullable<MyPhoto["uploadState"]>) => {
       setState((prev) => {
+        const target = findMyPhotoRow(prev.myPhotos, { uri });
+        if (!target) return prev;
         let changed = false;
         const newPhotos = prev.myPhotos.map((p) => {
-          if (p.uri !== uri) return p;
+          const sameRow =
+            (target.localId && p.localId === target.localId) ||
+            p.uploadedAt === target.uploadedAt ||
+            p.uri === target.uri;
+          if (!sameRow) return p;
           if (p.uploadState === uploadState) return p;
           // Don't downgrade from a terminal "ok" — once the server has
           // ack'd the photo, a subsequent stale "failed" callback (e.g.
@@ -1503,14 +1619,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const removeMyPhoto = useCallback(async (uri: string): Promise<boolean> => {
-    const photo = stateRef.current.myPhotos.find((p) => p.uri === uri);
+    const photo = findMyPhotoRow(stateRef.current.myPhotos, { uri });
     if (!photo) return false;
     if (photo.backendId) {
       const ok = await deleteMyPhoto(photo.backendId);
       if (!ok) return false;
     }
     setState((prev) => {
-      const newPhotos = prev.myPhotos.filter((p) => p.uri !== uri);
+      const newPhotos = prev.myPhotos.filter(
+        (p) =>
+          p.uri !== photo.uri &&
+          (!photo.localId || p.localId !== photo.localId) &&
+          p.uploadedAt !== photo.uploadedAt,
+      );
       if (newPhotos.length === prev.myPhotos.length) return prev;
       AI_PHOTO_URIS.delete(uri);
       const newState = { ...prev, myPhotos: newPhotos };
@@ -1837,6 +1958,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const matches = merged.map((m) =>
           enrichMatchMyPhotoFields(m, prev.myPhotos),
         );
+        const repairedPhotos = repairMyPhotos(
+          mergeMyPhotos(prev.myPhotos, myPhotosFromMatchHistory(matches)),
+          matches,
+        );
         const confirmed = matches.filter((m) => m.verdict === "same");
         const { matchedCountries, badges } = recomputeFromConfirmed(
           confirmed,
@@ -1845,6 +1970,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const newState: AppState = {
           ...prev,
           matches,
+          myPhotos: repairedPhotos,
           matchedCountries,
           badges,
           totalMatches: confirmed.length,
@@ -1886,6 +2012,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Background cloud sync after local cache is ready — never blocks the UI.
   React.useEffect(() => {
     if (!hasHydrated || !clerkLoaded || !isSignedIn) return;
+    warmAuthedImageHeaders();
     void syncCloudData();
     const id = setInterval(() => {
       void syncCloudData();

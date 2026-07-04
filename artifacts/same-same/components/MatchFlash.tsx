@@ -12,6 +12,7 @@ import {
 import * as Haptics from "expo-haptics";
 import { CelebrationMatchChips } from "@/components/CelebrationMatchChips";
 import { RemotePhotoImage } from "@/components/RemotePhotoImage";
+import { HERO_DISPLAY_WIDTH } from "@/utils/photoDisplayUri";
 import {
   CelebrationSwipeDismissHint,
   CelebrationSwipeHandle,
@@ -300,6 +301,8 @@ export function MatchFlash({
                 resizeMode="cover"
                 transitionMs={0}
                 recyclingKey={`flash-my:${myPhotoFallbackUri ?? myPhotoUri}`}
+                displayWidth={HERO_DISPLAY_WIDTH}
+                priority="hero"
               />
             ) : (
               <View style={[styles.thumb, styles.thumbFallback]}>
@@ -331,6 +334,8 @@ export function MatchFlash({
                 resizeMode="cover"
                 transitionMs={0}
                 recyclingKey={`flash-their:${theirPhotoUri}`}
+                displayWidth={HERO_DISPLAY_WIDTH}
+                priority="hero"
               />
             ) : (
               <View style={[styles.thumb, styles.thumbFallback]}>

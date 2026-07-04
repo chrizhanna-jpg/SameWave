@@ -31,7 +31,8 @@ import {
   SUGGESTED_TAGS_BY_THEME,
   TAG_LIBRARY,
 } from "@/data/samplePhotos";
-import { analyzePhoto, reactivateMyPhoto, uploadPhoto } from "@/utils/api";
+import { analyzePhoto, reactivateMyPhoto, uploadPhoto, warmAuthedImageHeaders } from "@/utils/api";
+import { prepareUploadImages } from "@/utils/uploadImageProcessing";
 import { requestAtlasRefresh } from "@/utils/atlasHub";
 import {
   detectPhotoOrigin,
@@ -42,7 +43,10 @@ import { detectCountryFromPhotoExif } from "@/utils/gpsCountry";
 import { photoCountryDisplay } from "@/utils/photoCountry";
 import {
   findMyPhotoByUri,
+  myPhotoRowKey,
+  photoStreamFallbackUri,
   resolveMyPhotoDisplayUri,
+  resolveMyPhotoThumbnailUri,
 } from "@/utils/photoDisplayUri";
 import {
   MUSIC_LIBRARY,
@@ -895,6 +899,7 @@ export default function CameraScreen() {
   // or Match has since taken over playback, this no-ops.
   useFocusEffect(
     useCallback(() => {
+      warmAuthedImageHeaders();
       const cap = consumePendingCapture();
       if (cap) {
         const asset: ImagePicker.ImagePickerAsset = {
@@ -1114,19 +1119,31 @@ export default function CameraScreen() {
         captureAtRef.current,
       );
       if (captured?.base64) {
-        uploadPhoto({
-          imageBase64: captured.base64,
-          mimeType: captured.mimeType,
-          countryCode: myCountryCode,
-          captureCountryCode: captureCountryRef.current,
-          capturedAt: captureAtRef.current,
-          musicGenre: finalGenre,
-          customAudioBase64: recordedBase64 ?? undefined,
-          customAudioMime: recordedBase64 ? RECORDING_MIME : undefined,
-          theme: finalTheme,
-          tags: merged,
-          subjects: aiSubjectsRef.current.length > 0 ? aiSubjectsRef.current : undefined,
-        })
+        const rawBase64 = captured.base64;
+        const rawMime = captured.mimeType;
+        void (async () => {
+          const prepared = await prepareUploadImages({
+            base64: rawBase64,
+            uri: localUri,
+            mimeType: rawMime,
+          });
+          return uploadPhoto({
+            imageBase64: prepared?.imageBase64 ?? rawBase64,
+            mimeType: prepared?.mimeType ?? rawMime,
+            displayBase64: prepared?.displayBase64,
+            deckPreviewBase64: prepared?.deckPreviewBase64,
+            countryCode: myCountryCode,
+            captureCountryCode: captureCountryRef.current,
+            capturedAt: captureAtRef.current,
+            musicGenre: finalGenre,
+            customAudioBase64: recordedBase64 ?? undefined,
+            customAudioMime: recordedBase64 ? RECORDING_MIME : undefined,
+            theme: finalTheme,
+            tags: merged,
+            subjects:
+              aiSubjectsRef.current.length > 0 ? aiSubjectsRef.current : undefined,
+          });
+        })()
           .then((res) => {
             if (res?.id && localUri) {
               setMyPhotoBackendId(localUri, {
@@ -1697,10 +1714,11 @@ export default function CameraScreen() {
                 style={styles.prevScroll}
               >
                 {myPhotos.slice(0, 8).map((photo, i) => {
-                  const displayUri = resolveMyPhotoDisplayUri(photo);
+                  const rowKey = myPhotoRowKey(photo, i);
+                  const displayUri = resolveMyPhotoThumbnailUri(photo);
                   const loc = photoCountryDisplay(photo.captureCountryCode);
                   return (
-                  <View key={photo.backendId ?? photo.uri ?? String(i)} style={styles.prevItem}>
+                  <View key={rowKey} style={styles.prevItem}>
                     <TouchableOpacity
                       onPress={() => {
                         selectRecentPhoto(photo);
@@ -1713,10 +1731,11 @@ export default function CameraScreen() {
                       {displayUri ? (
                         <RemotePhotoImage
                           uri={displayUri}
+                          fallbackUri={photoStreamFallbackUri(photo.backendId)}
                           style={[styles.prevPhoto, { borderColor: colors.border }]}
                           resizeMode="cover"
                           transitionMs={0}
-                          recyclingKey={photo.backendId ?? displayUri}
+                          recyclingKey={`recent-${rowKey}`}
                         />
                       ) : (
                         <View

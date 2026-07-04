@@ -27,6 +27,7 @@ import Reanimated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
 import { markTabVisited } from "@/utils/tabVisits";
+import { runAfterTabFocus } from "@/utils/deferTabFocus";
 import { tabBarTotalHeight } from "@/utils/tabBarSafeArea";
 import { Icon } from "@/components/Icon";
 import { MicBadge } from "@/components/MicBadge";
@@ -55,7 +56,7 @@ import {
   type SamplePhoto,
 } from "@/data/samplePhotos";
 import { AiGeneratedBadge } from "@/components/AiGeneratedBadge";
-import { RemotePhotoImage } from "@/components/RemotePhotoImage";
+import { RemotePhotoImage, PhotoSkeleton } from "@/components/RemotePhotoImage";
 import { MatchPhotoDevOverlay } from "@/components/MatchPhotoDevOverlay";
 import { StockPhotoWatermark } from "@/components/StockPhotoWatermark";
 import {
@@ -101,7 +102,18 @@ import {
 } from "@/utils/audio";
 import { sampleMatchStats } from "@/utils/sampleStats";
 import { photoCountryDisplay } from "@/utils/photoCountry";
-import { resolveMyPhotoDisplayUri, pickVoterPhotoBackendId, serverPhotoImageUrl } from "@/utils/photoDisplayUri";
+import {
+  HERO_DISPLAY_WIDTH,
+  resolveMyPhotoDisplayUri,
+  pickVoterPhotoBackendId,
+  serverPhotoImageUrl,
+  withDisplayPhotoWidth,
+} from "@/utils/photoDisplayUri";
+import { IMAGE_LOAD_V2, PREFETCH_AHEAD_COUNT } from "@/constants/imageLoading";
+import {
+  prioritizeHeroPrefetch,
+  prefetchPhotoUris,
+} from "@/utils/imageLoadCache";
 import { stopWavefireAmbience } from "@/utils/wavefireAmbience";
 import { stopFirecircleAmbience } from "@/utils/firecircleAudio";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
@@ -111,7 +123,8 @@ import { stashMatchPhotoUris } from "@/utils/matchPhotoSnapshot";
 import { rememberVoterPhotoForTarget } from "@/utils/voterPhotoByTarget";
 import { RIPPLE_CARD_WIDTH } from "@/constants/ripplePhotoFrame";
 import { normalizeUnsplashUri } from "@/utils/unsplashUri";
-import { withDisplayPhotoWidth } from "@/utils/photoDisplayUri";
+import { flushImageTelemetryIfDue } from "@/utils/imageLoadTelemetry";
+import { getPublicApiOrigin } from "@/utils/publicEnv";
 
 const { width } = Dimensions.get("window");
 /** How far (px) a drag must travel before it counts as a vote. */
@@ -659,7 +672,7 @@ export default function SwipeScreen() {
   // server image (their real upload) instead of a stock Unsplash placeholder.
   const myPhotoFallbackUri = React.useMemo(() => {
     const bid = todaysPhoto?.backendId?.trim();
-    return bid ? serverPhotoImageUrl(bid) : undefined;
+    return bid ? serverPhotoImageUrl(bid, HERO_DISPLAY_WIDTH) : undefined;
   }, [todaysPhoto?.backendId]);
   /** Stable across local→server display URI swaps during upload sync. */
   const myPhotoSessionKey =
@@ -1372,14 +1385,21 @@ export default function SwipeScreen() {
       let skipKey = afterUri
         ? photoKey(afterUri)
         : photoKey(theirPhotoRef.current.uri);
+      const uris: string[] = [];
       for (let i = 0; i < count; i++) {
         const pick = pickDeckCandidate(skipKey, skipKey);
         if (!pick?.photo.uri) break;
-        void prefetchPhotoUri(pick.photo.uri);
+        uris.push(pick.photo.uri);
         skipKey = photoKey(pick.photo.uri);
       }
+      const ahead = IMAGE_LOAD_V2 ? PREFETCH_AHEAD_COUNT : count;
+      if (IMAGE_LOAD_V2) {
+        prefetchPhotoUris(uris, { max: ahead, priority: "prefetch" });
+      } else {
+        uris.slice(0, count).forEach((u) => void prefetchPhotoUri(u));
+      }
     },
-    [buildExcludeKeys, prefetchPhotoUri, pickDeckCandidate],
+    [prefetchPhotoUri, pickDeckCandidate],
   );
 
   const loadNextCandidate = useCallback(() => {
@@ -1454,23 +1474,42 @@ export default function SwipeScreen() {
   // and never re-downloads what's already warm — no over-fetch.
   useFocusEffect(
     useCallback(() => {
-      // Pay the audio-session setup cost (setAudioModeAsync) up front so the
-      // first vibe clip after focus doesn't carry that fixed delay inline.
-      // Opening Ripple counts as consent for vibe clips (tab tap is a gesture).
-      markUserInteracted();
-      warmAudioSession();
-      const current = theirPhotoRef.current;
-      if (current?.uri && current.id !== "placeholder") {
-        void prefetchPhotoUri(current.uri);
-        // Preload the upcoming card's vibe too so the first swipe after
-        // returning to Ripple starts its music instantly.
-        const next = pickDeckCandidate(
-          photoKey(current.uri),
-          photoKey(current.uri),
-        );
-        if (next?.photo.uri) prewarmAudioForPhoto(next.photo);
-      }
-      prefetchDeckAhead(1);
+      const deferred = runAfterTabFocus(() => {
+        // Pay the audio-session setup cost (setAudioModeAsync) up front so the
+        // first vibe clip after focus doesn't carry that fixed delay inline.
+        // Opening Ripple counts as consent for vibe clips (tab tap is a gesture).
+        markUserInteracted();
+        warmAudioSession();
+        const current = theirPhotoRef.current;
+        if (current?.uri && current.id !== "placeholder") {
+          if (IMAGE_LOAD_V2) {
+            prioritizeHeroPrefetch(
+              withDisplayPhotoWidth(
+                normalizeUnsplashUri(current.uri),
+                HERO_DISPLAY_WIDTH,
+              ),
+            );
+          } else {
+            void prefetchPhotoUri(current.uri);
+          }
+          // Preload the upcoming card's vibe too so the first swipe after
+          // returning to Ripple starts its music instantly.
+          const next = pickDeckCandidate(
+            photoKey(current.uri),
+            photoKey(current.uri),
+          );
+          if (next?.photo.uri) prewarmAudioForPhoto(next.photo);
+        }
+        prefetchDeckAhead(1);
+        const myUri = myPhotoUriRef.current;
+        if (myUri) {
+          prioritizeHeroPrefetch(
+            withDisplayPhotoWidth(normalizeUnsplashUri(myUri), HERO_DISPLAY_WIDTH),
+          );
+        }
+        void flushImageTelemetryIfDue(getPublicApiOrigin());
+      });
+      return () => deferred.cancel();
     }, [
       prefetchPhotoUri,
       prefetchDeckAhead,
@@ -2275,6 +2314,8 @@ export default function SwipeScreen() {
                 resizeMode="cover"
                 transitionMs={0}
                 recyclingKey={myPhotoRecyclingKey}
+                displayWidth={HERO_DISPLAY_WIDTH}
+                priority="hero"
               />
               {isAiPhoto(myPhotoUri) ? <AiGeneratedBadge size="sm" /> : null}
               {myPhotoDisplay.code ? (
@@ -2310,7 +2351,7 @@ export default function SwipeScreen() {
             >
               {theirPhoto.id === "placeholder" || !theirPhoto.uri ? (
                 <View style={[styles.fillPhoto, styles.candidateLoadingPane]}>
-                  <ActivityIndicator color={colors.mutedForeground} />
+                  <PhotoSkeleton />
                 </View>
               ) : (
               <RemotePhotoImage
@@ -2319,6 +2360,8 @@ export default function SwipeScreen() {
                 resizeMode="cover"
                 transitionMs={0}
                 recyclingKey={`match-their:${photoKey(theirPhoto.uri)}`}
+                displayWidth={HERO_DISPLAY_WIDTH}
+                priority="hero"
                 onResolved={(ok) => {
                   // Only flip to "ready" on a successful real-image load.
                   // A failed/placeholder result (ok === false) is ignored so

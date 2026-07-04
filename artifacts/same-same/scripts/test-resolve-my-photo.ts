@@ -3,11 +3,16 @@
  *   pnpm exec tsx scripts/test-resolve-my-photo.ts
  */
 (globalThis as { __DEV__?: boolean }).__DEV__ = true;
-process.env.EXPO_PUBLIC_DEV_API_URL = "http://192.168.1.143:8787";
+process.env.EXPO_PUBLIC_API_URL = "https://samewave.onrender.com";
+process.env.EXPO_PUBLIC_HOSTED_API_URL = "https://samewave.onrender.com";
 
 import {
+  canonicalizePhotoStreamUri,
   enrichMatchMyPhotoFields,
+  myPhotoRowKey,
+  repairMyPhotos,
   resolveMatchMyPhotoUri,
+  shouldCanonicalizePhotoStreamUri,
 } from "../utils/photoDisplayUri";
 import { mergeMatchesById } from "../utils/syncCache";
 import { setVoterPhotoMapForTests } from "../utils/voterPhotoByTarget";
@@ -140,6 +145,98 @@ const fromUriMap = enrichMatchMyPhotoFields(
 assert(
   "voter map sets myPhotoId via photoKey",
   fromUriMap.myPhotoId === "cached-by-uri" ? fromUriMap.myPhoto : "",
+  true,
+);
+
+// H8: stale LAN stream URL → current hosted API origin
+const lan = canonicalizePhotoStreamUri(
+  "http://192.168.1.143:8787/api/photos/server-photo-id/image?w=960",
+);
+assert(
+  "LAN stream canonicalized to hosted API",
+  lan.includes("samewave.onrender.com") &&
+    lan.includes("/api/photos/server-photo-id/image")
+    ? lan
+    : "",
+  true,
+);
+
+const renderUrl =
+  "https://samewave.onrender.com/api/photos/server-photo-id/image?w=960";
+assert(
+  "hosted stream URL not rewritten",
+  !shouldCanonicalizePhotoStreamUri(renderUrl) &&
+    canonicalizePhotoStreamUri(renderUrl) === renderUrl
+    ? renderUrl
+    : "",
+  true,
+);
+
+// H9: recent-photo row keys stay unique when uri is "" and backendId is shared
+const dupBid = "shared-backend-id";
+const keys = [
+  { uri: "", backendId: dupBid, uploadedAt: "2026-01-01T00:00:00.000Z" },
+  { uri: "", backendId: dupBid, uploadedAt: "2026-01-02T00:00:00.000Z" },
+  { uri: "", backendId: undefined, uploadedAt: undefined },
+  { uri: "", backendId: undefined, uploadedAt: undefined },
+].map((p, i) => myPhotoRowKey(p, i));
+const unique = new Set(keys);
+assert(
+  "myPhotoRowKey all unique",
+  unique.size === keys.length ? "ok" : "",
+  true,
+);
+
+// H10: repair backfills backendId from match history when uri was stripped
+const repaired = repairMyPhotos(
+  [
+    {
+      uri: "",
+      uploadedAt: "2026-06-19T11:00:00.000Z",
+      theme: "morning",
+      uploadState: "pending",
+    },
+  ],
+  [
+    {
+      ...baseMatch,
+      myPhotoId: "recovered-photo-id",
+      myPhotoUploadedAt: "2026-06-19T11:00:00.000Z",
+    },
+  ],
+);
+assert(
+  "repairMyPhotos backfills backendId",
+  repaired[0]?.backendId === "recovered-photo-id" ? "ok" : "",
+  true,
+);
+assert(
+  "repairMyPhotos sets stream uri",
+  repaired[0]?.uri.includes("/api/photos/recovered-photo-id/image") ? repaired[0].uri : "",
+  true,
+);
+
+// H11: merge keeps in-memory upload during hydration race
+import {
+  createMyPhotoLocalId,
+  mergeMyPhotos,
+} from "../utils/myPhotoPersistence";
+
+const mergedRace = mergeMyPhotos(
+  [{ uri: "", uploadedAt: "2026-06-19T11:00:00.000Z", theme: "joy" }],
+  [
+    {
+      uri: "file:///cache/photo.jpg",
+      localId: createMyPhotoLocalId(),
+      uploadedAt: "2026-06-19T11:00:00.000Z",
+      theme: "joy",
+      uploadState: "pending",
+    },
+  ],
+);
+assert(
+  "mergeMyPhotos keeps pending local capture",
+  mergedRace[0]?.uri.startsWith("file:") ? "ok" : "",
   true,
 );
 
