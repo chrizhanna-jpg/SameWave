@@ -1,5 +1,5 @@
 import type { Match, MyPhoto } from "@/context/AppContext";
-import { getPublicApiOrigin } from "@/utils/publicEnv";
+import { getPublicApiOrigin, isLocalDevApiOrigin } from "@/utils/publicEnv";
 import { resolveMatchPhotoUris, pickDurablePhotoUri } from "@/utils/matchPhotoSnapshot";
 import { photoKey } from "@/utils/photoKey";
 import { lookupVoterPhotoForMatchSync } from "@/utils/voterPhotoByTarget";
@@ -60,9 +60,24 @@ export function extractPhotoStreamId(uri: string): string | null {
  * keep stale LAN dev hosts (`http://192.168.x.x:8787/...`) that fail on
  * device while Unsplash stock URLs still load.
  */
+export function shouldCanonicalizePhotoStreamUri(uri: string): boolean {
+  const trimmed = uri.trim();
+  if (!trimmed || !extractPhotoStreamId(trimmed)) return false;
+  if (trimmed.startsWith("/api/photos/")) return true;
+  try {
+    const parsed = new URL(
+      trimmed.includes("://") ? trimmed : `https://placeholder${trimmed}`,
+    );
+    return isLocalDevApiOrigin(parsed.origin);
+  } catch {
+    return false;
+  }
+}
+
 export function canonicalizePhotoStreamUri(uri: string): string {
   const trimmed = uri.trim();
   if (!trimmed) return trimmed;
+  if (!shouldCanonicalizePhotoStreamUri(trimmed)) return trimmed;
   const id = extractPhotoStreamId(trimmed);
   if (!id) return trimmed;
   try {
@@ -345,13 +360,12 @@ export type ResolveMyPhotoDisplayOptions = {
  * `file://` captures can be purged after the app sits in background.
  */
 export function resolveMyPhotoDisplayUri(
-  photo: Pick<MyPhoto, "uri" | "backendId" | "uploadState">,
+  photo: Pick<MyPhoto, "uri" | "backendId">,
   options?: ResolveMyPhotoDisplayOptions,
 ): string {
   const local = photo.uri?.trim() ?? "";
   if (
     options?.preferLocalCapture &&
-    photo.uploadState !== "ok" &&
     (local.startsWith("file:") || local.startsWith("content:"))
   ) {
     return local;

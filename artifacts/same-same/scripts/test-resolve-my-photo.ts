@@ -10,6 +10,7 @@ import {
   canonicalizePhotoStreamUri,
   enrichMatchMyPhotoFields,
   resolveMatchMyPhotoUri,
+  shouldCanonicalizePhotoStreamUri,
 } from "../utils/photoDisplayUri";
 import { mergeMatchesById } from "../utils/syncCache";
 import { setVoterPhotoMapForTests } from "../utils/voterPhotoByTarget";

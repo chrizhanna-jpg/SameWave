@@ -21,6 +21,7 @@ import {
 } from "@/utils/publicEnv";
 import {
   canonicalizePhotoStreamUri,
+  shouldCanonicalizePhotoStreamUri,
   withDisplayPhotoWidth,
 } from "@/utils/photoDisplayUri";
 import {
@@ -60,6 +61,14 @@ type Props = {
 // blue — while we wait. Backoff is short so a momentary blip recovers fast.
 const MAX_RETRIES_PER_SOURCE = 2;
 const RETRY_BACKOFF_MS = [500, 1300];
+
+function normalizeRemotePhotoUri(uri: string): string {
+  const trimmed = uri.trim();
+  const stream = shouldCanonicalizePhotoStreamUri(trimmed)
+    ? canonicalizePhotoStreamUri(trimmed)
+    : trimmed;
+  return withDisplayPhotoWidth(normalizeUnsplashUri(stream));
+}
 
 function rewriteApiOrigin(uri: string, origin: string): string | null {
   try {
@@ -132,19 +141,11 @@ export function RemotePhotoImage({
 }: Props) {
   const onResolvedRef = useRef(onResolved);
   onResolvedRef.current = onResolved;
-  const normalized = useMemo(
-    () =>
-      withDisplayPhotoWidth(
-        normalizeUnsplashUri(canonicalizePhotoStreamUri(uri)),
-      ),
-    [uri],
-  );
+  const normalized = useMemo(() => normalizeRemotePhotoUri(uri), [uri]);
   const normalizedFallback = useMemo(() => {
     const f = fallbackUri?.trim();
     if (!f) return null;
-    const n = withDisplayPhotoWidth(
-      normalizeUnsplashUri(canonicalizePhotoStreamUri(f)),
-    );
+    const n = normalizeRemotePhotoUri(f);
     return n && n !== normalized ? n : null;
   }, [fallbackUri, normalized]);
 
@@ -245,6 +246,14 @@ export function RemotePhotoImage({
   const handleError = () => {
     if (exhausted) return;
     clearRetryTimer();
+    const onLocalCapture =
+      !usedFallback &&
+      !useHosted &&
+      (baseUri.startsWith("file:") || baseUri.startsWith("content:"));
+    if (onLocalCapture && normalizedFallback) {
+      advanceChain();
+      return;
+    }
     if (attempt < MAX_RETRIES_PER_SOURCE) {
       const delay =
         RETRY_BACKOFF_MS[Math.min(attempt, RETRY_BACKOFF_MS.length - 1)] ?? 800;
