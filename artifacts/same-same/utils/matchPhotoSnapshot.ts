@@ -4,7 +4,20 @@
  * corrupt `theirPhoto`, and RN's stock Image fails on long data URIs while
  * expo-image handles them on the Match screen.
  */
+import { isLocalDevApiOrigin } from "@/utils/publicEnv";
+
 const byMatchId = new Map<string, { myPhoto: string; theirPhoto: string }>();
+
+function isReachableRemoteHttp(uri: string): boolean {
+  if (!uri.startsWith("http://") && !uri.startsWith("https://")) return false;
+  try {
+    const u = new URL(uri);
+    if (isLocalDevApiOrigin(u.origin)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** Prefer remote/https (and data:) over stale local `file://` captures. */
 export function pickDurablePhotoUri(
@@ -13,7 +26,7 @@ export function pickDurablePhotoUri(
   for (const raw of candidates) {
     const u = raw?.trim() ?? "";
     if (!u) continue;
-    if (u.startsWith("http://") || u.startsWith("https://")) return u;
+    if (isReachableRemoteHttp(u)) return u;
   }
   for (const raw of candidates) {
     const u = raw?.trim() ?? "";

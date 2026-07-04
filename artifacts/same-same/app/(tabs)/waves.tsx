@@ -32,6 +32,7 @@ import {
   resolveEchoPhotoUri,
   resolveMatchMyPhotoUri,
   resolveMatchPhotoDisplay,
+  photoStreamFallbackUri,
 } from "@/utils/photoDisplayUri";
 import { markTabVisited } from "@/utils/tabVisits";
 import { scrollPaddingAboveTabBar, tabBarTotalHeight } from "@/utils/tabBarSafeArea";
@@ -772,6 +773,7 @@ function WorldWaveCard({ wave }: { wave: RecentWaveFeedItem }) {
         <View style={styles.photoCol}>
           <RemotePhotoImage
             uri={wave.a.uri}
+            fallbackUri={photoStreamFallbackUri(wave.a.id)}
             style={styles.photo}
             recyclingKey={wave.a.id}
             transitionMs={0}
@@ -784,6 +786,7 @@ function WorldWaveCard({ wave }: { wave: RecentWaveFeedItem }) {
         <View style={styles.photoCol}>
           <RemotePhotoImage
             uri={wave.b.uri}
+            fallbackUri={photoStreamFallbackUri(wave.b.id)}
             style={styles.photo}
             recyclingKey={wave.b.id}
             transitionMs={0}
@@ -863,6 +866,7 @@ function RippleSentCard({
           {myUri ? (
             <RemotePhotoImage
               uri={myUri}
+              fallbackUri={photoStreamFallbackUri(match.myPhotoId)}
               style={styles.photo}
               recyclingKey={match.myPhotoId || myUri}
               transitionMs={0}
@@ -887,6 +891,7 @@ function RippleSentCard({
           {theirUri ? (
             <RemotePhotoImage
               uri={theirUri}
+              fallbackUri={photoStreamFallbackUri(match.theirPhotoId)}
               style={styles.photo}
               recyclingKey={match.theirPhotoId || theirUri}
               transitionMs={0}
@@ -932,6 +937,7 @@ function PhotoPair({
       <View style={styles.photoCol}>
         <RemotePhotoImage
           uri={mineUri}
+          fallbackUri={photoStreamFallbackUri(mine.id)}
           style={styles.photo}
           recyclingKey={mine.id || mineUri}
           transitionMs={0}
@@ -944,6 +950,7 @@ function PhotoPair({
       <View style={styles.photoCol}>
         <RemotePhotoImage
           uri={theirsUri}
+          fallbackUri={photoStreamFallbackUri(theirs.id)}
           style={styles.photo}
           recyclingKey={theirs.id || theirsUri}
           transitionMs={0}

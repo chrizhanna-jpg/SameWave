@@ -42,13 +42,61 @@ export function withDisplayPhotoWidth(
   return trimmed.includes("?") ? `${trimmed}&w=${w}` : `${trimmed}?w=${w}`;
 }
 
+/** Extract backend photo id from any `/api/photos/:id/image` reference. */
+export function extractPhotoStreamId(uri: string): string | null {
+  const trimmed = uri.trim();
+  if (!trimmed) return null;
+  const m = trimmed.match(/\/api\/photos\/([^/?#]+)\/image(?:[/?#]|$)/);
+  if (!m?.[1]) return null;
+  try {
+    return decodeURIComponent(m[1]).trim() || null;
+  } catch {
+    return m[1].trim() || null;
+  }
+}
+
+/**
+ * Re-pin authed stream URLs to the current API origin. Persisted rows often
+ * keep stale LAN dev hosts (`http://192.168.x.x:8787/...`) that fail on
+ * device while Unsplash stock URLs still load.
+ */
+export function canonicalizePhotoStreamUri(uri: string): string {
+  const trimmed = uri.trim();
+  if (!trimmed) return trimmed;
+  const id = extractPhotoStreamId(trimmed);
+  if (!id) return trimmed;
+  try {
+    const parsed = new URL(
+      trimmed.includes("://") ? trimmed : `https://placeholder${trimmed}`,
+    );
+    const wRaw = parsed.searchParams.get("w");
+    const w = wRaw ? parseInt(wRaw, 10) : DISPLAY_PHOTO_MAX_WIDTH;
+    return serverPhotoImageUrl(
+      id,
+      Number.isFinite(w) && w > 0 ? w : DISPLAY_PHOTO_MAX_WIDTH,
+    );
+  } catch {
+    return serverPhotoImageUrl(id);
+  }
+}
+
+/** Authenticated fallback when a local `file://` capture is gone. */
+export function photoStreamFallbackUri(
+  photoId: string | undefined | null,
+): string | undefined {
+  const id = photoId?.trim();
+  return id ? serverPhotoImageUrl(id) : undefined;
+}
+
 /** Echo / wave card side — prefer inline uri, fall back to authenticated stream. */
 export function resolveEchoPhotoUri(side: {
   id?: string;
   uri?: string | null;
 }): string {
   const uri = side.uri?.trim() ?? "";
-  if (uri.length > 0 && !uri.startsWith("file:")) return uri;
+  if (uri.length > 0 && !uri.startsWith("file:") && !uri.startsWith("content:")) {
+    return canonicalizePhotoStreamUri(uri);
+  }
   const id = side.id?.trim();
   if (id) return serverPhotoImageUrl(id);
   return uri;
@@ -297,12 +345,13 @@ export type ResolveMyPhotoDisplayOptions = {
  * `file://` captures can be purged after the app sits in background.
  */
 export function resolveMyPhotoDisplayUri(
-  photo: Pick<MyPhoto, "uri" | "backendId">,
+  photo: Pick<MyPhoto, "uri" | "backendId" | "uploadState">,
   options?: ResolveMyPhotoDisplayOptions,
 ): string {
   const local = photo.uri?.trim() ?? "";
   if (
     options?.preferLocalCapture &&
+    photo.uploadState !== "ok" &&
     (local.startsWith("file:") || local.startsWith("content:"))
   ) {
     return local;

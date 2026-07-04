@@ -634,7 +634,9 @@ export default function SwipeScreen() {
   }>(() => {
     if (todaysPhoto) {
       return {
-        uri: resolveMyPhotoDisplayUri(todaysPhoto, { preferLocalCapture: true }),
+        uri: resolveMyPhotoDisplayUri(todaysPhoto, {
+          preferLocalCapture: todaysPhoto.uploadState !== "ok",
+        }),
         uploadedAt: todaysPhoto.uploadedAt,
         capturedAt: todaysPhoto.capturedAt,
         theme: todaysPhoto.theme,

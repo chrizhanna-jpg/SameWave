@@ -3,9 +3,11 @@
  *   pnpm exec tsx scripts/test-resolve-my-photo.ts
  */
 (globalThis as { __DEV__?: boolean }).__DEV__ = true;
-process.env.EXPO_PUBLIC_DEV_API_URL = "http://192.168.1.143:8787";
+process.env.EXPO_PUBLIC_API_URL = "https://samewave.onrender.com";
+process.env.EXPO_PUBLIC_HOSTED_API_URL = "https://samewave.onrender.com";
 
 import {
+  canonicalizePhotoStreamUri,
   enrichMatchMyPhotoFields,
   resolveMatchMyPhotoUri,
 } from "../utils/photoDisplayUri";
@@ -140,6 +142,19 @@ const fromUriMap = enrichMatchMyPhotoFields(
 assert(
   "voter map sets myPhotoId via photoKey",
   fromUriMap.myPhotoId === "cached-by-uri" ? fromUriMap.myPhoto : "",
+  true,
+);
+
+// H8: stale LAN stream URL → current hosted API origin
+const lan = canonicalizePhotoStreamUri(
+  "http://192.168.1.143:8787/api/photos/server-photo-id/image?w=960",
+);
+assert(
+  "LAN stream canonicalized to hosted API",
+  lan.includes("samewave.onrender.com") &&
+    lan.includes("/api/photos/server-photo-id/image")
+    ? lan
+    : "",
   true,
 );
 

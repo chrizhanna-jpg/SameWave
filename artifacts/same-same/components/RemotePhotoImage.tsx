@@ -19,7 +19,10 @@ import {
   getPublicApiOrigin,
   getStagedProductionApiOrigin,
 } from "@/utils/publicEnv";
-import { withDisplayPhotoWidth } from "@/utils/photoDisplayUri";
+import {
+  canonicalizePhotoStreamUri,
+  withDisplayPhotoWidth,
+} from "@/utils/photoDisplayUri";
 import {
   normalizeUnsplashUri,
   UNSPLASH_FALLBACK_URI,
@@ -130,13 +133,18 @@ export function RemotePhotoImage({
   const onResolvedRef = useRef(onResolved);
   onResolvedRef.current = onResolved;
   const normalized = useMemo(
-    () => withDisplayPhotoWidth(normalizeUnsplashUri(uri)),
+    () =>
+      withDisplayPhotoWidth(
+        normalizeUnsplashUri(canonicalizePhotoStreamUri(uri)),
+      ),
     [uri],
   );
   const normalizedFallback = useMemo(() => {
     const f = fallbackUri?.trim();
     if (!f) return null;
-    const n = withDisplayPhotoWidth(normalizeUnsplashUri(f));
+    const n = withDisplayPhotoWidth(
+      normalizeUnsplashUri(canonicalizePhotoStreamUri(f)),
+    );
     return n && n !== normalized ? n : null;
   }, [fallbackUri, normalized]);
 

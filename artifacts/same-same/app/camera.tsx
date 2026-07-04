@@ -42,6 +42,7 @@ import { detectCountryFromPhotoExif } from "@/utils/gpsCountry";
 import { photoCountryDisplay } from "@/utils/photoCountry";
 import {
   findMyPhotoByUri,
+  photoStreamFallbackUri,
   resolveMyPhotoDisplayUri,
 } from "@/utils/photoDisplayUri";
 import {
@@ -1713,6 +1714,7 @@ export default function CameraScreen() {
                       {displayUri ? (
                         <RemotePhotoImage
                           uri={displayUri}
+                          fallbackUri={photoStreamFallbackUri(photo.backendId)}
                           style={[styles.prevPhoto, { borderColor: colors.border }]}
                           resizeMode="cover"
                           transitionMs={0}
