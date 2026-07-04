@@ -30,7 +30,7 @@ import {
   normalizeUnsplashUri,
   UNSPLASH_FALLBACK_URI,
 } from "@/utils/unsplashUri";
-import { BLANK_FRAME_THRESHOLD_MS, IMAGE_LOAD_V2 } from "@/constants/imageLoading";
+import { BLANK_FRAME_THRESHOLD_MS, CACHE_HIT_LATENCY_MS, IMAGE_LOAD_V2 } from "@/constants/imageLoading";
 import {
   prioritizeHeroPrefetch,
   recordImageLoadComplete,
@@ -38,6 +38,8 @@ import {
   type ImageLoadPriority,
 } from "@/utils/imageLoadCache";
 import { recordImageTelemetry } from "@/utils/imageLoadTelemetry";
+import { classifyImageUri } from "@/utils/imageAssetClass";
+import { validateUserPhotoInBackground } from "@/utils/userPhotoValidation";
 
 type Props = {
   uri: string;
@@ -339,8 +341,17 @@ export function RemotePhotoImage({
     clearBlankTimer();
     setLoaded(true);
     const started = loadStartedAt.current;
+    const elapsed = started != null ? Date.now() - started : undefined;
     if (started != null) {
-      recordImageLoadComplete(activeUri, Date.now() - started);
+      recordImageLoadComplete(activeUri, elapsed ?? 0);
+    }
+    if (
+      IMAGE_LOAD_V2 &&
+      elapsed != null &&
+      elapsed <= CACHE_HIT_LATENCY_MS &&
+      classifyImageUri(activeUri) === "user_upload"
+    ) {
+      void validateUserPhotoInBackground(activeUri);
     }
     onResolvedRef.current?.(!exhausted);
   };

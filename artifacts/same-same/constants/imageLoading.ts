@@ -42,5 +42,11 @@ export const CACHE_META_DISK_MAX = 500;
 /** Treat loads faster than this as a disk/memory cache hit. */
 export const CACHE_HIT_LATENCY_MS = 120;
 
+/** Sample asset cache hit target (after first prefetch). */
+export const SAMPLE_CACHE_HIT_TARGET = 0.95;
+
+/** User thumbnail disk cache hit target on repeat views. */
+export const USER_CACHE_HIT_TARGET = 0.7;
+
 /** Emit blank-frame telemetry when skeleton visible longer than this. */
 export const BLANK_FRAME_THRESHOLD_MS = 800;

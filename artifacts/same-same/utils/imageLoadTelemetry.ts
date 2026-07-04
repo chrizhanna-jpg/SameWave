@@ -1,11 +1,19 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { IMAGE_LOAD_V2 } from "@/constants/imageLoading";
+import type { ImageAssetClass } from "@/utils/imageAssetClass";
 
 export type ImageTelemetryEvent =
   | "img_request_start"
   | "img_request_end"
   | "img_cache_hit"
   | "img_cache_miss"
+  | "img_sample_cache_hit"
+  | "img_sample_cache_miss"
+  | "img_user_cache_hit"
+  | "img_user_cache_miss"
+  | "img_conditional_304"
+  | "img_user_revalidated"
+  | "img_sample_prefetch_batch"
   | "img_decode_ms"
   | "img_blank_frame"
   | "img_prefetch"
@@ -16,10 +24,11 @@ export type ImageTelemetryRecord = {
   key: string;
   ms?: number;
   priority?: string;
+  assetClass?: ImageAssetClass;
   at: number;
 };
 
-const STORAGE_KEY = "samesame_img_telemetry_v1";
+const STORAGE_KEY = "samesame_img_telemetry_v2";
 const RING_MAX = 200;
 const FLUSH_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -27,6 +36,11 @@ let ring: ImageTelemetryRecord[] = [];
 let counters: Record<string, number> = {
   cache_hit: 0,
   cache_miss: 0,
+  sample_cache_hit: 0,
+  sample_cache_miss: 0,
+  user_cache_hit: 0,
+  user_cache_miss: 0,
+  conditional_304: 0,
   blank_frame: 0,
   error: 0,
   prefetch: 0,
@@ -37,15 +51,22 @@ let persistTimer: ReturnType<typeof setTimeout> | null = null;
 function bumpCounter(event: ImageTelemetryEvent): void {
   if (event === "img_cache_hit") counters.cache_hit += 1;
   if (event === "img_cache_miss") counters.cache_miss += 1;
+  if (event === "img_sample_cache_hit") counters.sample_cache_hit += 1;
+  if (event === "img_sample_cache_miss") counters.sample_cache_miss += 1;
+  if (event === "img_user_cache_hit") counters.user_cache_hit += 1;
+  if (event === "img_user_cache_miss") counters.user_cache_miss += 1;
+  if (event === "img_conditional_304") counters.conditional_304 += 1;
   if (event === "img_blank_frame") counters.blank_frame += 1;
   if (event === "img_error") counters.error += 1;
-  if (event === "img_prefetch") counters.prefetch += 1;
+  if (event === "img_prefetch" || event === "img_sample_prefetch_batch") {
+    counters.prefetch += 1;
+  }
 }
 
 export function recordImageTelemetry(
   event: ImageTelemetryEvent,
   key: string,
-  opts?: { ms?: number; priority?: string },
+  opts?: { ms?: number; priority?: string; assetClass?: ImageAssetClass },
 ): void {
   if (!IMAGE_LOAD_V2 && event !== "img_blank_frame") return;
   const rec: ImageTelemetryRecord = {
@@ -53,6 +74,7 @@ export function recordImageTelemetry(
     key: key.slice(0, 120),
     ms: opts?.ms,
     priority: opts?.priority,
+    assetClass: opts?.assetClass,
     at: Date.now(),
   };
   ring.push(rec);
@@ -95,17 +117,30 @@ export async function hydrateImageTelemetry(): Promise<void> {
   }
 }
 
+function hitRate(hits: number, misses: number): number | null {
+  const total = hits + misses;
+  return total > 0 ? hits / total : null;
+}
+
 export function getImageTelemetrySummary(): {
   counters: Record<string, number>;
   cacheHitRate: number | null;
+  sampleCacheHitRate: number | null;
+  userCacheHitRate: number | null;
+  conditional304Rate: number | null;
   recent: ImageTelemetryRecord[];
 } {
-  const hits = counters.cache_hit;
-  const misses = counters.cache_miss;
-  const total = hits + misses;
+  const sampleTotal =
+    counters.sample_cache_hit + counters.sample_cache_miss;
+  const userTotal = counters.user_cache_hit + counters.user_cache_miss;
+  const revalidations = counters.conditional_304 + counters.user_cache_miss;
   return {
     counters: { ...counters },
-    cacheHitRate: total > 0 ? hits / total : null,
+    cacheHitRate: hitRate(counters.cache_hit, counters.cache_miss),
+    sampleCacheHitRate: hitRate(counters.sample_cache_hit, counters.sample_cache_miss),
+    userCacheHitRate: hitRate(counters.user_cache_hit, counters.user_cache_miss),
+    conditional304Rate:
+      revalidations > 0 ? counters.conditional_304 / revalidations : null,
     recent: ring.slice(-40),
   };
 }
@@ -131,6 +166,11 @@ export async function flushImageTelemetryIfDue(apiBase: string): Promise<void> {
       body: JSON.stringify({
         cacheHit: hits,
         cacheMiss: misses,
+        sampleCacheHit: counters.sample_cache_hit,
+        sampleCacheMiss: counters.sample_cache_miss,
+        userCacheHit: counters.user_cache_hit,
+        userCacheMiss: counters.user_cache_miss,
+        conditional304: counters.conditional_304,
         blankFrame: counters.blank_frame,
         error: counters.error,
         prefetch: counters.prefetch,

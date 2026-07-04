@@ -43,6 +43,7 @@ import {
   DECK_DISPLAY_WIDTH,
   encodeDeckPhotoSizes,
 } from "../lib/photoDisplayEncode";
+import { sendPhotoImageBytes } from "../lib/photoImageHeaders";
 import { fetchMyJourneyRows } from "../lib/myJourney";
 import {
   exploreThemeNeedles,
@@ -2001,23 +2002,19 @@ router.get("/photos/:id/image", async (req, res) => {
     // + sharp here is what removes the multi-second stalls.
     const cached = getCachedDisplayBytes(photoId, cacheWidth);
     if (cached) {
-      res.setHeader("Content-Type", cached.mime);
-      res.setHeader("Cache-Control", "private, max-age=86400, stale-while-revalidate=3600");
-      res.send(cached.buf);
+      sendPhotoImageBytes(req, res, cached.buf, cached.mime, photoId, cacheWidth);
       return;
     }
 
     await withDisplayImageSlot(async () => {
       const hit = getCachedDisplayBytes(photoId, cacheWidth);
       if (hit) {
-        res.setHeader("Content-Type", hit.mime);
-        res.setHeader("Cache-Control", "private, max-age=86400, stale-while-revalidate=3600");
-        res.send(hit.buf);
+        sendPhotoImageBytes(req, res, hit.buf, hit.mime, photoId, cacheWidth);
         return;
       }
 
       const rows = await db.execute(sql`
-        SELECT mime_type, bytes_base64, display_bytes_base64, display_mime
+        SELECT mime_type, bytes_base64, display_bytes_base64, display_mime, created_at
         FROM photos
         WHERE id::text = ${photoId}
           AND status = 'active'
@@ -2030,6 +2027,13 @@ router.get("/photos/:id/image", async (req, res) => {
         res.status(404).json({ error: "photo not found" });
         return;
       }
+      const createdAtRaw = r.created_at;
+      const lastModified =
+        createdAtRaw instanceof Date
+          ? createdAtRaw
+          : typeof createdAtRaw === "string"
+            ? new Date(createdAtRaw)
+            : null;
       const mime = String(r.mime_type ?? "image/jpeg");
       const displayB64 = String(r.display_bytes_base64 ?? "");
       const displayMime = String(r.display_mime ?? "image/jpeg");
@@ -2039,9 +2043,15 @@ router.get("/photos/:id/image", async (req, res) => {
       ) {
         const buf = Buffer.from(displayB64, "base64");
         putCachedDisplayBytes(photoId, cacheWidth, buf, displayMime);
-        res.setHeader("Content-Type", displayMime);
-        res.setHeader("Cache-Control", "private, max-age=86400, stale-while-revalidate=3600");
-        res.send(buf);
+        sendPhotoImageBytes(
+          req,
+          res,
+          buf,
+          displayMime,
+          photoId,
+          cacheWidth,
+          lastModified,
+        );
         return;
       }
       const b64 = String(r.bytes_base64 ?? "");
@@ -2057,9 +2067,15 @@ router.get("/photos/:id/image", async (req, res) => {
         outMime = resized.mime;
       }
       putCachedDisplayBytes(photoId, cacheWidth, buf, outMime);
-      res.setHeader("Content-Type", outMime);
-      res.setHeader("Cache-Control", "private, max-age=86400, stale-while-revalidate=3600");
-      res.send(buf);
+      sendPhotoImageBytes(
+        req,
+        res,
+        buf,
+        outMime,
+        photoId,
+        cacheWidth,
+        lastModified,
+      );
     });
   } catch (err) {
     req.log.error({ err }, "photo image failed");

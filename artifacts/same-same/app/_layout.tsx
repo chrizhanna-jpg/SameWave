@@ -430,6 +430,9 @@ export default function RootLayout() {
     if (!__DEV__) warmHostedApiOnLaunch();
     void import("@/utils/imageLoadCache").then((m) => m.hydrateImageCacheIndex());
     void import("@/utils/imageLoadTelemetry").then((m) => m.hydrateImageTelemetry());
+    void import("@/utils/sampleAssetPrefetch").then((m) =>
+      m.prefetchSampleAssetsOnColdStart(),
+    );
   }, []);
 
   if (!fontsReady) return null;

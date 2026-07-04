@@ -95,6 +95,17 @@ router.get("/admin/stats", async (req, res) => {
             ? imageTelemetryTotals.cacheHit /
               (imageTelemetryTotals.cacheHit + imageTelemetryTotals.cacheMiss)
             : null,
+        sampleCacheHitRate:
+          imageTelemetryTotals.sampleCacheHit + imageTelemetryTotals.sampleCacheMiss > 0
+            ? imageTelemetryTotals.sampleCacheHit /
+              (imageTelemetryTotals.sampleCacheHit +
+                imageTelemetryTotals.sampleCacheMiss)
+            : null,
+        userCacheHitRate:
+          imageTelemetryTotals.userCacheHit + imageTelemetryTotals.userCacheMiss > 0
+            ? imageTelemetryTotals.userCacheHit /
+              (imageTelemetryTotals.userCacheHit + imageTelemetryTotals.userCacheMiss)
+            : null,
       },
       fetchedAt: new Date().toISOString(),
     });
