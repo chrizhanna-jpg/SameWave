@@ -360,17 +360,25 @@ export type ResolveMyPhotoDisplayOptions = {
  * `file://` captures can be purged after the app sits in background.
  */
 export function resolveMyPhotoDisplayUri(
-  photo: Pick<MyPhoto, "uri" | "backendId">,
+  photo: Pick<MyPhoto, "uri" | "backendId" | "uploadState">,
   options?: ResolveMyPhotoDisplayOptions,
 ): string {
   const local = photo.uri?.trim() ?? "";
+  const bid = photo.backendId?.trim();
+  // Keep the in-app capture only while upload is still running. Once we
+  // have a backend id the OS may purge file:// when leaving Ripple — use
+  // the authed server stream so the photo survives tab switches.
+  const stillUploading =
+    photo.uploadState === "pending" ||
+    (photo.uploadState !== "ok" && !bid);
+
   if (
     options?.preferLocalCapture &&
+    stillUploading &&
     (local.startsWith("file:") || local.startsWith("content:"))
   ) {
     return local;
   }
-  const bid = photo.backendId?.trim();
   if (bid) return serverPhotoImageUrl(bid);
   return local;
 }
