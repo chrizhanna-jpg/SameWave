@@ -150,9 +150,10 @@ async function prefetchOne(uri: string, priority: ImageLoadPriority): Promise<vo
   if (!normalized || inflightUris.has(normalized)) return;
   if (priority !== "hero") {
     try {
-      const { isCaptureTransitionInProgress } =
-        require("@/utils/captureTransition") as typeof import("@/utils/captureTransition");
-      if (isCaptureTransitionInProgress()) return;
+      const capture = require("@/utils/captureTransition") as typeof import("@/utils/captureTransition");
+      const carousel = require("@/utils/matchCarouselController") as typeof import("@/utils/matchCarouselController");
+      if (capture.isCaptureTransitionInProgress()) return;
+      if (carousel.isCarouselTransitionInFlight()) return;
     } catch {
       /* ignore */
     }

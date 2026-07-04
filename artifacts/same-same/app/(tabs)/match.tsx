@@ -115,6 +115,11 @@ import {
   prefetchPhotoUris,
 } from "@/utils/imageLoadCache";
 import { getActiveCaptureRequestId } from "@/utils/captureTransition";
+import {
+  commitDisplayedCandidate,
+  shouldApplyCandidateImageResponse,
+  type CarouselTransitionReason,
+} from "@/utils/matchCarouselController";
 import { stopWavefireAmbience } from "@/utils/wavefireAmbience";
 import { stopFirecircleAmbience } from "@/utils/firecircleAudio";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
@@ -745,6 +750,9 @@ export default function SwipeScreen() {
   // (which means we showed a stale candidate while waiting for hydration)
   // from "current photo was just marked seen by us" (no action needed).
   const sessionDisplayedRef = useRef<Set<string>>(new Set());
+  const candidateRequestIdRef = useRef(0);
+  const candidateImageBindRef = useRef({ requestId: 0, uri: "" });
+  const [candidateDisplayToken, setCandidateDisplayToken] = useState(0);
 
   // ---- "Match by object" mode ---------------------------------------------
   // The empty-state ghost button asks the AI to re-tag the user's photo by
@@ -1041,6 +1049,31 @@ export default function SwipeScreen() {
     [buildExcludeKeys],
   );
 
+  const applyDeckCandidate = useCallback(
+    (
+      next: ReturnType<typeof getTheirPhoto>,
+      reason: CarouselTransitionReason,
+    ) => {
+      if (!next) {
+        setNoMore(true);
+        return;
+      }
+      const { requestId } = commitDisplayedCandidate(
+        sessionDisplayedRef.current,
+        next.photo.uri,
+        reason,
+      );
+      candidateRequestIdRef.current = requestId;
+      candidateImageBindRef.current = { requestId, uri: next.photo.uri };
+      setCandidateDisplayToken(requestId);
+      setTheirPhoto(next.photo);
+      setMatchedTheme(next.matchedTheme);
+      setSharedTags(next.sharedTags);
+      setNoMore(false);
+    },
+    [],
+  );
+
   const tryActivateSuggestedThemeFallback = useCallback((): boolean => {
     if (usingSuggestedThemeFallbackRef.current) return false;
     if (!suggestedThemeIdRef.current) return false;
@@ -1066,33 +1099,20 @@ export default function SwipeScreen() {
     return true;
   }, [buildExcludeKeys]);
 
+  // Register the opening card synchronously so seen-ledger hydration cannot
+  // auto-advance the deck on the same tick (effect order race).
   useEffect(() => {
-    if (deckInteractionBlocked()) return;
-    const currentUri = theirPhotoRef.current?.uri;
-    if (!currentUri) return;
-    const k = photoKey(currentUri);
-    if (!k) return;
-    // HARD RULE: the visible card changes ONLY on an explicit user swipe.
-    // We never replace a card we've already shown — `sessionDisplayedRef`
-    // is the unconditional loop-breaker. Previously a one-shot
-    // "post-hydration recheck" bypassed this guard to swap a stale
-    // pre-hydration pick. But `markPhotoSeen` writes the current card into
-    // the ledger the instant it lands (and `loadState()` folds match-history
-    // keys in on hydrate), so by the time that bypass ran the on-screen card
-    // was already "seen" — and the bypass yanked it: the photo vanished, its
-    // music cut, and the deck auto-advanced with no swipe. The first real
-    // card after hydration is now chosen by the stuck-recovery effect below
-    // (which already excludes seen photos), so this guard is unconditional.
-    if (sessionDisplayedRef.current.has(k)) return;
-    if (!seenSet.has(k)) return;
-    const next = pickDeckCandidate(k, k);
-    if (next) {
-      setTheirPhoto(next.photo);
-      setMatchedTheme(next.matchedTheme);
-      setSharedTags(next.sharedTags);
-      setNoMore(false);
-    }
-  }, [seenSet, buildExcludeKeys, deckInteractionBlocked, pickDeckCandidate]);
+    if (theirPhoto.id === "placeholder" || !theirPhoto.uri) return;
+    const { requestId } = commitDisplayedCandidate(
+      sessionDisplayedRef.current,
+      theirPhoto.uri,
+      "initial_mount",
+    );
+    candidateRequestIdRef.current = requestId;
+    candidateImageBindRef.current = { requestId, uri: theirPhoto.uri };
+    setCandidateDisplayToken(requestId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
@@ -1110,7 +1130,14 @@ export default function SwipeScreen() {
   // reset the candidate pool so we immediately match against the new
   // context. The persistent ledger still applies — only the per-session
   // bypass flag is reset.
+  const prevMyPhotoSessionKeyRef = useRef<string | undefined>(undefined);
   useEffect(() => {
+    if (prevMyPhotoSessionKeyRef.current === undefined) {
+      prevMyPhotoSessionKeyRef.current = myPhotoSessionKey;
+      return;
+    }
+    if (prevMyPhotoSessionKeyRef.current === myPhotoSessionKey) return;
+    prevMyPhotoSessionKeyRef.current = myPhotoSessionKey;
     bypassSeenRef.current = false;
     sessionDisplayedRef.current = new Set();
     // A new photo means the user's frame has changed — the previously
@@ -1132,10 +1159,7 @@ export default function SwipeScreen() {
       mySubjects,
     );
     if (next) {
-      setTheirPhoto(next.photo);
-      setMatchedTheme(next.matchedTheme);
-      setSharedTags(next.sharedTags);
-      setNoMore(false);
+      applyDeckCandidate(next, "upload_reset");
     } else {
       setNoMore(true);
     }
@@ -1423,10 +1447,7 @@ export default function SwipeScreen() {
     // transform so the old image never flashes at center.
     const applyNext = () => {
       if (next) {
-        setTheirPhoto(next.photo);
-        setMatchedTheme(next.matchedTheme);
-        setSharedTags(next.sharedTags);
-        setNoMore(false);
+        applyDeckCandidate(next, "user_swipe");
         prefetchDeckAhead(1, next.photo.uri);
       } else {
         setNoMore(true);
@@ -1446,6 +1467,7 @@ export default function SwipeScreen() {
     setAnimatingOut,
     pickDeckCandidate,
     tryActivateSuggestedThemeFallback,
+    applyDeckCandidate,
   ]);
 
   // Warm the next card in the deck so the swap does not flash a blank pane.
@@ -1845,10 +1867,7 @@ export default function SwipeScreen() {
       photoKey(theirPhotoRef.current.uri) || undefined,
     );
     if (next) {
-      setTheirPhoto(next.photo);
-      setMatchedTheme(next.matchedTheme);
-      setSharedTags(next.sharedTags);
-      setNoMore(false);
+      applyDeckCandidate(next, "stuck_recovery");
     }
   }, [
     hasHydrated,
@@ -1861,6 +1880,7 @@ export default function SwipeScreen() {
     activeTheme,
     deckInteractionBlocked,
     pickDeckCandidate,
+    applyDeckCandidate,
     usingSuggestedThemeFallback,
     suggestedPool.length,
   ]);
@@ -2179,10 +2199,7 @@ export default function SwipeScreen() {
                       objects,
                     );
                     if (next) {
-                      setTheirPhoto(next.photo);
-                      setMatchedTheme(next.matchedTheme);
-                      setSharedTags(next.sharedTags);
-                      setNoMore(false);
+                      applyDeckCandidate(next, "object_match");
                     }
                   } catch {
                     setObjectMatchError("Subject matter match failed. Try again.");
@@ -2363,16 +2380,23 @@ export default function SwipeScreen() {
                 style={styles.fillPhoto}
                 resizeMode="cover"
                 transitionMs={0}
-                recyclingKey={`match-their:${photoKey(theirPhoto.uri)}`}
+                recyclingKey={`match-their:${candidateDisplayToken}:${photoKey(theirPhoto.uri)}`}
                 displayWidth={HERO_DISPLAY_WIDTH}
                 priority="hero"
                 onResolved={(ok) => {
-                  // Only flip to "ready" on a successful real-image load.
-                  // A failed/placeholder result (ok === false) is ignored so
-                  // it can never PAUSE music that's already playing — it just
-                  // leaves this card's vibe gated (never started), avoiding
-                  // the mid-play stutter.
-                  if (ok) setCandidateImageReady(true);
+                  if (!ok) return;
+                  const bind = candidateImageBindRef.current;
+                  if (
+                    !shouldApplyCandidateImageResponse(
+                      bind.requestId,
+                      bind.uri,
+                      candidateRequestIdRef.current,
+                      theirPhotoRef.current.uri,
+                    )
+                  ) {
+                    return;
+                  }
+                  setCandidateImageReady(true);
                 }}
               />
               )}
