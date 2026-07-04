@@ -132,17 +132,17 @@ export function resolveMyPhotoThumbnailUri(
   return local;
 }
 
-/** Stable unique key for recent-photo rows (empty persisted uri breaks `??`). */
+/** Stable unique key for recent-photo rows (duplicate backendIds can exist). */
 export function myPhotoRowKey(
   photo: Pick<MyPhoto, "backendId" | "uploadedAt" | "uri">,
   index: number,
 ): string {
   const bid = photo.backendId?.trim();
-  if (bid) return `bid:${bid}`;
+  if (bid) return `bid:${bid}:${index}`;
   const at = photo.uploadedAt?.trim();
-  if (at) return `at:${at}`;
+  if (at) return `at:${at}:${index}`;
   const uri = photo.uri?.trim();
-  if (uri) return `uri:${uri}`;
+  if (uri) return `uri:${uri}:${index}`;
   return `idx:${index}`;
 }
 
