@@ -216,4 +216,28 @@ assert(
   true,
 );
 
+// H11: merge keeps in-memory upload during hydration race
+import {
+  createMyPhotoLocalId,
+  mergeMyPhotos,
+} from "../utils/myPhotoPersistence";
+
+const mergedRace = mergeMyPhotos(
+  [{ uri: "", uploadedAt: "2026-06-19T11:00:00.000Z", theme: "joy" }],
+  [
+    {
+      uri: "file:///cache/photo.jpg",
+      localId: createMyPhotoLocalId(),
+      uploadedAt: "2026-06-19T11:00:00.000Z",
+      theme: "joy",
+      uploadState: "pending",
+    },
+  ],
+);
+assert(
+  "mergeMyPhotos keeps pending local capture",
+  mergedRace[0]?.uri.startsWith("file:") ? "ok" : "",
+  true,
+);
+
 console.log("Done. exitCode=", process.exitCode ?? 0);
