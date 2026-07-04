@@ -2023,6 +2023,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [refreshEchoes, refreshJourney, reconcileMatchPhotos]);
 
+  // Warm auth headers as soon as local state is ready — do not wait for
+  // cloud sync. Waves / recent-photo thumbnails need Bearer on first paint
+  // after an Expo reload, and Clerk may resolve a beat after hydration.
+  React.useEffect(() => {
+    if (!hasHydrated) return;
+    warmAuthedImageHeaders();
+  }, [hasHydrated]);
+
   // Background cloud sync after local cache is ready — never blocks the UI.
   React.useEffect(() => {
     if (!hasHydrated || !clerkLoaded || !isSignedIn) return;

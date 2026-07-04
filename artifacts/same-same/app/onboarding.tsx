@@ -108,7 +108,7 @@ export default function OnboardingScreen() {
           useNativeDriver: true,
         }),
       ]).start(() => {
-        setStep((s) => s + 1);
+        setStep((s) => Math.min(s + 1, STEPS.length - 1));
         slideAnim.setValue(18);
         Animated.parallel([
           Animated.timing(fadeAnim, {
@@ -138,7 +138,8 @@ export default function OnboardingScreen() {
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
 
   const isHeroStep = step === 0;
-  const currentStep = STEPS[step];
+  const safeStep = Math.min(Math.max(0, step), STEPS.length - 1);
+  const currentStep = STEPS[safeStep]!;
   const isCountryStep = currentStep.kind === "country";
   const continueLocked =
     isCountryStep && REQUIRE_COUNTRY && !myCountryCode;

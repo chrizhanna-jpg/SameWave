@@ -72,6 +72,13 @@ type Props = {
 
 const MAX_RETRIES_PER_SOURCE = 2;
 const RETRY_BACKOFF_MS = [500, 1300];
+/** Stop blocking the image mount if Clerk token warm-up stalls after reload. */
+const AUTH_READY_CAP_MS = 2800;
+const AUTH_RETRY_MAX = 14;
+
+function hasBearerAuth(headers: Record<string, string> | undefined): boolean {
+  return Boolean(headers?.Authorization?.startsWith("Bearer "));
+}
 
 function normalizeRemotePhotoUri(uri: string, displayWidth?: number): string {
   const trimmed = uri.trim();
@@ -171,6 +178,7 @@ export function RemotePhotoImage({
   const [attempt, setAttempt] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [manualRetry, setManualRetry] = useState(0);
+  const [authReady, setAuthReady] = useState(false);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadStartedAt = useRef<number | null>(null);
   const blankTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -197,6 +205,7 @@ export function RemotePhotoImage({
     setExhausted(false);
     setAttempt(0);
     setLoaded(false);
+    setAuthReady(!explorePhotoUriNeedsAuth(normalized));
     clearRetryTimer();
     clearBlankTimer();
     return () => {
@@ -212,6 +221,15 @@ export function RemotePhotoImage({
       if (normalizedFallback) prioritizeHeroPrefetch(normalizedFallback);
     }
   }, [normalized, normalizedFallback, priority]);
+
+  useEffect(() => {
+    if (exhausted) return;
+    if (!normalized.trim() && normalizedFallback) {
+      setUsedFallback(true);
+      setUseHosted(false);
+      setAttempt(0);
+    }
+  }, [normalized, normalizedFallback, exhausted]);
 
   const baseUri =
     usedFallback && normalizedFallback ? normalizedFallback : normalized;
@@ -230,42 +248,67 @@ export function RemotePhotoImage({
 
   const [authHeaders, setAuthHeaders] = useState<
     Record<string, string> | undefined
-  >(() => (needsAuth ? peekAuthedImageHeaders() : undefined));
+  >(() => {
+    const cached = peekAuthedImageHeaders();
+    return hasBearerAuth(cached) ? cached : undefined;
+  });
 
   const activeUri = useHosted && hostedUri ? hostedUri : baseUri;
 
   useEffect(() => {
-    if (!needsAuth) {
-      setAuthHeaders(undefined);
+    if (!needsAuth || exhausted) {
+      setAuthReady(true);
+      if (!needsAuth) setAuthHeaders(undefined);
       return;
     }
+    setAuthReady(false);
     const cached = peekAuthedImageHeaders();
-    if (cached?.Authorization?.startsWith("Bearer ")) {
+    if (hasBearerAuth(cached)) {
       setAuthHeaders(cached);
+      setAuthReady(true);
       return;
     }
-    warmAuthedImageHeaders();
+
     let cancelled = false;
     let authAttempt = 0;
+    const authRetryTimer = {
+      current: null as ReturnType<typeof setTimeout> | null,
+    };
+    const capTimer = setTimeout(() => {
+      if (!cancelled) setAuthReady(true);
+    }, AUTH_READY_CAP_MS);
+
     const loadAuth = () => {
       const run =
         authAttempt === 0 ? authedImageHeaders() : refreshAuthedImageHeaders();
       void run.then((h) => {
         if (cancelled) return;
-        setAuthHeaders(h);
-        if (!h.Authorization?.startsWith("Bearer ") && authAttempt < 6) {
-          authAttempt += 1;
-          authRetryTimer.current = setTimeout(loadAuth, 350 * authAttempt);
+        if (hasBearerAuth(h)) {
+          setAuthHeaders(h);
+          setAuthReady(true);
+          return;
         }
+        if (authAttempt < AUTH_RETRY_MAX) {
+          authAttempt += 1;
+          authRetryTimer.current = setTimeout(
+            loadAuth,
+            Math.min(350 * authAttempt, 1800),
+          );
+          return;
+        }
+        setAuthHeaders(h);
+        setAuthReady(true);
       });
     };
-    const authRetryTimer = { current: null as ReturnType<typeof setTimeout> | null };
+
+    warmAuthedImageHeaders();
     loadAuth();
     return () => {
       cancelled = true;
+      clearTimeout(capTimer);
       if (authRetryTimer.current) clearTimeout(authRetryTimer.current);
     };
-  }, [needsAuth, activeUri]);
+  }, [needsAuth, exhausted, activeUri]);
 
   const src = exhausted
     ? UNSPLASH_FALLBACK_URI
@@ -306,7 +349,10 @@ export function RemotePhotoImage({
       retryTimer.current = setTimeout(() => {
         if (needsAuth) {
           void refreshAuthedImageHeaders()
-            .then((h) => setAuthHeaders(h))
+            .then((h) => {
+              setAuthHeaders(h);
+              if (hasBearerAuth(h)) setAuthReady(true);
+            })
             .catch(() => {});
         }
         setLoaded(false);
@@ -317,7 +363,7 @@ export function RemotePhotoImage({
     advanceChain();
   };
 
-  const waitingForAuth = needsAuth && !authHeaders && !exhausted;
+  const waitingForAuth = needsAuth && !authReady && !exhausted;
   const showSkeleton = waitingForAuth || !loaded;
 
   useEffect(() => {
@@ -372,10 +418,10 @@ export function RemotePhotoImage({
   return (
     <View style={[style as StyleProp<ViewStyle>, styles.container]}>
       {showSkeleton ? <PhotoSkeleton /> : null}
-      {!waitingForAuth ? (
+      {!waitingForAuth && activeUri.trim().length > 0 ? (
         <Image
           source={
-            needsAuth && authHeaders && !exhausted
+            needsAuth && hasBearerAuth(authHeaders) && !exhausted
               ? { uri: src, headers: authHeaders }
               : { uri: src }
           }

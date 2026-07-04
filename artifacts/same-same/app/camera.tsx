@@ -41,6 +41,7 @@ import {
   TAG_LIBRARY,
 } from "@/data/samplePhotos";
 import { analyzePhoto, reactivateMyPhoto, warmAuthedImageHeaders } from "@/utils/api";
+import { prefetchMyPhotoLibrary } from "@/utils/myPhotoPrefetch";
 import { detectCountryFromGPS } from "@/utils/gpsCountry";
 import {
   detectPhotoOrigin,
@@ -272,6 +273,7 @@ export default function CameraScreen() {
     myPhotos,
     myCountryCode,
     myVibe,
+    reconcileMatchPhotos,
   } = useApp();
   const { proActive } = useProAccess();
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
@@ -919,6 +921,8 @@ export default function CameraScreen() {
   useFocusEffect(
     useCallback(() => {
       warmAuthedImageHeaders();
+      reconcileMatchPhotos();
+      prefetchMyPhotoLibrary(myPhotos, 8);
       const cap = consumePendingCapture();
       if (cap) {
         captureRequestIdRef.current = cap.requestId;
@@ -955,7 +959,7 @@ export default function CameraScreen() {
         void pausePreview();
         endCaptureTransition();
       };
-    }, []),
+    }, [myPhotos, reconcileMatchPhotos]),
   );
 
   const runAiSuggestions = () => {
