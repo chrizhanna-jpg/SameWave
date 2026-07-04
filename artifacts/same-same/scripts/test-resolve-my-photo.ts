@@ -9,6 +9,7 @@ process.env.EXPO_PUBLIC_HOSTED_API_URL = "https://samewave.onrender.com";
 import {
   canonicalizePhotoStreamUri,
   enrichMatchMyPhotoFields,
+  myPhotoRowKey,
   resolveMatchMyPhotoUri,
   shouldCanonicalizePhotoStreamUri,
 } from "../utils/photoDisplayUri";
@@ -156,6 +157,32 @@ assert(
     lan.includes("/api/photos/server-photo-id/image")
     ? lan
     : "",
+  true,
+);
+
+const renderUrl =
+  "https://samewave.onrender.com/api/photos/server-photo-id/image?w=960";
+assert(
+  "hosted stream URL not rewritten",
+  !shouldCanonicalizePhotoStreamUri(renderUrl) &&
+    canonicalizePhotoStreamUri(renderUrl) === renderUrl
+    ? renderUrl
+    : "",
+  true,
+);
+
+// H9: recent-photo row keys stay unique when uri is "" and backendId is shared
+const dupBid = "shared-backend-id";
+const keys = [
+  { uri: "", backendId: dupBid, uploadedAt: "2026-01-01T00:00:00.000Z" },
+  { uri: "", backendId: dupBid, uploadedAt: "2026-01-02T00:00:00.000Z" },
+  { uri: "", backendId: undefined, uploadedAt: undefined },
+  { uri: "", backendId: undefined, uploadedAt: undefined },
+].map((p, i) => myPhotoRowKey(p, i));
+const unique = new Set(keys);
+assert(
+  "myPhotoRowKey all unique",
+  unique.size === keys.length ? "ok" : "",
   true,
 );
 
