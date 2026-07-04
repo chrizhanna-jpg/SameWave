@@ -1,7 +1,7 @@
 // In-app square-viewfinder camera. The live preview fills a centred square;
 // we crop to square on capture (sensors are typically 4:3). Do NOT set
-// ratio="1:1" on CameraView — it switches Android preview to FIT and often
-// yields a black or mis-sized surface; square framing is done via layout clip.
+// ratio="1:1" on CameraView — on Android it uses FILL_CENTER and often
+// yields a black surface. Use 4:3 (FIT_CENTER) inside the square clip.
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -35,9 +35,6 @@ import { setPendingCapture } from "@/utils/captureBus";
 import { detectCountryFromGPS } from "@/utils/gpsCountry";
 import {
   acquireCameraSession,
-  bumpCameraSessionGeneration,
-  getCameraSessionGeneration,
-  isCameraSessionOwnedBy,
   releaseCameraSession,
 } from "@/utils/cameraSession";
 import { recordCameraEvent } from "@/utils/cameraTelemetry";
@@ -46,6 +43,9 @@ const CAMERA_OWNER_ID = "in-camera";
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const PINCH_SCALE_FACTOR = 0.25;
 const MAX_MOUNT_RETRIES = 2;
+const PREVIEW_READY_TIMEOUT_MS = 1200;
+// 4:3 preview fits inside the square clip on Android without black FIT issues.
+const PREVIEW_RATIO = Platform.OS === "android" ? ("4:3" as const) : undefined;
 
 export default function InCameraScreen() {
   const colors = useColors();
@@ -58,14 +58,14 @@ export default function InCameraScreen() {
   const [facing, setFacing] = useState<CameraType>("back");
   const [zoom, setZoom] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [isFocused, setIsFocused] = useState(false);
-  const [viewfinderReady, setViewfinderReady] = useState(false);
+  const [cameraLive, setCameraLive] = useState(false);
   const [previewReady, setPreviewReady] = useState(false);
   const [mountError, setMountError] = useState<string | null>(null);
-  const [sessionKey, setSessionKey] = useState(0);
+  const [remountNonce, setRemountNonce] = useState(0);
   const mountRetries = useRef(0);
   const cameraRef = useRef<CameraView | null>(null);
   const pinchStartZoomRef = useRef(0);
+  const previewReadyRef = useRef(false);
 
   useEffect(() => {
     if (permission === null) {
@@ -78,30 +78,62 @@ export default function InCameraScreen() {
       if (!acquireCameraSession(CAMERA_OWNER_ID)) {
         recordCameraEvent("camera.open.failure", { reason: "camera_busy" });
         setMountError("Camera is in use. Close other camera screens and retry.");
+        setCameraLive(false);
         return () => {};
       }
-      setIsFocused(true);
-      setPreviewReady(false);
-      setViewfinderReady(true);
       setMountError(null);
+      setPreviewReady(false);
+      previewReadyRef.current = false;
       mountRetries.current = 0;
-      setSessionKey(getCameraSessionGeneration());
+      setCameraLive(true);
       recordCameraEvent("camera.open.start");
       return () => {
-        setIsFocused(false);
+        setCameraLive(false);
         setPreviewReady(false);
+        previewReadyRef.current = false;
         releaseCameraSession(CAMERA_OWNER_ID);
         recordCameraEvent("camera.release");
       };
     }, []),
   );
 
-  const remountCamera = useCallback(() => {
-    bumpCameraSessionGeneration();
-    setSessionKey(getCameraSessionGeneration());
+  useEffect(() => {
+    if (!cameraLive) return;
     setPreviewReady(false);
+    previewReadyRef.current = false;
+    const timer = setTimeout(() => {
+      if (!previewReadyRef.current) {
+        recordCameraEvent("camera.open.success", {
+          facing,
+          source: "timeout_fallback",
+        });
+        previewReadyRef.current = true;
+        setPreviewReady(true);
+      }
+    }, PREVIEW_READY_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [cameraLive, facing, remountNonce]);
+
+  const markPreviewReady = useCallback(
+    (source: "onCameraReady" | "timeout_fallback") => {
+      if (previewReadyRef.current) return;
+      previewReadyRef.current = true;
+      setPreviewReady(true);
+      recordCameraEvent("camera.open.success", { facing, source });
+    },
+    [facing],
+  );
+
+  const remountCamera = useCallback(() => {
+    if (!acquireCameraSession(CAMERA_OWNER_ID)) {
+      setMountError("Camera is in use. Close other camera screens and retry.");
+      return;
+    }
+    setPreviewReady(false);
+    previewReadyRef.current = false;
     setMountError(null);
     mountRetries.current = 0;
+    setRemountNonce((n) => n + 1);
     recordCameraEvent("camera.retry");
   }, []);
 
@@ -129,9 +161,8 @@ export default function InCameraScreen() {
   const flipCamera = () => {
     Haptics.selectionAsync().catch(() => {});
     setPreviewReady(false);
+    previewReadyRef.current = false;
     setFacing((f) => (f === "back" ? "front" : "back"));
-    bumpCameraSessionGeneration();
-    setSessionKey(getCameraSessionGeneration());
   };
 
   const capture = async () => {
@@ -202,14 +233,7 @@ export default function InCameraScreen() {
   const topPadding = Platform.OS === "web" ? 24 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 24 : insets.bottom;
   const viewfinderSize = SCREEN_WIDTH;
-  const canRenderCamera =
-    permission?.granted &&
-    isFocused &&
-    viewfinderReady &&
-    !mountError &&
-    isCameraSessionOwnedBy(CAMERA_OWNER_ID);
 
-  // Permission flow ─────────────────────────────────────────────────
   if (!permission) {
     return (
       <View style={[styles.container, styles.centered]}>
@@ -277,45 +301,42 @@ export default function InCameraScreen() {
             { width: viewfinderSize, height: viewfinderSize },
           ]}
           onLayout={() => {
-            setViewfinderReady(true);
             recordCameraEvent("camera.surface.ready", {
               w: viewfinderSize,
               h: viewfinderSize,
             });
           }}
         >
-          {canRenderCamera ? (
-            <CameraView
-              key={`cam-${sessionKey}-${facing}`}
-              ref={cameraRef}
-              style={StyleSheet.absoluteFill}
-              facing={facing}
-              zoom={zoom}
-              active={isFocused}
-              onCameraReady={() => {
-                setPreviewReady(true);
-                recordCameraEvent("camera.open.success", { facing });
-              }}
-              onMountError={(e) => {
-                const msg = e.message?.trim() || "Camera failed to start";
-                recordCameraEvent("camera.open.failure", { message: msg });
-                if (mountRetries.current < MAX_MOUNT_RETRIES) {
-                  mountRetries.current += 1;
-                  remountCamera();
-                  return;
-                }
-                setMountError(msg);
-                setPreviewReady(false);
-              }}
-            />
+          {cameraLive && !mountError ? (
+            <PinchGestureHandler
+              onGestureEvent={onPinch}
+              onHandlerStateChange={onPinchStateChange}
+            >
+              <View style={StyleSheet.absoluteFill}>
+                <CameraView
+                  key={`cam-${facing}-${remountNonce}`}
+                  ref={cameraRef}
+                  style={StyleSheet.absoluteFill}
+                  facing={facing}
+                  zoom={zoom}
+                  ratio={PREVIEW_RATIO}
+                  onCameraReady={() => markPreviewReady("onCameraReady")}
+                  onMountError={(e) => {
+                    const msg = e.message?.trim() || "Camera failed to start";
+                    recordCameraEvent("camera.open.failure", { message: msg });
+                    if (mountRetries.current < MAX_MOUNT_RETRIES) {
+                      mountRetries.current += 1;
+                      setRemountNonce((n) => n + 1);
+                      return;
+                    }
+                    setMountError(msg);
+                    setPreviewReady(false);
+                    previewReadyRef.current = false;
+                  }}
+                />
+              </View>
+            </PinchGestureHandler>
           ) : null}
-
-          <PinchGestureHandler
-            onGestureEvent={onPinch}
-            onHandlerStateChange={onPinchStateChange}
-          >
-            <View style={StyleSheet.absoluteFill} pointerEvents="box-only" />
-          </PinchGestureHandler>
 
           {!previewReady && !mountError ? (
             <View style={styles.previewPlaceholder} pointerEvents="none">
@@ -448,7 +469,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#111",
+    backgroundColor: "rgba(17,17,17,0.72)",
     paddingHorizontal: 24,
     gap: 12,
   },
