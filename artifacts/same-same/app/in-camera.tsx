@@ -1,9 +1,9 @@
-// In-app square-viewfinder camera. The live preview fills a centred square;
-// we crop to square on capture (sensors are typically 4:3). Do NOT set
-// ratio="1:1" on CameraView — on Android it uses FILL_CENTER and often
-// yields a black surface. Use 4:3 (FIT_CENTER) inside the square clip.
+// Full-screen in-app camera with a Ripple frame guide overlay. The live
+// preview fills the screen; the white box matches one photo pane on the
+// match swipe card (`getRipplePhotoPaneMetrics`). Capture crops to that
+// aspect ratio so framing matches what others see while swiping.
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -31,6 +31,10 @@ import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
+import {
+  computeRipplePhotoCenterCrop,
+  getRipplePhotoGuideRect,
+} from "@/constants/ripplePhotoFrame";
 import { setPendingCapture } from "@/utils/captureBus";
 import { detectCountryFromGPS } from "@/utils/gpsCountry";
 import {
@@ -40,12 +44,51 @@ import {
 import { recordCameraEvent } from "@/utils/cameraTelemetry";
 
 const CAMERA_OWNER_ID = "in-camera";
-const SCREEN_WIDTH = Dimensions.get("window").width;
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const PINCH_SCALE_FACTOR = 0.25;
 const MAX_MOUNT_RETRIES = 2;
 const PREVIEW_READY_TIMEOUT_MS = 1200;
-// 4:3 preview fits inside the square clip on Android without black FIT issues.
-const PREVIEW_RATIO = Platform.OS === "android" ? ("4:3" as const) : undefined;
+const GUIDE_DIM = "rgba(0,0,0,0.42)";
+const GUIDE_BORDER = "rgba(255,255,255,0.92)";
+
+function RippleFrameGuide({
+  left,
+  top,
+  width,
+  height,
+}: {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}) {
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <View style={[styles.guideDim, { top: 0, left: 0, right: 0, height: top }]} />
+      <View
+        style={[
+          styles.guideDim,
+          { top: top + height, left: 0, right: 0, bottom: 0 },
+        ]}
+      />
+      <View
+        style={[styles.guideDim, { top, left: 0, width: left, height }]}
+      />
+      <View
+        style={[
+          styles.guideDim,
+          { top, left: left + width, right: 0, height },
+        ]}
+      />
+      <View
+        style={[
+          styles.guideBox,
+          { left, top, width, height },
+        ]}
+      />
+    </View>
+  );
+}
 
 export default function InCameraScreen() {
   const colors = useColors();
@@ -66,6 +109,15 @@ export default function InCameraScreen() {
   const cameraRef = useRef<CameraView | null>(null);
   const pinchStartZoomRef = useRef(0);
   const previewReadyRef = useRef(false);
+
+  const frameInsets = useMemo(
+    () => ({ top: insets.top, bottom: insets.bottom }),
+    [insets.top, insets.bottom],
+  );
+  const guideRect = useMemo(
+    () => getRipplePhotoGuideRect(frameInsets),
+    [frameInsets],
+  );
 
   useEffect(() => {
     if (permission === null) {
@@ -183,12 +235,10 @@ export default function InCameraScreen() {
       }
       const w = shot.width ?? 0;
       const h = shot.height ?? 0;
-      const side = Math.min(w, h);
-      const originX = Math.max(0, Math.round((w - side) / 2));
-      const originY = Math.max(0, Math.round((h - side) / 2));
+      const crop = computeRipplePhotoCenterCrop(w, h, frameInsets);
       const cropped = await ImageManipulator.manipulateAsync(
         shot.uri,
-        [{ crop: { originX, originY, width: side, height: side } }],
+        [{ crop }],
         {
           compress: 0.85,
           format: ImageManipulator.SaveFormat.JPEG,
@@ -232,7 +282,6 @@ export default function InCameraScreen() {
 
   const topPadding = Platform.OS === "web" ? 24 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 24 : insets.bottom;
-  const viewfinderSize = SCREEN_WIDTH;
 
   if (!permission) {
     return (
@@ -276,8 +325,64 @@ export default function InCameraScreen() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: "#000" }}>
-      <View style={[styles.container, { paddingTop: topPadding }]}>
-        <View style={styles.header}>
+      <View style={styles.container}>
+        {cameraLive && !mountError ? (
+          <PinchGestureHandler
+            onGestureEvent={onPinch}
+            onHandlerStateChange={onPinchStateChange}
+          >
+            <View style={StyleSheet.absoluteFill}>
+              <CameraView
+                key={`cam-${facing}-${remountNonce}`}
+                ref={cameraRef}
+                style={StyleSheet.absoluteFill}
+                facing={facing}
+                zoom={zoom}
+                onCameraReady={() => markPreviewReady("onCameraReady")}
+                onMountError={(e) => {
+                  const msg = e.message?.trim() || "Camera failed to start";
+                  recordCameraEvent("camera.open.failure", { message: msg });
+                  if (mountRetries.current < MAX_MOUNT_RETRIES) {
+                    mountRetries.current += 1;
+                    setRemountNonce((n) => n + 1);
+                    return;
+                  }
+                  setMountError(msg);
+                  setPreviewReady(false);
+                  previewReadyRef.current = false;
+                }}
+              />
+            </View>
+          </PinchGestureHandler>
+        ) : null}
+
+        {previewReady ? (
+          <RippleFrameGuide
+            left={guideRect.left}
+            top={guideRect.top}
+            width={guideRect.width}
+            height={guideRect.height}
+          />
+        ) : null}
+
+        {!previewReady && !mountError ? (
+          <View style={styles.previewPlaceholder} pointerEvents="none">
+            <ActivityIndicator color="#fff" size="large" />
+            <Text style={styles.previewPlaceholderText}>Starting camera…</Text>
+          </View>
+        ) : null}
+
+        {mountError ? (
+          <View style={styles.previewPlaceholder}>
+            <Icon name="camera" size={36} color="rgba(255,255,255,0.7)" />
+            <Text style={styles.errorText}>{mountError}</Text>
+            <TouchableOpacity style={styles.retryBtn} onPress={remountCamera}>
+              <Text style={styles.retryBtnText}>Retry camera</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
+        <View style={[styles.header, { paddingTop: topPadding }]}>
           <TouchableOpacity
             onPress={() => router.back()}
             style={styles.headerBtn}
@@ -296,67 +401,16 @@ export default function InCameraScreen() {
         </View>
 
         <View
-          style={[
-            styles.viewfinderWrap,
-            { width: viewfinderSize, height: viewfinderSize },
-          ]}
+          style={[styles.controls, { paddingBottom: bottomPadding + 20 }]}
           onLayout={() => {
             recordCameraEvent("camera.surface.ready", {
-              w: viewfinderSize,
-              h: viewfinderSize,
+              w: SCREEN_WIDTH,
+              h: SCREEN_HEIGHT,
+              guideW: guideRect.width,
+              guideH: guideRect.height,
             });
           }}
         >
-          {cameraLive && !mountError ? (
-            <PinchGestureHandler
-              onGestureEvent={onPinch}
-              onHandlerStateChange={onPinchStateChange}
-            >
-              <View style={StyleSheet.absoluteFill}>
-                <CameraView
-                  key={`cam-${facing}-${remountNonce}`}
-                  ref={cameraRef}
-                  style={StyleSheet.absoluteFill}
-                  facing={facing}
-                  zoom={zoom}
-                  ratio={PREVIEW_RATIO}
-                  onCameraReady={() => markPreviewReady("onCameraReady")}
-                  onMountError={(e) => {
-                    const msg = e.message?.trim() || "Camera failed to start";
-                    recordCameraEvent("camera.open.failure", { message: msg });
-                    if (mountRetries.current < MAX_MOUNT_RETRIES) {
-                      mountRetries.current += 1;
-                      setRemountNonce((n) => n + 1);
-                      return;
-                    }
-                    setMountError(msg);
-                    setPreviewReady(false);
-                    previewReadyRef.current = false;
-                  }}
-                />
-              </View>
-            </PinchGestureHandler>
-          ) : null}
-
-          {!previewReady && !mountError ? (
-            <View style={styles.previewPlaceholder} pointerEvents="none">
-              <ActivityIndicator color="#fff" size="large" />
-              <Text style={styles.previewPlaceholderText}>Starting camera…</Text>
-            </View>
-          ) : null}
-
-          {mountError ? (
-            <View style={styles.previewPlaceholder}>
-              <Icon name="camera" size={36} color="rgba(255,255,255,0.7)" />
-              <Text style={styles.errorText}>{mountError}</Text>
-              <TouchableOpacity style={styles.retryBtn} onPress={remountCamera}>
-                <Text style={styles.retryBtnText}>Retry camera</Text>
-              </TouchableOpacity>
-            </View>
-          ) : null}
-        </View>
-
-        <View style={[styles.controls, { paddingBottom: bottomPadding + 24 }]}>
           <View style={styles.zoomRow}>
             {[
               { label: "1×", value: 0 },
@@ -399,7 +453,7 @@ export default function InCameraScreen() {
           </View>
 
           <Text style={styles.hint}>
-            Pinch to zoom · what you see is your photo
+            Frame inside the box · shown in Ripple
           </Text>
         </View>
       </View>
@@ -446,24 +500,33 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   header: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 8,
+    zIndex: 10,
   },
   headerBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(0,0,0,0.35)",
     alignItems: "center",
     justifyContent: "center",
   },
-  viewfinderWrap: {
-    alignSelf: "center",
-    overflow: "hidden",
-    backgroundColor: "#111",
-    marginTop: 12,
+  guideDim: {
+    position: "absolute",
+    backgroundColor: GUIDE_DIM,
+  },
+  guideBox: {
+    position: "absolute",
+    borderWidth: 2,
+    borderColor: GUIDE_BORDER,
+    borderRadius: 2,
   },
   previewPlaceholder: {
     ...StyleSheet.absoluteFillObject,
@@ -472,6 +535,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(17,17,17,0.72)",
     paddingHorizontal: 24,
     gap: 12,
+    zIndex: 5,
   },
   previewPlaceholderText: {
     color: "rgba(255,255,255,0.65)",
@@ -498,10 +562,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   controls: {
-    flex: 1,
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
     alignItems: "center",
-    justifyContent: "flex-end",
     paddingHorizontal: 24,
+    zIndex: 10,
   },
   zoomRow: {
     flexDirection: "row",
@@ -542,10 +609,13 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   hint: {
-    color: "rgba(255,255,255,0.6)",
+    color: "rgba(255,255,255,0.75)",
     fontSize: 12,
     fontFamily: "Inter_400Regular",
-    marginTop: 18,
+    marginTop: 16,
     textAlign: "center",
+    textShadowColor: "rgba(0,0,0,0.6)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
 });

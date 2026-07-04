@@ -39,3 +39,45 @@ export function getRipplePhotoPaneMetrics(insets: RipplePhotoFrameInsets) {
     aspectRatio: width / height,
   };
 }
+
+/** Centered guide rect for the in-app camera overlay (matches Ripple pane). */
+export function getRipplePhotoGuideRect(insets: RipplePhotoFrameInsets) {
+  const frame = getRipplePhotoPaneMetrics(insets);
+  return {
+    left: (SCREEN_W - frame.width) / 2,
+    top: (SCREEN_H - frame.height) / 2,
+    width: frame.width,
+    height: frame.height,
+    aspectRatio: frame.aspectRatio,
+  };
+}
+
+/** Center cover crop so saved photos match Ripple `resizeMode="cover"` panes. */
+export function computeRipplePhotoCenterCrop(
+  imageWidth: number,
+  imageHeight: number,
+  insets: RipplePhotoFrameInsets,
+): { originX: number; originY: number; width: number; height: number } {
+  const { width: targetW, height: targetH } = getRipplePhotoPaneMetrics(insets);
+  const targetAspect = targetW / targetH;
+  const imageAspect = imageWidth / imageHeight;
+
+  if (imageAspect > targetAspect) {
+    const height = imageHeight;
+    const width = Math.round(height * targetAspect);
+    return {
+      originX: Math.max(0, Math.round((imageWidth - width) / 2)),
+      originY: 0,
+      width,
+      height,
+    };
+  }
+  const width = imageWidth;
+  const height = Math.round(width / targetAspect);
+  return {
+    originX: 0,
+    originY: Math.max(0, Math.round((imageHeight - height) / 2)),
+    width,
+    height,
+  };
+}
