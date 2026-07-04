@@ -43,7 +43,7 @@ export function recordCameraEvent(
       location: "cameraTelemetry",
       message: event,
       data: payload.detail ?? {},
-    }).catch(() => {});
+    });
   }
 }
 
