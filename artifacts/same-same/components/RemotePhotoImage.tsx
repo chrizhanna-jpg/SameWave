@@ -174,6 +174,7 @@ export function RemotePhotoImage({
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadStartedAt = useRef<number | null>(null);
   const blankTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadGeneration = useRef(0);
 
   const clearRetryTimer = () => {
     if (retryTimer.current) {
@@ -190,6 +191,7 @@ export function RemotePhotoImage({
   };
 
   useEffect(() => {
+    loadGeneration.current += 1;
     setUsedFallback(false);
     setUseHosted(false);
     setExhausted(false);
@@ -337,8 +339,10 @@ export function RemotePhotoImage({
   }, [activeUri, waitingForAuth, exhausted, priority, manualRetry]);
 
   const handleLoad = () => {
+    const gen = loadGeneration.current;
     clearRetryTimer();
     clearBlankTimer();
+    if (gen !== loadGeneration.current) return;
     setLoaded(true);
     const started = loadStartedAt.current;
     const elapsed = started != null ? Date.now() - started : undefined;
@@ -375,7 +379,7 @@ export function RemotePhotoImage({
               ? { uri: src, headers: authHeaders }
               : { uri: src }
           }
-          style={StyleSheet.absoluteFill}
+          style={[StyleSheet.absoluteFill, { opacity: loaded ? 1 : 0 }]}
           contentFit={resizeMode}
           cachePolicy="memory-disk"
           recyclingKey={stableKey}

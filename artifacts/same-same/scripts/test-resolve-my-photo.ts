@@ -9,6 +9,7 @@ process.env.EXPO_PUBLIC_HOSTED_API_URL = "https://samewave.onrender.com";
 import {
   canonicalizePhotoStreamUri,
   enrichMatchMyPhotoFields,
+  findMyPhotoForMatch,
   myPhotoRowKey,
   repairMyPhotos,
   resolveMatchMyPhotoUri,
@@ -237,6 +238,46 @@ const mergedRace = mergeMyPhotos(
 assert(
   "mergeMyPhotos keeps pending local capture",
   mergedRace[0]?.uri.startsWith("file:") ? "ok" : "",
+  true,
+);
+
+// H12: findMyPhotoForMatch must not fall back to unrelated newest upload
+const unrelatedLibrary: MyPhoto[] = [
+  {
+    uri: "https://samewave.onrender.com/api/photos/newest-id/image",
+    uploadedAt: "2026-07-04T12:00:00.000Z",
+    theme: "joy",
+    backendId: "newest-id",
+    uploadState: "ok",
+  },
+];
+const noLink = findMyPhotoForMatch(
+  {
+    ...baseMatch,
+    timestamp: "2026-06-01T12:00:00.000Z",
+    myPhotoUploadedAt: "2026-06-01T10:00:00.000Z",
+  },
+  unrelatedLibrary,
+);
+assert(
+  "findMyPhotoForMatch no spurious fallback",
+  noLink === undefined ? "ok" : String(noLink?.backendId),
+  true,
+);
+
+// H13: enrich must not assign sample URLs as voter photo
+const sampleEnriched = enrichMatchMyPhotoFields(
+  {
+    ...baseMatch,
+    myPhoto: "https://images.unsplash.com/photo-1495474472287?w=400",
+  },
+  [],
+);
+assert(
+  "enrich does not promote sample as myPhotoId",
+  !sampleEnriched.myPhotoId && sampleEnriched.myPhoto.includes("unsplash")
+    ? "ok"
+    : sampleEnriched.myPhotoId ?? "",
   true,
 );
 

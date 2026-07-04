@@ -4,6 +4,7 @@ import { resolveMatchPhotoUris, pickDurablePhotoUri } from "@/utils/matchPhotoSn
 import { photoKey } from "@/utils/photoKey";
 import { lookupVoterPhotoForMatchSync } from "@/utils/voterPhotoByTarget";
 import { matchCountryFieldsFromCapture } from "@/utils/photoCountry";
+import { isSamplePhoto } from "@/data/samplePhotos";
 import {
   DISPLAY_PHOTO_MAX_WIDTH,
   FEED_THUMB_WIDTH,
@@ -106,9 +107,10 @@ export function canonicalizePhotoStreamUri(uri: string): string {
 /** Authenticated fallback when a local `file://` capture is gone. */
 export function photoStreamFallbackUri(
   photoId: string | undefined | null,
+  maxWidth: number = DISPLAY_PHOTO_MAX_WIDTH,
 ): string | undefined {
   const id = photoId?.trim();
-  return id ? serverPhotoImageUrl(id) : undefined;
+  return id ? serverPhotoImageUrl(id, maxWidth) : undefined;
 }
 
 const RECENT_PHOTO_THUMB_WIDTH = 320;
@@ -171,7 +173,7 @@ export function resolveEchoPhotoUri(side: {
   return uri;
 }
 
-function uploadTimesEqual(a?: string, b?: string): boolean {
+export function uploadTimesEqual(a?: string, b?: string): boolean {
   const sa = a?.trim() ?? "";
   const sb = b?.trim() ?? "";
   if (!sa || !sb) return false;
@@ -266,10 +268,7 @@ export function findMyPhotoForMatch(
     if (best) return best;
   }
 
-  return (
-    myPhotos.find((p) => !!p.backendId?.trim()) ??
-    myPhotos.find((p) => !!p.uri?.trim())
-  );
+  return undefined;
 }
 
 function resolveMyPhotoForMatch(
@@ -320,6 +319,53 @@ export function resolveMatchMyPhotoUri(
   }
 
   return resolveEchoPhotoUri({ id: enriched.myPhotoId, uri: myPhoto });
+}
+
+/** Thumbnail-sized voter photo for feed tiles (320w stream). */
+export function resolveMatchMyPhotoThumbnailUri(
+  match: Pick<
+    Match,
+    | "id"
+    | "myPhoto"
+    | "myPhotoId"
+    | "myPhotoUploadedAt"
+    | "timestamp"
+  >,
+  myPhotos: MyPhoto[],
+): string {
+  const uri = resolveMatchMyPhotoUri(match, myPhotos);
+  if (!uri || uri.startsWith("file:") || uri.startsWith("content:")) {
+    return uri;
+  }
+  const id = match.myPhotoId?.trim() || extractPhotoStreamId(uri) || undefined;
+  if (id && !isSamplePhoto(uri)) {
+    return serverPhotoImageUrl(id, FEED_THUMB_WIDTH);
+  }
+  return withDisplayPhotoWidth(uri, FEED_THUMB_WIDTH);
+}
+
+/** Local or thumbnail fallback when the primary stream fails in a feed row. */
+export function resolveMatchMyPhotoFallbackUri(
+  match: Pick<
+    Match,
+    | "id"
+    | "myPhoto"
+    | "myPhotoId"
+    | "myPhotoUploadedAt"
+    | "timestamp"
+  >,
+  myPhotos: MyPhoto[],
+): string | undefined {
+  const stashed = resolveMatchPhotoUris(match.id, {
+    myPhoto: match.myPhoto,
+    theirPhoto: "",
+  }).myPhoto;
+  const row = findMyPhotoForMatch(match, myPhotos, stashed);
+  if (row) {
+    const thumb = resolveMyPhotoThumbnailUri(row);
+    if (thumb.trim()) return thumb;
+  }
+  return photoStreamFallbackUri(match.myPhotoId, FEED_THUMB_WIDTH);
 }
 
 /** Match row photos for lists — survives stripped cache and stale file:// captures. */
@@ -386,17 +432,18 @@ export function enrichMatchMyPhotoFields(
   const bid = photo?.backendId?.trim();
   if (!bid) {
     const durable = pickDurablePhotoUri(match.myPhoto, stashedMyPhoto);
-    if (durable && durable !== match.myPhoto) {
+    if (durable && durable !== match.myPhoto && !isSamplePhoto(durable)) {
       return { ...match, myPhoto: durable };
     }
     const fromLib = photo ? resolveMyPhotoDisplayUri(photo) : "";
-    if (fromLib && fromLib !== match.myPhoto) {
+    if (fromLib && fromLib !== match.myPhoto && !isSamplePhoto(fromLib)) {
       return { ...match, myPhoto: fromLib };
     }
     return match;
   }
 
   const server = serverPhotoImageUrl(bid);
+  if (isSamplePhoto(server)) return match;
   return { ...match, myPhotoId: bid, myPhoto: server };
 }
 
