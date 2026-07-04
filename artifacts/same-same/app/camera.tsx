@@ -31,7 +31,7 @@ import {
   SUGGESTED_TAGS_BY_THEME,
   TAG_LIBRARY,
 } from "@/data/samplePhotos";
-import { analyzePhoto, reactivateMyPhoto, uploadPhoto } from "@/utils/api";
+import { analyzePhoto, reactivateMyPhoto, uploadPhoto, warmAuthedImageHeaders } from "@/utils/api";
 import { requestAtlasRefresh } from "@/utils/atlasHub";
 import {
   detectPhotoOrigin,
@@ -42,8 +42,10 @@ import { detectCountryFromPhotoExif } from "@/utils/gpsCountry";
 import { photoCountryDisplay } from "@/utils/photoCountry";
 import {
   findMyPhotoByUri,
+  myPhotoRowKey,
   photoStreamFallbackUri,
   resolveMyPhotoDisplayUri,
+  resolveMyPhotoThumbnailUri,
 } from "@/utils/photoDisplayUri";
 import {
   MUSIC_LIBRARY,
@@ -896,6 +898,7 @@ export default function CameraScreen() {
   // or Match has since taken over playback, this no-ops.
   useFocusEffect(
     useCallback(() => {
+      warmAuthedImageHeaders();
       const cap = consumePendingCapture();
       if (cap) {
         const asset: ImagePicker.ImagePickerAsset = {
@@ -1698,10 +1701,11 @@ export default function CameraScreen() {
                 style={styles.prevScroll}
               >
                 {myPhotos.slice(0, 8).map((photo, i) => {
-                  const displayUri = resolveMyPhotoDisplayUri(photo);
+                  const rowKey = myPhotoRowKey(photo, i);
+                  const displayUri = resolveMyPhotoThumbnailUri(photo);
                   const loc = photoCountryDisplay(photo.captureCountryCode);
                   return (
-                  <View key={photo.backendId ?? photo.uri ?? String(i)} style={styles.prevItem}>
+                  <View key={rowKey} style={styles.prevItem}>
                     <TouchableOpacity
                       onPress={() => {
                         selectRecentPhoto(photo);
@@ -1718,7 +1722,7 @@ export default function CameraScreen() {
                           style={[styles.prevPhoto, { borderColor: colors.border }]}
                           resizeMode="cover"
                           transitionMs={0}
-                          recyclingKey={photo.backendId ?? displayUri}
+                          recyclingKey={`recent-${rowKey}`}
                         />
                       ) : (
                         <View

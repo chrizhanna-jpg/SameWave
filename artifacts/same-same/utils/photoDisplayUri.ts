@@ -103,6 +103,49 @@ export function photoStreamFallbackUri(
   return id ? serverPhotoImageUrl(id) : undefined;
 }
 
+const RECENT_PHOTO_THUMB_WIDTH = 320;
+
+/** Smaller stream for recent-photo picker thumbnails. */
+export function resolveMyPhotoThumbnailUri(
+  photo: Pick<MyPhoto, "uri" | "backendId" | "uploadState">,
+): string {
+  const local = photo.uri?.trim() ?? "";
+  const bid = photo.backendId?.trim();
+  const stillUploading =
+    photo.uploadState === "pending" ||
+    (photo.uploadState !== "ok" && !bid);
+
+  if (
+    stillUploading &&
+    (local.startsWith("file:") || local.startsWith("content:"))
+  ) {
+    return local;
+  }
+  if (bid) return serverPhotoImageUrl(bid, RECENT_PHOTO_THUMB_WIDTH);
+  if (
+    local.startsWith("http://") ||
+    local.startsWith("https://") ||
+    local.startsWith("/api/photos/")
+  ) {
+    return canonicalizePhotoStreamUri(local);
+  }
+  return local;
+}
+
+/** Stable unique key for recent-photo rows (empty persisted uri breaks `??`). */
+export function myPhotoRowKey(
+  photo: Pick<MyPhoto, "backendId" | "uploadedAt" | "uri">,
+  index: number,
+): string {
+  const bid = photo.backendId?.trim();
+  if (bid) return `bid:${bid}`;
+  const at = photo.uploadedAt?.trim();
+  if (at) return `at:${at}`;
+  const uri = photo.uri?.trim();
+  if (uri) return `uri:${uri}`;
+  return `idx:${index}`;
+}
+
 /** Echo / wave card side — prefer inline uri, fall back to authenticated stream. */
 export function resolveEchoPhotoUri(side: {
   id?: string;
