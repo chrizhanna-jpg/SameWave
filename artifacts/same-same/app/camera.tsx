@@ -18,6 +18,15 @@ import { ProPaywallModal } from "@/components/ProPaywallModal";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { consumePendingCapture } from "@/utils/captureBus";
+import {
+  beginCaptureTransition,
+  CAPTURE_FAST_MATCH,
+  endCaptureTransition,
+  recordCaptureTransitionEvent,
+  registerCaptureDisplayUri,
+  startBackgroundPhotoUpload,
+} from "@/utils/captureTransition";
+import { requestAtlasRefresh } from "@/utils/atlasHub";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { RemotePhotoImage } from "@/components/RemotePhotoImage";
 import { Icon } from "@/components/Icon";
@@ -31,9 +40,8 @@ import {
   SUGGESTED_TAGS_BY_THEME,
   TAG_LIBRARY,
 } from "@/data/samplePhotos";
-import { analyzePhoto, reactivateMyPhoto, uploadPhoto, warmAuthedImageHeaders } from "@/utils/api";
-import { prepareUploadImages } from "@/utils/uploadImageProcessing";
-import { requestAtlasRefresh } from "@/utils/atlasHub";
+import { analyzePhoto, reactivateMyPhoto, warmAuthedImageHeaders } from "@/utils/api";
+import { detectCountryFromGPS } from "@/utils/gpsCountry";
 import {
   detectPhotoOrigin,
   extractCaptureDateIso,
@@ -91,8 +99,8 @@ const RECORDING_MIME = "audio/m4a";
 const MAX_TAGS = 4;
 /** After this wait we still navigate to Ripple; upload still gets server AI. */
 const SUBMIT_ANALYSIS_WAIT_CAP_MS = 5000;
-/** Short beat so “posted” flashes before switching tabs (~stack transition). */
-const NAV_TO_RIPPLE_MS = 380;
+/** Navigate to Ripple immediately after post — no artificial delay. */
+const NAV_TO_RIPPLE_MS = CAPTURE_FAST_MATCH ? 0 : 380;
 const QUICK_THEMES: { label: string; emoji: string }[] = [
   { label: "morning coffee", emoji: "☕" },
   { label: "morning tea", emoji: "🍵" },
@@ -305,6 +313,9 @@ export default function CameraScreen() {
   // Tracks the latest analysis call so older in-flight responses don't
   // overwrite tags for a newer photo pick.
   const analyzeReqIdRef = useRef(0);
+  const captureRequestIdRef = useRef<string | null>(null);
+  /** Full-resolution local file used for upload — preview may use a smaller URI. */
+  const captureFullUriRef = useRef<string | null>(null);
   // Resolves when the in-flight analysis completes — used so submit can
   // wait for AI tags instead of dropping them.
   const inFlightAnalysisRef = useRef<Promise<void> | null>(null);
@@ -657,6 +668,8 @@ export default function CameraScreen() {
     asset: ImagePicker.ImagePickerAsset,
     source: PhotoSource,
     captureCountryCode?: string,
+    displayUri?: string,
+    fullUri?: string,
   ) => {
     const verdict = detectPhotoOrigin(asset, source);
     resetForNewPhoto();
@@ -666,7 +679,13 @@ export default function CameraScreen() {
     if (verdict.looksAi) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     }
-    setSelectedPhoto(asset.uri);
+    const uploadUri = fullUri?.trim() || asset.uri;
+    const paintUri = displayUri?.trim() || uploadUri;
+    captureFullUriRef.current = uploadUri;
+    if (paintUri) {
+      registerCaptureDisplayUri(paintUri, captureRequestIdRef.current ?? "camera-preview");
+    }
+    setSelectedPhoto(paintUri);
     pickedAssetRef.current = asset;
     selectedAssetRef.current = {
       base64: asset.base64 ?? null,
@@ -902,9 +921,12 @@ export default function CameraScreen() {
       warmAuthedImageHeaders();
       const cap = consumePendingCapture();
       if (cap) {
+        captureRequestIdRef.current = cap.requestId;
+        beginCaptureTransition(cap.requestId);
+        registerCaptureDisplayUri(cap.thumbnailUri ?? cap.uri, cap.requestId);
         const asset: ImagePicker.ImagePickerAsset = {
           uri: cap.uri,
-          base64: cap.base64,
+          base64: cap.base64 ?? null,
           mimeType: cap.mimeType,
           width: 0,
           height: 0,
@@ -915,10 +937,23 @@ export default function CameraScreen() {
           assetId: null,
           duration: null,
         } as unknown as ImagePicker.ImagePickerAsset;
-        acceptPhoto(asset, "camera", cap.captureCountryCode);
+        acceptPhoto(
+          asset,
+          "camera",
+          cap.captureCountryCode,
+          cap.thumbnailUri ?? cap.uri,
+          cap.uri,
+        );
+        captureAtRef.current = cap.capturedAt;
+        if (!cap.captureCountryCode) {
+          void detectCountryFromGPS().then((detected) => {
+            if (detected?.code) captureCountryRef.current = detected.code;
+          });
+        }
       }
       return () => {
         void pausePreview();
+        endCaptureTransition();
       };
     }, []),
   );
@@ -1032,10 +1067,9 @@ export default function CameraScreen() {
     ) {
       return;
     }
-    // Wait briefly for Gemini so Ripple gets tags/themes; cap wait so slow
-    // networks don't stall the navigation (upload still merges server AI).
-    if (inFlightAnalysisRef.current) {
-      setSubmitted(true); // visually lock the button immediately
+    // Fast match: never block navigation on Gemini — upload merges server AI later.
+    if (inFlightAnalysisRef.current && !CAPTURE_FAST_MATCH) {
+      setSubmitted(true);
       let capTimer: ReturnType<typeof setTimeout> | undefined;
       const cap = new Promise<void>((resolve) => {
         capTimer = setTimeout(resolve, SUBMIT_ANALYSIS_WAIT_CAP_MS);
@@ -1043,7 +1077,7 @@ export default function CameraScreen() {
       try {
         await Promise.race([inFlightAnalysisRef.current, cap]);
       } catch {
-        // ignore — we'll just submit without AI tags
+        /* ignore */
       } finally {
         if (capTimer) clearTimeout(capTimer);
       }
@@ -1063,9 +1097,8 @@ export default function CameraScreen() {
     // ships the base64 to the backend so others hear it on match.
     const recordedBase64 = customAudioBase64;
     const recordedUrl = customAudioUrl;
-    const localUri = selectedPhoto;
+    const localUri = captureFullUriRef.current ?? selectedPhoto;
     const existing = findMyPhotoByUri(myPhotos, localUri);
-    const captured = selectedAssetRef.current;
 
     if (existing?.backendId) {
       // Reuse a photo that already reached the server — no duplicate row.
@@ -1118,65 +1151,45 @@ export default function CameraScreen() {
         myCountryCode,
         captureAtRef.current,
       );
-      if (captured?.base64) {
-        const rawBase64 = captured.base64;
-        const rawMime = captured.mimeType;
-        void (async () => {
-          const prepared = await prepareUploadImages({
-            base64: rawBase64,
-            uri: localUri,
-            mimeType: rawMime,
-          });
-          return uploadPhoto({
-            imageBase64: prepared?.imageBase64 ?? rawBase64,
-            mimeType: prepared?.mimeType ?? rawMime,
-            displayBase64: prepared?.displayBase64,
-            deckPreviewBase64: prepared?.deckPreviewBase64,
-            countryCode: myCountryCode,
-            captureCountryCode: captureCountryRef.current,
-            capturedAt: captureAtRef.current,
-            musicGenre: finalGenre,
-            customAudioBase64: recordedBase64 ?? undefined,
-            customAudioMime: recordedBase64 ? RECORDING_MIME : undefined,
-            theme: finalTheme,
-            tags: merged,
-            subjects:
-              aiSubjectsRef.current.length > 0 ? aiSubjectsRef.current : undefined,
-          });
-        })()
-          .then((res) => {
-            if (res?.id && localUri) {
-              setMyPhotoBackendId(localUri, {
-                backendId: res.id,
-                subjects: res.subjects,
-                theme: res.theme,
-                tags: res.tags,
-                musicGenre: res.musicGenre,
-                suggestedTheme: res.suggestedTheme,
-              });
-              requestAtlasRefresh();
-            } else if (localUri) {
-              setMyPhotoUploadState(localUri, "failed");
-            }
-          })
-          .catch(() => {
-            if (localUri) setMyPhotoUploadState(localUri, "failed");
-          });
-      } else if (localUri && !existing?.backendId) {
-        setMyPhotoUploadState(localUri, "failed");
-      }
+      const uploadRequestId =
+        captureRequestIdRef.current ?? `submit-${Date.now()}`;
+      startBackgroundPhotoUpload(
+        {
+          requestId: uploadRequestId,
+          localUri,
+          theme: finalTheme,
+          tags: merged,
+          musicGenre: finalGenre,
+          captureCountryCode: captureCountryRef.current ?? homeFallbackCc,
+          capturedAt: captureAtRef.current,
+          myCountryCode,
+          subjects: aiSubjectsRef.current,
+          customAudioBase64: recordedBase64 ?? undefined,
+          customAudioMime: recordedBase64 ? RECORDING_MIME : undefined,
+        },
+        {
+          setMyPhotoBackendId,
+          setMyPhotoUploadState,
+          requestAtlasRefresh,
+        },
+      );
     }
 
     // Stop the preview clip — user is leaving the screen.
     void stopAudio();
     void teardownPreviewSound();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setTimeout(() => {
-      // Ripple opens `/camera` without `?from=home`. `router.back()` is flaky
-      // on some Android / Expo stacks and can leave users on a stuck modal.
-      // Home flow also wants the swipe tab — always replace explicitly.
+    recordCaptureTransitionEvent("navigate.to.match.start");
+    const goMatch = () => {
       router.replace("/(tabs)/match");
-    }, NAV_TO_RIPPLE_MS);
+      recordCaptureTransitionEvent("navigate.to.match.complete");
+      endCaptureTransition();
+    };
+    if (NAV_TO_RIPPLE_MS > 0) {
+      setTimeout(goMatch, NAV_TO_RIPPLE_MS);
+    } else {
+      goMatch();
+    }
   };
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;

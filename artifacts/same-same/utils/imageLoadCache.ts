@@ -148,6 +148,15 @@ function canStartFetch(): boolean {
 async function prefetchOne(uri: string, priority: ImageLoadPriority): Promise<void> {
   const normalized = uri.trim();
   if (!normalized || inflightUris.has(normalized)) return;
+  if (priority !== "hero") {
+    try {
+      const { isCaptureTransitionInProgress } =
+        require("@/utils/captureTransition") as typeof import("@/utils/captureTransition");
+      if (isCaptureTransitionInProgress()) return;
+    } catch {
+      /* ignore */
+    }
+  }
   if (!canStartFetch()) return;
   inflightUris.add(normalized);
   inflightFetches += 1;

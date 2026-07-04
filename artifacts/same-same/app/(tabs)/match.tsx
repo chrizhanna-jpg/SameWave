@@ -114,6 +114,7 @@ import {
   prioritizeHeroPrefetch,
   prefetchPhotoUris,
 } from "@/utils/imageLoadCache";
+import { getActiveCaptureRequestId } from "@/utils/captureTransition";
 import { stopWavefireAmbience } from "@/utils/wavefireAmbience";
 import { stopFirecircleAmbience } from "@/utils/firecircleAudio";
 import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
@@ -680,7 +681,10 @@ export default function SwipeScreen() {
     todaysPhoto?.uploadedAt ||
     photoKey(myPhotoUri) ||
     myPhotoUri;
-  const myPhotoRecyclingKey = `match-my:${myPhotoSessionKey}`;
+  const captureReqId = getActiveCaptureRequestId();
+  const myPhotoRecyclingKey = captureReqId
+    ? `match-my:${captureReqId}:${myPhotoSessionKey}`
+    : `match-my:${myPhotoSessionKey}`;
   const rawTheme = myPhotoData.theme;
   // Canonical id for scoring + /candidates (uploads may store "your hands").
   const activeTheme =

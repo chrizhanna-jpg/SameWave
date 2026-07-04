@@ -31,17 +31,31 @@ import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
+import { useApp } from "@/context/AppContext";
+import { getTodaysChallenge } from "@/data/samplePhotos";
+import { suggestGenre, type MusicGenre } from "@/data/musicLibrary";
 import {
   computeRipplePhotoCenterCrop,
   getRipplePhotoGuideRect,
 } from "@/constants/ripplePhotoFrame";
 import { setPendingCapture } from "@/utils/captureBus";
 import { detectCountryFromGPS } from "@/utils/gpsCountry";
+import { requestAtlasRefresh } from "@/utils/atlasHub";
 import {
   acquireCameraSession,
   releaseCameraSession,
 } from "@/utils/cameraSession";
 import { recordCameraEvent } from "@/utils/cameraTelemetry";
+import {
+  beginCaptureTransition,
+  CAPTURE_FAST_MATCH,
+  endCaptureTransition,
+  nextCaptureRequestId,
+  recordCaptureTransitionEvent,
+  registerCaptureDisplayUri,
+  startBackgroundPhotoUpload,
+  writeCaptureThumbnail,
+} from "@/utils/captureTransition";
 
 const CAMERA_OWNER_ID = "in-camera";
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -50,6 +64,29 @@ const MAX_MOUNT_RETRIES = 2;
 const PREVIEW_READY_TIMEOUT_MS = 1200;
 const GUIDE_DIM = "rgba(0,0,0,0.42)";
 const GUIDE_BORDER = "rgba(255,255,255,0.92)";
+const MAX_HOME_TAGS = 4;
+
+function normalizeTheme(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9 \-']/g, "")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 4)
+    .join(" ");
+}
+
+function defaultQuickRipplePost(myVibe: string[]): {
+  theme: string;
+  tags: string[];
+  musicGenre: MusicGenre;
+} {
+  const challenge = getTodaysChallenge();
+  const theme = normalizeTheme(challenge.title) || "today";
+  const tags = myVibe.slice(0, MAX_HOME_TAGS);
+  const musicGenre = suggestGenre(theme, tags);
+  return { theme, tags, musicGenre };
+}
 
 function RippleFrameGuide({
   left,
@@ -93,6 +130,13 @@ function RippleFrameGuide({
 export default function InCameraScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const {
+    addMyPhoto,
+    setMyPhotoBackendId,
+    setMyPhotoUploadState,
+    myCountryCode,
+    myVibe,
+  } = useApp();
   const { from, intent } = useLocalSearchParams<{
     from?: string;
     intent?: string;
@@ -220,8 +264,11 @@ export default function InCameraScreen() {
   const capture = async () => {
     if (!cameraRef.current || busy || !previewReady) return;
     setBusy(true);
+    const captureStarted = Date.now();
+    const requestId = nextCaptureRequestId();
+    beginCaptureTransition(requestId);
     recordCameraEvent("camera.capture.start");
-    const captureCountryPromise = detectCountryFromGPS();
+    recordCaptureTransitionEvent("capture.time", { requestId, start: captureStarted });
     try {
       const shot = await cameraRef.current.takePictureAsync({
         quality: 0.9,
@@ -229,10 +276,8 @@ export default function InCameraScreen() {
         skipProcessing: false,
         exif: false,
       });
-      if (!shot?.uri) {
-        setBusy(false);
-        return;
-      }
+      if (!shot?.uri) return;
+
       const w = shot.width ?? 0;
       const h = shot.height ?? 0;
       const crop = computeRipplePhotoCenterCrop(w, h, frameInsets);
@@ -242,22 +287,82 @@ export default function InCameraScreen() {
         {
           compress: 0.85,
           format: ImageManipulator.SaveFormat.JPEG,
-          base64: true,
+          base64: false,
         },
       );
-      if (!cropped.base64) {
-        Alert.alert("Couldn't save photo", "Please try again.");
-        recordCameraEvent("camera.capture.failure", { reason: "empty_base64" });
+      if (!cropped.uri) return;
+
+      const displayUri = cropped.uri;
+      registerCaptureDisplayUri(displayUri, requestId);
+      const capturedAt = new Date().toISOString();
+      recordCameraEvent("camera.capture.success");
+
+      if (from === "home" && CAPTURE_FAST_MATCH) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
+          () => {},
+        );
+        const { theme, tags, musicGenre } = defaultQuickRipplePost(myVibe);
+        const homeFallbackCc =
+          typeof myCountryCode === "string" && myCountryCode.length === 2
+            ? myCountryCode.toUpperCase()
+            : undefined;
+        addMyPhoto(
+          displayUri,
+          theme,
+          tags,
+          false,
+          musicGenre,
+          undefined,
+          [],
+          homeFallbackCc,
+          myCountryCode,
+          capturedAt,
+        );
+        recordCaptureTransitionEvent("navigate.to.match.start", { requestId });
+        router.replace("/(tabs)/match");
+        recordCaptureTransitionEvent("navigate.to.match.complete", {
+          requestId,
+          ms: Date.now() - captureStarted,
+        });
+        void writeCaptureThumbnail(displayUri, requestId);
+        void (async () => {
+          const detected = await Promise.race([
+            detectCountryFromGPS(),
+            new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 800)),
+          ]);
+          startBackgroundPhotoUpload(
+            {
+              requestId,
+              localUri: displayUri,
+              theme,
+              tags,
+              musicGenre,
+              capturedAt,
+              myCountryCode,
+              captureCountryCode: detected?.code ?? homeFallbackCc,
+            },
+            {
+              setMyPhotoBackendId,
+              setMyPhotoUploadState,
+              requestAtlasRefresh,
+            },
+          );
+        })();
         return;
       }
-      const detected = await captureCountryPromise;
+
+      let thumbnailUri = displayUri;
+      if (CAPTURE_FAST_MATCH) {
+        thumbnailUri = await writeCaptureThumbnail(displayUri, requestId);
+      }
+
       setPendingCapture({
-        uri: cropped.uri,
-        base64: cropped.base64,
+        uri: displayUri,
+        thumbnailUri,
         mimeType: "image/jpeg",
-        captureCountryCode: detected?.code,
+        capturedAt,
+        requestId,
       });
-      recordCameraEvent("camera.capture.success");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
         () => {},
       );
@@ -274,8 +379,10 @@ export default function InCameraScreen() {
       recordCameraEvent("camera.capture.failure", {
         reason: err instanceof Error ? err.message : "unknown",
       });
+      recordCaptureTransitionEvent("cache.write.failure", { requestId });
       Alert.alert("Couldn't capture photo", "Please try again.");
     } finally {
+      endCaptureTransition();
       setBusy(false);
     }
   };
