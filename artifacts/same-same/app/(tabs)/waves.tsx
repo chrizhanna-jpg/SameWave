@@ -278,7 +278,7 @@ export default function WavesScreen() {
           </Text>
         </View>
         <SyncRefreshButton
-          syncing={refreshing || cloudSyncInProgress}
+          syncing={refreshing || cloudSyncInProgress || worldLoading}
           onPress={() => void onRefresh()}
           accessibilityLabel="Refresh Ripples and Waves"
         />
@@ -397,11 +397,6 @@ export default function WavesScreen() {
               title={WAVES_TAB.wavesAroundTitle}
               subtitle={WAVES_TAB.wavesAroundSub}
             />
-            {worldLoading && worldWaves.length === 0 ? (
-              <Text style={[styles.loadingHint, { color: colors.mutedForeground }]}>
-                Loading Waves…
-              </Text>
-            ) : null}
             {!worldLoading && worldWaves.length === 0 ? (
               <SectionEmpty
                 icon="wave-glyph"
@@ -1079,12 +1074,6 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     marginTop: 2,
     lineHeight: 16,
-  },
-  loadingHint: {
-    fontSize: 13,
-    fontFamily: "Inter_400Regular",
-    textAlign: "center",
-    paddingVertical: 12,
   },
   card: {
     padding: 14,

@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   AppState,
   Platform,
   ScrollView,
@@ -309,8 +308,21 @@ export default function AtlasScreen() {
   const topPadding = Platform.OS === "web" ? 56 : insets.top;
   const bottomPad = Platform.OS === "web" ? 28 : insets.bottom;
 
+  const hasDisplayableGlobe =
+    summary.length > 0 || globeConnections.length > 0;
+
+  const showSignInGate =
+    !loading &&
+    loadError === "unauthorized" &&
+    totalCountries === 0 &&
+    connections.length === 0;
+
+  const atlasSyncing = !hasHydrated || loading || refreshing;
+
   const headerSub = useMemo(() => {
-    if (loading && !hasCachedData) return null;
+    if (atlasSyncing && !hasCachedData && !hasDisplayableGlobe) {
+      return "Syncing with server…";
+    }
     if (loadError === "unauthorized" && totalCountries === 0 && connections.length === 0) {
       return "Sign in to load the map";
     }
@@ -325,28 +337,24 @@ export default function AtlasScreen() {
     }
     return `${totalCountries} ${totalCountries === 1 ? "country" : "countries"} · ${totalPhotos} ${totalPhotos === 1 ? "photo" : "photos"}`;
   }, [
-    loading,
+    atlasSyncing,
     hasCachedData,
+    hasDisplayableGlobe,
     loadError,
     totalCountries,
+    connections.length,
     globeConnections.length,
     totalPhotos,
   ]);
 
-  const hasDisplayableGlobe =
-    summary.length > 0 || globeConnections.length > 0;
-
   const showGlobe =
-    (!loading || hasCachedData || hasDisplayableGlobe) &&
-    (loadError === null || hasDisplayableGlobe);
-  const showRefresh =
-    (!loading || hasCachedData) &&
-    !(
-      loadError === "unauthorized" &&
-      totalCountries === 0 &&
-      globeConnections.length === 0
-    );
-  const atlasSyncing = refreshing || (loading && hasCachedData);
+    !showSignInGate &&
+    (loading ||
+      refreshing ||
+      loadError === null ||
+      hasDisplayableGlobe);
+
+  const showRefresh = !showSignInGate;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -378,19 +386,7 @@ export default function AtlasScreen() {
         </View>
       </View>
 
-      {loading && !hasCachedData ? (
-        <View style={styles.flexCentre}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[styles.centreText, { color: colors.mutedForeground }]}>
-            Loading live ripples and waves…
-          </Text>
-        </View>
-      ) : null}
-
-      {!loading &&
-      loadError === "unauthorized" &&
-      totalCountries === 0 &&
-      connections.length === 0 ? (
+      {showSignInGate ? (
         <View style={styles.flexCentre}>
           <Icon name="globe" size={48} color={colors.mutedForeground} />
           <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
