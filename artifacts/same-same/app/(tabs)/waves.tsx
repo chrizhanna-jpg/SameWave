@@ -19,6 +19,7 @@ import { Icon } from "@/components/Icon";
 import { OceanShimmer } from "@/components/OceanShimmer";
 import { SyncRefreshButton } from "@/components/SyncRefreshButton";
 import { RemotePhotoImage } from "@/components/RemotePhotoImage";
+import { FEED_THUMB_WIDTH } from "@/utils/photoDisplayUri";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import type { EchoCard, Match, MyPhoto } from "@/context/AppContext";
@@ -781,6 +782,8 @@ function WorldWaveCard({ wave }: { wave: RecentWaveFeedItem }) {
             fallbackUri={photoStreamFallbackUri(wave.a.id)}
             style={styles.photo}
             recyclingKey={wave.a.id}
+            displayWidth={FEED_THUMB_WIDTH}
+            priority="thumbnail"
             transitionMs={0}
           />
           <Text style={[styles.photoLabel, { color: colors.mutedForeground }]}>
@@ -794,6 +797,8 @@ function WorldWaveCard({ wave }: { wave: RecentWaveFeedItem }) {
             fallbackUri={photoStreamFallbackUri(wave.b.id)}
             style={styles.photo}
             recyclingKey={wave.b.id}
+            displayWidth={FEED_THUMB_WIDTH}
+            priority="thumbnail"
             transitionMs={0}
           />
           <Text style={[styles.photoLabel, { color: colors.mutedForeground }]}>
@@ -874,6 +879,8 @@ function RippleSentCard({
               fallbackUri={photoStreamFallbackUri(match.myPhotoId)}
               style={styles.photo}
               recyclingKey={match.myPhotoId || myUri}
+              displayWidth={FEED_THUMB_WIDTH}
+              priority="thumbnail"
               transitionMs={0}
             />
           ) : (
@@ -899,6 +906,8 @@ function RippleSentCard({
               fallbackUri={photoStreamFallbackUri(match.theirPhotoId)}
               style={styles.photo}
               recyclingKey={match.theirPhotoId || theirUri}
+              displayWidth={FEED_THUMB_WIDTH}
+              priority="thumbnail"
               transitionMs={0}
             />
           ) : (
@@ -945,6 +954,8 @@ function PhotoPair({
           fallbackUri={photoStreamFallbackUri(mine.id)}
           style={styles.photo}
           recyclingKey={mine.id || mineUri}
+          displayWidth={FEED_THUMB_WIDTH}
+          priority="thumbnail"
           transitionMs={0}
         />
         <Text style={[styles.photoLabel, { color: colors.mutedForeground }]}>
@@ -958,6 +969,8 @@ function PhotoPair({
           fallbackUri={photoStreamFallbackUri(theirs.id)}
           style={styles.photo}
           recyclingKey={theirs.id || theirsUri}
+          displayWidth={FEED_THUMB_WIDTH}
+          priority="thumbnail"
           transitionMs={0}
         />
         <Text style={[styles.photoLabel, { color: colors.mutedForeground }]}>

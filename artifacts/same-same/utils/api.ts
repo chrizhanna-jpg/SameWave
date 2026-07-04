@@ -380,6 +380,10 @@ export interface UploadedPhoto {
 export async function uploadPhoto(input: {
   imageBase64: string;
   mimeType?: string;
+  /** Client-pre-encoded 960w — server skips Sharp when paired with deckPreviewBase64. */
+  displayBase64?: string;
+  /** Client-pre-encoded 480w for /candidates inline preview. */
+  deckPreviewBase64?: string;
   countryCode?: string;
   /** Coarse GPS country at in-app camera capture — omitted for library picks. */
   captureCountryCode?: string;

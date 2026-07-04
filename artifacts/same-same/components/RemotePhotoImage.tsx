@@ -2,7 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Easing,
+  Pressable,
   StyleSheet,
+  Text,
   View,
   type StyleProp,
   type ViewStyle,
@@ -28,6 +30,14 @@ import {
   normalizeUnsplashUri,
   UNSPLASH_FALLBACK_URI,
 } from "@/utils/unsplashUri";
+import { BLANK_FRAME_THRESHOLD_MS, IMAGE_LOAD_V2 } from "@/constants/imageLoading";
+import {
+  prioritizeHeroPrefetch,
+  recordImageLoadComplete,
+  recordImageLoadStart,
+  type ImageLoadPriority,
+} from "@/utils/imageLoadCache";
+import { recordImageTelemetry } from "@/utils/imageLoadTelemetry";
 
 type Props = {
   uri: string;
@@ -52,22 +62,22 @@ type Props = {
    * deck avoid playing a card's vibe over a wrong stock image.
    */
   onResolved?: (loadedRealImage: boolean) => void;
+  /** Request width for `/api/photos/:id/image` streams (smaller = less server work). */
+  displayWidth?: number;
+  /** Fetch priority — hero warms cache on mount. */
+  priority?: ImageLoadPriority;
 };
 
-// A flaky / restarting API used to blank EVERY authed image to a bare blue
-// spinner forever. We now retry each source a couple of times (re-warming auth
-// headers in between, in case a token expired or the API just came back) before
-// advancing the source chain, and show a muted skeleton — never an indefinite
-// blue — while we wait. Backoff is short so a momentary blip recovers fast.
 const MAX_RETRIES_PER_SOURCE = 2;
 const RETRY_BACKOFF_MS = [500, 1300];
 
-function normalizeRemotePhotoUri(uri: string): string {
+function normalizeRemotePhotoUri(uri: string, displayWidth?: number): string {
   const trimmed = uri.trim();
   const stream = shouldCanonicalizePhotoStreamUri(trimmed)
     ? canonicalizePhotoStreamUri(trimmed)
     : trimmed;
-  return withDisplayPhotoWidth(normalizeUnsplashUri(stream));
+  const w = displayWidth && displayWidth > 0 ? displayWidth : undefined;
+  return withDisplayPhotoWidth(normalizeUnsplashUri(stream), w ?? undefined);
 }
 
 function rewriteApiOrigin(uri: string, origin: string): string | null {
@@ -85,7 +95,6 @@ function rewriteApiOrigin(uri: string, origin: string): string | null {
   return null;
 }
 
-/** Append a retry nonce so expo-image refetches a failed source (server cache makes this cheap). */
 function withRetryNonce(uri: string, attempt: number): string {
   if (attempt <= 0) return uri;
   const sep = uri.includes("?") ? "&" : "?";
@@ -93,7 +102,7 @@ function withRetryNonce(uri: string, attempt: number): string {
 }
 
 /** Muted, softly-pulsing placeholder shown while an image loads or retries. */
-function PhotoSkeleton() {
+export function PhotoSkeleton() {
   const pulse = useRef(new Animated.Value(0.4)).current;
   useEffect(() => {
     const loop = Animated.loop(
@@ -138,31 +147,43 @@ export function RemotePhotoImage({
   transitionMs = 220,
   recyclingKey,
   onResolved,
+  displayWidth,
+  priority = "normal",
 }: Props) {
   const onResolvedRef = useRef(onResolved);
   onResolvedRef.current = onResolved;
-  const normalized = useMemo(() => normalizeRemotePhotoUri(uri), [uri]);
+  const normalized = useMemo(
+    () => normalizeRemotePhotoUri(uri, displayWidth),
+    [uri, displayWidth],
+  );
   const normalizedFallback = useMemo(() => {
     const f = fallbackUri?.trim();
     if (!f) return null;
-    const n = normalizeRemotePhotoUri(f);
+    const n = normalizeRemotePhotoUri(f, displayWidth);
     return n && n !== normalized ? n : null;
-  }, [fallbackUri, normalized]);
+  }, [fallbackUri, normalized, displayWidth]);
 
-  // Source chain: primary → (dev hosted retry) → durable fallback →
-  // (dev hosted retry) → Unsplash placeholder. Each source also retries
-  // in-place a couple of times before the chain advances.
   const [usedFallback, setUsedFallback] = useState(false);
   const [useHosted, setUseHosted] = useState(false);
   const [exhausted, setExhausted] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [loaded, setLoaded] = useState(false);
+  const [manualRetry, setManualRetry] = useState(0);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadStartedAt = useRef<number | null>(null);
+  const blankTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearRetryTimer = () => {
     if (retryTimer.current) {
       clearTimeout(retryTimer.current);
       retryTimer.current = null;
+    }
+  };
+
+  const clearBlankTimer = () => {
+    if (blankTimer.current) {
+      clearTimeout(blankTimer.current);
+      blankTimer.current = null;
     }
   };
 
@@ -173,8 +194,20 @@ export function RemotePhotoImage({
     setAttempt(0);
     setLoaded(false);
     clearRetryTimer();
-    return clearRetryTimer;
-  }, [normalized, normalizedFallback]);
+    clearBlankTimer();
+    return () => {
+      clearRetryTimer();
+      clearBlankTimer();
+    };
+  }, [normalized, normalizedFallback, manualRetry]);
+
+  useEffect(() => {
+    if (!IMAGE_LOAD_V2 || !normalized) return;
+    if (priority === "hero") {
+      prioritizeHeroPrefetch(normalized);
+      if (normalizedFallback) prioritizeHeroPrefetch(normalizedFallback);
+    }
+  }, [normalized, normalizedFallback, priority]);
 
   const baseUri =
     usedFallback && normalizedFallback ? normalizedFallback : normalized;
@@ -209,15 +242,16 @@ export function RemotePhotoImage({
     }
     warmAuthedImageHeaders();
     let cancelled = false;
-    let attempt = 0;
+    let authAttempt = 0;
     const loadAuth = () => {
-      const run = attempt === 0 ? authedImageHeaders() : refreshAuthedImageHeaders();
+      const run =
+        authAttempt === 0 ? authedImageHeaders() : refreshAuthedImageHeaders();
       void run.then((h) => {
         if (cancelled) return;
         setAuthHeaders(h);
-        if (!h.Authorization?.startsWith("Bearer ") && attempt < 6) {
-          attempt += 1;
-          authRetryTimer.current = setTimeout(loadAuth, 350 * attempt);
+        if (!h.Authorization?.startsWith("Bearer ") && authAttempt < 6) {
+          authAttempt += 1;
+          authRetryTimer.current = setTimeout(loadAuth, 350 * authAttempt);
         }
       });
     };
@@ -232,20 +266,15 @@ export function RemotePhotoImage({
   const src = exhausted
     ? UNSPLASH_FALLBACK_URI
     : withRetryNonce(activeUri, attempt);
-  // Keep the recycle id stable across retry nonces so the view isn't torn
-  // down on every retry — only the source bytes are refetched.
   const stableKey =
     recyclingKey ?? (usedFallback ? `fb:${activeUri}` : activeUri);
 
   const advanceChain = () => {
-    // Dev: retry the current source via the hosted origin first.
     if (!useHosted && hostedUri) {
       setUseHosted(true);
       setAttempt(0);
       return;
     }
-    // Prefer the durable server image (the user's real photo) over the
-    // stock Unsplash placeholder when the local capture is gone.
     if (!usedFallback && normalizedFallback) {
       setUsedFallback(true);
       setUseHosted(false);
@@ -253,6 +282,7 @@ export function RemotePhotoImage({
       return;
     }
     setExhausted(true);
+    recordImageTelemetry("img_error", stableKey);
   };
 
   const handleError = () => {
@@ -270,14 +300,6 @@ export function RemotePhotoImage({
       const delay =
         RETRY_BACKOFF_MS[Math.min(attempt, RETRY_BACKOFF_MS.length - 1)] ?? 800;
       retryTimer.current = setTimeout(() => {
-        // Re-warm auth headers between tries — covers an expired token or an
-        // API that was briefly unreachable and has just come back. Use the
-        // FORCE refresh (not the cache-respecting `authedImageHeaders()`):
-        // expo-image surfaces a 401 the same way as any other load error, so
-        // the most likely cause of a failed authed image is a stale/expired
-        // Bearer still sitting in the TTL cache. Re-reading the cache would
-        // just resend the same dead token; forcing a fresh `getToken()` is
-        // what actually unblocks the retry.
         if (needsAuth) {
           void refreshAuthedImageHeaders()
             .then((h) => setAuthHeaders(h))
@@ -291,10 +313,46 @@ export function RemotePhotoImage({
     advanceChain();
   };
 
-  // Auth headers always resolve (at minimum X-Device-Id), so this is a brief
-  // transient state — render the skeleton, never a blank/blue gap.
   const waitingForAuth = needsAuth && !authHeaders && !exhausted;
   const showSkeleton = waitingForAuth || !loaded;
+
+  useEffect(() => {
+    if (!showSkeleton || exhausted) {
+      clearBlankTimer();
+      return;
+    }
+    clearBlankTimer();
+    blankTimer.current = setTimeout(() => {
+      recordImageTelemetry("img_blank_frame", stableKey, { priority });
+    }, BLANK_FRAME_THRESHOLD_MS);
+    return clearBlankTimer;
+  }, [showSkeleton, exhausted, stableKey, priority]);
+
+  useEffect(() => {
+    if (waitingForAuth || exhausted) return;
+    loadStartedAt.current = Date.now();
+    recordImageLoadStart(activeUri, priority);
+  }, [activeUri, waitingForAuth, exhausted, priority, manualRetry]);
+
+  const handleLoad = () => {
+    clearRetryTimer();
+    clearBlankTimer();
+    setLoaded(true);
+    const started = loadStartedAt.current;
+    if (started != null) {
+      recordImageLoadComplete(activeUri, Date.now() - started);
+    }
+    onResolvedRef.current?.(!exhausted);
+  };
+
+  const handleManualRetry = () => {
+    setExhausted(false);
+    setUsedFallback(false);
+    setUseHosted(false);
+    setAttempt(0);
+    setLoaded(false);
+    setManualRetry((n) => n + 1);
+  };
 
   return (
     <View style={[style as StyleProp<ViewStyle>, styles.container]}>
@@ -312,15 +370,19 @@ export function RemotePhotoImage({
           recyclingKey={stableKey}
           transition={transitionMs > 0 ? transitionMs : undefined}
           accessibilityLabel={accessibilityLabel}
-            onLoad={() => {
-              clearRetryTimer();
-              setLoaded(true);
-              // `exhausted` here means we're showing the Unsplash placeholder,
-              // i.e. every real source failed.
-              onResolvedRef.current?.(!exhausted);
-            }}
+          onLoad={handleLoad}
           onError={handleError}
         />
+      ) : null}
+      {exhausted ? (
+        <Pressable
+          style={styles.retryOverlay}
+          onPress={handleManualRetry}
+          accessibilityLabel="Retry loading photo"
+          accessibilityRole="button"
+        >
+          <Text style={styles.retryText}>Tap to retry</Text>
+        </Pressable>
       ) : null}
     </View>
   );
@@ -336,5 +398,16 @@ const styles = StyleSheet.create({
   },
   skeletonFill: {
     backgroundColor: "#1b2027",
+  },
+  retryOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(15,17,21,0.55)",
+  },
+  retryText: {
+    color: "#c8d0dc",
+    fontSize: 12,
+    fontWeight: "600",
   },
 });

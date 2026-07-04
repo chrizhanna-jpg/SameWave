@@ -6,6 +6,7 @@ import pushTokensRouter from "./pushTokens";
 import usersRouter from "./users";
 import catalogRouter from "./catalog";
 import adminRouter from "./admin";
+import telemetryRouter from "./telemetry";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use(pushTokensRouter);
 router.use(usersRouter);
 router.use(catalogRouter);
 router.use(adminRouter);
+router.use(telemetryRouter);
 
 export default router;

@@ -227,6 +227,10 @@ router.post("/photos", async (req, res) => {
     const body = (req.body ?? {}) as {
       imageBase64?: unknown;
       mimeType?: unknown;
+      /** Client-pre-encoded 960w — skips server Sharp when present. */
+      displayBase64?: unknown;
+      /** Client-pre-encoded 480w deck preview. */
+      deckPreviewBase64?: unknown;
       countryCode?: unknown;
       captureCountryCode?: unknown;
       capturedAt?: unknown;
@@ -386,10 +390,35 @@ router.post("/photos", async (req, res) => {
 
     let deckEncoded: Awaited<ReturnType<typeof encodeDeckPhotoSizes>> | null =
       null;
-    try {
-      deckEncoded = await encodeDeckPhotoSizes(stripped, mimeType);
-    } catch (encodeErr) {
-      req.log.warn({ err: encodeErr }, "deck encode at upload failed");
+    const clientDisplay =
+      typeof body.displayBase64 === "string" ? body.displayBase64.trim() : "";
+    const clientPreview =
+      typeof body.deckPreviewBase64 === "string"
+        ? body.deckPreviewBase64.trim()
+        : "";
+    if (clientDisplay && clientPreview) {
+      try {
+        const displayBuf = Buffer.from(
+          clientDisplay.replace(/^data:[^;]+;base64,/, ""),
+          "base64",
+        );
+        deckEncoded = {
+          displayB64: clientDisplay.replace(/^data:[^;]+;base64,/, ""),
+          displayMime: "image/jpeg",
+          previewB64: clientPreview.replace(/^data:[^;]+;base64,/, ""),
+          previewMime: "image/jpeg",
+          displayBuf,
+        };
+      } catch (clientEncodeErr) {
+        req.log.warn({ err: clientEncodeErr }, "client deck encode rejected");
+      }
+    }
+    if (!deckEncoded) {
+      try {
+        deckEncoded = await encodeDeckPhotoSizes(stripped, mimeType);
+      } catch (encodeErr) {
+        req.log.warn({ err: encodeErr }, "deck encode at upload failed");
+      }
     }
 
     const [row] = await db
@@ -1973,7 +2002,7 @@ router.get("/photos/:id/image", async (req, res) => {
     const cached = getCachedDisplayBytes(photoId, cacheWidth);
     if (cached) {
       res.setHeader("Content-Type", cached.mime);
-      res.setHeader("Cache-Control", "private, max-age=3600");
+      res.setHeader("Cache-Control", "private, max-age=86400, stale-while-revalidate=3600");
       res.send(cached.buf);
       return;
     }
@@ -1982,7 +2011,7 @@ router.get("/photos/:id/image", async (req, res) => {
       const hit = getCachedDisplayBytes(photoId, cacheWidth);
       if (hit) {
         res.setHeader("Content-Type", hit.mime);
-        res.setHeader("Cache-Control", "private, max-age=3600");
+        res.setHeader("Cache-Control", "private, max-age=86400, stale-while-revalidate=3600");
         res.send(hit.buf);
         return;
       }
@@ -2011,7 +2040,7 @@ router.get("/photos/:id/image", async (req, res) => {
         const buf = Buffer.from(displayB64, "base64");
         putCachedDisplayBytes(photoId, cacheWidth, buf, displayMime);
         res.setHeader("Content-Type", displayMime);
-        res.setHeader("Cache-Control", "private, max-age=3600");
+        res.setHeader("Cache-Control", "private, max-age=86400, stale-while-revalidate=3600");
         res.send(buf);
         return;
       }
@@ -2029,7 +2058,7 @@ router.get("/photos/:id/image", async (req, res) => {
       }
       putCachedDisplayBytes(photoId, cacheWidth, buf, outMime);
       res.setHeader("Content-Type", outMime);
-      res.setHeader("Cache-Control", "private, max-age=3600");
+      res.setHeader("Cache-Control", "private, max-age=86400, stale-while-revalidate=3600");
       res.send(buf);
     });
   } catch (err) {

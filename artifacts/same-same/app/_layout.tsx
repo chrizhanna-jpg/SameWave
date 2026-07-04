@@ -428,6 +428,8 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!__DEV__) warmHostedApiOnLaunch();
+    void import("@/utils/imageLoadCache").then((m) => m.hydrateImageCacheIndex());
+    void import("@/utils/imageLoadTelemetry").then((m) => m.hydrateImageTelemetry());
   }, []);
 
   if (!fontsReady) return null;

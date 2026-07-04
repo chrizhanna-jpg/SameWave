@@ -4,9 +4,17 @@ import { resolveMatchPhotoUris, pickDurablePhotoUri } from "@/utils/matchPhotoSn
 import { photoKey } from "@/utils/photoKey";
 import { lookupVoterPhotoForMatchSync } from "@/utils/voterPhotoByTarget";
 import { matchCountryFieldsFromCapture } from "@/utils/photoCountry";
+import {
+  DISPLAY_PHOTO_MAX_WIDTH,
+  FEED_THUMB_WIDTH,
+  HERO_DISPLAY_WIDTH,
+} from "@/constants/imageLoading";
 
-/** Default max width for in-app photo streams (Ripple deck, explore, echoes). */
-export const DISPLAY_PHOTO_MAX_WIDTH = 960;
+export {
+  DISPLAY_PHOTO_MAX_WIDTH,
+  FEED_THUMB_WIDTH,
+  HERO_DISPLAY_WIDTH,
+} from "@/constants/imageLoading";
 
 /** Authenticated stream URL for a server photo row. */
 export function serverPhotoImageUrl(

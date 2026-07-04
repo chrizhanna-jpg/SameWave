@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
+import { imageTelemetryTotals } from "./telemetry";
 
 const router: IRouter = Router();
 
@@ -86,6 +87,14 @@ router.get("/admin/stats", async (req, res) => {
       clientBundle: {
         sampleDeckPhotos: 28,
         note: "Sample deck photos are hardcoded Unsplash URLs in the app — not stored in Postgres.",
+      },
+      imageTelemetry: {
+        ...imageTelemetryTotals,
+        cacheHitRate:
+          imageTelemetryTotals.cacheHit + imageTelemetryTotals.cacheMiss > 0
+            ? imageTelemetryTotals.cacheHit /
+              (imageTelemetryTotals.cacheHit + imageTelemetryTotals.cacheMiss)
+            : null,
       },
       fetchedAt: new Date().toISOString(),
     });
