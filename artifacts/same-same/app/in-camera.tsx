@@ -1,7 +1,7 @@
 // Full-screen in-app camera with a Ripple frame guide overlay. The live
-// preview fills the screen; the white box matches one photo pane on the
-// match swipe card (`getRipplePhotoPaneMetrics`). Capture crops to that
-// aspect ratio so framing matches what others see while swiping.
+// preview is clipped to the white box (same width, height, and aspect ratio
+// as one photo pane on the match swipe card). Capture crops the viewport
+// so the saved photo matches what you see inside the box.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -35,7 +35,7 @@ import { useApp } from "@/context/AppContext";
 import { getTodaysChallenge } from "@/data/samplePhotos";
 import { suggestGenre, type MusicGenre } from "@/data/musicLibrary";
 import {
-  computeRipplePhotoCenterCrop,
+  computeRipplePhotoViewportCrop,
   getRipplePhotoGuideRect,
 } from "@/constants/ripplePhotoFrame";
 import { setPendingCapture } from "@/utils/captureBus";
@@ -280,7 +280,9 @@ export default function InCameraScreen() {
 
       const w = shot.width ?? 0;
       const h = shot.height ?? 0;
-      const crop = computeRipplePhotoCenterCrop(w, h, frameInsets);
+      const crop = computeRipplePhotoViewportCrop(w, h, guideRect, {
+        mirrorX: facing === "front",
+      });
       const cropped = await ImageManipulator.manipulateAsync(
         shot.uri,
         [{ crop }],
@@ -438,7 +440,17 @@ export default function InCameraScreen() {
             onGestureEvent={onPinch}
             onHandlerStateChange={onPinchStateChange}
           >
-            <View style={StyleSheet.absoluteFill}>
+            <View
+              style={[
+                styles.guideViewport,
+                {
+                  left: guideRect.left,
+                  top: guideRect.top,
+                  width: guideRect.width,
+                  height: guideRect.height,
+                },
+              ]}
+            >
               <CameraView
                 key={`cam-${facing}-${remountNonce}`}
                 ref={cameraRef}
@@ -560,7 +572,7 @@ export default function InCameraScreen() {
           </View>
 
           <Text style={styles.hint}>
-            Frame inside the box · shown in Ripple
+            What you see in the box is your Ripple photo
           </Text>
         </View>
       </View>
@@ -624,6 +636,11 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.35)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  guideViewport: {
+    position: "absolute",
+    overflow: "hidden",
+    backgroundColor: "#000",
   },
   guideDim: {
     position: "absolute",
