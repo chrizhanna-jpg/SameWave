@@ -10,10 +10,14 @@
 
 export interface PendingCapture {
   uri: string;
-  base64: string;
+  /** Smaller local JPEG for instant Ripple paint — may match `uri`. */
+  thumbnailUri?: string;
+  base64?: string;
   mimeType: string;
   /** ISO country from coarse GPS at shutter — in-app camera only. */
   captureCountryCode?: string;
+  capturedAt: string;
+  requestId: string;
 }
 
 let pending: PendingCapture | null = null;
