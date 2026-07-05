@@ -83,6 +83,7 @@ import { AiGeneratedBadge } from "@/components/AiGeneratedBadge";
 import { MicBadge } from "@/components/MicBadge";
 import { useProAccess } from "@/hooks/useProAccess";
 import { gateProFeature } from "@/lib/proFeatures";
+import { rippleCreateCameraHref } from "@/utils/rippleNavigation";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
 
@@ -904,7 +905,9 @@ export default function CameraScreen() {
     // Open the in-app square-viewfinder camera. It pushes the captured
     // photo onto the captureBus and pops back; useFocusEffect below
     // picks it up the next time this screen regains focus.
-    router.push(postIntent ? `/in-camera?intent=${postIntent}` : "/in-camera");
+    router.push(
+      postIntent ? `/in-camera?intent=${postIntent}` : rippleCreateCameraHref(),
+    );
   };
 
   // Drain anything the in-app camera left for us when we regain focus

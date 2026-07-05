@@ -35,6 +35,11 @@ import { useApp } from "@/context/AppContext";
 import { getTodaysChallenge } from "@/data/samplePhotos";
 import { suggestGenre, type MusicGenre } from "@/data/musicLibrary";
 import {
+  isLegacyHomeRippleStart,
+  isRippleNavFixEnabled,
+  resolvePostCaptureComposeHref,
+} from "@/utils/rippleNavigation";
+import {
   computeRipplePhotoViewportCrop,
   getRipplePhotoGuideRect,
 } from "@/constants/ripplePhotoFrame";
@@ -137,9 +142,10 @@ export default function InCameraScreen() {
     myCountryCode,
     myVibe,
   } = useApp();
-  const { from, intent } = useLocalSearchParams<{
+  const { from, intent, flow } = useLocalSearchParams<{
     from?: string;
     intent?: string;
+    flow?: string;
   }>();
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<CameraType>("back");
@@ -299,7 +305,11 @@ export default function InCameraScreen() {
       const capturedAt = new Date().toISOString();
       recordCameraEvent("camera.capture.success");
 
-      if (from === "home" && CAPTURE_FAST_MATCH) {
+      if (
+        !isRippleNavFixEnabled() &&
+        isLegacyHomeRippleStart(from) &&
+        CAPTURE_FAST_MATCH
+      ) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
           () => {},
         );
@@ -369,12 +379,9 @@ export default function InCameraScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
         () => {},
       );
-      if (from === "home" || intent) {
-        const q = new URLSearchParams();
-        if (from === "home") q.set("from", "home");
-        if (intent) q.set("intent", intent);
-        const suffix = q.toString();
-        router.replace(suffix ? `/camera?${suffix}` : "/camera");
+      const composeHref = resolvePostCaptureComposeHref({ flow, intent, from });
+      if (composeHref) {
+        router.replace(composeHref);
       } else {
         router.back();
       }
