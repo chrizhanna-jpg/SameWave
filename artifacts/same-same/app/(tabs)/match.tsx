@@ -102,10 +102,13 @@ import { photoCountryDisplay } from "@/utils/photoCountry";
 import {
   HERO_DISPLAY_WIDTH,
   resolveMyPhotoDisplayUri,
+  resolveMyPhotoThumbnailUri,
   pickVoterPhotoBackendId,
   serverPhotoImageUrl,
   withDisplayPhotoWidth,
 } from "@/utils/photoDisplayUri";
+import { persistentPhotoUriForLocalId } from "@/utils/localPhotoPaths";
+import { getDocumentDirectory } from "@/utils/localPhotoCache";
 import { IMAGE_LOAD_V2, PREFETCH_AHEAD_COUNT } from "@/constants/imageLoading";
 import {
   prioritizeHeroPrefetch,
@@ -691,8 +694,18 @@ export default function SwipeScreen() {
   // server image (their real upload) instead of a stock Unsplash placeholder.
   const myPhotoFallbackUri = React.useMemo(() => {
     const bid = todaysPhoto?.backendId?.trim();
-    return bid ? serverPhotoImageUrl(bid, HERO_DISPLAY_WIDTH) : undefined;
-  }, [todaysPhoto?.backendId]);
+    if (bid) return serverPhotoImageUrl(bid, HERO_DISPLAY_WIDTH);
+    if (todaysPhoto) {
+      const thumb = resolveMyPhotoThumbnailUri(todaysPhoto);
+      if (thumb.trim()) return thumb;
+      const lid = todaysPhoto.localId?.trim();
+      if (lid) {
+        const persistent = persistentPhotoUriForLocalId(getDocumentDirectory(), lid);
+        if (persistent) return persistent;
+      }
+    }
+    return undefined;
+  }, [todaysPhoto]);
   /** Stable across local→server display URI swaps during upload sync. */
   const myPhotoSessionKey =
     todaysPhoto?.backendId?.trim() ||

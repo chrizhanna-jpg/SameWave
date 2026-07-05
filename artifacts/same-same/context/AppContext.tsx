@@ -33,6 +33,11 @@ import {
   serverPhotoImageUrl,
   uploadTimesEqual,
 } from "@/utils/photoDisplayUri";
+import { isImagePersistenceEnabled } from "@/constants/imageLoading";
+import {
+  isPersistentPhotoUri,
+  persistLocalPhotoCapture,
+} from "@/utils/localPhotoCache";
 import {
   createMyPhotoLocalId,
   findMyPhotoRow,
@@ -418,7 +423,7 @@ interface AppContextValue extends AppState {
     declaredCountryCode?: string,
     /** Real capture time (ISO) — EXIF for library picks, shutter instant for camera. */
     capturedAt?: string,
-  ) => void;
+  ) => string;
   /**
    * Patch a previously-added local photo with the backend ID returned by
    * the upload API. Called from the camera screen once the network round
@@ -430,7 +435,7 @@ interface AppContextValue extends AppState {
    * analysis (and persisted row). Empty server fields no-op so we do not
    * wipe good pre-upload client state when the server analysis failed.
    */
-  setMyPhotoBackendId: (uri: string, ack: MyPhotoUploadAck) => void;
+  setMyPhotoBackendId: (uri: string, ack: MyPhotoUploadAck, localId?: string) => void;
   /** Attach voter photo id to a swipe row after upload ack or late vote ack. */
   patchMatchVoterPhoto: (
     matchId: string,
@@ -446,6 +451,7 @@ interface AppContextValue extends AppState {
   setMyPhotoUploadState: (
     uri: string,
     state: NonNullable<MyPhoto["uploadState"]>,
+    localId?: string,
   ) => void;
   /** Re-promote an existing upload for today's match deck (no duplicate row). */
   activateMyPhotoForMatch: (
@@ -1386,10 +1392,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     captureCountryCode?: string,
     declaredCountryCode?: string,
     capturedAt?: string,
-  ) => {
+  ): string => {
+    const localId = createMyPhotoLocalId();
     const photo: MyPhoto = {
       uri,
-      localId: createMyPhotoLocalId(),
+      localId,
       uploadedAt: new Date().toISOString(),
       capturedAt,
       theme,
@@ -1427,11 +1434,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       saveState(newState);
       return newState;
     });
-  }, []);
 
-  const setMyPhotoBackendId = useCallback((uri: string, ack: MyPhotoUploadAck) => {
+    if (!isAI && isImagePersistenceEnabled() && uri.trim()) {
+      void persistLocalPhotoCapture(uri, localId).then((result) => {
+        if (!result?.fullUri) return;
+        setState((prev) => {
+          let changed = false;
+          const newPhotos = prev.myPhotos.map((p) => {
+            if (p.localId !== localId) return p;
+            if (isPersistentPhotoUri(p.uri)) return p;
+            changed = true;
+            return { ...p, uri: result.fullUri };
+          });
+          if (!changed) return prev;
+          const newState = { ...prev, myPhotos: newPhotos };
+          saveState(newState);
+          return newState;
+        });
+      });
+    }
+
+    return localId;
+  }, [saveState]);
+
+  const setMyPhotoBackendId = useCallback((uri: string, ack: MyPhotoUploadAck, localId?: string) => {
     setState((prev) => {
-      const target = findMyPhotoRow(prev.myPhotos, { uri });
+      const target = findMyPhotoRow(prev.myPhotos, { uri, localId });
       if (!target) return prev;
       let changed = false;
       const tagsEqual = (a: string[] | undefined, b: string[] | undefined) => {
@@ -1481,7 +1509,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         changed = true;
         const localUri = p.uri?.trim() ?? "";
         const keepLocalCapture =
-          localUri.startsWith("file:") || localUri.startsWith("content:");
+          localUri.startsWith("file:") ||
+          localUri.startsWith("content:") ||
+          isPersistentPhotoUri(localUri);
         return {
           ...p,
           backendId: ack.backendId,
@@ -1560,9 +1590,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const setMyPhotoUploadState = useCallback(
-    (uri: string, uploadState: NonNullable<MyPhoto["uploadState"]>) => {
+    (uri: string, uploadState: NonNullable<MyPhoto["uploadState"]>, localId?: string) => {
       setState((prev) => {
-        const target = findMyPhotoRow(prev.myPhotos, { uri });
+        const target = findMyPhotoRow(prev.myPhotos, { uri, localId });
         if (!target) return prev;
         let changed = false;
         const newPhotos = prev.myPhotos.map((p) => {

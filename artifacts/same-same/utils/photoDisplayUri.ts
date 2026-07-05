@@ -6,6 +6,15 @@ import { lookupVoterPhotoForMatchSync } from "@/utils/voterPhotoByTarget";
 import { matchCountryFieldsFromCapture } from "@/utils/photoCountry";
 import { isSamplePhoto } from "@/data/samplePhotos";
 import {
+  isPersistentPhotoUri,
+} from "@/utils/localPhotoPaths";
+import {
+  persistentUriForPhoto,
+  setDocumentDirectoryForTests,
+} from "@/utils/myPhotoLocalUri";
+
+export { setDocumentDirectoryForTests } from "@/utils/myPhotoLocalUri";
+import {
   DISPLAY_PHOTO_MAX_WIDTH,
   FEED_THUMB_WIDTH,
   HERO_DISPLAY_WIDTH,
@@ -117,11 +126,13 @@ const RECENT_PHOTO_THUMB_WIDTH = 320;
 
 /** Smaller stream for recent-photo picker thumbnails. */
 export function resolveMyPhotoThumbnailUri(
-  photo: Pick<MyPhoto, "uri" | "backendId" | "uploadState">,
+  photo: Pick<MyPhoto, "uri" | "backendId" | "uploadState" | "localId">,
 ): string {
   const local = photo.uri?.trim() ?? "";
   const bid =
     photo.backendId?.trim() || extractPhotoStreamId(local) || undefined;
+  const persistentThumb = persistentUriForPhoto(photo, "thumb");
+  const persistentFull = persistentUriForPhoto(photo, "full");
   // Once the server has an id, never keep showing a dead local capture.
   const stillUploading =
     !bid &&
@@ -132,9 +143,10 @@ export function resolveMyPhotoThumbnailUri(
     stillUploading &&
     (local.startsWith("file:") || local.startsWith("content:"))
   ) {
-    return local;
+    return persistentThumb || local;
   }
   if (bid) return serverPhotoImageUrl(bid, RECENT_PHOTO_THUMB_WIDTH);
+  if (persistentThumb) return persistentThumb;
   if (
     local.startsWith("http://") ||
     local.startsWith("https://") ||
@@ -142,6 +154,7 @@ export function resolveMyPhotoThumbnailUri(
   ) {
     return canonicalizePhotoStreamUri(local);
   }
+  if (persistentFull) return persistentFull;
   return local;
 }
 
@@ -364,6 +377,8 @@ export function resolveMatchMyPhotoFallbackUri(
   if (row) {
     const thumb = resolveMyPhotoThumbnailUri(row);
     if (thumb.trim()) return thumb;
+    const full = resolveMyPhotoDisplayUri(row);
+    if (full.trim()) return full;
   }
   return photoStreamFallbackUri(match.myPhotoId, FEED_THUMB_WIDTH);
 }
@@ -461,12 +476,13 @@ export type ResolveMyPhotoDisplayOptions = {
  * `file://` captures can be purged after the app sits in background.
  */
 export function resolveMyPhotoDisplayUri(
-  photo: Pick<MyPhoto, "uri" | "backendId" | "uploadState">,
+  photo: Pick<MyPhoto, "uri" | "backendId" | "uploadState" | "localId">,
   options?: ResolveMyPhotoDisplayOptions,
 ): string {
   const local = photo.uri?.trim() ?? "";
   const bid =
     photo.backendId?.trim() || extractPhotoStreamId(local) || undefined;
+  const persistent = persistentUriForPhoto(photo, "full");
   // Keep the in-app capture only while upload is still running. Once we
   // have a backend id the OS may purge file:// when leaving Ripple — use
   // the authed server stream so the photo survives tab switches.
@@ -475,14 +491,15 @@ export function resolveMyPhotoDisplayUri(
     (photo.uploadState === "pending" ||
       (photo.uploadState !== "ok" && !photo.backendId?.trim()));
 
-  if (
-    options?.preferLocalCapture &&
-    stillUploading &&
-    (local.startsWith("file:") || local.startsWith("content:"))
-  ) {
-    return local;
+  if (options?.preferLocalCapture && stillUploading) {
+    if (local.startsWith("file:") || local.startsWith("content:")) {
+      return local;
+    }
+    if (persistent) return persistent;
   }
   if (bid) return serverPhotoImageUrl(bid);
+  if (local && isPersistentPhotoUri(local)) return local;
+  if (persistent) return persistent;
   if (
     local.startsWith("http://") ||
     local.startsWith("https://") ||
@@ -490,6 +507,7 @@ export function resolveMyPhotoDisplayUri(
   ) {
     return canonicalizePhotoStreamUri(local);
   }
+  if (local.startsWith("file:") || local.startsWith("content:")) return local;
   return local;
 }
 
@@ -525,14 +543,28 @@ export function repairMyPhotos(photos: MyPhoto[], matches: Match[]): MyPhoto[] {
   });
 }
 
-/** Backfill persisted rows that stripped `file://` but kept backendId. */
+/** Backfill persisted rows that stripped `file://` but kept backendId or localId. */
 export function hydrateMyPhotoUri(photo: MyPhoto): MyPhoto {
   const bid = photo.backendId?.trim();
-  if (!bid) return photo;
-  const server = serverPhotoImageUrl(bid);
+  const persistent = persistentUriForPhoto(photo, "full");
+  if (bid) {
+    const server = serverPhotoImageUrl(bid);
+    const local = photo.uri?.trim() ?? "";
+    if (!local || local.startsWith("file:") || local.startsWith("content:")) {
+      return { ...photo, uri: server };
+    }
+    return photo;
+  }
   const local = photo.uri?.trim() ?? "";
-  if (!local || local.startsWith("file:")) {
-    return { ...photo, uri: server };
+  if (!local && persistent) {
+    return { ...photo, uri: persistent };
+  }
+  if (
+    local.startsWith("file:") &&
+    !isPersistentPhotoUri(local) &&
+    persistent
+  ) {
+    return { ...photo, uri: persistent };
   }
   return photo;
 }
