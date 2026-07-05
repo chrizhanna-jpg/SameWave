@@ -561,7 +561,7 @@ const AppContext = createContext<AppContextValue | null>(null);
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const { isLoaded: clerkLoaded, isSignedIn } = useAuth();
   const [cloudSyncInProgress, setCloudSyncInProgress] = useState(false);
-  const cloudSyncInflightRef = useRef(0);
+  const syncCloudTaskRef = useRef<Promise<void> | null>(null);
   const [state, setState] = useState<AppState>({
     matchedCountries: [],
     matches: [],
@@ -628,6 +628,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // re-evaluated.
   const [hasHydrated, setHasHydrated] = useState(false);
   const hasHydratedRef = React.useRef(false);
+  const isSignedInRef = React.useRef(isSignedIn);
+  isSignedInRef.current = isSignedIn;
   React.useEffect(() => {
     hasHydratedRef.current = hasHydrated;
   }, [hasHydrated]);
@@ -1987,12 +1989,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       );
       setState((prev) => {
         const merged = mergeMatchesById(prev.matches, incoming);
-        const matches = merged.map((m) =>
-          enrichMatchMyPhotoFields(m, prev.myPhotos),
-        );
         const repairedPhotos = repairMyPhotos(
-          mergeMyPhotos(prev.myPhotos, myPhotosFromMatchHistory(matches)),
-          matches,
+          mergeMyPhotos(prev.myPhotos, myPhotosFromMatchHistory(merged)),
+          merged,
+        );
+        const matches = merged.map((m) =>
+          enrichMatchMyPhotoFields(m, repairedPhotos),
         );
         const confirmed = matches.filter((m) => m.verdict === "same");
         const { matchedCountries, badges } = recomputeFromConfirmed(
@@ -2026,27 +2028,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const syncCloudData = useCallback(async () => {
-    if (!hasHydratedRef.current) return;
-    cloudSyncInflightRef.current += 1;
-    setCloudSyncInProgress(true);
-    const SYNC_CLOUD_TIMEOUT_MS = 45_000;
-    try {
-      await Promise.race([
-        Promise.all([refreshEchoes(), refreshJourney()]),
-        new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error("syncCloudData timeout")), SYNC_CLOUD_TIMEOUT_MS);
-        }),
-      ]);
-      reconcileMatchPhotos();
-    } catch {
-      // Network stall or timeout — keep local cache; spinner clears in finally.
-    } finally {
-      cloudSyncInflightRef.current -= 1;
-      if (cloudSyncInflightRef.current <= 0) {
-        cloudSyncInflightRef.current = 0;
-        setCloudSyncInProgress(false);
-      }
+    if (!hasHydratedRef.current || !isSignedInRef.current) return;
+    if (syncCloudTaskRef.current) {
+      return syncCloudTaskRef.current;
     }
+    const task = (async () => {
+      setCloudSyncInProgress(true);
+      try {
+        await Promise.all([refreshEchoes(), refreshJourney()]);
+        reconcileMatchPhotos();
+      } catch {
+        // Individual fetch helpers already fall back to local cache.
+      } finally {
+        setCloudSyncInProgress(false);
+        syncCloudTaskRef.current = null;
+      }
+    })();
+    syncCloudTaskRef.current = task;
+    return task;
   }, [refreshEchoes, refreshJourney, reconcileMatchPhotos]);
 
   // Warm auth headers as soon as local state is ready — do not wait for

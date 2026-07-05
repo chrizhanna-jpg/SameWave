@@ -123,7 +123,6 @@ export default function WavesScreen() {
     matches,
     myPhotos,
     markAllEchoesSeen,
-    refreshEchoes,
     respondToEcho,
     cloudSyncInProgress,
     syncCloudData,
@@ -243,7 +242,6 @@ export default function WavesScreen() {
       );
       const deferred = runAfterTabFocus(() => {
         if (!shouldRunThrottledFocusWork("waves-sync", 30_000)) return;
-        void refreshEchoes();
         void syncCloudData();
         void loadWorldWaves();
       });
@@ -253,7 +251,6 @@ export default function WavesScreen() {
         clearTimeout(t);
       };
     }, [
-      refreshEchoes,
       syncCloudData,
       markAllEchoesSeen,
       loadWorldWaves,
@@ -263,8 +260,11 @@ export default function WavesScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([refreshEchoes(), syncCloudData(), loadWorldWaves()]);
-    setRefreshing(false);
+    try {
+      await Promise.all([syncCloudData(), loadWorldWaves()]);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const handleRespond = async (id: string, verdict: "same" | "different") => {
@@ -297,7 +297,7 @@ export default function WavesScreen() {
           </Text>
         </View>
         <SyncRefreshButton
-          syncing={refreshing || cloudSyncInProgress || worldLoading}
+          syncing={refreshing || cloudSyncInProgress}
           onPress={() => void onRefresh()}
           accessibilityLabel="Refresh Ripples and Waves"
         />
