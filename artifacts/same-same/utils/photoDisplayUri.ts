@@ -223,6 +223,50 @@ function uriHintMatchesMatch(
   return true;
 }
 
+function isOfflineSafePhotoUri(uri: string): boolean {
+  const trimmed = uri.trim();
+  if (!trimmed) return false;
+  return (
+    isPersistentPhotoUri(trimmed) ||
+    trimmed.startsWith("file:") ||
+    trimmed.startsWith("content:") ||
+    trimmed.startsWith("data:")
+  );
+}
+
+/** Verified on-device capture for a voter id — never another upload's file. */
+function verifiedLocalForVoterId(
+  voterId: string,
+  match: Pick<Match, "myPhoto">,
+  myPhotos: MyPhoto[],
+  stashed?: string,
+): string {
+  const id = voterId.trim();
+  if (!id) return "";
+  const row = myPhotos.find((p) => p.backendId?.trim() === id);
+  if (row) {
+    for (const candidate of [
+      resolveMyPhotoDisplayUri(row),
+      resolveMyPhotoThumbnailUri(row),
+    ]) {
+      if (
+        candidate.trim() &&
+        isOfflineSafePhotoUri(candidate) &&
+        photoUriMatchesVoterId(candidate, id, myPhotos)
+      ) {
+        return candidate;
+      }
+    }
+  }
+  for (const candidate of [match.myPhoto, stashed]) {
+    const c = candidate?.trim() ?? "";
+    if (c && isOfflineSafePhotoUri(c) && photoUriMatchesVoterId(c, id, myPhotos)) {
+      return c;
+    }
+  }
+  return "";
+}
+
 /** Echo / wave card side — prefer durable local uri, fall back to authenticated stream. */
 export function resolveEchoPhotoUri(
   side: {
@@ -417,12 +461,9 @@ export function resolveMatchMyPhotoUri(
   }).myPhoto;
 
   if (voterId) {
-    const row = myPhotos.find((p) => p.backendId?.trim() === voterId);
-    if (row) {
-      const local = resolveMyPhotoDisplayUri(row);
-      if (photoUriMatchesVoterId(local, voterId, myPhotos)) {
-        return resolveEchoPhotoUri({ id: voterId, uri: local }, myPhotos);
-      }
+    const local = verifiedLocalForVoterId(voterId, match, myPhotos, stashed);
+    if (local) {
+      return resolveEchoPhotoUri({ id: voterId, uri: local }, myPhotos);
     }
     for (const candidate of [match.myPhoto, stashed]) {
       const c = candidate?.trim() ?? "";
@@ -463,27 +504,17 @@ export function resolveMatchMyPhotoThumbnailUri(
 ): string {
   const lookup = matchForVoterPhotoLookup(match);
   const voterId = resolveMatchVoterPhotoId(lookup);
-  if (voterId) {
-    const row = myPhotos.find((p) => p.backendId?.trim() === voterId);
-    if (row) {
-      const local = resolveMyPhotoThumbnailUri(row);
-      if (
-        local.trim() &&
-        (local.startsWith("file:") ||
-          local.startsWith("content:") ||
-          isPersistentPhotoUri(local)) &&
-        photoUriMatchesVoterId(local, voterId, myPhotos)
-      ) {
-        return local;
-      }
-    }
-    return serverPhotoImageUrl(voterId, FEED_THUMB_WIDTH);
-  }
-
   const stashed = resolveMatchPhotoUris(match.id, {
     myPhoto: match.myPhoto,
     theirPhoto: "",
   }).myPhoto;
+
+  if (voterId) {
+    const local = verifiedLocalForVoterId(voterId, match, myPhotos, stashed);
+    if (local) return local;
+    return serverPhotoImageUrl(voterId, FEED_THUMB_WIDTH);
+  }
+
   const fromLibrary = findMyPhotoForMatch(lookup, myPhotos, stashed);
   if (fromLibrary) {
     const thumb = resolveMyPhotoThumbnailUri(fromLibrary);
@@ -513,11 +544,26 @@ export function resolveMatchMyPhotoFallbackUri(
   >,
   myPhotos: MyPhoto[],
 ): string | undefined {
+  const lookup = matchForVoterPhotoLookup(match);
+  const voterId = resolveMatchVoterPhotoId(lookup);
   const stashed = resolveMatchPhotoUris(match.id, {
     myPhoto: match.myPhoto,
     theirPhoto: "",
   }).myPhoto;
-  const row = findMyPhotoForMatch(matchForVoterPhotoLookup(match), myPhotos, stashed);
+
+  if (voterId) {
+    const local = verifiedLocalForVoterId(voterId, match, myPhotos, stashed);
+    const server = serverPhotoImageUrl(voterId, FEED_THUMB_WIDTH);
+    if (local) return server;
+    const row = findMyPhotoForMatch(lookup, myPhotos, stashed);
+    if (row) {
+      const alt = resolveMyPhotoFallbackUri(row, FEED_THUMB_WIDTH);
+      if (alt?.trim() && alt !== server) return alt;
+    }
+    return server;
+  }
+
+  const row = findMyPhotoForMatch(lookup, myPhotos, stashed);
   if (row) {
     const alt = resolveMyPhotoFallbackUri(row, FEED_THUMB_WIDTH);
     if (alt?.trim()) return alt;

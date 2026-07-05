@@ -2029,9 +2029,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!hasHydratedRef.current) return;
     cloudSyncInflightRef.current += 1;
     setCloudSyncInProgress(true);
+    const SYNC_CLOUD_TIMEOUT_MS = 45_000;
     try {
-      await Promise.all([refreshEchoes(), refreshJourney()]);
+      await Promise.race([
+        Promise.all([refreshEchoes(), refreshJourney()]),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error("syncCloudData timeout")), SYNC_CLOUD_TIMEOUT_MS);
+        }),
+      ]);
       reconcileMatchPhotos();
+    } catch {
+      // Network stall or timeout — keep local cache; spinner clears in finally.
     } finally {
       cloudSyncInflightRef.current -= 1;
       if (cloudSyncInflightRef.current <= 0) {

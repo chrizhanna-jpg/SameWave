@@ -226,15 +226,23 @@ export default function WavesScreen() {
     }
   }, []);
 
+  const matchesRef = useRef(matches);
+  const myPhotosRef = useRef(myPhotos);
+  matchesRef.current = matches;
+  myPhotosRef.current = myPhotos;
+
   useFocusEffect(
     useCallback(() => {
       markTabVisited("waves");
       warmAuthedImageHeaders();
       reconcileMatchPhotos();
-      prefetchMatchMyPhotoThumbs(matches, myPhotos, 20);
+      prefetchMatchMyPhotoThumbs(
+        matchesRef.current,
+        myPhotosRef.current,
+        20,
+      );
       const deferred = runAfterTabFocus(() => {
         if (!shouldRunThrottledFocusWork("waves-sync", 30_000)) return;
-        reconcileMatchPhotos();
         void refreshEchoes();
         void syncCloudData();
         void loadWorldWaves();
@@ -245,8 +253,6 @@ export default function WavesScreen() {
         clearTimeout(t);
       };
     }, [
-      matches,
-      myPhotos,
       refreshEchoes,
       syncCloudData,
       markAllEchoesSeen,

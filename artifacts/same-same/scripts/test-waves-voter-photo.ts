@@ -65,9 +65,6 @@ function photoUriMatchesVoterId(
   const row = myPhotos.find((p) => p.backendId?.trim() === id);
   if (!row) return false;
   const expected = resolveMyPhotoDisplayUri(row);
-  const key = photoKey(trimmed);
-  const expectedKey = photoKey(expected);
-  if (key && expectedKey) return key === expectedKey;
   return trimmed === expected;
 }
 
@@ -182,6 +179,15 @@ function resolveMatchMyPhotoThumbnailUri(
         return local;
       }
     }
+    for (const candidate of [match.myPhoto]) {
+      const c = candidate?.trim() ?? "";
+      if (
+        c.startsWith("file:") &&
+        photoUriMatchesVoterId(c, voterId, myPhotos)
+      ) {
+        return c;
+      }
+    }
     return serverPhotoImageUrl(voterId, 320);
   }
 
@@ -212,7 +218,7 @@ function assert(label: string, ok: boolean, detail?: string): void {
 }
 
 const oldPhoto: MyPhoto = {
-  uri: "https://samewave.onrender.com/api/photos/photo-old/image",
+  uri: "file:///data/user/0/com.samewave.app/files/my-photos/old-local.jpg",
   uploadedAt: "2026-06-01T10:00:00.000Z",
   backendId: "photo-old",
 };
@@ -266,8 +272,14 @@ const newThumb = resolveMatchMyPhotoThumbnailUri(
 );
 
 assert(
-  "waves old ripple thumb uses photo-old stream",
-  oldThumb.includes("/api/photos/photo-old/image"),
+  "waves old ripple thumb uses verified local not newest",
+  oldThumb.includes("old-local.jpg"),
+  oldThumb,
+);
+
+assert(
+  "waves old ripple thumb is not newest local",
+  !oldThumb.includes("new-local.jpg"),
   oldThumb,
 );
 
@@ -284,8 +296,8 @@ assert(
 
 const enriched = enrichMatchMyPhotoFields(oldRipple, library);
 assert(
-  "enrich replaces corrupted local with server for known voter id",
-  enriched.myPhoto.includes("/api/photos/photo-old/image"),
+  "enrich replaces corrupted newest local with verified old local",
+  enriched.myPhoto.includes("old-local.jpg"),
   enriched.myPhoto,
 );
 
