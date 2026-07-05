@@ -50,20 +50,12 @@ export function resolvePersistedCaptureUri(
   kind: "full" | "thumb",
 ): string {
   const local = photo.uri?.trim() ?? "";
-  const bid = photo.backendId?.trim();
-  const stillUploading =
-    !bid &&
-    (photo.uploadState === "pending" ||
-      (photo.uploadState !== "ok" && !photo.backendId?.trim()));
   const persistent =
     kind === "thumb"
       ? persistentUriForPhoto(photo, "thumb")
       : persistentUriForPhoto(photo, "full");
-  const persistentFull = kind === "full" ? persistent : persistentUriForPhoto(photo, "full");
+  const persistentFull = persistentUriForPhoto(photo, "full");
 
-  if (stillUploading && (local.startsWith("file:") || local.startsWith("content:"))) {
-    return kind === "thumb" && persistent ? persistent : local;
-  }
   if (local && isPersistentPhotoUri(local)) return local;
   if (persistent) return persistent;
   if (local.startsWith("file:") || local.startsWith("content:")) return local;

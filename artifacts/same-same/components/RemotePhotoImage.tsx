@@ -74,7 +74,6 @@ type Props = {
 const MAX_RETRIES_PER_SOURCE = 2;
 const RETRY_BACKOFF_MS = [500, 1300];
 /** Stop blocking the image mount if Clerk token warm-up stalls after reload. */
-const AUTH_READY_CAP_MS = 2800;
 const AUTH_RETRY_MAX = 14;
 
 function hasBearerAuth(headers: Record<string, string> | undefined): boolean {
@@ -189,7 +188,6 @@ export function RemotePhotoImage({
   const [attempt, setAttempt] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [manualRetry, setManualRetry] = useState(0);
-  const [authReady, setAuthReady] = useState(false);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadStartedAt = useRef<number | null>(null);
   const blankTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -218,7 +216,6 @@ export function RemotePhotoImage({
     setExhausted(false);
     setAttempt(0);
     setLoaded(warmStart);
-    setAuthReady(!authNeeded);
     clearRetryTimer();
     clearBlankTimer();
     return () => {
@@ -270,15 +267,13 @@ export function RemotePhotoImage({
 
   useEffect(() => {
     if (!needsAuth || exhausted) {
-      setAuthReady(true);
       if (!needsAuth) setAuthHeaders(undefined);
       return;
     }
-    setAuthReady(false);
+    setAuthHeaders(undefined);
     const cached = peekAuthedImageHeaders();
     if (hasBearerAuth(cached)) {
       setAuthHeaders(cached);
-      setAuthReady(true);
       return;
     }
 
@@ -287,9 +282,6 @@ export function RemotePhotoImage({
     const authRetryTimer = {
       current: null as ReturnType<typeof setTimeout> | null,
     };
-    const capTimer = setTimeout(() => {
-      if (!cancelled) setAuthReady(true);
-    }, AUTH_READY_CAP_MS);
 
     const loadAuth = () => {
       const run =
@@ -298,7 +290,6 @@ export function RemotePhotoImage({
         if (cancelled) return;
         if (hasBearerAuth(h)) {
           setAuthHeaders(h);
-          setAuthReady(true);
           return;
         }
         if (authAttempt < AUTH_RETRY_MAX) {
@@ -309,8 +300,15 @@ export function RemotePhotoImage({
           );
           return;
         }
+        // Never mount authed streams without Bearer — fall back to durable local URI.
+        if (normalizedFallback) {
+          setUsedFallback(true);
+          setUseHosted(false);
+          setAttempt(0);
+          setAuthHeaders(undefined);
+          return;
+        }
         setAuthHeaders(h);
-        setAuthReady(true);
       });
     };
 
@@ -318,10 +316,9 @@ export function RemotePhotoImage({
     loadAuth();
     return () => {
       cancelled = true;
-      clearTimeout(capTimer);
       if (authRetryTimer.current) clearTimeout(authRetryTimer.current);
     };
-  }, [needsAuth, exhausted, activeUri]);
+  }, [needsAuth, exhausted, activeUri, normalizedFallback]);
 
   const src = exhausted
     ? UNSPLASH_FALLBACK_URI
@@ -364,7 +361,7 @@ export function RemotePhotoImage({
           void refreshAuthedImageHeaders()
             .then((h) => {
               setAuthHeaders(h);
-              if (hasBearerAuth(h)) setAuthReady(true);
+              if (hasBearerAuth(h)) setAuthHeaders(h);
             })
             .catch(() => {});
         }
@@ -376,7 +373,9 @@ export function RemotePhotoImage({
     advanceChain();
   };
 
-  const waitingForAuth = needsAuth && !authReady && !exhausted;
+  const hasAuthForRequest = !needsAuth || hasBearerAuth(authHeaders);
+  const waitingForAuth =
+    needsAuth && !hasAuthForRequest && !exhausted && !usedFallback;
   const showSkeleton = waitingForAuth || !loaded;
 
   useEffect(() => {
@@ -433,7 +432,7 @@ export function RemotePhotoImage({
   return (
     <View style={[style as StyleProp<ViewStyle>, styles.container]}>
       {showSkeleton ? <PhotoSkeleton /> : null}
-      {!waitingForAuth && activeUri.trim().length > 0 ? (
+      {!waitingForAuth && activeUri.trim().length > 0 && hasAuthForRequest ? (
         <Image
           source={
             needsAuth && hasBearerAuth(authHeaders) && !exhausted

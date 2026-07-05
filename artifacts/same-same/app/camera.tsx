@@ -56,6 +56,7 @@ import {
   photoStreamFallbackUri,
   resolveMyPhotoDisplayUri,
   resolveMyPhotoThumbnailUri,
+  resolveMyPhotoFallbackUri,
 } from "@/utils/photoDisplayUri";
 import {
   MUSIC_LIBRARY,
@@ -1749,7 +1750,7 @@ export default function CameraScreen() {
                       {displayUri ? (
                         <RemotePhotoImage
                           uri={displayUri}
-                          fallbackUri={photoStreamFallbackUri(photo.backendId)}
+                          fallbackUri={resolveMyPhotoFallbackUri(photo)}
                           style={[styles.prevPhoto, { borderColor: colors.border }]}
                           resizeMode="cover"
                           transitionMs={0}

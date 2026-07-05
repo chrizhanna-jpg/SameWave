@@ -1417,42 +1417,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       uploadState: isAI ? undefined : "pending",
     };
     setState((prev) => {
-      // Adding a new photo is a "fresh chance" moment: this new
-      // photo may match candidates the user already saw (and
-      // dismissed without voting) for previous photos. Clear the
-      // local seen ledger so the next /candidates fetch doesn't
-      // re-send those IDs as excludeIds. The server independently
-      // wipes its seen_photos table on POST /photos for the same
-      // reason. The votes table is untouched on both sides — past
-      // explicit same/no decisions still stand.
       const newState = {
         ...prev,
         myPhotos: [photo, ...prev.myPhotos],
         seenPhotoKeys: [],
         seenPhotoIds: [],
       };
-      saveState(newState);
+      // In-memory update only — AsyncStorage write happens after durable copy exists.
       return newState;
     });
 
-    if (!isAI && isImagePersistenceEnabled() && uri.trim()) {
-      void persistLocalPhotoCapture(uri, localId).then((result) => {
-        if (!result?.fullUri) return;
-        setState((prev) => {
-          let changed = false;
-          const newPhotos = prev.myPhotos.map((p) => {
-            if (p.localId !== localId) return p;
-            if (isPersistentPhotoUri(p.uri)) return p;
-            changed = true;
-            return { ...p, uri: result.fullUri };
-          });
-          if (!changed) return prev;
-          const newState = { ...prev, myPhotos: newPhotos };
-          saveState(newState);
-          return newState;
-        });
+    void (async () => {
+      let finalUri = uri;
+      if (!isAI && isImagePersistenceEnabled() && uri.trim()) {
+        const result = await persistLocalPhotoCapture(uri, localId);
+        if (result?.fullUri) finalUri = result.fullUri;
+      }
+      setState((prev) => {
+        const newPhotos = prev.myPhotos.map((p) =>
+          p.localId === localId ? { ...p, uri: finalUri } : p,
+        );
+        const newState = { ...prev, myPhotos: newPhotos };
+        saveState(newState);
+        return newState;
       });
-    }
+    })();
 
     return localId;
   }, [saveState]);

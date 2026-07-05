@@ -129,24 +129,15 @@ export function resolveMyPhotoThumbnailUri(
   photo: Pick<MyPhoto, "uri" | "backendId" | "uploadState" | "localId">,
 ): string {
   const local = photo.uri?.trim() ?? "";
-  const bid =
-    photo.backendId?.trim() || extractPhotoStreamId(local) || undefined;
   const persistentThumb = persistentUriForPhoto(photo, "thumb");
   const persistentFull = persistentUriForPhoto(photo, "full");
-  // Once the server has an id, never keep showing a dead local capture.
-  const stillUploading =
-    !bid &&
-    (photo.uploadState === "pending" ||
-      (photo.uploadState !== "ok" && !photo.backendId?.trim()));
-
-  if (
-    stillUploading &&
-    (local.startsWith("file:") || local.startsWith("content:"))
-  ) {
-    return persistentThumb || local;
-  }
-  if (bid) return serverPhotoImageUrl(bid, RECENT_PHOTO_THUMB_WIDTH);
   if (persistentThumb) return persistentThumb;
+  if (local && isPersistentPhotoUri(local)) return local;
+  if (persistentFull) return persistentFull;
+  if (local.startsWith("file:") || local.startsWith("content:")) return local;
+  const bid =
+    photo.backendId?.trim() || extractPhotoStreamId(local) || undefined;
+  if (bid) return serverPhotoImageUrl(bid, RECENT_PHOTO_THUMB_WIDTH);
   if (
     local.startsWith("http://") ||
     local.startsWith("https://") ||
@@ -154,8 +145,27 @@ export function resolveMyPhotoThumbnailUri(
   ) {
     return canonicalizePhotoStreamUri(local);
   }
-  if (persistentFull) return persistentFull;
   return local;
+}
+
+/**
+ * Alternate source when the primary display URI fails to decode/load.
+ * Local captures are primary; authed server streams are the fallback.
+ */
+export function resolveMyPhotoFallbackUri(
+  photo: Pick<MyPhoto, "uri" | "backendId" | "localId">,
+  maxWidth: number = DISPLAY_PHOTO_MAX_WIDTH,
+): string | undefined {
+  const primary = resolveMyPhotoDisplayUri(photo);
+  const bid = photo.backendId?.trim();
+  const server = bid ? serverPhotoImageUrl(bid, maxWidth) : "";
+  const persistent = persistentUriForPhoto(photo, "full");
+  const thumb = persistentUriForPhoto(photo, "thumb");
+  for (const candidate of [server, persistent, thumb]) {
+    const c = candidate?.trim() ?? "";
+    if (c && c !== primary) return c;
+  }
+  return server || undefined;
 }
 
 /** Stable unique key for recent-photo rows (duplicate backendIds can exist). */
@@ -172,12 +182,20 @@ export function myPhotoRowKey(
   return `idx:${index}`;
 }
 
-/** Echo / wave card side — prefer inline uri, fall back to authenticated stream. */
+/** Echo / wave card side — prefer durable local uri, fall back to authenticated stream. */
 export function resolveEchoPhotoUri(side: {
   id?: string;
   uri?: string | null;
 }): string {
   const uri = side.uri?.trim() ?? "";
+  if (
+    uri &&
+    (isPersistentPhotoUri(uri) ||
+      uri.startsWith("file:") ||
+      uri.startsWith("content:"))
+  ) {
+    return uri;
+  }
   if (uri.length > 0 && !uri.startsWith("file:") && !uri.startsWith("content:")) {
     return canonicalizePhotoStreamUri(uri);
   }
@@ -322,6 +340,12 @@ export function resolveMatchMyPhotoUri(
     theirPhoto: "",
   });
 
+  const fromLibrary = findMyPhotoForMatch(enriched, myPhotos, stashed.myPhoto);
+  if (fromLibrary) {
+    const libUri = resolveMyPhotoDisplayUri(fromLibrary);
+    if (libUri.trim()) return libUri;
+  }
+
   let myPhoto = pickDurablePhotoUri(
     enriched.myPhotoId ? serverPhotoImageUrl(enriched.myPhotoId) : "",
     enriched.myPhoto,
@@ -346,6 +370,16 @@ export function resolveMatchMyPhotoThumbnailUri(
   >,
   myPhotos: MyPhoto[],
 ): string {
+  const stashed = resolveMatchPhotoUris(match.id, {
+    myPhoto: match.myPhoto,
+    theirPhoto: "",
+  }).myPhoto;
+  const fromLibrary = findMyPhotoForMatch(match, myPhotos, stashed);
+  if (fromLibrary) {
+    const thumb = resolveMyPhotoThumbnailUri(fromLibrary);
+    if (thumb.trim()) return thumb;
+  }
+
   const uri = resolveMatchMyPhotoUri(match, myPhotos);
   if (!uri || uri.startsWith("file:") || uri.startsWith("content:")) {
     return uri;
@@ -375,10 +409,8 @@ export function resolveMatchMyPhotoFallbackUri(
   }).myPhoto;
   const row = findMyPhotoForMatch(match, myPhotos, stashed);
   if (row) {
-    const thumb = resolveMyPhotoThumbnailUri(row);
-    if (thumb.trim()) return thumb;
-    const full = resolveMyPhotoDisplayUri(row);
-    if (full.trim()) return full;
+    const alt = resolveMyPhotoFallbackUri(row, FEED_THUMB_WIDTH);
+    if (alt?.trim()) return alt;
   }
   return photoStreamFallbackUri(match.myPhotoId, FEED_THUMB_WIDTH);
 }
@@ -472,34 +504,22 @@ export type ResolveMyPhotoDisplayOptions = {
 };
 
 /**
- * Prefer the durable server image when we have a backend id — local
- * `file://` captures can be purged after the app sits in background.
+ * Prefer durable on-device copies for the viewer's own photos. Authed server
+ * streams are used only when no local capture exists (legacy rows).
  */
 export function resolveMyPhotoDisplayUri(
   photo: Pick<MyPhoto, "uri" | "backendId" | "uploadState" | "localId">,
   options?: ResolveMyPhotoDisplayOptions,
 ): string {
+  void options;
   const local = photo.uri?.trim() ?? "";
-  const bid =
-    photo.backendId?.trim() || extractPhotoStreamId(local) || undefined;
   const persistent = persistentUriForPhoto(photo, "full");
-  // Keep the in-app capture only while upload is still running. Once we
-  // have a backend id the OS may purge file:// when leaving Ripple — use
-  // the authed server stream so the photo survives tab switches.
-  const stillUploading =
-    !bid &&
-    (photo.uploadState === "pending" ||
-      (photo.uploadState !== "ok" && !photo.backendId?.trim()));
-
-  if (options?.preferLocalCapture && stillUploading) {
-    if (local.startsWith("file:") || local.startsWith("content:")) {
-      return local;
-    }
-    if (persistent) return persistent;
-  }
-  if (bid) return serverPhotoImageUrl(bid);
   if (local && isPersistentPhotoUri(local)) return local;
   if (persistent) return persistent;
+  if (local.startsWith("file:") || local.startsWith("content:")) return local;
+  const bid =
+    photo.backendId?.trim() || extractPhotoStreamId(local) || undefined;
+  if (bid) return serverPhotoImageUrl(bid);
   if (
     local.startsWith("http://") ||
     local.startsWith("https://") ||
@@ -507,7 +527,6 @@ export function resolveMyPhotoDisplayUri(
   ) {
     return canonicalizePhotoStreamUri(local);
   }
-  if (local.startsWith("file:") || local.startsWith("content:")) return local;
   return local;
 }
 
@@ -543,28 +562,24 @@ export function repairMyPhotos(photos: MyPhoto[], matches: Match[]): MyPhoto[] {
   });
 }
 
-/** Backfill persisted rows that stripped `file://` but kept backendId or localId. */
+/** Backfill persisted rows — keep durable local copies, never overwrite with server. */
 export function hydrateMyPhotoUri(photo: MyPhoto): MyPhoto {
-  const bid = photo.backendId?.trim();
-  const persistent = persistentUriForPhoto(photo, "full");
-  if (bid) {
-    const server = serverPhotoImageUrl(bid);
-    const local = photo.uri?.trim() ?? "";
-    if (!local || local.startsWith("file:") || local.startsWith("content:")) {
-      return { ...photo, uri: server };
-    }
-    return photo;
-  }
   const local = photo.uri?.trim() ?? "";
-  if (!local && persistent) {
-    return { ...photo, uri: persistent };
+  const persistent = persistentUriForPhoto(photo, "full");
+  if (local && isPersistentPhotoUri(local)) return photo;
+  if (persistent) {
+    if (
+      !local ||
+      local.startsWith("file:") ||
+      local.startsWith("content:") ||
+      local.includes("/api/photos/")
+    ) {
+      return { ...photo, uri: persistent };
+    }
   }
-  if (
-    local.startsWith("file:") &&
-    !isPersistentPhotoUri(local) &&
-    persistent
-  ) {
-    return { ...photo, uri: persistent };
+  const bid = photo.backendId?.trim();
+  if (bid && !local && !persistent) {
+    return { ...photo, uri: serverPhotoImageUrl(bid) };
   }
   return photo;
 }
