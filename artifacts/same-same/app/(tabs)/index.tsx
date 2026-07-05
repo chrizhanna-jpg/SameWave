@@ -24,6 +24,7 @@ import { getTodaysChallenge } from "@/data/samplePhotos";
 import { RIPPLE_ONE_LINER, WAVE_ONE_LINER } from "@/data/waveRippleGlossary";
 import { scrollPaddingAboveTabBar } from "@/utils/tabBarSafeArea";
 import {
+  navigateInterestsFlow,
   navigatePlayTheme,
   navigateStartRippling,
 } from "@/utils/rippleNavigation";
@@ -195,7 +196,7 @@ export default function HomeScreen() {
         </PressableScale>
 
         <PressableScale
-          onPress={() => navigatePlayTheme(router, "interests")}
+          onPress={() => navigateInterestsFlow(router)}
           haptic="light"
           style={styles.fullWidth}
         >

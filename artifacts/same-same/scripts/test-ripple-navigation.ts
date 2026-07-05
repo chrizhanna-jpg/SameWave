@@ -1,19 +1,27 @@
 /**
- * Start Rippling must route to ripple.create, not play_theme.
+ * Ripple + Interests flow routing must stay distinct.
  * Run: pnpm exec tsx scripts/test-ripple-navigation.ts
  */
 import {
-  isLegacyHomeRippleStart,
+  INTERESTS_MANAGE_FLOW,
+  getInterestsTelemetryRing,
+  getRippleNavigationRing,
+  interestsManageCameraHref,
+  interestsManageHref,
+  isActiveInterestsFlow,
+  isInterestsManageFlow,
+  isLegacyInterestsIntent,
   isPlayThemeIntent,
   isRippleCreateFlow,
   isRippleNavFixEnabled,
+  legacyInterestsIntentHref,
   playThemeHref,
+  recordInterestsTelemetry,
+  recordRippleNavigation,
   resetRippleNavigationForTests,
+  resolveInCameraHref,
   resolvePostCaptureComposeHref,
   rippleCreateCameraHref,
-  RIPPLE_COMPOSE_ROUTE,
-  recordRippleNavigation,
-  getRippleNavigationRing,
 } from "../utils/rippleNavigation";
 
 function assert(label: string, ok: boolean, detail?: string): void {
@@ -23,10 +31,7 @@ function assert(label: string, ok: boolean, detail?: string): void {
 
 resetRippleNavigationForTests();
 
-assert(
-  "ripple nav fix enabled by default",
-  isRippleNavFixEnabled(),
-);
+assert("ripple nav fix enabled by default", isRippleNavFixEnabled());
 
 assert(
   "start rippling opens in-camera ripple.create",
@@ -40,67 +45,123 @@ assert(
 );
 
 assert(
+  "interests canonical compose route",
+  interestsManageHref() === `/camera?flow=${INTERESTS_MANAGE_FLOW}`,
+);
+
+assert(
+  "interests canonical camera route",
+  interestsManageCameraHref() === `/in-camera?flow=${INTERESTS_MANAGE_FLOW}`,
+);
+
+assert(
   "play theme challenge href",
   playThemeHref("challenge") === "/camera?intent=challenge",
 );
 
 assert(
-  "play theme interests href",
-  playThemeHref("interests") === "/camera?intent=interests",
+  "legacy interests intent still resolves",
+  isActiveInterestsFlow({ intent: "interests" }),
+);
+
+assert(
+  "interests flow param resolves",
+  isActiveInterestsFlow({ flow: INTERESTS_MANAGE_FLOW }),
+);
+
+assert(
+  "play theme intent is challenge-only",
+  isPlayThemeIntent("challenge") && !isPlayThemeIntent("interests"),
+);
+
+assert(
+  "legacy interests intent helper",
+  isLegacyInterestsIntent("interests"),
 );
 
 assert(
   "ripple.create post-capture lands on general compose",
-  resolvePostCaptureComposeHref({ flow: "ripple.create" }) === RIPPLE_COMPOSE_ROUTE,
+  resolvePostCaptureComposeHref({ flow: "ripple.create" }) === "/camera",
 );
 
 assert(
-  "legacy from=home post-capture lands on general compose",
-  resolvePostCaptureComposeHref({ from: "home" }) === RIPPLE_COMPOSE_ROUTE,
+  "interests.manage post-capture lands on interests compose",
+  resolvePostCaptureComposeHref({ flow: INTERESTS_MANAGE_FLOW }) ===
+    interestsManageHref(),
 );
 
 assert(
-  "challenge intent post-capture lands on play theme",
+  "legacy interests post-capture lands on interests compose",
+  resolvePostCaptureComposeHref({ intent: "interests" }) ===
+    interestsManageHref(),
+);
+
+assert(
+  "challenge post-capture lands on play theme",
   resolvePostCaptureComposeHref({ intent: "challenge" }) ===
     "/camera?intent=challenge",
 );
 
 assert(
-  "flow helpers detect ripple.create",
-  isRippleCreateFlow("ripple.create"),
+  "in-camera href for interests uses canonical flow",
+  resolveInCameraHref({ postIntent: "interests" }) === interestsManageCameraHref(),
 );
 
 assert(
-  "flow helpers reject play theme intent as ripple create",
-  !isRippleCreateFlow("challenge"),
+  "in-camera href for challenge keeps intent",
+  resolveInCameraHref({ postIntent: "challenge" }) ===
+    "/in-camera?intent=challenge",
 );
 
 assert(
-  "intent helper detects challenge",
-  isPlayThemeIntent("challenge"),
+  "in-camera href for general ripple",
+  resolveInCameraHref({ postIntent: null }) === rippleCreateCameraHref(),
 );
 
+assert("flow helpers detect ripple.create", isRippleCreateFlow("ripple.create"));
+
 assert(
-  "legacy home start helper",
-  isLegacyHomeRippleStart("home"),
+  "flow helpers detect interests.manage",
+  isInterestsManageFlow(INTERESTS_MANAGE_FLOW),
 );
 
 recordRippleNavigation("start_rippling", "ripple.create");
-const last = getRippleNavigationRing().at(-1);
+recordRippleNavigation("start_interests", "interests_flow");
+recordInterestsTelemetry("start_interests", { href: interestsManageHref() });
+
+const navLast = getRippleNavigationRing().at(-1);
 assert(
-  "telemetry records start_rippling -> ripple.create",
-  last?.source === "start_rippling" && last?.destination === "ripple.create",
-  `${last?.source} -> ${last?.destination}`,
+  "telemetry records start_interests -> interests_flow",
+  navLast?.source === "start_interests" &&
+    navLast?.destination === "interests_flow",
+  `${navLast?.source} -> ${navLast?.destination}`,
+);
+
+const interestsLast = getInterestsTelemetryRing().at(-1);
+assert(
+  "interests telemetry logs destination interests_flow",
+  interestsLast?.event === "start_interests" &&
+    interestsLast?.detail?.destination === "interests_flow",
 );
 
 assert(
-  "telemetry never maps start_rippling to play theme",
+  "telemetry never maps start_rippling to play theme or interests",
   !getRippleNavigationRing().some(
     (e) =>
       e.source === "start_rippling" &&
       (e.destination === "play_theme.challenge" ||
-        e.destination === "play_theme.interests"),
+        e.destination === "interests_flow"),
   ),
+);
+
+assert(
+  "interests href never maps to challenge intent",
+  !interestsManageHref().includes("intent=challenge"),
+);
+
+assert(
+  "legacy interests href preserved for deep links",
+  legacyInterestsIntentHref() === "/camera?intent=interests",
 );
 
 console.log("Done. exitCode=", process.exitCode ?? 0);

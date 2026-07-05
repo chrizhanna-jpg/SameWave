@@ -3,16 +3,26 @@ export const RIPPLE_CREATE_CAMERA_ROUTE = "/in-camera";
 /** Canonical compose screen after capture (no daily-theme intent). */
 export const RIPPLE_COMPOSE_ROUTE = "/camera";
 
+/** Canonical Interests flow route id (query param `flow`). */
+export const INTERESTS_MANAGE_FLOW = "interests.manage";
+
 export type RippleNavigationSource =
   | "start_rippling"
+  | "start_interests"
   | "play_theme_challenge"
   | "play_theme_interests";
 
 export type RippleNavigationDestination =
   | "ripple.create"
   | "ripple.compose"
+  | "interests_flow"
   | "play_theme.challenge"
   | "play_theme.interests";
+
+export type InterestsTelemetryEvent =
+  | "start_interests"
+  | "interests_view"
+  | "interests_header_rendered";
 
 type NavigationEventPayload = {
   source: RippleNavigationSource;
@@ -20,7 +30,14 @@ type NavigationEventPayload = {
   at: number;
 };
 
+type InterestsTelemetryPayload = {
+  event: InterestsTelemetryEvent;
+  detail?: Record<string, unknown>;
+  at: number;
+};
+
 const navRing: NavigationEventPayload[] = [];
+const interestsRing: InterestsTelemetryPayload[] = [];
 const NAV_RING_MAX = 40;
 
 function logNavigationDev(payload: NavigationEventPayload): void {
@@ -49,12 +66,33 @@ export function isRippleNavFixEnabled(): boolean {
   );
 }
 
+/** Roll back Interests canonical routing via EXPO_PUBLIC_INTERESTS_FLOW_V2=false. */
+export function isInterestsFlowV2Enabled(): boolean {
+  return (
+    process.env.EXPO_PUBLIC_INTERESTS_FLOW_V2 !== "false" &&
+    process.env.EXPO_PUBLIC_INTERESTS_FLOW_V2 !== "0"
+  );
+}
+
 export function rippleCreateCameraHref(): string {
   return `${RIPPLE_CREATE_CAMERA_ROUTE}?flow=ripple.create`;
 }
 
-export function playThemeHref(intent: "challenge" | "interests"): string {
+export function interestsManageHref(): string {
+  return `${RIPPLE_COMPOSE_ROUTE}?flow=${INTERESTS_MANAGE_FLOW}`;
+}
+
+export function interestsManageCameraHref(): string {
+  return `${RIPPLE_CREATE_CAMERA_ROUTE}?flow=${INTERESTS_MANAGE_FLOW}`;
+}
+
+export function playThemeHref(intent: "challenge"): string {
   return `${RIPPLE_COMPOSE_ROUTE}?intent=${intent}`;
+}
+
+/** @deprecated Legacy deep link — prefer interestsManageHref(). */
+export function legacyInterestsIntentHref(): string {
+  return `${RIPPLE_COMPOSE_ROUTE}?intent=interests`;
 }
 
 export function isRippleCreateFlow(
@@ -68,7 +106,34 @@ export function isPlayThemeIntent(
   intent: string | string[] | undefined,
 ): boolean {
   const v = Array.isArray(intent) ? intent[0] : intent;
-  return v === "challenge" || v === "interests";
+  return v === "challenge";
+}
+
+export function isLegacyInterestsIntent(
+  intent: string | string[] | undefined,
+): boolean {
+  const v = Array.isArray(intent) ? intent[0] : intent;
+  return v === "interests";
+}
+
+export function isInterestsManageFlow(
+  flow: string | string[] | undefined,
+): boolean {
+  const v = Array.isArray(flow) ? flow[0] : flow;
+  return v === INTERESTS_MANAGE_FLOW;
+}
+
+export function isActiveInterestsFlow(params: {
+  flow?: string | string[];
+  intent?: string | string[];
+}): boolean {
+  if (isInterestsFlowV2Enabled()) {
+    return (
+      isInterestsManageFlow(params.flow) ||
+      isLegacyInterestsIntent(params.intent)
+    );
+  }
+  return isLegacyInterestsIntent(params.intent);
 }
 
 export function isLegacyHomeRippleStart(
@@ -87,11 +152,16 @@ export function resolvePostCaptureComposeHref(params: {
   intent?: string | string[];
   from?: string | string[];
 }): string | null {
+  if (isActiveInterestsFlow(params)) {
+    return isInterestsFlowV2Enabled()
+      ? interestsManageHref()
+      : legacyInterestsIntentHref();
+  }
   if (isPlayThemeIntent(params.intent)) {
     const intent = Array.isArray(params.intent)
       ? params.intent[0]!
       : params.intent!;
-    return playThemeHref(intent as "challenge" | "interests");
+    return playThemeHref(intent as "challenge");
   }
   if (
     isRippleCreateFlow(params.flow) ||
@@ -100,6 +170,21 @@ export function resolvePostCaptureComposeHref(params: {
     return RIPPLE_COMPOSE_ROUTE;
   }
   return null;
+}
+
+export function resolveInCameraHref(params: {
+  postIntent?: "challenge" | "interests" | null;
+  flow?: string | string[];
+}): string {
+  if (params.postIntent === "challenge") {
+    return `${RIPPLE_CREATE_CAMERA_ROUTE}?intent=challenge`;
+  }
+  if (isActiveInterestsFlow({ flow: params.flow, intent: params.postIntent ?? undefined })) {
+    return isInterestsFlowV2Enabled()
+      ? interestsManageCameraHref()
+      : `${RIPPLE_CREATE_CAMERA_ROUTE}?intent=interests`;
+  }
+  return rippleCreateCameraHref();
 }
 
 export function recordRippleNavigation(
@@ -124,6 +209,34 @@ export function getRippleNavigationRing(): NavigationEventPayload[] {
 
 export function resetRippleNavigationForTests(): void {
   navRing.length = 0;
+  interestsRing.length = 0;
+}
+
+export function recordInterestsTelemetry(
+  event: InterestsTelemetryEvent,
+  detail?: Record<string, unknown>,
+): void {
+  const payload: InterestsTelemetryPayload = {
+    event,
+    detail: {
+      ...detail,
+      destination: "interests_flow",
+    },
+    at: Date.now(),
+  };
+  interestsRing.push(payload);
+  if (interestsRing.length > NAV_RING_MAX) interestsRing.shift();
+  if (typeof __DEV__ !== "undefined" && __DEV__) {
+    logNavigationDev({
+      source: "start_interests",
+      destination: "interests_flow",
+      at: payload.at,
+    });
+  }
+}
+
+export function getInterestsTelemetryRing(): InterestsTelemetryPayload[] {
+  return [...interestsRing];
 }
 
 type RouterPush = { push: (href: string) => void };
@@ -142,12 +255,25 @@ export function navigateStartRippling(router: RouterPush): void {
 
 export function navigatePlayTheme(
   router: RouterPush,
-  intent: "challenge" | "interests",
+  intent: "challenge",
 ): void {
-  const destination =
-    intent === "challenge" ? "play_theme.challenge" : "play_theme.interests";
-  const source =
-    intent === "challenge" ? "play_theme_challenge" : "play_theme_interests";
+  const destination = "play_theme.challenge";
+  const source = "play_theme_challenge";
   recordRippleNavigation(source, destination);
   router.push(playThemeHref(intent));
+}
+
+/** Home / profile CTAs labeled "Your interests". */
+export function navigateInterestsFlow(router: RouterPush): void {
+  const href = isInterestsFlowV2Enabled()
+    ? interestsManageHref()
+    : legacyInterestsIntentHref();
+  if (href.includes("intent=challenge")) {
+    throw new Error(
+      "Your Interests must not route to Play Today's Theme — use navigatePlayTheme",
+    );
+  }
+  recordRippleNavigation("start_interests", "interests_flow");
+  recordInterestsTelemetry("start_interests", { href });
+  router.push(href);
 }

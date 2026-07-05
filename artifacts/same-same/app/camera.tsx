@@ -82,8 +82,13 @@ import {
 import { AiGeneratedBadge } from "@/components/AiGeneratedBadge";
 import { MicBadge } from "@/components/MicBadge";
 import { useProAccess } from "@/hooks/useProAccess";
+import { FlowIntentHeader } from "@/components/FlowIntentHeader";
 import { gateProFeature } from "@/lib/proFeatures";
-import { rippleCreateCameraHref } from "@/utils/rippleNavigation";
+import {
+  isActiveInterestsFlow,
+  recordInterestsTelemetry,
+  resolveInCameraHref,
+} from "@/utils/rippleNavigation";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
 
@@ -188,57 +193,14 @@ function parsePostIntent(raw: string | string[] | undefined): PostIntent | null 
   return null;
 }
 
-function PostIntentPrompt({
-  intent,
-  challenge,
-  colors,
-}: {
-  intent: PostIntent;
-  challenge: ReturnType<typeof getTodaysChallenge>;
-  colors: ReturnType<typeof useColors>;
-}) {
-  if (intent === "challenge") {
-    return (
-      <View
-        style={[
-          styles.intentPrompt,
-          { backgroundColor: colors.card, borderColor: colors.border },
-        ]}
-        accessibilityRole="text"
-        accessibilityLabel={`Today's theme: ${challenge.title}. ${challenge.description}`}
-      >
-        <Text style={[styles.intentPromptLabel, { color: colors.mutedForeground }]}>
-          Today's theme
-        </Text>
-        <View style={styles.intentPromptTitleRow}>
-          <Text style={styles.intentPromptEmoji}>{challenge.emoji}</Text>
-          <Text style={[styles.intentPromptTitle, { color: colors.foreground }]}>
-            {challenge.title}
-          </Text>
-        </View>
-        <Text style={[styles.intentPromptDesc, { color: colors.mutedForeground }]}>
-          {challenge.description}
-        </Text>
-      </View>
-    );
-  }
-  return (
-    <View
-      style={[
-        styles.intentPrompt,
-        { backgroundColor: colors.card, borderColor: colors.border },
-      ]}
-      accessibilityRole="text"
-      accessibilityLabel="Your interests. Share your passion."
-    >
-      <Text style={[styles.intentPromptLabel, { color: colors.mutedForeground }]}>
-        Your interests
-      </Text>
-      <Text style={[styles.intentPromptTitle, { color: colors.foreground }]}>
-        Share your passion.
-      </Text>
-    </View>
-  );
+function resolveActivePostIntent(params: {
+  intent?: string | string[];
+  flow?: string | string[];
+}): PostIntent | null {
+  const parsed = parsePostIntent(params.intent);
+  if (parsed === "challenge") return "challenge";
+  if (isActiveInterestsFlow(params)) return "interests";
+  return null;
 }
 
 /** Local file / content URIs are not fetchable by the API — always send base64. */
@@ -265,8 +227,14 @@ async function readImageAsBase64ForAnalyze(
 export default function CameraScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { intent: intentParam } = useLocalSearchParams<{ intent?: string }>();
-  const postIntent = parsePostIntent(intentParam);
+  const { intent: intentParam, flow: flowParam } = useLocalSearchParams<{
+    intent?: string;
+    flow?: string;
+  }>();
+  const postIntent = resolveActivePostIntent({
+    intent: intentParam,
+    flow: flowParam,
+  });
   const {
     addMyPhoto,
     activateMyPhotoForMatch,
@@ -889,6 +857,12 @@ export default function CameraScreen() {
   };
 
   useEffect(() => {
+    if (postIntent === "interests") {
+      recordInterestsTelemetry("interests_view");
+    }
+  }, [postIntent]);
+
+  useEffect(() => {
     if (!postIntent || intentSeedAppliedRef.current) return;
     intentSeedAppliedRef.current = true;
     applyPostIntentSeed();
@@ -906,7 +880,7 @@ export default function CameraScreen() {
     // photo onto the captureBus and pops back; useFocusEffect below
     // picks it up the next time this screen regains focus.
     router.push(
-      postIntent ? `/in-camera?intent=${postIntent}` : rippleCreateCameraHref(),
+      resolveInCameraHref({ postIntent, flow: flowParam }),
     );
   };
 
@@ -1276,10 +1250,17 @@ export default function CameraScreen() {
 
       {postIntent && !submitted ? (
         <View style={styles.intentPromptWrap}>
-          <PostIntentPrompt
-            intent={postIntent}
-            challenge={challenge}
-            colors={colors}
+          <FlowIntentHeader
+            variant={postIntent}
+            challenge={
+              postIntent === "challenge"
+                ? {
+                    title: challenge.title,
+                    emoji: challenge.emoji,
+                    description: challenge.description,
+                  }
+                : undefined
+            }
           />
         </View>
       ) : null}
