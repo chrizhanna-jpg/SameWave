@@ -1075,15 +1075,20 @@ export default function SwipeScreen() {
         setNoMore(true);
         return;
       }
+      const normalizedUri = normalizeDeckPhotoUri(next.photo.uri);
+      const photo =
+        normalizedUri && normalizedUri !== next.photo.uri
+          ? { ...next.photo, uri: normalizedUri }
+          : next.photo;
       const { requestId } = commitDisplayedCandidate(
         sessionDisplayedRef.current,
-        next.photo.uri,
+        photo.uri,
         reason,
       );
       candidateRequestIdRef.current = requestId;
-      candidateImageBindRef.current = { requestId, uri: next.photo.uri };
+      candidateImageBindRef.current = { requestId, uri: photo.uri };
       setCandidateDisplayToken(requestId);
-      setTheirPhoto(next.photo);
+      setTheirPhoto(photo);
       setMatchedTheme(next.matchedTheme);
       setSharedTags(next.sharedTags);
       setNoMore(false);
@@ -1421,7 +1426,7 @@ export default function SwipeScreen() {
       for (let i = 0; i < count; i++) {
         const pick = pickDeckCandidate(skipKey, skipKey);
         if (!pick?.photo.uri) break;
-        uris.push(pick.photo.uri);
+        uris.push(normalizeDeckPhotoUri(pick.photo.uri));
         skipKey = photoKey(pick.photo.uri);
       }
       const ahead = IMAGE_LOAD_V2 ? PREFETCH_AHEAD_COUNT : count;
