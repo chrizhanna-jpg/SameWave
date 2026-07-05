@@ -499,14 +499,14 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   {
     id: "128",
     launchSlot: "tea_drinks",
-    uri: unsplashPhotoUrl("1497636577773-f1231844b336"),
+    uri: unsplashPhotoUrl("1555447014-7ead71574544"),
     country: "Italy",
     countryCode: "IT",
     countryFlag: "🇮🇹",
     theme: "coffee",
     minutesAgo: 31,
-    tags: ["coffee", "warm", "drink"],
-    subjects: ["coffee cup", "latte art", "wood table"],
+    tags: ["tea", "coffee", "warm", "drink"],
+    subjects: ["pink mug", "tea bag", "hot drink"],
     musicGenre: "calm",
   },
   {
