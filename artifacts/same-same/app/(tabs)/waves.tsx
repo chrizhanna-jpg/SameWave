@@ -30,12 +30,11 @@ import {
 import { fetchRecentWavesFeed, warmAuthedImageHeaders, type RecentWaveFeedItem } from "@/utils/api";
 import { prefetchMatchMyPhotoThumbs } from "@/utils/myPhotoPrefetch";
 import {
-  enrichMatchesForStorage,
   resolveEchoPhotoUri,
-  resolveMatchMyPhotoUri,
   resolveMatchMyPhotoThumbnailUri,
   resolveMatchMyPhotoFallbackUri,
   resolveMatchPhotoDisplay,
+  resolveMatchVoterPhotoId,
   photoStreamFallbackUri,
 } from "@/utils/photoDisplayUri";
 import { markTabVisited } from "@/utils/tabVisits";
@@ -177,11 +176,6 @@ export default function WavesScreen() {
             new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
         ),
     [matches],
-  );
-
-  const ripplesSentDisplay = useMemo(
-    () => enrichMatchesForStorage(ripplesSent, myPhotos),
-    [ripplesSent, myPhotos],
   );
 
   const wavesCaught = useMemo(() => {
@@ -346,6 +340,7 @@ export default function WavesScreen() {
                 <PendingRippleCard
                   key={echo.id}
                   echo={echo}
+                  myPhotos={myPhotos}
                   onRespond={handleRespond}
                   celebrating={celebratingId === echo.id}
                 />
@@ -371,7 +366,7 @@ export default function WavesScreen() {
               />
             ) : (
               wavesCaught.map((echo) => (
-                <WaveCaughtCard key={echo.id} echo={echo} />
+                <WaveCaughtCard key={echo.id} echo={echo} myPhotos={myPhotos} />
               ))
             )}
           </>
@@ -393,7 +388,7 @@ export default function WavesScreen() {
                 body="Ripple on photos in the match deck — they'll appear here while you wait for a Wave back."
               />
             ) : (
-              ripplesSentDisplay.map((match) => (
+              ripplesSent.map((match) => (
                 <RippleSentCard
                   key={match.id}
                   match={match}
@@ -613,10 +608,12 @@ function SectionHeader({
 
 function PendingRippleCard({
   echo,
+  myPhotos,
   onRespond,
   celebrating,
 }: {
   echo: EchoCard;
+  myPhotos: MyPhoto[];
   onRespond: (id: string, verdict: "same" | "different") => void;
   celebrating: boolean;
 }) {
@@ -655,7 +652,7 @@ function PendingRippleCard({
         </View>
       </View>
 
-      <PhotoPair mine={echo.mine} theirs={echo.theirs} />
+      <PhotoPair mine={echo.mine} theirs={echo.theirs} myPhotos={myPhotos} />
 
       {celebrating ? (
         <View
@@ -703,7 +700,13 @@ function PendingRippleCard({
   );
 }
 
-function WaveCaughtCard({ echo }: { echo: EchoCard }) {
+function WaveCaughtCard({
+  echo,
+  myPhotos,
+}: {
+  echo: EchoCard;
+  myPhotos: MyPhoto[];
+}) {
   const colors = useColors();
   const stamp = echo.mutualAt ? new Date(echo.mutualAt) : new Date(echo.createdAt);
   const ago = timeAgo(stamp);
@@ -742,7 +745,7 @@ function WaveCaughtCard({ echo }: { echo: EchoCard }) {
           </Text>
         </View>
       </View>
-      <PhotoPair mine={echo.mine} theirs={echo.theirs} />
+      <PhotoPair mine={echo.mine} theirs={echo.theirs} myPhotos={myPhotos} />
     </TouchableOpacity>
   );
 }
@@ -831,6 +834,7 @@ function RippleSentCard({
   const ago = timeAgo(new Date(match.timestamp));
   const myUri = resolveMatchMyPhotoThumbnailUri(match, myPhotos);
   const myFallbackUri = resolveMatchMyPhotoFallbackUri(match, myPhotos);
+  const voterId = resolveMatchVoterPhotoId(match);
   const theirUri = resolveMatchPhotoDisplay(match, myPhotos).theirPhoto;
   const myDisp = photoCountryDisplay(match.myCaptureCountryCode, {
     sampleUri: myUri,
@@ -887,7 +891,7 @@ function RippleSentCard({
               uri={myUri}
               fallbackUri={myFallbackUri}
               style={styles.photo}
-              recyclingKey={`waves-my:${match.id}`}
+              recyclingKey={`waves-my:${voterId || match.id}`}
               displayWidth={FEED_THUMB_WIDTH}
               priority="thumbnail"
               transitionMs={0}
@@ -942,12 +946,14 @@ function RippleSentCard({
 function PhotoPair({
   mine,
   theirs,
+  myPhotos,
 }: {
   mine: EchoCard["mine"];
   theirs: EchoCard["theirs"];
+  myPhotos: MyPhoto[];
 }) {
   const colors = useColors();
-  const mineUri = resolveEchoPhotoUri(mine);
+  const mineUri = resolveEchoPhotoUri(mine, myPhotos);
   const theirsUri = resolveEchoPhotoUri(theirs);
   const myDisp = photoCountryDisplay(mine.captureCountryCode, {
     sampleUri: mineUri,

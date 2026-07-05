@@ -182,24 +182,77 @@ export function myPhotoRowKey(
   return `idx:${index}`;
 }
 
+/** True when a display uri belongs to the given voter backend photo id. */
+export function photoUriMatchesVoterId(
+  uri: string,
+  voterId: string,
+  myPhotos: MyPhoto[],
+): boolean {
+  const trimmed = uri.trim();
+  const id = voterId.trim();
+  if (!trimmed || !id) return false;
+  const fromStream = extractPhotoStreamId(trimmed);
+  if (fromStream === id) return true;
+  const row = myPhotos.find((p) => p.backendId?.trim() === id);
+  if (!row) return false;
+  const expected = resolveMyPhotoDisplayUri(row);
+  const key = photoKey(trimmed);
+  const expectedKey = photoKey(expected);
+  if (key && expectedKey) return key === expectedKey;
+  return trimmed === expected;
+}
+
+function uriHintMatchesMatch(
+  photo: MyPhoto,
+  match: Pick<
+    Match,
+    "myPhotoId" | "myPhotoUploadedAt" | "timestamp"
+  >,
+): boolean {
+  const voterId = match.myPhotoId?.trim();
+  const bid = photo.backendId?.trim();
+  if (voterId && bid && voterId !== bid) return false;
+  if (match.myPhotoUploadedAt?.trim()) {
+    if (!uploadTimesEqual(photo.uploadedAt, match.myPhotoUploadedAt)) return false;
+  }
+  const swipeAt = Date.parse(match.timestamp);
+  if (Number.isFinite(swipeAt)) {
+    const at = Date.parse(photo.uploadedAt);
+    if (Number.isFinite(at) && at > swipeAt) return false;
+  }
+  return true;
+}
+
 /** Echo / wave card side — prefer durable local uri, fall back to authenticated stream. */
-export function resolveEchoPhotoUri(side: {
-  id?: string;
-  uri?: string | null;
-}): string {
+export function resolveEchoPhotoUri(
+  side: {
+    id?: string;
+    uri?: string | null;
+  },
+  myPhotos?: MyPhoto[],
+): string {
   const uri = side.uri?.trim() ?? "";
+  const id = side.id?.trim();
   if (
     uri &&
     (isPersistentPhotoUri(uri) ||
       uri.startsWith("file:") ||
       uri.startsWith("content:"))
   ) {
+    if (id && myPhotos?.length && !photoUriMatchesVoterId(uri, id, myPhotos)) {
+      return serverPhotoImageUrl(id);
+    }
     return uri;
   }
   if (uri.length > 0 && !uri.startsWith("file:") && !uri.startsWith("content:")) {
+    if (id && myPhotos?.length) {
+      const streamId = extractPhotoStreamId(uri);
+      if (streamId && streamId !== id) {
+        return serverPhotoImageUrl(id);
+      }
+    }
     return canonicalizePhotoStreamUri(uri);
   }
-  const id = side.id?.trim();
   if (id) return serverPhotoImageUrl(id);
   return uri;
 }
@@ -270,18 +323,6 @@ function matchForVoterPhotoLookup<
   return { ...match, myPhotoId: voterId };
 }
 
-function durableMyPhotoUri(uri: string): boolean {
-  const trimmed = uri.trim();
-  if (!trimmed) return false;
-  return (
-    isPersistentPhotoUri(trimmed) ||
-    trimmed.startsWith("file:") ||
-    trimmed.startsWith("content:") ||
-    (!trimmed.includes("/api/photos/") &&
-      !shouldCanonicalizePhotoStreamUri(trimmed))
-  );
-}
-
 /** Best-effort voter photo for a ripple row — id, upload time, or active-at-swipe. */
 export function findMyPhotoForMatch(
   match: Pick<
@@ -294,18 +335,6 @@ export function findMyPhotoForMatch(
   const photoId = match.myPhotoId?.trim();
   if (photoId) {
     return myPhotos.find((p) => p.backendId?.trim() === photoId);
-  }
-
-  const uriHints = [stashedMyPhoto, match.myPhoto].filter(
-    (u): u is string => typeof u === "string" && u.trim().length > 0,
-  );
-  for (const hint of uriHints) {
-    const key = photoKey(hint);
-    if (!key) continue;
-    const byKey = myPhotos.find(
-      (p) => photoKey(p.uri) === key || photoKey(resolveMyPhotoDisplayUri(p)) === key,
-    );
-    if (byKey) return byKey;
   }
 
   if (match.myPhotoUploadedAt) {
@@ -329,6 +358,18 @@ export function findMyPhotoForMatch(
       }
     }
     if (best) return best;
+  }
+
+  const uriHints = [stashedMyPhoto, match.myPhoto].filter(
+    (u): u is string => typeof u === "string" && u.trim().length > 0,
+  );
+  for (const hint of uriHints) {
+    const key = photoKey(hint);
+    if (!key) continue;
+    const byKey = myPhotos.find(
+      (p) => photoKey(p.uri) === key || photoKey(resolveMyPhotoDisplayUri(p)) === key,
+    );
+    if (byKey && uriHintMatchesMatch(byKey, match)) return byKey;
   }
 
   return undefined;
@@ -363,40 +404,47 @@ export function resolveMatchMyPhotoUri(
     | "myPhotoId"
     | "myPhotoUploadedAt"
     | "timestamp"
+    | "theirPhotoId"
+    | "theirPhoto"
   >,
   myPhotos: MyPhoto[],
 ): string {
-  const enriched = enrichMatchMyPhotoFields(match as Match, myPhotos);
-  const stashed = resolveMatchPhotoUris(enriched.id, {
-    myPhoto: enriched.myPhoto,
+  const lookup = matchForVoterPhotoLookup(match);
+  const voterId = resolveMatchVoterPhotoId(lookup);
+  const stashed = resolveMatchPhotoUris(match.id, {
+    myPhoto: match.myPhoto,
     theirPhoto: "",
-  });
+  }).myPhoto;
 
-  const fromLibrary = findMyPhotoForMatch(
-    matchForVoterPhotoLookup(enriched),
-    myPhotos,
-    stashed.myPhoto,
-  );
+  if (voterId) {
+    const row = myPhotos.find((p) => p.backendId?.trim() === voterId);
+    if (row) {
+      const local = resolveMyPhotoDisplayUri(row);
+      if (photoUriMatchesVoterId(local, voterId, myPhotos)) {
+        return resolveEchoPhotoUri({ id: voterId, uri: local }, myPhotos);
+      }
+    }
+    for (const candidate of [match.myPhoto, stashed]) {
+      const c = candidate?.trim() ?? "";
+      if (c && photoUriMatchesVoterId(c, voterId, myPhotos)) {
+        return resolveEchoPhotoUri({ id: voterId, uri: c }, myPhotos);
+      }
+    }
+    return serverPhotoImageUrl(voterId);
+  }
+
+  const fromLibrary = findMyPhotoForMatch(lookup, myPhotos, stashed);
   if (fromLibrary) {
     const libUri = resolveMyPhotoDisplayUri(fromLibrary);
     if (libUri.trim()) return libUri;
   }
 
-  const voterId = resolveMatchVoterPhotoId(enriched);
-  let myPhoto = pickDurablePhotoUri(
-    voterId ? serverPhotoImageUrl(voterId) : "",
-    enriched.myPhoto,
-    stashed.myPhoto,
-  );
+  let myPhoto = pickDurablePhotoUri(match.myPhoto, stashed);
   if (!myPhoto || myPhoto.startsWith("file:")) {
-    myPhoto = resolveMyPhotoForMatch(
-      matchForVoterPhotoLookup(enriched),
-      myPhotos,
-      stashed.myPhoto,
-    );
+    myPhoto = resolveMyPhotoForMatch(lookup, myPhotos, stashed);
   }
 
-  return resolveEchoPhotoUri({ id: voterId ?? enriched.myPhotoId, uri: myPhoto });
+  return resolveEchoPhotoUri({ uri: myPhoto }, myPhotos);
 }
 
 /** Thumbnail-sized voter photo for feed tiles (320w stream). */
@@ -408,14 +456,34 @@ export function resolveMatchMyPhotoThumbnailUri(
     | "myPhotoId"
     | "myPhotoUploadedAt"
     | "timestamp"
+    | "theirPhotoId"
+    | "theirPhoto"
   >,
   myPhotos: MyPhoto[],
 ): string {
+  const lookup = matchForVoterPhotoLookup(match);
+  const voterId = resolveMatchVoterPhotoId(lookup);
+  if (voterId) {
+    const row = myPhotos.find((p) => p.backendId?.trim() === voterId);
+    if (row) {
+      const local = resolveMyPhotoThumbnailUri(row);
+      if (
+        local.trim() &&
+        (local.startsWith("file:") ||
+          local.startsWith("content:") ||
+          isPersistentPhotoUri(local)) &&
+        photoUriMatchesVoterId(local, voterId, myPhotos)
+      ) {
+        return local;
+      }
+    }
+    return serverPhotoImageUrl(voterId, FEED_THUMB_WIDTH);
+  }
+
   const stashed = resolveMatchPhotoUris(match.id, {
     myPhoto: match.myPhoto,
     theirPhoto: "",
   }).myPhoto;
-  const lookup = matchForVoterPhotoLookup(match);
   const fromLibrary = findMyPhotoForMatch(lookup, myPhotos, stashed);
   if (fromLibrary) {
     const thumb = resolveMyPhotoThumbnailUri(fromLibrary);
@@ -426,10 +494,7 @@ export function resolveMatchMyPhotoThumbnailUri(
   if (!uri || uri.startsWith("file:") || uri.startsWith("content:")) {
     return uri;
   }
-  const id =
-    resolveMatchVoterPhotoId(match) ||
-    extractPhotoStreamId(uri) ||
-    undefined;
+  const id = extractPhotoStreamId(uri) || undefined;
   if (id && !isSamplePhoto(uri)) {
     return serverPhotoImageUrl(id, FEED_THUMB_WIDTH);
   }
@@ -555,10 +620,15 @@ export function enrichMatchMyPhotoFields(
   if (photoId) {
     const server = serverPhotoImageUrl(photoId);
     const current = match.myPhoto?.trim() ?? "";
+    const currentOk = photoUriMatchesVoterId(current, photoId, myPhotos);
+    const stashedOk =
+      !!stashedMyPhoto?.trim() &&
+      photoUriMatchesVoterId(stashedMyPhoto, photoId, myPhotos);
     const needsId = match.myPhotoId?.trim() !== photoId;
     const nextPhoto =
       fromLib.trim() ||
-      (durableMyPhotoUri(current) ? current : "") ||
+      (currentOk ? current : "") ||
+      (stashedOk ? stashedMyPhoto.trim() : "") ||
       server;
     if (needsId || nextPhoto !== current) {
       return { ...match, myPhotoId: photoId, myPhoto: nextPhoto };
