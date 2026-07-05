@@ -12,7 +12,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { Image } from "expo-image";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Reanimated, {
   Easing,
@@ -71,8 +70,6 @@ import {
   fetchMatchStats,
   markPhotosSeen,
   matchByObject,
-  authedImageHeaders,
-  explorePhotoUriNeedsAuth,
   warmAuthedImageHeaders,
   type CandidatePhoto,
 } from "@/utils/api";
@@ -343,14 +340,30 @@ function countThemeRelevantCandidates(
   ).length;
 }
 
+function normalizeDeckPhotoUri(uri: string): string {
+  const trimmed = uri.trim();
+  if (!trimmed) return "";
+  let normalized = normalizeUnsplashUri(trimmed);
+  if (normalized.includes("images.unsplash.com")) {
+    try {
+      const url = new URL(normalized);
+      url.searchParams.set("w", String(HERO_DISPLAY_WIDTH));
+      return url.toString();
+    } catch {
+      return normalized;
+    }
+  }
+  return withDisplayPhotoWidth(normalized, HERO_DISPLAY_WIDTH);
+}
+
 function resolveLiveCandidateUri(c: CandidatePhoto): string {
   const preview = c.previewUri?.trim() ?? "";
   if (preview.startsWith("data:")) return preview;
   const raw = c.uri?.trim() ?? "";
   if (raw.startsWith("https://")) {
-    return withDisplayPhotoWidth(normalizeUnsplashUri(raw) ?? raw);
+    return normalizeDeckPhotoUri(raw);
   }
-  return serverPhotoImageUrl(c.id);
+  return serverPhotoImageUrl(c.id, HERO_DISPLAY_WIDTH);
 }
 
 function mapFetchedCandidates(
@@ -1362,24 +1375,11 @@ export default function SwipeScreen() {
     Haptics.selectionAsync().catch(() => {});
   }, []);
 
-  const prefetchInflightRef = useRef(new Set<string>());
   const prefetchPhotoUri = useCallback((uri: string) => {
-    const normalized = withDisplayPhotoWidth(normalizeUnsplashUri(uri));
+    const normalized = normalizeDeckPhotoUri(uri);
     if (!normalized) return Promise.resolve();
-    if (prefetchInflightRef.current.has(normalized)) {
-      return Promise.resolve();
-    }
-    prefetchInflightRef.current.add(normalized);
-    const release = () => {
-      prefetchInflightRef.current.delete(normalized);
-    };
-    if (explorePhotoUriNeedsAuth(normalized)) {
-      return authedImageHeaders()
-        .then((headers) => Image.prefetch(normalized, { headers }))
-        .catch(() => {})
-        .finally(release);
-    }
-    return Image.prefetch(normalized).catch(() => {}).finally(release);
+    prefetchPhotoUris([normalized], { max: 1, priority: "hero" });
+    return Promise.resolve();
   }, []);
 
   // Audio analogue of prefetchPhotoUri: preload an upcoming card's vibe

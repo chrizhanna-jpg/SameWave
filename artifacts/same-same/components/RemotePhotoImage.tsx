@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Easing,
@@ -32,6 +32,7 @@ import {
 } from "@/utils/unsplashUri";
 import { BLANK_FRAME_THRESHOLD_MS, CACHE_HIT_LATENCY_MS, IMAGE_LOAD_V2 } from "@/constants/imageLoading";
 import {
+  isLikelyCached,
   prioritizeHeroPrefetch,
   recordImageLoadComplete,
   recordImageLoadStart,
@@ -86,7 +87,17 @@ function normalizeRemotePhotoUri(uri: string, displayWidth?: number): string {
     ? canonicalizePhotoStreamUri(trimmed)
     : trimmed;
   const w = displayWidth && displayWidth > 0 ? displayWidth : undefined;
-  return withDisplayPhotoWidth(normalizeUnsplashUri(stream), w ?? undefined);
+  let normalized = normalizeUnsplashUri(stream);
+  if (w && normalized.includes("images.unsplash.com")) {
+    try {
+      const url = new URL(normalized);
+      url.searchParams.set("w", String(Math.round(w)));
+      normalized = url.toString();
+    } catch {
+      /* keep normalized */
+    }
+  }
+  return withDisplayPhotoWidth(normalized, w ?? undefined);
 }
 
 function rewriteApiOrigin(uri: string, origin: string): string | null {
@@ -198,14 +209,16 @@ export function RemotePhotoImage({
     }
   };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     loadGeneration.current += 1;
+    const authNeeded = explorePhotoUriNeedsAuth(normalized);
+    const warmStart = !authNeeded && isLikelyCached(normalized);
     setUsedFallback(false);
     setUseHosted(false);
     setExhausted(false);
     setAttempt(0);
-    setLoaded(false);
-    setAuthReady(!explorePhotoUriNeedsAuth(normalized));
+    setLoaded(warmStart);
+    setAuthReady(!authNeeded);
     clearRetryTimer();
     clearBlankTimer();
     return () => {
@@ -406,6 +419,8 @@ export function RemotePhotoImage({
     onResolvedRef.current?.(!exhausted);
   };
 
+  const handleLoadEnd = handleLoad;
+
   const handleManualRetry = () => {
     setExhausted(false);
     setUsedFallback(false);
@@ -432,6 +447,7 @@ export function RemotePhotoImage({
           transition={transitionMs > 0 ? transitionMs : undefined}
           accessibilityLabel={accessibilityLabel}
           onLoad={handleLoad}
+          onLoadEnd={handleLoadEnd}
           onError={handleError}
         />
       ) : null}
