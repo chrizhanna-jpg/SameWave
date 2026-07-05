@@ -451,6 +451,38 @@ export function resolveMatchPhotoDisplay(
   return { myPhoto, theirPhoto };
 }
 
+/** Pick the display URI to store on a match row — local-first, id in myPhotoId. */
+export function pickMatchMyPhotoDisplayUri(
+  match: Pick<
+    Match,
+    "id" | "myPhoto" | "myPhotoId" | "myPhotoUploadedAt" | "timestamp"
+  >,
+  myPhotos: MyPhoto[],
+  preferUri?: string,
+): string {
+  const stashed = resolveMatchPhotoUris(match.id, {
+    myPhoto: match.myPhoto,
+    theirPhoto: "",
+  }).myPhoto;
+  const row = findMyPhotoForMatch(match, myPhotos, stashed);
+  if (row) {
+    const fromLib = resolveMyPhotoDisplayUri(row);
+    if (fromLib.trim()) return fromLib;
+  }
+  const hint = preferUri?.trim() || match.myPhoto?.trim() || stashed?.trim() || "";
+  if (
+    hint &&
+    (isPersistentPhotoUri(hint) ||
+      hint.startsWith("file:") ||
+      hint.startsWith("content:") ||
+      (!hint.includes("/api/photos/") && !shouldCanonicalizePhotoStreamUri(hint)))
+  ) {
+    return hint;
+  }
+  const bid = match.myPhotoId?.trim() || row?.backendId?.trim();
+  return bid ? serverPhotoImageUrl(bid) : hint;
+}
+
 /** Backfill voter photo id + HTTPS uri on ripple rows after cache strip or late upload ack. */
 export function enrichMatchMyPhotoFields(
   match: Match,
@@ -465,24 +497,36 @@ export function enrichMatchMyPhotoFields(
     const fromTarget = lookupVoterPhotoForMatchSync(match);
     if (fromTarget) photoId = fromTarget;
   }
+  const photo = findMyPhotoForMatch(match, myPhotos, stashedMyPhoto);
+  const fromLib = photo ? resolveMyPhotoDisplayUri(photo) : "";
+
   if (photoId) {
     const server = serverPhotoImageUrl(photoId);
     const current = match.myPhoto?.trim() ?? "";
     const needsId = match.myPhotoId?.trim() !== photoId;
-    if (!current || current.startsWith("file:") || needsId) {
-      return { ...match, myPhotoId: photoId, myPhoto: server };
+    const nextPhoto =
+      fromLib.trim() ||
+      (current &&
+      (isPersistentPhotoUri(current) ||
+        current.startsWith("file:") ||
+        current.startsWith("content:") ||
+        (!current.includes("/api/photos/") &&
+          !shouldCanonicalizePhotoStreamUri(current)))
+        ? current
+        : "") ||
+      server;
+    if (needsId || nextPhoto !== current) {
+      return { ...match, myPhotoId: photoId, myPhoto: nextPhoto };
     }
     return match;
   }
 
-  const photo = findMyPhotoForMatch(match, myPhotos, stashedMyPhoto);
   const bid = photo?.backendId?.trim();
   if (!bid) {
     const durable = pickDurablePhotoUri(match.myPhoto, stashedMyPhoto);
     if (durable && durable !== match.myPhoto && !isSamplePhoto(durable)) {
       return { ...match, myPhoto: durable };
     }
-    const fromLib = photo ? resolveMyPhotoDisplayUri(photo) : "";
     if (fromLib && fromLib !== match.myPhoto && !isSamplePhoto(fromLib)) {
       return { ...match, myPhoto: fromLib };
     }
@@ -491,7 +535,11 @@ export function enrichMatchMyPhotoFields(
 
   const server = serverPhotoImageUrl(bid);
   if (isSamplePhoto(server)) return match;
-  return { ...match, myPhotoId: bid, myPhoto: server };
+  return {
+    ...match,
+    myPhotoId: bid,
+    myPhoto: fromLib.trim() || server,
+  };
 }
 
 export type ResolveMyPhotoDisplayOptions = {

@@ -103,6 +103,9 @@ import {
   HERO_DISPLAY_WIDTH,
   resolveMyPhotoDisplayUri,
   resolveMyPhotoFallbackUri,
+  resolveMatchMyPhotoFallbackUri,
+  resolveMatchMyPhotoUri,
+  pickMatchMyPhotoDisplayUri,
   pickVoterPhotoBackendId,
   serverPhotoImageUrl,
   withDisplayPhotoWidth,
@@ -1599,10 +1602,17 @@ export default function SwipeScreen() {
           uploadedAt: snapshotMyUploadedAt,
           preferUri: snapshotMyUri,
         });
-        const snapshotMyPhoto =
-          voterPhotoId && voterPhotoId.length > 0
-            ? serverPhotoImageUrl(voterPhotoId)
-            : snapshotMyUri;
+        const snapshotMyPhoto = pickMatchMyPhotoDisplayUri(
+          {
+            id: "",
+            myPhoto: snapshotMyUri,
+            myPhotoId: voterPhotoId,
+            myPhotoUploadedAt: snapshotMyUploadedAt,
+            timestamp: new Date().toISOString(),
+          },
+          myPhotos,
+          snapshotMyUri,
+        );
         // Build a match record for BOTH verdicts so the user can revisit
         // and flip a previous swipe from My Journey. Stats / countries /
         // badges only count "same" — the context handles that branching.
@@ -2520,11 +2530,15 @@ export default function SwipeScreen() {
             theirCaptureCountryCode={flashMatch.theirCaptureCountryCode}
             themeTitle={themeMeta?.title ?? flashMatch.theme ?? "the same thing"}
             themeEmoji={themeMeta?.emoji ?? "✨"}
-            myPhotoUri={flashMatch.myPhoto}
+            myPhotoUri={
+              todaysPhoto
+                ? resolveMyPhotoDisplayUri(todaysPhoto)
+                : resolveMatchMyPhotoUri(flashMatch, myPhotos)
+            }
             myPhotoFallbackUri={
-              flashMatch.myPhotoId
-                ? serverPhotoImageUrl(flashMatch.myPhotoId)
-                : myPhotoFallbackUri
+              todaysPhoto
+                ? resolveMyPhotoFallbackUri(todaysPhoto, HERO_DISPLAY_WIDTH)
+                : resolveMatchMyPhotoFallbackUri(flashMatch, myPhotos)
             }
             theirPhotoUri={flashMatch.theirPhoto}
             myPhotoCapturedAt={flashMatch.myPhotoCapturedAt}

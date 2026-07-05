@@ -1563,11 +1563,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           m.id === matchId || (!!tid && m.theirPhotoId?.trim() === tid);
         if (!isTarget) return m;
         changed = true;
-        return {
-          ...m,
-          myPhotoId: bid,
-          myPhoto: serverPhotoImageUrl(bid),
-        };
+        return enrichMatchMyPhotoFields(
+          { ...m, myPhotoId: bid },
+          prev.myPhotos,
+        );
       });
       if (!changed) return prev;
       const newState = { ...prev, matches };
