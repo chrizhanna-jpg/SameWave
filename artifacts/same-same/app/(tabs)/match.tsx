@@ -71,7 +71,6 @@ import {
   fetchMatchStats,
   markPhotosSeen,
   matchByObject,
-  warmAuthedImageHeaders,
   type CandidatePhoto,
 } from "@/utils/api";
 import { requestAtlasRefresh } from "@/utils/atlasHub";
@@ -573,7 +572,6 @@ export default function SwipeScreen() {
   useFocusEffect(
     useCallback(() => {
       markTabVisited("match");
-      warmAuthedImageHeaders();
       // Kill BOTH Atlas ambience players before the card vibe starts. The
       // vibe clip lives in the utils/audio singleton, but Wavefire ambience
       // and Firecircle ocean/fire loops are independent expo-av Sounds — if
