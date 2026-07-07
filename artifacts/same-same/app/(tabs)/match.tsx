@@ -24,6 +24,7 @@ import Reanimated, {
   type SharedValue,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useIsFocused } from "@react-navigation/native";
 import { router, useFocusEffect } from "expo-router";
 import { markTabVisited } from "@/utils/tabVisits";
 import { runAfterTabFocus } from "@/utils/deferTabFocus";
@@ -89,7 +90,6 @@ import {
   markUserInteracted,
   onMuteChange,
   pause as pauseAudio,
-  pauseIfLease,
   pausePreview,
   playClip,
   prewarmClip,
@@ -568,6 +568,7 @@ function getTheirPhoto(
 export default function SwipeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const isFocused = useIsFocused();
 
   useFocusEffect(
     useCallback(() => {
@@ -581,11 +582,11 @@ export default function SwipeScreen() {
       // audio source on this screen.
       void stopWavefireAmbience();
       void stopFirecircleAmbience();
-      // On blur: pause the swipe card's background music (lease-aware,
+      // On blur: stop the swipe card's background music (lease-aware,
       // no-ops if another screen has since taken over the singleton)
       // and any voice-clip preview the user started via a mic badge.
       return () => {
-        void pauseIfLease(playLeaseRef.current);
+        void stopIfLease(playLeaseRef.current);
         void pausePreview();
       };
     }, []),
@@ -1264,6 +1265,14 @@ export default function SwipeScreen() {
     if (candidateImageReady) setCandidateImageGateOpen(true);
   }, [candidateImageReady]);
   useEffect(() => {
+    if (!isFocused) {
+      // Leaving the Ripple tab must silence vibe music even while MatchFlash
+      // is up — the flash keeps the clip playing on-tab by design, but a
+      // stale play lease can make pauseIfLease a no-op on blur.
+      void stopIfLease(playLeaseRef.current);
+      void pausePreview();
+      return;
+    }
     if (!theirPhoto?.uri) return;
     // Keep the matched card's vibe during the Ripple celebration overlay.
     if (flashMatchRef.current) return;
@@ -1315,6 +1324,7 @@ export default function SwipeScreen() {
     fullscreenUri,
     flashMatch,
     candidateImageGateOpen,
+    isFocused,
   ]);
 
   // Stop audio when the screen unmounts (tab switch, navigation
@@ -1354,6 +1364,7 @@ export default function SwipeScreen() {
         musicFocusInitRef.current = true;
         return;
       }
+      if (flashMatchRef.current) return;
       if (pendingAdvanceRef.current) {
         pendingAdvanceRef.current = false;
         // loadNextCandidate updates theirPhoto, which the music useEffect
