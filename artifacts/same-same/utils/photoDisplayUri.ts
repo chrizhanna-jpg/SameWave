@@ -124,6 +124,20 @@ export function photoStreamFallbackUri(
 
 const RECENT_PHOTO_THUMB_WIDTH = 320;
 
+/** On-device thumbnail only — never an authed server stream. */
+export function resolveMyPhotoOfflineThumbnailUri(
+  photo: Pick<MyPhoto, "uri" | "backendId" | "localId">,
+): string {
+  const persistentThumb = persistentUriForPhoto(photo, "thumb");
+  if (persistentThumb) return persistentThumb;
+  const local = photo.uri?.trim() ?? "";
+  if (local && isPersistentPhotoUri(local)) return local;
+  const persistentFull = persistentUriForPhoto(photo, "full");
+  if (persistentFull) return persistentFull;
+  if (local.startsWith("file:") || local.startsWith("content:")) return local;
+  return "";
+}
+
 /** Smaller stream for recent-photo picker thumbnails. */
 export function resolveMyPhotoThumbnailUri(
   photo: Pick<MyPhoto, "uri" | "backendId" | "uploadState" | "localId">,
@@ -624,6 +638,8 @@ export function resolveMatchMyPhotoThumbnailUri(
 ): string {
   const row = resolveMatchMyPhotoRow(match, myPhotos);
   if (row) {
+    const offline = resolveMyPhotoOfflineThumbnailUri(row);
+    if (offline.trim()) return offline;
     const thumb = resolveMyPhotoThumbnailUri(row);
     if (thumb.trim()) return thumb;
   }
@@ -680,11 +696,18 @@ export function resolveMatchMyPhotoFallbackUri(
   myPhotos: MyPhoto[],
 ): string | undefined {
   const row = resolveMatchMyPhotoRow(match, myPhotos);
+  const offline = row ? resolveMyPhotoOfflineThumbnailUri(row) : "";
   const voterId =
     row?.backendId?.trim() || resolveMatchVoterPhotoId(match, myPhotos);
+  const primary = resolveMatchMyPhotoThumbnailUri(match, myPhotos);
   if (voterId) {
     const server = serverPhotoImageUrl(voterId, FEED_THUMB_WIDTH);
-    const primary = resolveMatchMyPhotoThumbnailUri(match, myPhotos);
+    if (offline.trim() && isOfflineSafePhotoUri(primary)) {
+      return server;
+    }
+    if (offline.trim() && primary !== offline) {
+      return offline;
+    }
     if (primary.trim() && primary !== server) return server;
     if (row) {
       const alt = resolveMyPhotoFallbackUri(row, FEED_THUMB_WIDTH);

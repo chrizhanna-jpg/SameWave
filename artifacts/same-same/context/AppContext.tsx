@@ -1969,11 +1969,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       let journeyOrigin: string | undefined;
       let res = await fetchMyJourney();
-      if (!res.ok || res.matches.length === 0) {
+      // Only try hosted origin when the primary fetch failed — not when the
+      // account simply has zero journey rows (that used to trigger a second
+      // full round-trip and leave the sync spinner stuck on pull refresh).
+      if (!res.ok) {
         const hosted = getStagedProductionApiOrigin();
         if (hosted && hosted !== getPublicApiOrigin()) {
           const hostedRes = await fetchMyJourneyAtOrigin(hosted);
-          if (hostedRes.ok && hostedRes.matches.length > 0) {
+          if (hostedRes.ok) {
             res = hostedRes;
             journeyOrigin = hosted;
           }
@@ -2035,7 +2038,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const task = (async () => {
       setCloudSyncInProgress(true);
       try {
-        await Promise.all([refreshEchoes(), refreshJourney()]);
+        await Promise.allSettled([refreshEchoes(), refreshJourney()]);
         reconcileMatchPhotos();
       } catch {
         // Individual fetch helpers already fall back to local cache.

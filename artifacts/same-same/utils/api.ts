@@ -159,7 +159,7 @@ async function readAuthToken(): Promise<string | null> {
 }
 
 /** Per-request ceiling for dead TCP connections (not a total sync budget). */
-const CLOUD_SYNC_FETCH_TIMEOUT_MS = 120_000;
+const CLOUD_SYNC_FETCH_TIMEOUT_MS = 45_000;
 
 async function fetchForCloudSync(
   url: string,

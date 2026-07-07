@@ -80,6 +80,16 @@ function hasBearerAuth(headers: Record<string, string> | undefined): boolean {
   return Boolean(headers?.Authorization?.startsWith("Bearer "));
 }
 
+function isOfflineSafePhotoUri(uri: string): boolean {
+  const trimmed = uri.trim();
+  if (!trimmed) return false;
+  return (
+    trimmed.startsWith("file:") ||
+    trimmed.startsWith("content:") ||
+    trimmed.startsWith("data:")
+  );
+}
+
 function normalizeRemotePhotoUri(uri: string, displayWidth?: number): string {
   const trimmed = uri.trim();
   const stream = shouldCanonicalizePhotoStreamUri(trimmed)
@@ -320,11 +330,40 @@ export function RemotePhotoImage({
     };
   }, [needsAuth, exhausted, activeUri, normalizedFallback]);
 
+  const hasAuthForRequest = !needsAuth || hasBearerAuth(authHeaders);
+  const showOfflineFallbackWhileAuth =
+    needsAuth &&
+    !exhausted &&
+    !usedFallback &&
+    !hasAuthForRequest &&
+    !!normalizedFallback &&
+    isOfflineSafePhotoUri(normalizedFallback) &&
+    !isOfflineSafePhotoUri(activeUri);
+  const displayUri = showOfflineFallbackWhileAuth
+    ? normalizedFallback!
+    : activeUri;
+  const waitingForAuth =
+    needsAuth &&
+    !hasAuthForRequest &&
+    !exhausted &&
+    !usedFallback &&
+    !showOfflineFallbackWhileAuth;
+  const showSkeleton = waitingForAuth || !loaded;
+  const canMountImage =
+    !waitingForAuth &&
+    displayUri.trim().length > 0 &&
+    (hasAuthForRequest || showOfflineFallbackWhileAuth || !needsAuth);
+
   const src = exhausted
     ? UNSPLASH_FALLBACK_URI
-    : withRetryNonce(activeUri, attempt);
+    : withRetryNonce(displayUri, attempt);
   const stableKey =
-    recyclingKey ?? (usedFallback ? `fb:${activeUri}` : activeUri);
+    recyclingKey ??
+    (showOfflineFallbackWhileAuth
+      ? `local:${displayUri}`
+      : usedFallback
+        ? `fb:${displayUri}`
+        : displayUri);
 
   const advanceChain = () => {
     if (!useHosted && hostedUri) {
@@ -373,11 +412,6 @@ export function RemotePhotoImage({
     advanceChain();
   };
 
-  const hasAuthForRequest = !needsAuth || hasBearerAuth(authHeaders);
-  const waitingForAuth =
-    needsAuth && !hasAuthForRequest && !exhausted && !usedFallback;
-  const showSkeleton = waitingForAuth || !loaded;
-
   useEffect(() => {
     if (!showSkeleton || exhausted) {
       clearBlankTimer();
@@ -393,8 +427,8 @@ export function RemotePhotoImage({
   useEffect(() => {
     if (waitingForAuth || exhausted) return;
     loadStartedAt.current = Date.now();
-    recordImageLoadStart(activeUri, priority);
-  }, [activeUri, waitingForAuth, exhausted, priority, manualRetry]);
+    recordImageLoadStart(displayUri, priority);
+  }, [displayUri, waitingForAuth, exhausted, priority, manualRetry]);
 
   const handleLoad = () => {
     const gen = loadGeneration.current;
@@ -405,15 +439,15 @@ export function RemotePhotoImage({
     const started = loadStartedAt.current;
     const elapsed = started != null ? Date.now() - started : undefined;
     if (started != null) {
-      recordImageLoadComplete(activeUri, elapsed ?? 0);
+      recordImageLoadComplete(displayUri, elapsed ?? 0);
     }
     if (
       IMAGE_LOAD_V2 &&
       elapsed != null &&
       elapsed <= CACHE_HIT_LATENCY_MS &&
-      classifyImageUri(activeUri) === "user_upload"
+      classifyImageUri(displayUri) === "user_upload"
     ) {
-      void validateUserPhotoInBackground(activeUri);
+      void validateUserPhotoInBackground(displayUri);
     }
     onResolvedRef.current?.(!exhausted);
   };
@@ -432,10 +466,10 @@ export function RemotePhotoImage({
   return (
     <View style={[style as StyleProp<ViewStyle>, styles.container]}>
       {showSkeleton ? <PhotoSkeleton /> : null}
-      {!waitingForAuth && activeUri.trim().length > 0 && hasAuthForRequest ? (
+      {canMountImage ? (
         <Image
           source={
-            needsAuth && hasBearerAuth(authHeaders) && !exhausted
+            needsAuth && hasBearerAuth(authHeaders) && !exhausted && !showOfflineFallbackWhileAuth
               ? { uri: src, headers: authHeaders }
               : { uri: src }
           }

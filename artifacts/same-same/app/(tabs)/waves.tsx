@@ -124,7 +124,6 @@ export default function WavesScreen() {
     myPhotos,
     markAllEchoesSeen,
     respondToEcho,
-    cloudSyncInProgress,
     syncCloudData,
     reconcileMatchPhotos,
   } = useApp();
@@ -297,7 +296,7 @@ export default function WavesScreen() {
           </Text>
         </View>
         <SyncRefreshButton
-          syncing={refreshing || cloudSyncInProgress}
+          syncing={refreshing}
           onPress={() => void onRefresh()}
           accessibilityLabel="Refresh Ripples and Waves"
         />
