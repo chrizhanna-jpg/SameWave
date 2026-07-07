@@ -146,8 +146,8 @@ export function mergeMatchesById(prev: Match[], incoming: Match[]): Match[] {
     myPhoto: m.myPhoto || existing.myPhoto,
     theirPhoto: m.theirPhoto || existing.theirPhoto,
     theirPhotoId: m.theirPhotoId || existing.theirPhotoId,
-    myPhotoId: m.myPhotoId || existing.myPhotoId,
-    myPhotoUploadedAt: m.myPhotoUploadedAt || existing.myPhotoUploadedAt,
+    myPhotoId: existing.myPhotoId || m.myPhotoId,
+    myPhotoUploadedAt: existing.myPhotoUploadedAt || m.myPhotoUploadedAt,
   });
 
   const merged: Match[] = prev.map((m) => ({ ...m }));

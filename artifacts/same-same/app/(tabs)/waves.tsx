@@ -73,7 +73,7 @@ function matchToCaughtEcho(match: Match, myPhotos: MyPhoto[]): EchoCard {
     mutualAt: match.timestamp,
     youSentFirst: true,
     mine: {
-      id: match.myPhotoId ?? "",
+      id: resolveMatchVoterPhotoId(match, myPhotos) ?? "",
       uri: photos.myPhoto,
       countryCode: myDisp.code ?? null,
       captureCountryCode: myCapture ?? null,
@@ -840,7 +840,7 @@ function RippleSentCard({
   const ago = timeAgo(new Date(match.timestamp));
   const myUri = resolveMatchMyPhotoThumbnailUri(match, myPhotos);
   const myFallbackUri = resolveMatchMyPhotoFallbackUri(match, myPhotos);
-  const voterId = resolveMatchVoterPhotoId(match);
+  const voterId = resolveMatchVoterPhotoId(match, myPhotos);
   const theirUri = resolveMatchPhotoDisplay(match, myPhotos).theirPhoto;
   const myDisp = photoCountryDisplay(match.myCaptureCountryCode, {
     sampleUri: myUri,

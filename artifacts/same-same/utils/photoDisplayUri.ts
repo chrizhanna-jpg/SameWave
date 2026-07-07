@@ -346,23 +346,92 @@ export function pickVoterPhotoBackendId(
   return undefined;
 }
 
-/** Voter photo backend id stored on the match row or voter-photo map. */
+/** Pick the voter photo id for a ripple — per-target map beats corrupted stored ids. */
 export function resolveMatchVoterPhotoId(
-  match: Pick<Match, "myPhotoId" | "theirPhotoId" | "theirPhoto">,
+  match: Pick<
+    Match,
+    "myPhotoId" | "theirPhotoId" | "theirPhoto" | "myPhotoUploadedAt" | "timestamp"
+  >,
+  myPhotos?: MyPhoto[],
 ): string | undefined {
-  const direct = match.myPhotoId?.trim();
-  if (direct) return direct;
-  const fromMap = lookupVoterPhotoForMatchSync(match);
-  return fromMap?.trim() || undefined;
+  const mapId = lookupVoterPhotoForMatchSync(match)?.trim();
+  const storedId = match.myPhotoId?.trim();
+  if (!myPhotos?.length) return storedId || mapId || undefined;
+  return reconcileVoterPhotoId({ mapId, storedId, match, myPhotos });
+}
+
+function reconcileVoterPhotoId(args: {
+  mapId?: string;
+  storedId?: string;
+  match: Pick<Match, "myPhotoUploadedAt" | "timestamp">;
+  myPhotos: MyPhoto[];
+}): string | undefined {
+  const { mapId, storedId, match, myPhotos } = args;
+  const uploadedAt = match.myPhotoUploadedAt?.trim();
+
+  const idMatchesUpload = (id: string): boolean => {
+    if (!uploadedAt) return true;
+    return myPhotos.some(
+      (p) => p.backendId?.trim() === id && uploadTimesEqual(p.uploadedAt, uploadedAt),
+    );
+  };
+
+  if (mapId && storedId) {
+    if (mapId === storedId) return mapId;
+    const mapOk = idMatchesUpload(mapId);
+    const storedOk = idMatchesUpload(storedId);
+    if (mapOk && !storedOk) return mapId;
+    if (storedOk && !mapOk) return storedId;
+    // Per-target voter map wins when both or neither match upload metadata.
+    return mapId;
+  }
+
+  if (mapId) return mapId;
+
+  if (storedId) {
+    if (uploadedAt && !idMatchesUpload(storedId)) {
+      const byTime = myPhotos.find((p) =>
+        uploadTimesEqual(p.uploadedAt, uploadedAt),
+      );
+      if (byTime?.backendId?.trim()) return byTime.backendId.trim();
+    }
+    return storedId;
+  }
+
+  if (uploadedAt) {
+    const byTime = myPhotos.find((p) =>
+      uploadTimesEqual(p.uploadedAt, uploadedAt),
+    );
+    if (byTime?.backendId?.trim()) return byTime.backendId.trim();
+  }
+
+  const swipeAt = Date.parse(match.timestamp);
+  if (Number.isFinite(swipeAt)) {
+    let best: MyPhoto | undefined;
+    let bestAt = -Infinity;
+    for (const p of myPhotos) {
+      const bid = p.backendId?.trim();
+      if (!bid) continue;
+      const at = Date.parse(p.uploadedAt);
+      if (!Number.isFinite(at) || at > swipeAt) continue;
+      if (at >= bestAt) {
+        bestAt = at;
+        best = p;
+      }
+    }
+    if (best?.backendId?.trim()) return best.backendId.trim();
+  }
+
+  return undefined;
 }
 
 function matchForVoterPhotoLookup<
   T extends Pick<
     Match,
-    "myPhoto" | "myPhotoId" | "myPhotoUploadedAt" | "timestamp"
+    "myPhoto" | "myPhotoId" | "myPhotoUploadedAt" | "timestamp" | "theirPhotoId" | "theirPhoto"
   >,
->(match: T): T {
-  const voterId = resolveMatchVoterPhotoId(match);
+>(match: T, myPhotos: MyPhoto[]): T {
+  const voterId = resolveMatchVoterPhotoId(match, myPhotos);
   if (!voterId || match.myPhotoId?.trim() === voterId) return match;
   return { ...match, myPhotoId: voterId };
 }
@@ -453,8 +522,8 @@ export function resolveMatchMyPhotoUri(
   >,
   myPhotos: MyPhoto[],
 ): string {
-  const lookup = matchForVoterPhotoLookup(match);
-  const voterId = resolveMatchVoterPhotoId(lookup);
+  const lookup = matchForVoterPhotoLookup(match, myPhotos);
+  const voterId = resolveMatchVoterPhotoId(lookup, myPhotos);
   const stashed = resolveMatchPhotoUris(match.id, {
     myPhoto: match.myPhoto,
     theirPhoto: "",
@@ -502,8 +571,8 @@ export function resolveMatchMyPhotoThumbnailUri(
   >,
   myPhotos: MyPhoto[],
 ): string {
-  const lookup = matchForVoterPhotoLookup(match);
-  const voterId = resolveMatchVoterPhotoId(lookup);
+  const lookup = matchForVoterPhotoLookup(match, myPhotos);
+  const voterId = resolveMatchVoterPhotoId(lookup, myPhotos);
   const stashed = resolveMatchPhotoUris(match.id, {
     myPhoto: match.myPhoto,
     theirPhoto: "",
@@ -541,11 +610,13 @@ export function resolveMatchMyPhotoFallbackUri(
     | "myPhotoId"
     | "myPhotoUploadedAt"
     | "timestamp"
+    | "theirPhotoId"
+    | "theirPhoto"
   >,
   myPhotos: MyPhoto[],
 ): string | undefined {
-  const lookup = matchForVoterPhotoLookup(match);
-  const voterId = resolveMatchVoterPhotoId(lookup);
+  const lookup = matchForVoterPhotoLookup(match, myPhotos);
+  const voterId = resolveMatchVoterPhotoId(lookup, myPhotos);
   const stashed = resolveMatchPhotoUris(match.id, {
     myPhoto: match.myPhoto,
     theirPhoto: "",
@@ -568,7 +639,7 @@ export function resolveMatchMyPhotoFallbackUri(
     const alt = resolveMyPhotoFallbackUri(row, FEED_THUMB_WIDTH);
     if (alt?.trim()) return alt;
   }
-  return photoStreamFallbackUri(resolveMatchVoterPhotoId(match), FEED_THUMB_WIDTH);
+  return photoStreamFallbackUri(resolveMatchVoterPhotoId(match, myPhotos), FEED_THUMB_WIDTH);
 }
 
 /** Match row photos for lists — survives stripped cache and stale file:// captures. */
@@ -611,7 +682,13 @@ export function resolveMatchPhotoDisplay(
 export function pickMatchMyPhotoDisplayUri(
   match: Pick<
     Match,
-    "id" | "myPhoto" | "myPhotoId" | "myPhotoUploadedAt" | "timestamp"
+    | "id"
+    | "myPhoto"
+    | "myPhotoId"
+    | "myPhotoUploadedAt"
+    | "timestamp"
+    | "theirPhotoId"
+    | "theirPhoto"
   >,
   myPhotos: MyPhoto[],
   preferUri?: string,
@@ -620,7 +697,8 @@ export function pickMatchMyPhotoDisplayUri(
     myPhoto: match.myPhoto,
     theirPhoto: "",
   }).myPhoto;
-  const row = findMyPhotoForMatch(matchForVoterPhotoLookup(match), myPhotos, stashed);
+  const lookup = matchForVoterPhotoLookup(match, myPhotos);
+  const row = findMyPhotoForMatch(lookup, myPhotos, stashed);
   if (row) {
     const fromLib = resolveMyPhotoDisplayUri(row);
     if (fromLib.trim()) return fromLib;
@@ -633,9 +711,10 @@ export function pickMatchMyPhotoDisplayUri(
       hint.startsWith("content:") ||
       (!hint.includes("/api/photos/") && !shouldCanonicalizePhotoStreamUri(hint)))
   ) {
-    return hint;
+    const voterId = resolveMatchVoterPhotoId(match, myPhotos);
+    if (!voterId || photoUriMatchesVoterId(hint, voterId, myPhotos)) return hint;
   }
-  const bid = match.myPhotoId?.trim() || row?.backendId?.trim();
+  const bid = resolveMatchVoterPhotoId(match, myPhotos) || row?.backendId?.trim();
   return bid ? serverPhotoImageUrl(bid) : hint;
 }
 
@@ -648,11 +727,7 @@ export function enrichMatchMyPhotoFields(
     myPhoto: match.myPhoto,
     theirPhoto: "",
   }).myPhoto;
-  let photoId = match.myPhotoId?.trim();
-  if (!photoId) {
-    const fromTarget = lookupVoterPhotoForMatchSync(match);
-    if (fromTarget) photoId = fromTarget;
-  }
+  const photoId = resolveMatchVoterPhotoId(match, myPhotos);
   const photo = findMyPhotoForMatch(
     photoId ? { ...match, myPhotoId: photoId } : match,
     myPhotos,

@@ -314,4 +314,45 @@ assert(
     newPhoto.uri,
 );
 
+function resolveMatchVoterPhotoIdMirror(
+  match: Match & { theirPhotoId?: string },
+  myPhotos: MyPhoto[],
+  voterMap: Record<string, string>,
+): string | undefined {
+  const mapId = voterMap[match.theirPhotoId ?? ""]?.trim();
+  const storedId = match.myPhotoId?.trim();
+  const uploadedAt = match.myPhotoUploadedAt?.trim();
+
+  const idMatchesUpload = (id: string): boolean => {
+    if (!uploadedAt) return true;
+    return myPhotos.some(
+      (p) => p.backendId?.trim() === id && uploadTimesEqual(p.uploadedAt, uploadedAt),
+    );
+  };
+
+  if (mapId && storedId) {
+    if (mapId === storedId) return mapId;
+    const mapOk = idMatchesUpload(mapId);
+    const storedOk = idMatchesUpload(storedId);
+    if (mapOk && !storedOk) return mapId;
+    if (storedOk && !mapOk) return storedId;
+    return mapId;
+  }
+  return mapId || storedId;
+}
+
+const voterMap = { "their-old": "photo-old", "their-new": "photo-new" };
+assert(
+  "voter map beats journey-corrupted stored myPhotoId",
+  resolveMatchVoterPhotoIdMirror(
+    {
+      ...oldRipple,
+      myPhotoId: "photo-new",
+      theirPhotoId: "their-old",
+    },
+    library,
+    voterMap,
+  ) === "photo-old",
+);
+
 console.log("Done. exitCode=", process.exitCode ?? 0);
