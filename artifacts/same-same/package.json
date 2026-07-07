@@ -24,6 +24,8 @@
     "setup:android-env": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-android-build-env.ps1",
     "download:android-credentials": "powershell -ExecutionPolicy Bypass -File ./scripts/download-android-credentials.ps1",
     "build:aab:local": "powershell -ExecutionPolicy Bypass -File ./scripts/build-android-aab.ps1",
+    "build:aab:linux": "bash ./scripts/build-android-aab.sh",
+    "build:aab:eas": "eas build --platform android --profile production --non-interactive",
     "ios": "expo run:ios"
   },
   "devDependencies": {
