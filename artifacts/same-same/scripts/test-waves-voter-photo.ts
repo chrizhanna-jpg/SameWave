@@ -68,6 +68,40 @@ function photoUriMatchesVoterId(
   return trimmed === expected;
 }
 
+function myPhotoRowValidForMatch(photo: MyPhoto, match: Match): boolean {
+  const uploadedAt = match.myPhotoUploadedAt?.trim();
+  if (uploadedAt) {
+    return uploadTimesEqual(photo.uploadedAt, uploadedAt);
+  }
+  const swipeAt = Date.parse(match.timestamp);
+  if (Number.isFinite(swipeAt)) {
+    const at = Date.parse(photo.uploadedAt);
+    if (Number.isFinite(at) && at > swipeAt) return false;
+  }
+  return true;
+}
+
+function pickMyPhotoAtSwipeTime(
+  myPhotos: MyPhoto[],
+  swipeTimestamp: string | undefined,
+): MyPhoto | undefined {
+  const swipeAt = Date.parse(swipeTimestamp ?? "");
+  if (!Number.isFinite(swipeAt)) return undefined;
+  let best: MyPhoto | undefined;
+  let bestAt = -Infinity;
+  for (const p of myPhotos) {
+    const bid = p.backendId?.trim();
+    if (!bid) continue;
+    const at = Date.parse(p.uploadedAt);
+    if (!Number.isFinite(at) || at > swipeAt) continue;
+    if (at >= bestAt) {
+      bestAt = at;
+      best = p;
+    }
+  }
+  return best;
+}
+
 function uriHintMatchesMatch(photo: MyPhoto, match: Match): boolean {
   const voterId = match.myPhotoId?.trim();
   const bid = photo.backendId?.trim();
@@ -83,17 +117,11 @@ function uriHintMatchesMatch(photo: MyPhoto, match: Match): boolean {
   return true;
 }
 
-/** Fixed findMyPhotoForMatch — uploadedAt before uri hints; hints must match metadata. */
 function findMyPhotoForMatch(
   match: Match,
   myPhotos: MyPhoto[],
   stashedMyPhoto?: string,
 ): MyPhoto | undefined {
-  const photoId = match.myPhotoId?.trim();
-  if (photoId) {
-    return myPhotos.find((p) => p.backendId?.trim() === photoId);
-  }
-
   if (match.myPhotoUploadedAt) {
     const exact = myPhotos.find((p) =>
       uploadTimesEqual(p.uploadedAt, match.myPhotoUploadedAt),
@@ -101,21 +129,13 @@ function findMyPhotoForMatch(
     if (exact) return exact;
   }
 
-  const swipeAt = Date.parse(match.timestamp);
-  if (Number.isFinite(swipeAt)) {
-    let best: MyPhoto | undefined;
-    let bestAt = -Infinity;
-    for (const p of myPhotos) {
-      const bid = p.backendId?.trim();
-      if (!bid) continue;
-      const at = Date.parse(p.uploadedAt);
-      if (!Number.isFinite(at) || at > swipeAt) continue;
-      if (at >= bestAt) {
-        bestAt = at;
-        best = p;
-      }
-    }
-    if (best) return best;
+  const atSwipe = pickMyPhotoAtSwipeTime(myPhotos, match.timestamp);
+  if (atSwipe) return atSwipe;
+
+  const photoId = match.myPhotoId?.trim();
+  if (photoId) {
+    const fromId = myPhotos.find((p) => p.backendId?.trim() === photoId);
+    if (fromId && myPhotoRowValidForMatch(fromId, match)) return fromId;
   }
 
   const uriHints = [stashedMyPhoto, match.myPhoto].filter(
@@ -135,31 +155,89 @@ function findMyPhotoForMatch(
   return undefined;
 }
 
+function resolveMatchMyPhotoRow(match: Match, myPhotos: MyPhoto[]): MyPhoto | undefined {
+  if (match.myPhotoUploadedAt?.trim()) {
+    const exact = myPhotos.find((p) =>
+      uploadTimesEqual(p.uploadedAt, match.myPhotoUploadedAt),
+    );
+    if (exact) return exact;
+  }
+  const atSwipe = pickMyPhotoAtSwipeTime(myPhotos, match.timestamp);
+  if (atSwipe) return atSwipe;
+  const storedId = match.myPhotoId?.trim();
+  if (storedId) {
+    const fromStored = myPhotos.find((p) => p.backendId?.trim() === storedId);
+    if (fromStored && myPhotoRowValidForMatch(fromStored, match)) return fromStored;
+  }
+  return findMyPhotoForMatch(match, myPhotos);
+}
+
+function voterIdValidForMatch(
+  voterId: string,
+  match: Match,
+  myPhotos: MyPhoto[],
+): boolean {
+  const row = myPhotos.find((p) => p.backendId?.trim() === voterId.trim());
+  if (!row) return true;
+  return myPhotoRowValidForMatch(row, match);
+}
+
+function resolveMatchVoterPhotoId(
+  match: Match,
+  myPhotos: MyPhoto[],
+  voterMap: Record<string, string>,
+): string | undefined {
+  const mapId = voterMap[match.theirPhotoId ?? ""]?.trim();
+  const storedId = match.myPhotoId?.trim();
+  const uploadedAt = match.myPhotoUploadedAt?.trim();
+
+  if (uploadedAt) {
+    const byTime = myPhotos.find((p) => uploadTimesEqual(p.uploadedAt, uploadedAt));
+    if (byTime?.backendId?.trim()) return byTime.backendId.trim();
+  }
+
+  const atSwipe = pickMyPhotoAtSwipeTime(myPhotos, match.timestamp);
+  if (atSwipe?.backendId?.trim()) return atSwipe.backendId.trim();
+
+  const mapOk = mapId ? voterIdValidForMatch(mapId, match, myPhotos) : false;
+  const storedOk = storedId ? voterIdValidForMatch(storedId, match, myPhotos) : false;
+
+  if (mapId && storedId) {
+    if (mapId === storedId) return mapId;
+    if (mapOk && !storedOk) return mapId;
+    if (storedOk && !mapOk) return storedId;
+    return mapId;
+  }
+  if (mapId && mapOk) return mapId;
+  if (storedId && storedOk) return storedId;
+  return mapId || storedId;
+}
+
 function enrichMatchMyPhotoFields(match: Match, myPhotos: MyPhoto[]): Match {
-  let photoId = match.myPhotoId?.trim();
-  const photo = findMyPhotoForMatch(
-    photoId ? { ...match, myPhotoId: photoId } : match,
-    myPhotos,
-  );
-  const fromLib =
-    photo && (!photoId || photo.backendId?.trim() === photoId)
-      ? resolveMyPhotoDisplayUri(photo)
-      : "";
+  const row = resolveMatchMyPhotoRow(match, myPhotos);
+  const photoId = row?.backendId?.trim();
+  const fromLib = row ? resolveMyPhotoDisplayUri(row) : "";
 
   if (photoId) {
     const server = serverPhotoImageUrl(photoId);
     const current = match.myPhoto?.trim() ?? "";
     const currentOk = photoUriMatchesVoterId(current, photoId, myPhotos);
     const nextPhoto = fromLib.trim() || (currentOk ? current : "") || server;
-    return { ...match, myPhotoId: photoId, myPhoto: nextPhoto };
+    return {
+      ...match,
+      myPhotoId: photoId,
+      myPhoto: nextPhoto,
+      myPhotoUploadedAt: match.myPhotoUploadedAt || row?.uploadedAt,
+    };
   }
 
-  const bid = photo?.backendId?.trim();
+  const bid = row?.backendId?.trim();
   if (!bid) return match;
   return {
     ...match,
     myPhotoId: bid,
     myPhoto: fromLib.trim() || serverPhotoImageUrl(bid),
+    myPhotoUploadedAt: match.myPhotoUploadedAt || row?.uploadedAt,
   };
 }
 
@@ -167,18 +245,11 @@ function resolveMatchMyPhotoThumbnailUri(
   match: Match,
   myPhotos: MyPhoto[],
 ): string {
+  const row = resolveMatchMyPhotoRow(match, myPhotos);
+  if (row) return resolveMyPhotoDisplayUri(row);
+
   const voterId = match.myPhotoId?.trim();
   if (voterId) {
-    const row = myPhotos.find((p) => p.backendId?.trim() === voterId);
-    if (row) {
-      const local = resolveMyPhotoDisplayUri(row);
-      if (
-        local.startsWith("file:") &&
-        photoUriMatchesVoterId(local, voterId, myPhotos)
-      ) {
-        return local;
-      }
-    }
     for (const candidate of [match.myPhoto]) {
       const c = candidate?.trim() ?? "";
       if (
@@ -223,13 +294,19 @@ const oldPhoto: MyPhoto = {
   backendId: "photo-old",
 };
 
+const midPhoto: MyPhoto = {
+  uri: "file:///data/user/0/com.samewave.app/files/my-photos/mid-local.jpg",
+  uploadedAt: "2026-07-01T10:00:00.000Z",
+  backendId: "photo-mid",
+};
+
 const newPhoto: MyPhoto = {
   uri: "file:///data/user/0/com.samewave.app/files/my-photos/new-local.jpg",
   uploadedAt: "2026-07-05T14:00:00.000Z",
   backendId: "photo-new",
 };
 
-const library = [newPhoto, oldPhoto];
+const library = [newPhoto, midPhoto, oldPhoto];
 
 const oldRipple: Match = {
   myPhotoId: "photo-old",
@@ -257,11 +334,34 @@ assert(
 
 assert(
   "known missing id does not fall back to newest",
-  findMyPhotoForMatch({ ...oldRipple, myPhotoId: "photo-missing" }, library) ===
-    undefined,
+  findMyPhotoForMatch({ ...oldRipple, myPhotoId: "photo-missing" }, library)
+    ?.backendId === "photo-old",
+);
+
+const corruptedOldRipple: Match = {
+  myPhotoId: "photo-new",
+  timestamp: "2026-06-01T12:00:00.000Z",
+  myPhoto: serverPhotoImageUrl("photo-new"),
+};
+
+const corruptedMidRipple: Match = {
+  myPhotoId: "photo-new",
+  timestamp: "2026-07-03T12:00:00.000Z",
+  myPhoto: serverPhotoImageUrl("photo-new"),
+};
+
+assert(
+  "swipe time beats corrupted newest id for early ripple",
+  resolveMatchMyPhotoRow(corruptedOldRipple, library)?.backendId === "photo-old",
+);
+
+assert(
+  "swipe time beats corrupted newest id for mid ripple",
+  resolveMatchMyPhotoRow(corruptedMidRipple, library)?.backendId === "photo-mid",
 );
 
 const oldThumb = resolveMatchMyPhotoThumbnailUri(oldRipple, library);
+const midThumb = resolveMatchMyPhotoThumbnailUri(corruptedMidRipple, library);
 const newThumb = resolveMatchMyPhotoThumbnailUri(
   {
     myPhotoId: "photo-new",
@@ -278,27 +378,35 @@ assert(
 );
 
 assert(
-  "waves old ripple thumb is not newest local",
-  !oldThumb.includes("new-local.jpg"),
-  oldThumb,
+  "waves mid ripple thumb uses mid local not newest",
+  midThumb.includes("mid-local.jpg"),
+  midThumb,
 );
 
 assert(
-  "waves new ripple thumb uses photo-new (verified local ok)",
+  "waves new ripple thumb uses photo-new",
   photoUriMatchesVoterId(newThumb, "photo-new", library),
   newThumb,
 );
 
 assert(
-  "old and new ripples resolve different thumbs",
-  oldThumb !== newThumb,
+  "old mid and new ripples resolve different thumbs",
+  new Set([oldThumb, midThumb, newThumb]).size === 3,
 );
 
-const enriched = enrichMatchMyPhotoFields(oldRipple, library);
+const enrichedOld = enrichMatchMyPhotoFields(corruptedOldRipple, library);
+const enrichedMid = enrichMatchMyPhotoFields(corruptedMidRipple, library);
+
 assert(
-  "enrich replaces corrupted newest local with verified old local",
-  enriched.myPhoto.includes("old-local.jpg"),
-  enriched.myPhoto,
+  "enrich fixes corrupted early ripple to old photo",
+  enrichedOld.myPhotoId === "photo-old" && enrichedOld.myPhoto.includes("old-local"),
+  enrichedOld.myPhoto,
+);
+
+assert(
+  "enrich fixes corrupted mid ripple to mid photo",
+  enrichedMid.myPhotoId === "photo-mid" && enrichedMid.myPhoto.includes("mid-local"),
+  enrichedMid.myPhoto,
 );
 
 assert(
@@ -314,44 +422,27 @@ assert(
     newPhoto.uri,
 );
 
-function resolveMatchVoterPhotoIdMirror(
-  match: Match & { theirPhotoId?: string },
-  myPhotos: MyPhoto[],
-  voterMap: Record<string, string>,
-): string | undefined {
-  const mapId = voterMap[match.theirPhotoId ?? ""]?.trim();
-  const storedId = match.myPhotoId?.trim();
-  const uploadedAt = match.myPhotoUploadedAt?.trim();
-
-  const idMatchesUpload = (id: string): boolean => {
-    if (!uploadedAt) return true;
-    return myPhotos.some(
-      (p) => p.backendId?.trim() === id && uploadTimesEqual(p.uploadedAt, uploadedAt),
-    );
-  };
-
-  if (mapId && storedId) {
-    if (mapId === storedId) return mapId;
-    const mapOk = idMatchesUpload(mapId);
-    const storedOk = idMatchesUpload(storedId);
-    if (mapOk && !storedOk) return mapId;
-    if (storedOk && !mapOk) return storedId;
-    return mapId;
-  }
-  return mapId || storedId;
-}
-
 const voterMap = { "their-old": "photo-old", "their-new": "photo-new" };
 assert(
-  "voter map beats journey-corrupted stored myPhotoId",
-  resolveMatchVoterPhotoIdMirror(
+  "voter map beats journey-corrupted stored myPhotoId when swipe agrees",
+  resolveMatchVoterPhotoId(
     {
       ...oldRipple,
       myPhotoId: "photo-new",
       theirPhotoId: "their-old",
+      timestamp: "2026-06-01T12:00:00.000Z",
     },
     library,
     voterMap,
+  ) === "photo-old",
+);
+
+assert(
+  "stored newest id rejected when swipe predates that upload",
+  resolveMatchVoterPhotoId(
+    corruptedOldRipple,
+    library,
+    {},
   ) === "photo-old",
 );
 

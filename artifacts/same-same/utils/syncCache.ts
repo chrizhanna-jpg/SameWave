@@ -135,6 +135,20 @@ export function parsePersistedEchoes(raw: unknown): EchoCard[] {
   return out;
 }
 
+function preferStoredMyPhoto(existing: string, incoming: string): string {
+  const ex = existing?.trim() ?? "";
+  const inc = incoming?.trim() ?? "";
+  if (
+    ex &&
+    (isPersistentPhotoUri(ex) ||
+      ex.startsWith("file:") ||
+      ex.startsWith("content:"))
+  ) {
+    return ex;
+  }
+  return inc || ex;
+}
+
 export function mergeMatchesById(prev: Match[], incoming: Match[]): Match[] {
   if (incoming.length === 0) return prev;
 
@@ -143,7 +157,7 @@ export function mergeMatchesById(prev: Match[], incoming: Match[]): Match[] {
     ...m,
     // Keep the local swipe id so late voter-photo patches still match.
     id: existing.id || m.id,
-    myPhoto: m.myPhoto || existing.myPhoto,
+    myPhoto: preferStoredMyPhoto(existing.myPhoto, m.myPhoto),
     theirPhoto: m.theirPhoto || existing.theirPhoto,
     theirPhotoId: m.theirPhotoId || existing.theirPhotoId,
     myPhotoId: existing.myPhotoId || m.myPhotoId,
