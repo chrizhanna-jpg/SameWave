@@ -1,46 +1,44 @@
 SameWave — Windows local AAB checklist
 =====================================
 
-CANONICAL OUTPUT (check these after a successful build):
-  <repo>\artifacts\same-same\aab\SameWave-vc<versionCode>.aab   ← primary (repo checkout)
-  <repo>\artifacts\same-same\aab\SameWave-latest.aab
-  C:\w\app\aab\SameWave-vc<versionCode>.aab                     ← deploy-tree mirror
-  C:\w\app\aab\SameWave-latest.aab
-  <repo>\repair_logs\SameWave-vc<versionCode>.aab              ← backup copy
+DO NOT guess paths — after every build the script writes verified locations.
 
-Gradle raw output (before copy):
-  C:\w\app\android\app\build\outputs\bundle\release\app-release.aab
+1) Run build:
+   cd <your-repo>\artifacts\same-same
+   pnpm run build:aab:local
 
-If you don't see files in aab\, the build may have failed before the copy step.
-Find any existing .aab on disk:
-  pnpm run locate:aab
+2) Read the manifest (always beside your git checkout):
+   <your-repo>\artifacts\same-same\aab\LAST_BUILD.txt
 
-COMMAND (from repo or from C:\w\app):
-  cd C:\Global-Unity-Match\artifacts\same-same
-  pnpm run build:aab:local
+3) Or locate any .aab on disk:
+   pnpm run locate:aab
 
-The script syncs sources into C:\w\app, builds there, then copies the .aab into C:\w\app\aab\.
+PRIMARY UPLOAD FILE (after a successful build):
+  <your-repo>\artifacts\same-same\aab\SameWave-vc<versionCode>.aab
 
-REQUIREMENTS ON YOUR PC
------------------------
-[ ] Deploy tree at C:\w\app (app.json + android/ + node_modules)
+Your repo may be on D: or C: — the build script resolves paths from where
+you run it. Example repo roots seen on this project:
+  D:\OneDrive\SameWave\Global-Unity-Match\Global-Unity-Match (2)\Global-Unity-Match
+  C:\Global-Unity-Match
+
+If C:\w\app deploy tree exists, Gradle runs there and copies also mirror to:
+  C:\w\app\aab\SameWave-vc<versionCode>.aab
+
+Gradle raw output (always exists after success, even before copy):
+  <gradle-root>\android\app\build\outputs\bundle\release\app-release.aab
+  where <gradle-root> is C:\w\app (deploy mode) OR your repo checkout (repo mode)
+
+ONE-TIME SETUP (optional short-path deploy tree)
+------------------------------------------------
+  pnpm run setup:short-path-build
+
+REQUIREMENTS
+------------
 [ ] Android Studio + SDK (JAVA_HOME = Studio JBR)
-[ ] credentials.json + credentials\android\keystore.jks in C:\w\app
-[ ] LongPathsEnabled = 1 (optional; C:\w\app keeps native paths short)
-
-ONE-TIME DEPLOY TREE SETUP (if C:\w\app is missing)
--------------------------------------------------
-  pnpm --filter @workspace/same-same deploy C:\w\app --legacy
-  cd C:\w\app
-  pnpm install
-  pnpm exec eas credentials -p android   (keystore into C:\w\app\credentials\)
-
-RENDER (for testers using the AAB)
-----------------------------------
-[ ] API deployed from main (POST /api/photos/atlas/explore on samewave.onrender.com)
-[ ] CLERK_SECRET_KEY + OPENAI_API_KEY on Render
+[ ] credentials.json + credentials\android\keystore.jks (repo or C:\w\app)
+[ ] pnpm install at monorepo root
 
 OVERRIDES (rare)
------------------
-  SW_BUILD_ROOT=C:\other\path     — different deploy tree
-  SW_AAB_OUTPUT_DIR=C:\w\app\aab  — default is already C:\w\app\aab
+----------------
+  SW_BUILD_ROOT=C:\other\path
+  SW_AAB_OUTPUT_DIR=C:\other\path\aab

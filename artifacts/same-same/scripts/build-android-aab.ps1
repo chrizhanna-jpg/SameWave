@@ -7,51 +7,48 @@ $env:JAVA_HOME = $JBR
 $env:ANDROID_HOME = $SDK
 $env:PATH = "$JBR\bin;$SDK\platform-tools;$env:PATH"
 
-# Canonical Windows deploy tree (short paths). Override only with SW_BUILD_ROOT.
-$DeployRoot = if ($env:SW_BUILD_ROOT) {
-  $env:SW_BUILD_ROOT
-} else {
-  "C:\w\app"
-}
-# Stable folder for upload-ready bundles (not under android\app\build\...).
-$AabOutputDir = if ($env:SW_AAB_OUTPUT_DIR) {
-  $env:SW_AAB_OUTPUT_DIR
-} else {
-  Join-Path $DeployRoot "aab"
-}
-
+# Resolved from this script's location — never hardcode C:\ or D:\ repo paths.
 $repoSameSame = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $monorepoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\..\.."))
+$deployCandidate = if ($env:SW_BUILD_ROOT) { $env:SW_BUILD_ROOT } else { "C:\w\app" }
+$deployCandidate = [System.IO.Path]::GetFullPath($deployCandidate)
 
-if (-not (Test-Path (Join-Path $DeployRoot "app.json"))) {
-  Write-Error @"
-Deploy tree missing at $DeployRoot (need app.json + android/).
-
-One-time setup from the repo:
-  pnpm --filter @workspace/same-same deploy C:\w\app --legacy
-  cd C:\w\app && pnpm install
-
-Or copy an existing flat deploy tree to $DeployRoot, then re-run build:aab:local.
-"@
+function Test-DeployTree([string]$root) {
+  return (Test-Path (Join-Path $root "app.json")) -and (Test-Path (Join-Path $root "android"))
 }
 
-$realAppRoot = $DeployRoot
-$sameSame = $DeployRoot
-
-# Always refresh C:\w\app from the git checkout before building.
-$syncScript = Join-Path $PSScriptRoot "sync-deploy-tree.ps1"
-if ((Test-Path $syncScript) -and (Test-Path (Join-Path $repoSameSame "app.json"))) {
-  $repoResolved = [System.IO.Path]::GetFullPath($repoSameSame)
-  $deployResolved = [System.IO.Path]::GetFullPath($DeployRoot)
-  if ($repoResolved -ne $deployResolved) {
-    Write-Host "Syncing sources: $repoResolved -> $deployResolved" -ForegroundColor DarkGray
-    $env:SW_DEPLOY_ROOT = $DeployRoot
-    & $syncScript
-  }
+function Test-SigningReady([string]$root) {
+  $cred = Join-Path $root "credentials.json"
+  $jks = Join-Path $root "credentials\android\keystore.jks"
+  return (Test-Path $cred) -and (Test-Path $jks)
 }
+
+# Prefer C:\w\app when it is a complete deploy tree; otherwise build in this checkout.
+$useDeployTree = Test-DeployTree $deployCandidate
+if ($useDeployTree) {
+  $sameSame = $deployCandidate
+  $realAppRoot = $deployCandidate
+  $buildMode = "deploy-tree"
+} else {
+  $sameSame = $repoSameSame
+  $realAppRoot = $monorepoRoot
+  $buildMode = "repo-checkout"
+}
+
+# Upload-ready copies always land beside this git checkout (verified path).
+$repoAabDir = [System.IO.Path]::GetFullPath((Join-Path $repoSameSame "aab"))
+$AabOutputDir = if ($env:SW_AAB_OUTPUT_DIR) {
+  [System.IO.Path]::GetFullPath($env:SW_AAB_OUTPUT_DIR)
+} elseif ($buildMode -eq "deploy-tree") {
+  [System.IO.Path]::GetFullPath((Join-Path $deployCandidate "aab"))
+} else {
+  $repoAabDir
+}
+
 $androidDir = Join-Path $sameSame "android"
 $credentialsJson = Join-Path $sameSame "credentials.json"
 $logDir = Join-Path $sameSame "android\build-logs"
+$manifestPath = Join-Path $repoAabDir "LAST_BUILD.txt"
 
 function Test-Command($name) {
   $null -ne (Get-Command $name -ErrorAction SilentlyContinue)
@@ -68,10 +65,30 @@ function Invoke-NoisyNative {
 }
 
 Write-Host "=== SameWave local Android AAB (Windows) ===" -ForegroundColor Cyan
-Write-Host "Deploy root: $DeployRoot" -ForegroundColor DarkGray
-Write-Host "AAB output:  $AabOutputDir" -ForegroundColor DarkGray
+Write-Host ("Build mode:   {0}" -f $buildMode) -ForegroundColor DarkGray
+Write-Host ("Repo checkout: {0}" -f $repoSameSame) -ForegroundColor DarkGray
+Write-Host ("Gradle root:   {0}" -f $sameSame) -ForegroundColor DarkGray
+Write-Host ("Upload copies: {0}" -f $repoAabDir) -ForegroundColor DarkGray
+if ($buildMode -eq "deploy-tree") {
+  Write-Host ("Deploy mirror: {0}" -f $AabOutputDir) -ForegroundColor DarkGray
+}
 
-# Prefer Win32 long paths (helps CMake/ninja under deep pnpm trees).
+# Sync repo sources into deploy tree before building there.
+if ($buildMode -eq "deploy-tree") {
+  $syncScript = Join-Path $PSScriptRoot "sync-deploy-tree.ps1"
+  if ((Test-Path $syncScript) -and (Test-Path (Join-Path $repoSameSame "app.json"))) {
+    $repoResolved = [System.IO.Path]::GetFullPath($repoSameSame)
+    $deployResolved = [System.IO.Path]::GetFullPath($deployCandidate)
+    if ($repoResolved -ne $deployResolved) {
+      Write-Host "Syncing sources: $repoResolved -> $deployResolved" -ForegroundColor DarkGray
+      $env:SW_DEPLOY_ROOT = $deployCandidate
+      & $syncScript
+    }
+  }
+} elseif (-not (Test-Path (Join-Path $repoSameSame "app.json"))) {
+  Write-Error "No app.json in repo checkout: $repoSameSame"
+}
+
 try {
   $lp = Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -ErrorAction SilentlyContinue
   if ($lp.LongPathsEnabled -ne 1) {
@@ -98,22 +115,29 @@ if (-not $isFlatDeploy -and -not (Test-Path "node_modules")) {
   Write-Host "Installing workspace dependencies..."
   pnpm install
 } elseif ($isFlatDeploy -and -not (Test-Path "node_modules")) {
-  Write-Error "Deploy tree missing node_modules. Run: pnpm --filter @workspace/same-same deploy C:\w\app --legacy"
+  Write-Error "Deploy tree missing node_modules. Run: pnpm run setup:short-path-build"
 }
 
 Set-Location $sameSame
+
+# Credentials may live in deploy tree OR repo checkout.
+$credRoot = $sameSame
+if (-not (Test-SigningReady $credRoot)) {
+  if (Test-SigningReady $repoSameSame) {
+    $credRoot = $repoSameSame
+    Write-Host "Using signing credentials from repo checkout: $credRoot" -ForegroundColor DarkYellow
+  }
+}
+$credentialsJson = Join-Path $credRoot "credentials.json"
+$jks = Join-Path $credRoot "credentials\android\keystore.jks"
 
 $prevEap = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 pnpm exec eas whoami 2>&1 | Out-Null
 $easLoggedIn = $LASTEXITCODE -eq 0
 $ErrorActionPreference = $prevEap
-if (-not $easLoggedIn) {
-  if ((Test-Path $credentialsJson) -and (Test-Path (Join-Path $sameSame "credentials\android\keystore.jks"))) {
-    Write-Host "EAS CLI not logged in; using local credentials.json + keystore." -ForegroundColor DarkYellow
-  } else {
-    Write-Error "Not logged in to Expo. Run: pnpm exec eas login"
-  }
+if (-not $easLoggedIn -and -not (Test-SigningReady $credRoot)) {
+  Write-Error "Not logged in to Expo and no local credentials.json + keystore. Run: pnpm exec eas credentials -p android"
 }
 
 if (-not (Test-Path $credentialsJson)) {
@@ -121,13 +145,13 @@ if (-not (Test-Path $credentialsJson)) {
   exit 1
 }
 
-$jks = Join-Path $sameSame "credentials\android\keystore.jks"
 if (-not (Test-Path $jks)) {
   Write-Host "Keystore missing ($jks). Re-download from EAS:" -ForegroundColor Red
-  Write-Host "  cd `"$sameSame`"" -ForegroundColor Yellow
+  Write-Host "  cd `"$credRoot`"" -ForegroundColor Yellow
   Write-Host "  pnpm exec eas credentials -p android" -ForegroundColor Yellow
   exit 1
 }
+
 $cred = Get-Content $credentialsJson | ConvertFrom-Json
 $ksPass = $cred.android.keystore.keystorePassword
 $keytool = Join-Path $JBR "bin\keytool.exe"
@@ -141,11 +165,7 @@ if (-not $ksOk) {
   Write-Host "  pnpm exec eas credentials -p android" -ForegroundColor Yellow
   exit 1
 }
-if ((Get-Item $jks).Length -lt 5000) {
-  Write-Host "Note: keystore is small but keytool validated it." -ForegroundColor DarkYellow
-}
 
-# Prebuild regenerates android/; skip when folder exists (deploy trees cannot run expo install).
 if (Test-Path $androidDir) {
   Write-Host "Using existing android/ (skip prebuild)." -ForegroundColor DarkGray
 } else {
@@ -157,11 +177,19 @@ if (Test-Path $androidDir) {
 
 $env:SW_MONOREPO = $realAppRoot
 $env:SW_SAME_SAME = $sameSame
-# Prefer scripts next to this file (repo) so deploy trees do not need duplicate patches.
 $patchDir = $PSScriptRoot
 if (-not (Test-Path (Join-Path $patchDir "patch-android-play-abis.ps1"))) {
   $patchDir = Join-Path $sameSame "scripts"
 }
+
+# Copy credentials into deploy tree for signing patch when creds only exist in repo.
+if ($buildMode -eq "deploy-tree" -and $credRoot -ne $sameSame) {
+  Copy-Item $credentialsJson (Join-Path $sameSame "credentials.json") -Force
+  $deployJksDir = Join-Path $sameSame "credentials\android"
+  New-Item -ItemType Directory -Path $deployJksDir -Force | Out-Null
+  Copy-Item $jks (Join-Path $deployJksDir "keystore.jks") -Force
+}
+
 & "$patchDir\patch-android-react-root.ps1"
 & "$patchDir\patch-android-hermes.ps1"
 & "$patchDir\patch-android-signing.ps1"
@@ -170,8 +198,11 @@ if (-not (Test-Path $androidDir)) {
   Write-Error "prebuild did not create android/"
 }
 
-# Staging dir for native (.cxx) outputs — under the deploy tree.
-$nativeStage = Join-Path $DeployRoot "native-cache"
+$nativeStage = if ($buildMode -eq "deploy-tree") {
+  Join-Path $deployCandidate "native-cache"
+} else {
+  Join-Path $repoSameSame "native-cache"
+}
 if (-not (Test-Path $nativeStage)) { New-Item -ItemType Directory -Path $nativeStage -Force | Out-Null }
 $env:REACT_NATIVE_CCACHE_DIR = $nativeStage
 $env:CMAKE_BUILD_DIR = $nativeStage
@@ -229,68 +260,86 @@ if ($gradleExit -ne 0) {
 
 Set-Location $sameSame
 
-$gradleAab = Get-ChildItem -Path (Join-Path $androidDir "app\build\outputs\bundle\release") -Filter "*.aab" -ErrorAction SilentlyContinue |
+$gradleOutDir = [System.IO.Path]::GetFullPath((Join-Path $androidDir "app\build\outputs\bundle\release"))
+$gradleAab = Get-ChildItem -Path $gradleOutDir -Filter "*.aab" -ErrorAction SilentlyContinue |
+  Sort-Object LastWriteTime -Descending |
   Select-Object -First 1
 if (-not $gradleAab) {
-  Write-Error "No .aab found. See $gradleLog"
+  Write-Error "No .aab under $gradleOutDir — see $gradleLog"
 }
 
 $versionCode = 0
+$versionName = "unknown"
 try {
   $appJsonPath = Join-Path $sameSame "app.json"
-  $versionCode = [int]((Get-Content $appJsonPath -Raw | ConvertFrom-Json).expo.android.versionCode)
+  $appJson = Get-Content $appJsonPath -Raw | ConvertFrom-Json
+  $versionCode = [int]$appJson.expo.android.versionCode
+  $versionName = [string]$appJson.expo.version
 } catch {
-  Write-Host "Could not read versionCode from app.json — using timestamp in filename." -ForegroundColor DarkYellow
+  Write-Host "Could not read version from app.json — using timestamp in filename." -ForegroundColor DarkYellow
 }
 
+New-Item -ItemType Directory -Path $repoAabDir -Force | Out-Null
 New-Item -ItemType Directory -Path $AabOutputDir -Force | Out-Null
 $stamp = if ($versionCode -gt 0) { "vc$versionCode" } else { (Get-Date -Format "yyyyMMdd-HHmm") }
 $canonicalName = "SameWave-$stamp.aab"
-$canonicalPath = Join-Path $AabOutputDir $canonicalName
-$latestPath = Join-Path $AabOutputDir "SameWave-latest.aab"
-
-# Also mirror into the git checkout — most people look here, not C:\w\app\aab.
-$repoAabDir = Join-Path $repoSameSame "aab"
-New-Item -ItemType Directory -Path $repoAabDir -Force | Out-Null
-$repoCanonicalPath = Join-Path $repoAabDir $canonicalName
-$repoLatestPath = Join-Path $repoAabDir "SameWave-latest.aab"
-
-$repairLogsDir = Join-Path $monorepoRoot "repair_logs"
-New-Item -ItemType Directory -Path $repairLogsDir -Force | Out-Null
-$repairLogCopy = Join-Path $repairLogsDir $canonicalName
 
 $destinations = @(
-  @{ Label = "Deploy tree (canonical)"; Path = $canonicalPath },
-  @{ Label = "Deploy tree (latest)"; Path = $latestPath },
-  @{ Label = "Repo checkout"; Path = $repoCanonicalPath },
-  @{ Label = "Repo checkout (latest)"; Path = $repoLatestPath },
-  @{ Label = "repair_logs backup"; Path = $repairLogCopy }
+  @{ Label = "repo upload (canonical)"; Path = (Join-Path $repoAabDir $canonicalName) },
+  @{ Label = "repo upload (latest)"; Path = (Join-Path $repoAabDir "SameWave-latest.aab") }
 )
+if ($AabOutputDir -ne $repoAabDir) {
+  $destinations += @(
+    @{ Label = "deploy mirror (canonical)"; Path = (Join-Path $AabOutputDir $canonicalName) },
+    @{ Label = "deploy mirror (latest)"; Path = (Join-Path $AabOutputDir "SameWave-latest.aab") }
+  )
+}
 
 foreach ($dest in $destinations) {
   Copy-Item -Path $gradleAab.FullName -Destination $dest.Path -Force
 }
 
 Write-Host ""
-Write-Host "AAB built (Gradle):" -ForegroundColor Green
+Write-Host "Gradle raw output:" -ForegroundColor Green
 Write-Host $gradleAab.FullName
 Write-Host ""
-Write-Host "=== Upload-ready copies ===" -ForegroundColor Cyan
+Write-Host "=== Verified upload copies ===" -ForegroundColor Cyan
+$verified = @()
 $missing = @()
 foreach ($dest in $destinations) {
-  if (Test-Path $dest.Path) {
-    $sizeMb = (Get-Item $dest.Path).Length / 1MB
-    Write-Host ("  [OK] {0,-28} {1} ({2:N2} MB)" -f $dest.Label, $dest.Path, $sizeMb) -ForegroundColor Green
+  $full = [System.IO.Path]::GetFullPath($dest.Path)
+  if (Test-Path $full) {
+    $sizeMb = (Get-Item $full).Length / 1MB
+    Write-Host ("  [OK] {0,-26} {1} ({2:N2} MB)" -f $dest.Label, $full, $sizeMb) -ForegroundColor Green
+    $verified += $full
   } else {
-    Write-Host ("  [MISSING] {0,-28} {1}" -f $dest.Label, $dest.Path) -ForegroundColor Red
-    $missing += $dest.Path
+    Write-Host ("  [MISSING] {0,-26} {1}" -f $dest.Label, $full) -ForegroundColor Red
+    $missing += $full
   }
 }
 if ($missing.Count -gt 0) {
-  Write-Error ("AAB copy failed — missing: `n  " + ($missing -join "`n  "))
+  Write-Error ("AAB copy failed — missing:`n  " + ($missing -join "`n  "))
 }
+
+$primaryUpload = [System.IO.Path]::GetFullPath((Join-Path $repoAabDir $canonicalName))
+$manifest = @(
+  "builtAt=$(Get-Date -Format o)",
+  "versionName=$versionName",
+  "versionCode=$versionCode",
+  "buildMode=$buildMode",
+  "repoCheckout=$repoSameSame",
+  "gradleRoot=$sameSame",
+  "gradleRaw=$($gradleAab.FullName)",
+  "primaryUpload=$primaryUpload",
+  "latestUpload=$((Join-Path $repoAabDir 'SameWave-latest.aab'))",
+  "gradleLog=$gradleLog"
+) + ($verified | ForEach-Object { "verified=$_" })
+Set-Content -Path $manifestPath -Value ($manifest -join "`n") -Encoding UTF8
+
 Write-Host ""
-Write-Host "Primary upload file:" -ForegroundColor Green
-Write-Host $repoCanonicalPath
-Write-Host ("Logs: {0}" -f $logDir)
+Write-Host "PRIMARY UPLOAD FILE (open this in Play Console):" -ForegroundColor Green
+Write-Host $primaryUpload
+Write-Host ""
+Write-Host "Manifest written: $manifestPath" -ForegroundColor DarkGray
+Write-Host ("Gradle log: {0}" -f $gradleLog) -ForegroundColor DarkGray
 Write-Host "Upload in Play Console -> Closed testing."
