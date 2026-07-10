@@ -1,44 +1,17 @@
-SameWave — Windows local AAB checklist
-=====================================
+SameWave — Windows local AAB
+===========================
 
-DO NOT guess paths — after every build the script writes verified locations.
+ONE upload file after a successful build:
 
-1) Run build:
-   cd <your-repo>\artifacts\same-same
-   pnpm run build:aab:local
+  C:\w\app\aab\SameWave-latest.aab
 
-2) Read the manifest (always beside your git checkout):
-   <your-repo>\artifacts\same-same\aab\LAST_BUILD.txt
+Build command (from your repo):
 
-3) Or locate any .aab on disk:
-   pnpm run locate:aab
+  cd artifacts\same-same
+  pnpm run build:aab:local
 
-PRIMARY UPLOAD FILE (after a successful build):
-  <your-repo>\artifacts\same-same\aab\SameWave-vc<versionCode>.aab
+The script refuses to finish unless that file exists with today's date.
 
-Your repo may be on D: or C: — the build script resolves paths from where
-you run it. Example repo roots seen on this project:
-  D:\OneDrive\SameWave\Global-Unity-Match\Global-Unity-Match (2)\Global-Unity-Match
-  C:\Global-Unity-Match
+First-time setup (if C:\w\app is missing):
 
-If C:\w\app deploy tree exists, Gradle runs there and copies also mirror to:
-  C:\w\app\aab\SameWave-vc<versionCode>.aab
-
-Gradle raw output (always exists after success, even before copy):
-  <gradle-root>\android\app\build\outputs\bundle\release\app-release.aab
-  where <gradle-root> is C:\w\app (deploy mode) OR your repo checkout (repo mode)
-
-ONE-TIME SETUP (optional short-path deploy tree)
-------------------------------------------------
   pnpm run setup:short-path-build
-
-REQUIREMENTS
-------------
-[ ] Android Studio + SDK (JAVA_HOME = Studio JBR)
-[ ] credentials.json + credentials\android\keystore.jks (repo or C:\w\app)
-[ ] pnpm install at monorepo root
-
-OVERRIDES (rare)
-----------------
-  SW_BUILD_ROOT=C:\other\path
-  SW_AAB_OUTPUT_DIR=C:\other\path\aab
