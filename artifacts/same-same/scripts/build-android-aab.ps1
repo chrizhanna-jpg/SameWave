@@ -1,4 +1,4 @@
-# Build a Play-ready .aab on Windows (local Gradle; no EAS cloud quota).
+﻿# Build a Play-ready .aab on Windows (local Gradle; no EAS cloud quota).
 $ErrorActionPreference = "Stop"
 
 $JBR = if ($env:JAVA_HOME) { $env:JAVA_HOME } else { "C:\Program Files\Android\Android Studio\jbr" }
@@ -249,16 +249,48 @@ $canonicalName = "SameWave-$stamp.aab"
 $canonicalPath = Join-Path $AabOutputDir $canonicalName
 $latestPath = Join-Path $AabOutputDir "SameWave-latest.aab"
 
-Copy-Item -Path $gradleAab.FullName -Destination $canonicalPath -Force
-Copy-Item -Path $gradleAab.FullName -Destination $latestPath -Force
+# Also mirror into the git checkout — most people look here, not C:\w\app\aab.
+$repoAabDir = Join-Path $repoSameSame "aab"
+New-Item -ItemType Directory -Path $repoAabDir -Force | Out-Null
+$repoCanonicalPath = Join-Path $repoAabDir $canonicalName
+$repoLatestPath = Join-Path $repoAabDir "SameWave-latest.aab"
+
+$repairLogsDir = Join-Path $monorepoRoot "repair_logs"
+New-Item -ItemType Directory -Path $repairLogsDir -Force | Out-Null
+$repairLogCopy = Join-Path $repairLogsDir $canonicalName
+
+$destinations = @(
+  @{ Label = "Deploy tree (canonical)"; Path = $canonicalPath },
+  @{ Label = "Deploy tree (latest)"; Path = $latestPath },
+  @{ Label = "Repo checkout"; Path = $repoCanonicalPath },
+  @{ Label = "Repo checkout (latest)"; Path = $repoLatestPath },
+  @{ Label = "repair_logs backup"; Path = $repairLogCopy }
+)
+
+foreach ($dest in $destinations) {
+  Copy-Item -Path $gradleAab.FullName -Destination $dest.Path -Force
+}
 
 Write-Host ""
 Write-Host "AAB built (Gradle):" -ForegroundColor Green
 Write-Host $gradleAab.FullName
 Write-Host ""
-Write-Host "AAB for Play upload (canonical):" -ForegroundColor Green
-Write-Host $canonicalPath
-Write-Host $latestPath
-Write-Host ("Size: {0:N2} MB" -f ((Get-Item $canonicalPath).Length / 1MB))
-Write-Host "Logs: $logDir"
+Write-Host "=== Upload-ready copies ===" -ForegroundColor Cyan
+$missing = @()
+foreach ($dest in $destinations) {
+  if (Test-Path $dest.Path) {
+    $sizeMb = (Get-Item $dest.Path).Length / 1MB
+    Write-Host ("  [OK] {0,-28} {1} ({2:N2} MB)" -f $dest.Label, $dest.Path, $sizeMb) -ForegroundColor Green
+  } else {
+    Write-Host ("  [MISSING] {0,-28} {1}" -f $dest.Label, $dest.Path) -ForegroundColor Red
+    $missing += $dest.Path
+  }
+}
+if ($missing.Count -gt 0) {
+  Write-Error ("AAB copy failed — missing: `n  " + ($missing -join "`n  "))
+}
+Write-Host ""
+Write-Host "Primary upload file:" -ForegroundColor Green
+Write-Host $repoCanonicalPath
+Write-Host ("Logs: {0}" -f $logDir)
 Write-Host "Upload in Play Console -> Closed testing."

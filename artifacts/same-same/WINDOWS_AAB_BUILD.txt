@@ -1,12 +1,19 @@
 SameWave — Windows local AAB checklist
 =====================================
 
-CANONICAL OUTPUT (always use these for Play upload):
+CANONICAL OUTPUT (check these after a successful build):
+  <repo>\artifacts\same-same\aab\SameWave-vc<versionCode>.aab   ← primary (repo checkout)
+  <repo>\artifacts\same-same\aab\SameWave-latest.aab
+  C:\w\app\aab\SameWave-vc<versionCode>.aab                     ← deploy-tree mirror
   C:\w\app\aab\SameWave-latest.aab
-  C:\w\app\aab\SameWave-vc<versionCode>.aab   (versioned copy)
+  <repo>\repair_logs\SameWave-vc<versionCode>.aab              ← backup copy
 
-Gradle also writes:
+Gradle raw output (before copy):
   C:\w\app\android\app\build\outputs\bundle\release\app-release.aab
+
+If you don't see files in aab\, the build may have failed before the copy step.
+Find any existing .aab on disk:
+  pnpm run locate:aab
 
 COMMAND (from repo or from C:\w\app):
   cd C:\Global-Unity-Match\artifacts\same-same

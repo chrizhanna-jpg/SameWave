@@ -25,6 +25,7 @@
     "download:android-credentials": "powershell -ExecutionPolicy Bypass -File ./scripts/download-android-credentials.ps1",
     "setup:short-path-build": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-short-path-build.ps1",
     "build:aab:local": "powershell -ExecutionPolicy Bypass -File ./scripts/build-android-aab.ps1",
+    "locate:aab": "powershell -ExecutionPolicy Bypass -File ./scripts/locate-aab.ps1",
     "ios": "expo run:ios"
   },
   "devDependencies": {
