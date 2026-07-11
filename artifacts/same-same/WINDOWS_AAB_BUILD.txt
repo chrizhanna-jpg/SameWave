@@ -1,17 +1,12 @@
-SameWave — Windows local AAB
-===========================
+SameWave — Windows local AAB (4-week workflow)
+==============================================
 
-ONE upload file after a successful build:
-
-  C:\w\app\aab\SameWave-latest.aab
-
-Build command (from your repo):
-
+From your repo checkout:
   cd artifacts\same-same
   pnpm run build:aab:local
 
-The script refuses to finish unless that file exists with today's date.
+Upload file after success:
+  C:\w\app\aab\SameWave-vc48.aab
 
-First-time setup (if C:\w\app is missing):
-
-  pnpm run setup:short-path-build
+Also copied to:
+  C:\w\app\aab\SameWave-latest.aab
