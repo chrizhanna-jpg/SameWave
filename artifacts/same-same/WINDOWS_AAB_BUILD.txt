@@ -1,12 +1,12 @@
-SameWave — Windows local AAB (4-week workflow)
-==============================================
+SameWave — Windows local AAB (same as vc43 build)
+================================================
 
-From your repo checkout:
-  cd artifacts\same-same
-  pnpm run build:aab:local
+1. Bump versionCode in app.json (already done in repo)
+2. From repo checkout:
+     cd artifacts\same-same
+     pnpm run build:aab:local
+3. Upload:
+     C:\w\app\aab\SameWave-vc47.aab
 
-Upload file after success:
-  C:\w\app\aab\SameWave-vc48.aab
-
-Also copied to:
-  C:\w\app\aab\SameWave-latest.aab
+This is the identical workflow used for SameWave-vc43.aab:
+  sync repo -> C:\w\app, Gradle bundleRelease, copy to C:\w\app\aab\
