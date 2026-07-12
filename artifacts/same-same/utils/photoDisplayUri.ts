@@ -778,11 +778,7 @@ export function pickMatchMyPhotoDisplayUri(
     myPhoto: match.myPhoto,
     theirPhoto: "",
   }).myPhoto;
-  const row = resolveMatchMyPhotoRow(match, myPhotos);
-  if (row) {
-    const fromLib = resolveMyPhotoDisplayUri(row);
-    if (fromLib.trim()) return fromLib;
-  }
+  const voterId = resolveMatchVoterPhotoId(match, myPhotos);
   const hint = preferUri?.trim() || match.myPhoto?.trim() || stashed?.trim() || "";
   if (
     hint &&
@@ -791,11 +787,90 @@ export function pickMatchMyPhotoDisplayUri(
       hint.startsWith("content:") ||
       (!hint.includes("/api/photos/") && !shouldCanonicalizePhotoStreamUri(hint)))
   ) {
-    const voterId = resolveMatchVoterPhotoId(match, myPhotos);
     if (!voterId || photoUriMatchesVoterId(hint, voterId, myPhotos)) return hint;
   }
-  const bid = resolveMatchVoterPhotoId(match, myPhotos) || row?.backendId?.trim();
+
+  const row = resolveMatchMyPhotoRow(match, myPhotos);
+  if (row) {
+    const offline = resolveMyPhotoOfflineThumbnailUri(row);
+    if (
+      offline.trim() &&
+      (!voterId || photoUriMatchesVoterId(offline, voterId, myPhotos))
+    ) {
+      return offline;
+    }
+    const localPreferred = resolveMyPhotoDisplayUri(row, {
+      preferLocalCapture: true,
+    });
+    if (
+      localPreferred.trim() &&
+      isOfflineSafePhotoUri(localPreferred) &&
+      (!voterId || photoUriMatchesVoterId(localPreferred, voterId, myPhotos))
+    ) {
+      return localPreferred;
+    }
+    const fromLib = resolveMyPhotoDisplayUri(row);
+    if (fromLib.trim()) return fromLib;
+  }
+
+  const bid = voterId || row?.backendId?.trim();
   return bid ? serverPhotoImageUrl(bid) : hint;
+}
+
+/** Offline-first hero URI for the Ripple celebration splash (MatchFlash). */
+export function resolveMatchMyPhotoFlashUri(
+  match: Pick<
+    Match,
+    | "id"
+    | "myPhoto"
+    | "myPhotoId"
+    | "myPhotoUploadedAt"
+    | "timestamp"
+    | "theirPhotoId"
+    | "theirPhoto"
+  >,
+  myPhotos: MyPhoto[],
+): string {
+  const stored = match.myPhoto?.trim() ?? "";
+  const voterId = resolveMatchVoterPhotoId(match, myPhotos);
+  if (
+    stored &&
+    isOfflineSafePhotoUri(stored) &&
+    (!voterId || photoUriMatchesVoterId(stored, voterId, myPhotos))
+  ) {
+    return stored;
+  }
+  const thumb = resolveMatchMyPhotoThumbnailUri(match, myPhotos);
+  if (thumb.trim()) return thumb;
+  return resolveMatchMyPhotoUri(match, myPhotos);
+}
+
+/** Server/persistent fallback when the splash primary is a local capture. */
+export function resolveMatchMyPhotoFlashFallbackUri(
+  match: Pick<
+    Match,
+    | "id"
+    | "myPhoto"
+    | "myPhotoId"
+    | "myPhotoUploadedAt"
+    | "timestamp"
+    | "theirPhotoId"
+    | "theirPhoto"
+  >,
+  myPhotos: MyPhoto[],
+): string | undefined {
+  const primary = resolveMatchMyPhotoFlashUri(match, myPhotos);
+  const voterId = resolveMatchVoterPhotoId(match, myPhotos);
+  if (voterId) {
+    const server = serverPhotoImageUrl(voterId, HERO_DISPLAY_WIDTH);
+    if (server.trim() && server !== primary) return server;
+  }
+  const row = resolveMatchMyPhotoRow(match, myPhotos);
+  if (row) {
+    const alt = resolveMyPhotoFallbackUri(row, HERO_DISPLAY_WIDTH);
+    if (alt?.trim() && alt !== primary) return alt;
+  }
+  return photoStreamFallbackUri(voterId, HERO_DISPLAY_WIDTH);
 }
 
 /** Backfill voter photo id + HTTPS uri on ripple rows after cache strip or late upload ack. */

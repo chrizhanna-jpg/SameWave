@@ -104,6 +104,8 @@ import {
   resolveMyPhotoDisplayUri,
   resolveMyPhotoFallbackUri,
   resolveMatchMyPhotoFallbackUri,
+  resolveMatchMyPhotoFlashFallbackUri,
+  resolveMatchMyPhotoFlashUri,
   resolveMatchMyPhotoUri,
   pickMatchMyPhotoDisplayUri,
   pickVoterPhotoBackendId,
@@ -2554,16 +2556,11 @@ export default function SwipeScreen() {
             theirCaptureCountryCode={flashMatch.theirCaptureCountryCode}
             themeTitle={themeMeta?.title ?? flashMatch.theme ?? "the same thing"}
             themeEmoji={themeMeta?.emoji ?? "✨"}
-            myPhotoUri={
-              todaysPhoto
-                ? resolveMyPhotoDisplayUri(todaysPhoto)
-                : resolveMatchMyPhotoUri(flashMatch, myPhotos)
-            }
-            myPhotoFallbackUri={
-              todaysPhoto
-                ? resolveMyPhotoFallbackUri(todaysPhoto, HERO_DISPLAY_WIDTH)
-                : resolveMatchMyPhotoFallbackUri(flashMatch, myPhotos)
-            }
+            myPhotoUri={resolveMatchMyPhotoFlashUri(flashMatch, myPhotos)}
+            myPhotoFallbackUri={resolveMatchMyPhotoFlashFallbackUri(
+              flashMatch,
+              myPhotos,
+            )}
             theirPhotoUri={flashMatch.theirPhoto}
             myPhotoCapturedAt={flashMatch.myPhotoCapturedAt}
             myPhotoSharedAt={flashMatch.myPhotoUploadedAt}
