@@ -26,7 +26,7 @@
     },
     "android": {
       "package": "echo.samewaveripple.app",
-      "versionCode": 46,
+      "versionCode": 47,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#166FFC"
