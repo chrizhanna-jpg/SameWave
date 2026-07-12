@@ -26,6 +26,28 @@ export {
   HERO_DISPLAY_WIDTH,
 } from "@/constants/imageLoading";
 
+/**
+ * True when a URI may appear in the viewer's own-photo slot. Curated stock
+ * (SAMPLE_PHOTOS) and any Unsplash CDN URL are never valid user uploads.
+ */
+export function isAllowedUserOwnPhotoUri(
+  uri: string | undefined | null,
+): boolean {
+  const u = uri?.trim() ?? "";
+  if (!u) return false;
+  if (isSamplePhoto(u)) return false;
+  if (u.includes("images.unsplash.com")) return false;
+  return true;
+}
+
+/** Strip stock URIs before rendering or persisting viewer-owned photos. */
+export function sanitizeUserOwnPhotoUri(
+  uri: string | undefined | null,
+): string {
+  const u = uri?.trim() ?? "";
+  return isAllowedUserOwnPhotoUri(u) ? u : "";
+}
+
 /** Authenticated stream URL for a server photo row. */
 export function serverPhotoImageUrl(
   photoId: string,
@@ -157,9 +179,9 @@ export function resolveMyPhotoThumbnailUri(
     local.startsWith("https://") ||
     local.startsWith("/api/photos/")
   ) {
-    return canonicalizePhotoStreamUri(local);
+    return sanitizeUserOwnPhotoUri(canonicalizePhotoStreamUri(local));
   }
-  return local;
+  return sanitizeUserOwnPhotoUri(local);
 }
 
 /**
@@ -176,10 +198,11 @@ export function resolveMyPhotoFallbackUri(
   const persistent = persistentUriForPhoto(photo, "full");
   const thumb = persistentUriForPhoto(photo, "thumb");
   for (const candidate of [server, persistent, thumb]) {
-    const c = candidate?.trim() ?? "";
+    const c = sanitizeUserOwnPhotoUri(candidate);
     if (c && c !== primary) return c;
   }
-  return server || undefined;
+  const safeServer = sanitizeUserOwnPhotoUri(server);
+  return safeServer || undefined;
 }
 
 /** Stable unique key for recent-photo rows (duplicate backendIds can exist). */
@@ -587,9 +610,8 @@ export function resolveMatchMyPhotoUri(
     const libUri = resolveMyPhotoDisplayUri(row);
     if (libUri.trim()) {
       const voterId = row.backendId?.trim() || resolveMatchVoterPhotoId(match, myPhotos);
-      return resolveEchoPhotoUri(
-        { id: voterId, uri: libUri },
-        myPhotos,
+      return sanitizeUserOwnPhotoUri(
+        resolveEchoPhotoUri({ id: voterId, uri: libUri }, myPhotos),
       );
     }
   }
@@ -603,15 +625,19 @@ export function resolveMatchMyPhotoUri(
   if (voterId) {
     const local = verifiedLocalForVoterId(voterId, match, myPhotos, stashed);
     if (local) {
-      return resolveEchoPhotoUri({ id: voterId, uri: local }, myPhotos);
+      return sanitizeUserOwnPhotoUri(
+        resolveEchoPhotoUri({ id: voterId, uri: local }, myPhotos),
+      );
     }
     for (const candidate of [match.myPhoto, stashed]) {
       const c = candidate?.trim() ?? "";
       if (c && photoUriMatchesVoterId(c, voterId, myPhotos)) {
-        return resolveEchoPhotoUri({ id: voterId, uri: c }, myPhotos);
+        return sanitizeUserOwnPhotoUri(
+          resolveEchoPhotoUri({ id: voterId, uri: c }, myPhotos),
+        );
       }
     }
-    return serverPhotoImageUrl(voterId);
+    return sanitizeUserOwnPhotoUri(serverPhotoImageUrl(voterId));
   }
 
   let myPhoto = pickDurablePhotoUri(match.myPhoto, stashed);
@@ -619,7 +645,9 @@ export function resolveMatchMyPhotoUri(
     myPhoto = resolveMyPhotoForMatch(match, myPhotos, stashed);
   }
 
-  return resolveEchoPhotoUri({ uri: myPhoto }, myPhotos);
+  return sanitizeUserOwnPhotoUri(
+    resolveEchoPhotoUri({ uri: myPhoto }, myPhotos),
+  );
 }
 
 /** Thumbnail-sized voter photo for feed tiles (320w stream). */
@@ -639,9 +667,9 @@ export function resolveMatchMyPhotoThumbnailUri(
   const row = resolveMatchMyPhotoRow(match, myPhotos);
   if (row) {
     const offline = resolveMyPhotoOfflineThumbnailUri(row);
-    if (offline.trim()) return offline;
+    if (offline.trim()) return sanitizeUserOwnPhotoUri(offline);
     const thumb = resolveMyPhotoThumbnailUri(row);
-    if (thumb.trim()) return thumb;
+    if (thumb.trim()) return sanitizeUserOwnPhotoUri(thumb);
   }
 
   const voterId = resolveMatchVoterPhotoId(match, myPhotos);
@@ -651,34 +679,38 @@ export function resolveMatchMyPhotoThumbnailUri(
   }).myPhoto;
   if (voterId) {
     const local = verifiedLocalForVoterId(voterId, match, myPhotos, stashed);
-    if (local) return local;
+    if (local) return sanitizeUserOwnPhotoUri(local);
     const persisted = match.myPhoto?.trim() ?? "";
     if (persisted && photoUriMatchesVoterId(persisted, voterId, myPhotos)) {
-      if (isOfflineSafePhotoUri(persisted)) return persisted;
+      if (isOfflineSafePhotoUri(persisted)) {
+        return sanitizeUserOwnPhotoUri(persisted);
+      }
       if (extractPhotoStreamId(persisted) === voterId) {
-        return withDisplayPhotoWidth(
-          canonicalizePhotoStreamUri(persisted),
-          FEED_THUMB_WIDTH,
+        return sanitizeUserOwnPhotoUri(
+          withDisplayPhotoWidth(
+            canonicalizePhotoStreamUri(persisted),
+            FEED_THUMB_WIDTH,
+          ),
         );
       }
     }
-    return serverPhotoImageUrl(voterId, FEED_THUMB_WIDTH);
+    return sanitizeUserOwnPhotoUri(serverPhotoImageUrl(voterId, FEED_THUMB_WIDTH));
   }
   const fromLibrary = findMyPhotoForMatch(match, myPhotos, stashed);
   if (fromLibrary) {
     const thumb = resolveMyPhotoThumbnailUri(fromLibrary);
-    if (thumb.trim()) return thumb;
+    if (thumb.trim()) return sanitizeUserOwnPhotoUri(thumb);
   }
 
   const uri = resolveMatchMyPhotoUri(match, myPhotos);
   if (!uri || uri.startsWith("file:") || uri.startsWith("content:")) {
-    return uri;
+    return sanitizeUserOwnPhotoUri(uri);
   }
   const id = extractPhotoStreamId(uri) || undefined;
   if (id && !isSamplePhoto(uri)) {
-    return serverPhotoImageUrl(id, FEED_THUMB_WIDTH);
+    return sanitizeUserOwnPhotoUri(serverPhotoImageUrl(id, FEED_THUMB_WIDTH));
   }
-  return withDisplayPhotoWidth(uri, FEED_THUMB_WIDTH);
+  return sanitizeUserOwnPhotoUri(withDisplayPhotoWidth(uri, FEED_THUMB_WIDTH));
 }
 
 /** Local or thumbnail fallback when the primary stream fails in a feed row. */
@@ -787,7 +819,9 @@ export function pickMatchMyPhotoDisplayUri(
       hint.startsWith("content:") ||
       (!hint.includes("/api/photos/") && !shouldCanonicalizePhotoStreamUri(hint)))
   ) {
-    if (!voterId || photoUriMatchesVoterId(hint, voterId, myPhotos)) return hint;
+    if (!voterId || photoUriMatchesVoterId(hint, voterId, myPhotos)) {
+      return sanitizeUserOwnPhotoUri(hint);
+    }
   }
 
   const row = resolveMatchMyPhotoRow(match, myPhotos);
@@ -797,7 +831,7 @@ export function pickMatchMyPhotoDisplayUri(
       offline.trim() &&
       (!voterId || photoUriMatchesVoterId(offline, voterId, myPhotos))
     ) {
-      return offline;
+      return sanitizeUserOwnPhotoUri(offline);
     }
     const localPreferred = resolveMyPhotoDisplayUri(row, {
       preferLocalCapture: true,
@@ -807,14 +841,14 @@ export function pickMatchMyPhotoDisplayUri(
       isOfflineSafePhotoUri(localPreferred) &&
       (!voterId || photoUriMatchesVoterId(localPreferred, voterId, myPhotos))
     ) {
-      return localPreferred;
+      return sanitizeUserOwnPhotoUri(localPreferred);
     }
     const fromLib = resolveMyPhotoDisplayUri(row);
-    if (fromLib.trim()) return fromLib;
+    if (fromLib.trim()) return sanitizeUserOwnPhotoUri(fromLib);
   }
 
   const bid = voterId || row?.backendId?.trim();
-  return bid ? serverPhotoImageUrl(bid) : hint;
+  return sanitizeUserOwnPhotoUri(bid ? serverPhotoImageUrl(bid) : hint);
 }
 
 /** Offline-first hero URI for the Ripple celebration splash (MatchFlash). */
@@ -838,11 +872,11 @@ export function resolveMatchMyPhotoFlashUri(
     isOfflineSafePhotoUri(stored) &&
     (!voterId || photoUriMatchesVoterId(stored, voterId, myPhotos))
   ) {
-    return stored;
+    return sanitizeUserOwnPhotoUri(stored);
   }
   const thumb = resolveMatchMyPhotoThumbnailUri(match, myPhotos);
-  if (thumb.trim()) return thumb;
-  return resolveMatchMyPhotoUri(match, myPhotos);
+  if (thumb.trim()) return sanitizeUserOwnPhotoUri(thumb);
+  return sanitizeUserOwnPhotoUri(resolveMatchMyPhotoUri(match, myPhotos));
 }
 
 /** Server/persistent fallback when the splash primary is a local capture. */
@@ -863,14 +897,18 @@ export function resolveMatchMyPhotoFlashFallbackUri(
   const voterId = resolveMatchVoterPhotoId(match, myPhotos);
   if (voterId) {
     const server = serverPhotoImageUrl(voterId, HERO_DISPLAY_WIDTH);
-    if (server.trim() && server !== primary) return server;
+    const safe = sanitizeUserOwnPhotoUri(server);
+    if (safe && safe !== primary) return safe;
   }
   const row = resolveMatchMyPhotoRow(match, myPhotos);
   if (row) {
     const alt = resolveMyPhotoFallbackUri(row, HERO_DISPLAY_WIDTH);
-    if (alt?.trim() && alt !== primary) return alt;
+    const safeAlt = sanitizeUserOwnPhotoUri(alt);
+    if (safeAlt && safeAlt !== primary) return safeAlt;
   }
-  return photoStreamFallbackUri(voterId, HERO_DISPLAY_WIDTH);
+  return sanitizeUserOwnPhotoUri(
+    photoStreamFallbackUri(voterId, HERO_DISPLAY_WIDTH),
+  ) || undefined;
 }
 
 /** Backfill voter photo id + HTTPS uri on ripple rows after cache strip or late upload ack. */
@@ -966,15 +1004,15 @@ export function resolveMyPhotoDisplayUri(
   if (local.startsWith("file:") || local.startsWith("content:")) return local;
   const bid =
     photo.backendId?.trim() || extractPhotoStreamId(local) || undefined;
-  if (bid) return serverPhotoImageUrl(bid);
+  if (bid) return sanitizeUserOwnPhotoUri(serverPhotoImageUrl(bid));
   if (
     local.startsWith("http://") ||
     local.startsWith("https://") ||
     local.startsWith("/api/photos/")
   ) {
-    return canonicalizePhotoStreamUri(local);
+    return sanitizeUserOwnPhotoUri(canonicalizePhotoStreamUri(local));
   }
-  return local;
+  return sanitizeUserOwnPhotoUri(local);
 }
 
 /** Backfill backendId/uploadState and HTTPS uri on persisted myPhotos rows. */

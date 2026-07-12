@@ -102,6 +102,7 @@ import { sampleMatchStats } from "@/utils/sampleStats";
 import { photoCountryDisplay } from "@/utils/photoCountry";
 import {
   HERO_DISPLAY_WIDTH,
+  isAllowedUserOwnPhotoUri,
   resolveMyPhotoDisplayUri,
   resolveMyPhotoFallbackUri,
   resolveMatchMyPhotoFallbackUri,
@@ -110,6 +111,7 @@ import {
   resolveMatchMyPhotoUri,
   pickMatchMyPhotoDisplayUri,
   pickVoterPhotoBackendId,
+  sanitizeUserOwnPhotoUri,
   serverPhotoImageUrl,
   withDisplayPhotoWidth,
 } from "@/utils/photoDisplayUri";
@@ -634,9 +636,11 @@ export default function SwipeScreen() {
     if (myPhotos.length === 0) return undefined;
     const todayUtcDay = Math.floor(Date.now() / 86_400_000);
     const p = myPhotos[0];
+    const hasServerId = Boolean(p.backendId?.trim());
     if (
-      isSamplePhoto(p.uri) ||
-      isSamplePhoto(resolveMyPhotoDisplayUri(p))
+      !hasServerId &&
+      (!isAllowedUserOwnPhotoUri(p.uri) ||
+        !isAllowedUserOwnPhotoUri(resolveMyPhotoDisplayUri(p)))
     ) {
       return undefined;
     }
@@ -682,7 +686,9 @@ export default function SwipeScreen() {
   }>(() => {
     if (todaysPhoto) {
       return {
-        uri: resolveMyPhotoDisplayUri(todaysPhoto, { preferLocalCapture: true }),
+        uri: sanitizeUserOwnPhotoUri(
+          resolveMyPhotoDisplayUri(todaysPhoto, { preferLocalCapture: true }),
+        ),
         uploadedAt: todaysPhoto.uploadedAt,
         capturedAt: todaysPhoto.capturedAt,
         theme: todaysPhoto.theme,
@@ -1888,7 +1894,8 @@ export default function SwipeScreen() {
   // Treat the user as "no photo for today" if their last upload is from a
   // previous UTC day — this makes Start Matching prompt for a fresh photo
   // each new daily-challenge cycle instead of recycling yesterday's.
-  const hasUploadedPhoto = todaysPhoto !== undefined;
+  const hasUploadedPhoto =
+    todaysPhoto !== undefined && sanitizeUserOwnPhotoUri(myPhotoUri) !== "";
 
   // Production builds used to mount with realPool=[] and stock off, so
   // `initial` was null → permanent "all caught up" even after /candidates
@@ -2374,6 +2381,7 @@ export default function SwipeScreen() {
                 recyclingKey={myPhotoRecyclingKey}
                 displayWidth={HERO_DISPLAY_WIDTH}
                 priority="hero"
+                viewerOwnPhoto
               />
               {isAiPhoto(myPhotoUri) ? <AiGeneratedBadge size="sm" /> : null}
               {myPhotoDisplay.code ? (
@@ -2617,6 +2625,7 @@ export default function SwipeScreen() {
                 }
                 style={styles.fullscreenImage}
                 resizeMode="contain"
+                viewerOwnPhoto={fullscreenUri === myPhotoUri}
               />
               {isAiPhoto(fullscreenUri) ? (
                 <AiGeneratedBadge

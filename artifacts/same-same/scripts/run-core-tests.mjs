@@ -11,6 +11,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const scripts = [
   "test-core-flows.ts",
+  "test-user-own-photo-uri.ts",
   "test-waves-voter-photo.ts",
   "test-waves-offline-thumb.ts",
   "test-match-flash-uri.ts",

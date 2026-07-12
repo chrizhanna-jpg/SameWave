@@ -81,8 +81,11 @@ assert(
 );
 assert(
   "match.tsx filters sample photos from todaysPhoto",
-  matchSrc.includes("isSamplePhoto(p.uri)") ||
-    matchSrc.includes("isSamplePhoto(p.uri)"),
+  matchSrc.includes("isAllowedUserOwnPhotoUri"),
+);
+assert(
+  "match.tsx my-photo RemotePhotoImage uses viewerOwnPhoto",
+  matchSrc.includes("viewerOwnPhoto"),
 );
 assert(
   "match.tsx never substitutes SAMPLE_PHOTOS[0] for my photo",
@@ -138,8 +141,15 @@ assert("mutual echo is Wave", isWave("mutual") && !isRipple("mutual"));
 // ── 7. myPhotos merge excludes stock samples ────────────────────────────────
 const persistSrc = read("utils/myPhotoPersistence.ts");
 assert(
-  "mergeMyPhotos filters sample URIs",
-  persistSrc.includes("isSamplePhoto"),
+  "mergeMyPhotos filters stock URIs from user library",
+  persistSrc.includes("isAllowedUserOwnPhotoUri"),
+);
+
+const photoUriSrc = read("utils/photoDisplayUri.ts");
+assert(
+  "photoDisplayUri exports user-own-photo guards",
+  photoUriSrc.includes("isAllowedUserOwnPhotoUri") &&
+    photoUriSrc.includes("sanitizeUserOwnPhotoUri"),
 );
 
 console.log("Done. exitCode=", process.exitCode ?? 0);

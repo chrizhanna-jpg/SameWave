@@ -37,6 +37,7 @@ import {
   resolveMatchPhotoDisplay,
   resolveMatchVoterPhotoId,
   photoStreamFallbackUri,
+  sanitizeUserOwnPhotoUri,
 } from "@/utils/photoDisplayUri";
 import { markTabVisited } from "@/utils/tabVisits";
 import {
@@ -858,8 +859,12 @@ function RippleSentCard({
 }) {
   const colors = useColors();
   const ago = timeAgo(new Date(match.timestamp));
-  const myUri = resolveMatchMyPhotoThumbnailUri(match, myPhotos);
-  const myFallbackUri = resolveMatchMyPhotoFallbackUri(match, myPhotos);
+  const myUri = sanitizeUserOwnPhotoUri(
+    resolveMatchMyPhotoThumbnailUri(match, myPhotos),
+  );
+  const myFallbackUri = sanitizeUserOwnPhotoUri(
+    resolveMatchMyPhotoFallbackUri(match, myPhotos),
+  );
   const voterId = resolveMatchVoterPhotoId(match, myPhotos);
   const theirUri = resolveMatchPhotoDisplay(match, myPhotos).theirPhoto;
   const myDisp = photoCountryDisplay(match.myCaptureCountryCode, {
@@ -921,6 +926,7 @@ function RippleSentCard({
               displayWidth={FEED_THUMB_WIDTH}
               priority="thumbnail"
               transitionMs={0}
+              viewerOwnPhoto
             />
           ) : (
             <View
@@ -979,7 +985,7 @@ function PhotoPair({
   myPhotos: MyPhoto[];
 }) {
   const colors = useColors();
-  const mineUri = resolveEchoPhotoUri(mine, myPhotos);
+  const mineUri = sanitizeUserOwnPhotoUri(resolveEchoPhotoUri(mine, myPhotos));
   const theirsUri = resolveEchoPhotoUri(theirs);
   const myDisp = photoCountryDisplay(mine.captureCountryCode, {
     sampleUri: mineUri,
@@ -998,6 +1004,7 @@ function PhotoPair({
           displayWidth={FEED_THUMB_WIDTH}
           priority="thumbnail"
           transitionMs={0}
+          viewerOwnPhoto
         />
         <Text style={[styles.photoLabel, { color: colors.mutedForeground }]}>
           {myDisp.flag} yours

@@ -20,11 +20,11 @@ import { pausePreview, togglePreview } from "@/utils/audio";
 import { confirmDeleteMyPhoto } from "@/utils/photoModeration";
 import { photoCountryDisplay } from "@/utils/photoCountry";
 import {
+  isAllowedUserOwnPhotoUri,
   myPhotoRowKey,
   resolveMyPhotoFallbackUri,
   resolveMyPhotoThumbnailUri,
 } from "@/utils/photoDisplayUri";
-import { isSamplePhoto } from "@/data/samplePhotos";
 
 export default function MyPhotosScreen() {
   const colors = useColors();
@@ -36,8 +36,8 @@ export default function MyPhotosScreen() {
     () =>
       myPhotos.filter(
         (p) =>
-          !isSamplePhoto(p.uri) &&
-          !isSamplePhoto(resolveMyPhotoThumbnailUri(p)),
+          isAllowedUserOwnPhotoUri(p.uri) &&
+          isAllowedUserOwnPhotoUri(resolveMyPhotoThumbnailUri(p)),
       ),
     [myPhotos],
   );
@@ -147,6 +147,7 @@ export default function MyPhotosScreen() {
                   size="md"
                   audioUrl={photo.customAudioUrl}
                   audioInteractive={false}
+                  viewerOwnPhoto
                 />
                 <View style={styles.photoMeta}>
                   <View style={styles.photoMetaTop}>

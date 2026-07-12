@@ -1,8 +1,8 @@
 import type { MyPhoto } from "@/context/AppContext";
-import { isSamplePhoto } from "@/data/samplePhotos";
 import {
   findMyPhotoByUri,
   hydrateMyPhotoUri,
+  isAllowedUserOwnPhotoUri,
   resolveMyPhotoDisplayUri,
   serverPhotoImageUrl,
 } from "@/utils/photoDisplayUri";
@@ -43,8 +43,8 @@ export function mergeMyPhotos(...groups: MyPhoto[][]): MyPhoto[] {
     .map((p) => hydrateMyPhotoUri(p))
     .filter(
       (p) =>
-        !isSamplePhoto(p.uri) &&
-        !isSamplePhoto(resolveMyPhotoDisplayUri(p)),
+        isAllowedUserOwnPhotoUri(p.uri) &&
+        isAllowedUserOwnPhotoUri(resolveMyPhotoDisplayUri(p)),
     )
     .sort(
       (a, b) =>

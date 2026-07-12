@@ -40,6 +40,8 @@ interface Props {
   devCandidateId?: string | null;
   devTheme?: string | null;
   devMatchedTheme?: string | null;
+  /** Viewer-owned slot — never show stock/Unsplash fallbacks. */
+  viewerOwnPhoto?: boolean;
   /**
    * When false, the mic badge is non-interactive — useful when an outer
    * row already owns the tap and calls `togglePreview()` itself.
@@ -60,6 +62,7 @@ export function PhotoCard({
   devCandidateId,
   devTheme,
   devMatchedTheme,
+  viewerOwnPhoto = false,
 }: Props) {
   const colors = useColors();
 
@@ -73,7 +76,8 @@ export function PhotoCard({
   // them — no callsite needs to know. AI badge takes precedence (more
   // important provenance signal than "this is a curated sample").
   const isAi = showAiBadge ?? isAiPhoto(uri);
-  const showSample = (showSampleBadge ?? isSamplePhoto(uri)) && !isAi;
+  const showSample =
+    !viewerOwnPhoto && (showSampleBadge ?? isSamplePhoto(uri)) && !isAi;
   const badgeOffset = size === "sm" ? 4 : 6;
   const stockMarkSize: "sm" | "md" | "lg" | "xl" =
     size === "sm" ? "md" : size === "md" ? "lg" : "xl";
@@ -102,6 +106,7 @@ export function PhotoCard({
           { borderRadius: dimensions.borderRadius },
         ]}
         resizeMode="cover"
+        viewerOwnPhoto={viewerOwnPhoto}
       />
       {isAi ? <AiGeneratedBadge size={aiBadgeSize} /> : null}
       {showSample && (

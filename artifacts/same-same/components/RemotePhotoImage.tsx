@@ -41,6 +41,7 @@ import {
 import { recordImageTelemetry } from "@/utils/imageLoadTelemetry";
 import { classifyImageUri } from "@/utils/imageAssetClass";
 import { validateUserPhotoInBackground } from "@/utils/userPhotoValidation";
+import { sanitizeUserOwnPhotoUri } from "@/utils/photoDisplayUri";
 
 type Props = {
   uri: string;
@@ -69,6 +70,12 @@ type Props = {
   displayWidth?: number;
   /** Fetch priority — hero warms cache on mount. */
   priority?: ImageLoadPriority;
+  /**
+   * Viewer-owned photo slot (Ripple "your photo", My Photos, splash).
+   * Strips stock/Unsplash URIs and never falls back to the generic Unsplash
+   * placeholder when loading fails.
+   */
+  viewerOwnPhoto?: boolean;
 };
 
 const MAX_RETRIES_PER_SOURCE = 2;
@@ -178,19 +185,24 @@ export function RemotePhotoImage({
   onResolved,
   displayWidth,
   priority = "normal",
+  viewerOwnPhoto = false,
 }: Props) {
   const onResolvedRef = useRef(onResolved);
   onResolvedRef.current = onResolved;
+  const safeUri = viewerOwnPhoto ? sanitizeUserOwnPhotoUri(uri) : uri;
+  const safeFallbackUri = viewerOwnPhoto
+    ? sanitizeUserOwnPhotoUri(fallbackUri)
+    : fallbackUri;
   const normalized = useMemo(
-    () => normalizeRemotePhotoUri(uri, displayWidth),
-    [uri, displayWidth],
+    () => normalizeRemotePhotoUri(safeUri, displayWidth),
+    [safeUri, displayWidth],
   );
   const normalizedFallback = useMemo(() => {
-    const f = fallbackUri?.trim();
+    const f = safeFallbackUri?.trim();
     if (!f) return null;
     const n = normalizeRemotePhotoUri(f, displayWidth);
     return n && n !== normalized ? n : null;
-  }, [fallbackUri, normalized, displayWidth]);
+  }, [safeFallbackUri, normalized, displayWidth]);
 
   const [usedFallback, setUsedFallback] = useState(false);
   const [useHosted, setUseHosted] = useState(false);
@@ -354,7 +366,7 @@ export function RemotePhotoImage({
     displayUri.trim().length > 0 &&
     (hasAuthForRequest || showOfflineFallbackWhileAuth || !needsAuth);
 
-  const src = exhausted
+  const src = exhausted && !viewerOwnPhoto
     ? UNSPLASH_FALLBACK_URI
     : withRetryNonce(displayUri, attempt);
   const stableKey =
@@ -383,6 +395,10 @@ export function RemotePhotoImage({
 
   const handleError = () => {
     if (exhausted) return;
+    if (viewerOwnPhoto && !normalizedFallback) {
+      setExhausted(true);
+      return;
+    }
     clearRetryTimer();
     const onLocalCapture =
       !usedFallback &&

@@ -313,6 +313,7 @@ export function MatchFlash({
                 recyclingKey={`flash-my:${myPhotoFallbackUri ?? myPhotoUri}`}
                 displayWidth={HERO_DISPLAY_WIDTH}
                 priority="hero"
+                viewerOwnPhoto
               />
             ) : (
               <View style={[styles.thumb, styles.thumbFallback]}>

@@ -28,6 +28,7 @@ import {
   enrichMatchMyPhotoFields,
   enrichMatchesForStorage,
   hydrateMyPhotoUri,
+  isAllowedUserOwnPhotoUri,
   repairMyPhotos,
   resolveMyPhotoDisplayUri,
   serverPhotoImageUrl,
@@ -1395,6 +1396,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     declaredCountryCode?: string,
     capturedAt?: string,
   ): string => {
+    if (!isAI && uri.trim() && !isAllowedUserOwnPhotoUri(uri)) {
+      return createMyPhotoLocalId();
+    }
     const localId = createMyPhotoLocalId();
     const photo: MyPhoto = {
       uri,
