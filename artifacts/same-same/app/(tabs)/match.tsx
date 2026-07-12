@@ -621,6 +621,8 @@ export default function SwipeScreen() {
   const seenSet = React.useMemo(() => new Set(seenPhotoKeys), [seenPhotoKeys]);
   const seenSetRef = useRef(seenSet);
   seenSetRef.current = seenSet;
+  const seenPhotoIdsRef = useRef(seenPhotoIds);
+  seenPhotoIdsRef.current = seenPhotoIds;
   const todaysChallenge = getTodaysChallenge();
 
   // Today's photo only — if the user's most recent upload is from a
@@ -872,7 +874,7 @@ export default function SwipeScreen() {
       // server-side `seen_photos` table — if a `markPhotosSeen` POST
       // ever dropped (flaky network, app backgrounded mid-flight),
       // this guarantees the photo still won't come back.
-      excludeIds: seenPhotoIds,
+      excludeIds: seenPhotoIdsRef.current,
     })
       .then((cands) => {
         if (cancelled) return;
@@ -903,13 +905,9 @@ export default function SwipeScreen() {
     return () => {
       cancelled = true;
     };
-    // mySubjectsKey: see comment on the useMemo. Including it ensures
-    // the candidate fetch re-runs after `setMyPhotoBackendId` patches
-    // the local photo with the upload-time subjects, so the deck
-    // re-ranks against the authoritative subjects.
-    // seenPhotoIds: re-fetch when the local seen ledger grows so we never
-    // surface a card the device already swiped past (belt over server gaps).
-  }, [activeTheme, myTagsKey, mySubjectsKey, seenPhotoIds, todaysPhoto]);
+    // Deck exclusion still uses seenSetRef on every pick — no per-swipe refetch.
+    // excludeIds is a snapshot at fetch time (theme/tags/upload changes only).
+  }, [activeTheme, myTagsKey, mySubjectsKey, todaysPhoto]);
 
   useEffect(() => {
     if (!usingSuggestedThemeFallback || !suggestedThemeId) return;
@@ -920,7 +918,7 @@ export default function SwipeScreen() {
       subjects: expandSubjectsForQuery(mySubjects),
       musicGenre: todaysPhoto?.musicGenre,
       limit: 24,
-      excludeIds: seenPhotoIds,
+      excludeIds: seenPhotoIdsRef.current,
     })
       .then((cands) => {
         if (cancelled) return;
@@ -951,7 +949,6 @@ export default function SwipeScreen() {
     myTagsKey,
     mySubjectsKey,
     todaysPhoto?.musicGenre,
-    seenPhotoIds,
   ]);
 
   const realPoolRef = useRef<SamplePhoto[]>(realPool);
@@ -1619,7 +1616,9 @@ export default function SwipeScreen() {
         snapshotPhoto.createdAt ??
         new Date(Date.now() - snapshotPhoto.minutesAgo * 60000).toISOString();
 
-      prefetchDeckAhead(1, snapshotPhoto.uri);
+      InteractionManager.runAfterInteractions(() => {
+        prefetchDeckAhead(1, snapshotPhoto.uri);
+      });
 
       const onSwipeOutComplete = () => {
         const voterPhotoId = pickVoterPhotoBackendId(myPhotos, {
@@ -2141,7 +2140,7 @@ export default function SwipeScreen() {
                       // Same hard exclusion as the primary deck — we never
                       // want a previously-shown photo to resurface just
                       // because the user re-queried by subject matter.
-                      excludeIds: seenPhotoIds,
+                      excludeIds: seenPhotoIdsRef.current,
                     });
                     const ids = new Map<string, string>();
                     const exclude = buildExcludeKeys();

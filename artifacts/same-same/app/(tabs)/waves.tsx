@@ -135,19 +135,31 @@ export default function WavesScreen() {
   const prevPendingRef = useRef(0);
   const [scrollViewportH, setScrollViewportH] = useState(0);
   const [scrollContentH, setScrollContentH] = useState(0);
-  const [scrollY, setScrollY] = useState(0);
+  const scrollYRef = useRef(0);
+  const [showScrollHint, setShowScrollHint] = useState(false);
+
+  const updateScrollHint = useCallback(
+    (y: number) => {
+      scrollYRef.current = y;
+      const maxScrollY = Math.max(0, scrollContentH - scrollViewportH);
+      const hint =
+        scrollContentH > scrollViewportH + 8 && y < maxScrollY - 6;
+      setShowScrollHint((prev) => (prev === hint ? prev : hint));
+    },
+    [scrollContentH, scrollViewportH],
+  );
 
   useEffect(() => {
-    setScrollY(0);
-  }, [activeSection]);
+    scrollYRef.current = 0;
+    updateScrollHint(0);
+  }, [activeSection, updateScrollHint]);
 
-  const onScrollList = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    setScrollY(e.nativeEvent.contentOffset.y);
-  }, []);
-
-  const maxScrollY = Math.max(0, scrollContentH - scrollViewportH);
-  const showScrollHint =
-    scrollContentH > scrollViewportH + 8 && scrollY < maxScrollY - 6;
+  const onScrollList = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      updateScrollHint(e.nativeEvent.contentOffset.y);
+    },
+    [updateScrollHint],
+  );
 
   const topPadding = Platform.OS === "web" ? 56 : insets.top;
   const bottomPad = scrollPaddingAboveTabBar(insets);
@@ -233,13 +245,13 @@ export default function WavesScreen() {
     useCallback(() => {
       markTabVisited("waves");
       warmAuthedImageHeaders();
-      reconcileMatchPhotos();
       prefetchMatchMyPhotoThumbs(
         matchesRef.current,
         myPhotosRef.current,
         20,
       );
       const deferred = runAfterTabFocus(() => {
+        reconcileMatchPhotos();
         if (!shouldRunThrottledFocusWork("waves-sync", 30_000)) return;
         void syncCloudData();
         void loadWorldWaves();
