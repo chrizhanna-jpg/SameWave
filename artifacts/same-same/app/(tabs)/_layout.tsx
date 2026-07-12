@@ -181,6 +181,9 @@ export default function TabLayout() {
         tabBarShowLabel: true,
         // Instant tab switches — no slide/fade between bottom tabs.
         animation: "none",
+        // Inactive tabs skip re-renders and mount on first visit only.
+        freezeOnBlur: true,
+        lazy: true,
         tabBarLabelStyle: {
           fontSize: 10,
           fontFamily: "Inter_600SemiBold",

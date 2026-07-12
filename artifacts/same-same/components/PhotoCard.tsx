@@ -12,6 +12,8 @@ import { isAiPhoto } from "@/context/AppContext";
 
 interface Props {
   uri: string;
+  /** Durable fallback when the primary uri fails (e.g. purged file://). */
+  fallbackUri?: string;
   size?: "sm" | "md" | "lg";
   style?: object;
   /**
@@ -48,6 +50,7 @@ interface Props {
 
 export function PhotoCard({
   uri,
+  fallbackUri,
   size = "md",
   style,
   showSampleBadge,
@@ -93,6 +96,7 @@ export function PhotoCard({
     >
       <RemotePhotoImage
         uri={uri}
+        fallbackUri={fallbackUri}
         style={[
           styles.image,
           { borderRadius: dimensions.borderRadius },
