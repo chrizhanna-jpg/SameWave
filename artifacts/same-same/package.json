@@ -19,6 +19,7 @@
     "build": "node scripts/build.js",
     "serve": "node server/serve.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:core": "node scripts/run-core-tests.mjs",
     "gen:atlas-iso": "node ./scripts/gen-atlas-iso-map.mjs",
     "gen:firecircle": "node ./scripts/gen-firecircle-assets.mjs",
     "setup:android-env": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-android-build-env.ps1",

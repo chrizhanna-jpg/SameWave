@@ -26,6 +26,7 @@ import type { EchoCard, Match, MyPhoto } from "@/context/AppContext";
 import {
   WAVES_TAB,
   WAVE_MUTUAL_TAGLINE,
+  type WavesSectionId,
 } from "@/data/waveRippleGlossary";
 import { fetchRecentWavesFeed, warmAuthedImageHeaders, type RecentWaveFeedItem } from "@/utils/api";
 import { prefetchMatchMyPhotoThumbs } from "@/utils/myPhotoPrefetch";
@@ -46,8 +47,6 @@ import { scrollPaddingAboveTabBar, tabBarTotalHeight } from "@/utils/tabBarSafeA
 import { timeAgo } from "@/utils/timeAgo";
 import { photoKey } from "@/utils/photoKey";
 import { photoCountryDisplay, resolveCaptureCountryCode } from "@/utils/photoCountry";
-
-type WaveSectionId = "received" | "caught" | "sent" | "world";
 
 function echoPairKey(a: string, b: string): string {
   return [a, b].sort().join(":");
@@ -104,7 +103,7 @@ function caughtWaveSubtitle(echo: EchoCard): string {
 }
 
 const WAVE_SECTIONS: {
-  id: WaveSectionId;
+  id: WavesSectionId;
   chip: keyof typeof WAVES_TAB;
   icon: "ripple" | "wave-glyph" | "globe";
 }[] = [
@@ -131,7 +130,7 @@ export default function WavesScreen() {
   const [celebratingId, setCelebratingId] = useState<string | null>(null);
   const [worldWaves, setWorldWaves] = useState<RecentWaveFeedItem[]>([]);
   const [worldLoading, setWorldLoading] = useState(false);
-  const [activeSection, setActiveSection] = useState<WaveSectionId>("sent");
+  const [activeSection, setActiveSection] = useState<WavesSectionId>("sent");
   const prevPendingRef = useRef(0);
   const [scrollViewportH, setScrollViewportH] = useState(0);
   const [scrollContentH, setScrollContentH] = useState(0);
@@ -226,13 +225,6 @@ export default function WavesScreen() {
     prevPendingRef.current = pendingEchoes.length;
   }, [pendingEchoes.length]);
 
-  // Load other users' Waves when the World filter is selected (even if sync is throttled).
-  useEffect(() => {
-    if (activeSection !== "world" || worldLoading) return;
-    if (worldWaves.length > 0) return;
-    void loadWorldWaves();
-  }, [activeSection, worldLoading, worldWaves.length, loadWorldWaves]);
-
   const loadWorldWaves = useCallback(async () => {
     setWorldLoading(true);
     try {
@@ -242,6 +234,13 @@ export default function WavesScreen() {
       setWorldLoading(false);
     }
   }, []);
+
+  // Load other users' Waves when the World filter is selected (even if sync is throttled).
+  useEffect(() => {
+    if (activeSection !== "world" || worldLoading) return;
+    if (worldWaves.length > 0) return;
+    void loadWorldWaves();
+  }, [activeSection, worldLoading, worldWaves.length, loadWorldWaves]);
 
   const matchesRef = useRef(matches);
   const myPhotosRef = useRef(myPhotos);
@@ -478,8 +477,8 @@ function WavesSectionBar({
   onChange,
   pendingReceived,
 }: {
-  active: WaveSectionId;
-  onChange: (id: WaveSectionId) => void;
+  active: WavesSectionId;
+  onChange: (id: WavesSectionId) => void;
   pendingReceived: number;
 }) {
   const colors = useColors();

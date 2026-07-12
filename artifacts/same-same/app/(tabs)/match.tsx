@@ -55,6 +55,7 @@ import {
   isSamplePhoto,
   type SamplePhoto,
 } from "@/data/samplePhotos";
+import { RIPPLE_SWIPE_LABEL } from "@/data/waveRippleGlossary";
 import { AiGeneratedBadge } from "@/components/AiGeneratedBadge";
 import { RemotePhotoImage, PhotoSkeleton } from "@/components/RemotePhotoImage";
 import { MatchPhotoDevOverlay } from "@/components/MatchPhotoDevOverlay";
@@ -2350,7 +2351,7 @@ export default function SwipeScreen() {
             ]}
           >
             <Text style={[styles.labelText, { color: colors.teal }]}>
-              WAVE
+              {RIPPLE_SWIPE_LABEL}
             </Text>
           </Reanimated.View>
 
