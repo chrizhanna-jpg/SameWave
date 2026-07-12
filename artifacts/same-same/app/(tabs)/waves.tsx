@@ -226,6 +226,13 @@ export default function WavesScreen() {
     prevPendingRef.current = pendingEchoes.length;
   }, [pendingEchoes.length]);
 
+  // Load other users' Waves when the World filter is selected (even if sync is throttled).
+  useEffect(() => {
+    if (activeSection !== "world" || worldLoading) return;
+    if (worldWaves.length > 0) return;
+    void loadWorldWaves();
+  }, [activeSection, worldLoading, worldWaves.length, loadWorldWaves]);
+
   const loadWorldWaves = useCallback(async () => {
     setWorldLoading(true);
     try {
@@ -252,9 +259,12 @@ export default function WavesScreen() {
       );
       const deferred = runAfterTabFocus(() => {
         reconcileMatchPhotos();
-        if (!shouldRunThrottledFocusWork("waves-sync", 30_000)) return;
-        void syncCloudData();
-        void loadWorldWaves();
+        if (shouldRunThrottledFocusWork("waves-world", 60_000)) {
+          void loadWorldWaves();
+        }
+        if (shouldRunThrottledFocusWork("waves-sync", 30_000)) {
+          void syncCloudData();
+        }
       });
       const t = setTimeout(() => markAllEchoesSeen(), 900);
       return () => {
