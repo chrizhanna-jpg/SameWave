@@ -1,13 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  FlatList,
   Platform,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
+  type ListRenderItemInfo,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
@@ -32,6 +33,7 @@ import {
   resolveEchoPhotoUri,
   resolveMatchMyPhotoUri,
   resolveMatchPhotoDisplay,
+  sanitizeUserOwnPhotoUri,
 } from "@/utils/photoDisplayUri";
 import { markTabVisited } from "@/utils/tabVisits";
 import { scrollPaddingAboveTabBar, tabBarTotalHeight } from "@/utils/tabBarSafeArea";
@@ -127,21 +129,32 @@ export default function WavesScreen() {
   const [worldLoading, setWorldLoading] = useState(false);
   const [activeSection, setActiveSection] = useState<WaveSectionId>("sent");
   const prevPendingRef = useRef(0);
-  const [scrollViewportH, setScrollViewportH] = useState(0);
-  const [scrollContentH, setScrollContentH] = useState(0);
-  const [scrollY, setScrollY] = useState(0);
+  // Scroll-hint chevron visibility. Tracked through a ref + a boolean state
+  // that only flips at the show/hide threshold, so scrolling no longer calls
+  // setState on every frame (the old per-frame `setScrollY` re-rendered the
+  // whole timeline mid-scroll — the main cause of the jumpy, stuttery feel).
+  const scrollMetricsRef = useRef({ viewport: 0, content: 0, y: 0 });
+  const [showScrollHint, setShowScrollHint] = useState(false);
 
-  useEffect(() => {
-    setScrollY(0);
-  }, [activeSection]);
-
-  const onScrollList = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    setScrollY(e.nativeEvent.contentOffset.y);
+  const recomputeScrollHint = useCallback(() => {
+    const { viewport, content, y } = scrollMetricsRef.current;
+    const maxY = Math.max(0, content - viewport);
+    const next = content > viewport + 8 && y < maxY - 6;
+    setShowScrollHint((prev) => (prev === next ? prev : next));
   }, []);
 
-  const maxScrollY = Math.max(0, scrollContentH - scrollViewportH);
-  const showScrollHint =
-    scrollContentH > scrollViewportH + 8 && scrollY < maxScrollY - 6;
+  const onScrollList = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      scrollMetricsRef.current.y = e.nativeEvent.contentOffset.y;
+      recomputeScrollHint();
+    },
+    [recomputeScrollHint],
+  );
+
+  useEffect(() => {
+    scrollMetricsRef.current.y = 0;
+    recomputeScrollHint();
+  }, [activeSection, recomputeScrollHint]);
 
   const topPadding = Platform.OS === "web" ? 56 : insets.top;
   const bottomPad = scrollPaddingAboveTabBar(insets);
@@ -247,19 +260,183 @@ export default function WavesScreen() {
     setRefreshing(false);
   };
 
-  const handleRespond = async (id: string, verdict: "same" | "different") => {
-    Haptics.impactAsync(
-      verdict === "same"
-        ? Haptics.ImpactFeedbackStyle.Medium
-        : Haptics.ImpactFeedbackStyle.Light,
-    );
-    const result = await respondToEcho(id, verdict);
-    if (result === "mutual") {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setCelebratingId(id);
-      setTimeout(() => setCelebratingId(null), 2500);
+  const handleRespond = useCallback(
+    async (id: string, verdict: "same" | "different") => {
+      Haptics.impactAsync(
+        verdict === "same"
+          ? Haptics.ImpactFeedbackStyle.Medium
+          : Haptics.ImpactFeedbackStyle.Light,
+      );
+      const result = await respondToEcho(id, verdict);
+      if (result === "mutual") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setCelebratingId(id);
+        setTimeout(() => setCelebratingId(null), 2500);
+      }
+    },
+    [respondToEcho],
+  );
+
+  // ── Virtualized timeline ────────────────────────────────────────────────
+  // Only one section is visible at a time, so we feed the active section's
+  // rows to a single FlatList. Virtualization means only the cards near the
+  // viewport mount their <RemotePhotoImage>s — so we no longer fire dozens of
+  // authed image requests at once (the cause of photos loading late, popping
+  // in, or staying black under network pressure), and scrolling stays smooth.
+  const listData = useMemo<ReadonlyArray<EchoCard | Match | RecentWaveFeedItem>>(
+    () => {
+      switch (activeSection) {
+        case "received":
+          return pendingEchoes;
+        case "caught":
+          return wavesCaught;
+        case "sent":
+          return ripplesSentDisplay;
+        case "world":
+          return worldWaves;
+        default:
+          return [];
+      }
+    },
+    [activeSection, pendingEchoes, wavesCaught, ripplesSentDisplay, worldWaves],
+  );
+
+  const keyExtractor = useCallback(
+    (item: EchoCard | Match | RecentWaveFeedItem, index: number) => {
+      if (activeSection === "world") {
+        return (item as RecentWaveFeedItem).echoId ?? `world-${index}`;
+      }
+      return (item as EchoCard | Match).id ?? `row-${index}`;
+    },
+    [activeSection],
+  );
+
+  const renderItem = useCallback(
+    ({ item }: ListRenderItemInfo<EchoCard | Match | RecentWaveFeedItem>) => {
+      switch (activeSection) {
+        case "received": {
+          const echo = item as EchoCard;
+          return (
+            <PendingRippleCard
+              echo={echo}
+              onRespond={handleRespond}
+              celebrating={celebratingId === echo.id}
+            />
+          );
+        }
+        case "caught":
+          return <WaveCaughtCard echo={item as EchoCard} />;
+        case "sent": {
+          const match = item as Match;
+          return (
+            <RippleSentCard
+              match={match}
+              myPhotos={myPhotos}
+              isWave={
+                mutualKeys.has(photoKey(match.theirPhoto)) ||
+                (!!match.theirPhotoId && mutualKeys.has(match.theirPhotoId))
+              }
+            />
+          );
+        }
+        case "world":
+          return <WorldWaveCard wave={item as RecentWaveFeedItem} />;
+        default:
+          return null;
+      }
+    },
+    [activeSection, handleRespond, celebratingId, myPhotos, mutualKeys],
+  );
+
+  const listHeader = useMemo(() => {
+    switch (activeSection) {
+      case "received":
+        return (
+          <SectionHeader
+            icon="ripple"
+            iconColor={colors.teal}
+            title={WAVES_TAB.ripplesReceivedTitle}
+            subtitle={WAVES_TAB.ripplesReceivedSub}
+          />
+        );
+      case "caught":
+        return (
+          <SectionHeader
+            icon="wave-glyph"
+            iconColor={colors.gold}
+            title={WAVES_TAB.wavesCaughtTitle}
+            subtitle={WAVES_TAB.wavesCaughtSub}
+          />
+        );
+      case "sent":
+        return (
+          <SectionHeader
+            icon="ripple"
+            iconColor={colors.primary}
+            title={WAVES_TAB.ripplesSentTitle}
+            subtitle={WAVES_TAB.ripplesSentSub}
+          />
+        );
+      case "world":
+        return (
+          <SectionHeader
+            icon="wave-glyph"
+            iconColor={colors.feedAccent}
+            title={WAVES_TAB.wavesAroundTitle}
+            subtitle={WAVES_TAB.wavesAroundSub}
+          />
+        );
+      default:
+        return null;
     }
-  };
+  }, [activeSection, colors]);
+
+  const listEmpty = useMemo(() => {
+    switch (activeSection) {
+      case "received":
+        return (
+          <SectionEmpty
+            icon="ripple"
+            iconColor={colors.teal}
+            title={WAVES_TAB.emptyTitle}
+            body={WAVES_TAB.emptyBody}
+          />
+        );
+      case "caught":
+        return (
+          <SectionEmpty
+            icon="wave-glyph"
+            iconColor={colors.gold}
+            title="No Waves caught yet"
+            body={WAVES_TAB.wavesCaughtSub}
+          />
+        );
+      case "sent":
+        return (
+          <SectionEmpty
+            icon="ripple"
+            iconColor={colors.primary}
+            title="No Ripples sent yet"
+            body="Ripple on photos in the match deck — they'll appear here while you wait for a Wave back."
+          />
+        );
+      case "world":
+        return worldLoading ? (
+          <Text style={[styles.loadingHint, { color: colors.mutedForeground }]}>
+            Loading Waves…
+          </Text>
+        ) : (
+          <SectionEmpty
+            icon="wave-glyph"
+            iconColor={colors.feedAccent}
+            title="No Waves around the world yet"
+            body={WAVES_TAB.wavesAroundEmpty}
+          />
+        );
+      default:
+        return null;
+    }
+  }, [activeSection, colors, worldLoading]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -290,14 +467,31 @@ export default function WavesScreen() {
       />
 
       <View style={styles.scrollWrap}>
-        <ScrollView
+        <FlatList
+          key={activeSection}
           style={styles.scroll}
           contentContainerStyle={[styles.content, { paddingBottom: bottomPad }]}
+          data={listData as Array<EchoCard | Match | RecentWaveFeedItem>}
+          keyExtractor={keyExtractor}
+          renderItem={renderItem}
+          ListHeaderComponent={listHeader}
+          ListEmptyComponent={listEmpty}
+          extraData={celebratingId}
           showsVerticalScrollIndicator
-          scrollEventThrottle={16}
-          onLayout={(e) => setScrollViewportH(e.nativeEvent.layout.height)}
-          onContentSizeChange={(_w, h) => setScrollContentH(h)}
+          scrollEventThrottle={32}
+          onLayout={(e) => {
+            scrollMetricsRef.current.viewport = e.nativeEvent.layout.height;
+            recomputeScrollHint();
+          }}
+          onContentSizeChange={(_w, h) => {
+            scrollMetricsRef.current.content = h;
+            recomputeScrollHint();
+          }}
           onScroll={onScrollList}
+          initialNumToRender={5}
+          maxToRenderPerBatch={5}
+          windowSize={7}
+          removeClippedSubviews={Platform.OS === "android"}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -305,116 +499,7 @@ export default function WavesScreen() {
               tintColor={colors.primary}
             />
           }
-        >
-        {activeSection === "received" ? (
-          <>
-            <SectionHeader
-              icon="ripple"
-              iconColor={colors.teal}
-              title={WAVES_TAB.ripplesReceivedTitle}
-              subtitle={WAVES_TAB.ripplesReceivedSub}
-            />
-            {pendingEchoes.length === 0 ? (
-              <SectionEmpty
-                icon="ripple"
-                iconColor={colors.teal}
-                title={WAVES_TAB.emptyTitle}
-                body={WAVES_TAB.emptyBody}
-              />
-            ) : (
-              pendingEchoes.map((echo) => (
-                <PendingRippleCard
-                  key={echo.id}
-                  echo={echo}
-                  onRespond={handleRespond}
-                  celebrating={celebratingId === echo.id}
-                />
-              ))
-            )}
-          </>
-        ) : null}
-
-        {activeSection === "caught" ? (
-          <>
-            <SectionHeader
-              icon="wave-glyph"
-              iconColor={colors.gold}
-              title={WAVES_TAB.wavesCaughtTitle}
-              subtitle={WAVES_TAB.wavesCaughtSub}
-            />
-            {wavesCaught.length === 0 ? (
-              <SectionEmpty
-                icon="wave-glyph"
-                iconColor={colors.gold}
-                title="No Waves caught yet"
-                body={WAVES_TAB.wavesCaughtSub}
-              />
-            ) : (
-              wavesCaught.map((echo) => (
-                <WaveCaughtCard key={echo.id} echo={echo} />
-              ))
-            )}
-          </>
-        ) : null}
-
-        {activeSection === "sent" ? (
-          <>
-            <SectionHeader
-              icon="ripple"
-              iconColor={colors.primary}
-              title={WAVES_TAB.ripplesSentTitle}
-              subtitle={WAVES_TAB.ripplesSentSub}
-            />
-            {ripplesSent.length === 0 ? (
-              <SectionEmpty
-                icon="ripple"
-                iconColor={colors.primary}
-                title="No Ripples sent yet"
-                body="Ripple on photos in the match deck — they'll appear here while you wait for a Wave back."
-              />
-            ) : (
-              ripplesSentDisplay.map((match) => (
-                <RippleSentCard
-                  key={match.id}
-                  match={match}
-                  myPhotos={myPhotos}
-                  isWave={
-                    mutualKeys.has(photoKey(match.theirPhoto)) ||
-                    (!!match.theirPhotoId && mutualKeys.has(match.theirPhotoId))
-                  }
-                />
-              ))
-            )}
-          </>
-        ) : null}
-
-        {activeSection === "world" ? (
-          <>
-            <SectionHeader
-              icon="wave-glyph"
-              iconColor={colors.feedAccent}
-              title={WAVES_TAB.wavesAroundTitle}
-              subtitle={WAVES_TAB.wavesAroundSub}
-            />
-            {worldLoading && worldWaves.length === 0 ? (
-              <Text style={[styles.loadingHint, { color: colors.mutedForeground }]}>
-                Loading Waves…
-              </Text>
-            ) : null}
-            {!worldLoading && worldWaves.length === 0 ? (
-              <SectionEmpty
-                icon="wave-glyph"
-                iconColor={colors.feedAccent}
-                title="No Waves around the world yet"
-                body={WAVES_TAB.wavesAroundEmpty}
-              />
-            ) : null}
-            {worldWaves.map((wave) => (
-              <WorldWaveCard key={wave.echoId} wave={wave} />
-            ))}
-          </>
-        ) : null}
-        </ScrollView>
+        />
 
         {showScrollHint ? (
           <>
@@ -808,7 +893,8 @@ function RippleSentCard({
 }) {
   const colors = useColors();
   const ago = timeAgo(new Date(match.timestamp));
-  const myUri = resolveMatchMyPhotoUri(match, myPhotos);
+  // "Yours" must never fall back to a stock/Unsplash image.
+  const myUri = sanitizeUserOwnPhotoUri(resolveMatchMyPhotoUri(match, myPhotos));
   const theirUri = resolveMatchPhotoDisplay(match, myPhotos).theirPhoto;
   const myDisp = photoCountryDisplay(match.myCaptureCountryCode, {
     sampleUri: myUri,
@@ -866,6 +952,7 @@ function RippleSentCard({
               style={styles.photo}
               recyclingKey={match.myPhotoId || myUri}
               transitionMs={0}
+              viewerOwnPhoto
             />
           ) : (
             <View
@@ -919,7 +1006,8 @@ function PhotoPair({
   theirs: EchoCard["theirs"];
 }) {
   const colors = useColors();
-  const mineUri = resolveEchoPhotoUri(mine);
+  // "Yours" must never fall back to a stock/Unsplash image.
+  const mineUri = sanitizeUserOwnPhotoUri(resolveEchoPhotoUri(mine));
   const theirsUri = resolveEchoPhotoUri(theirs);
   const myDisp = photoCountryDisplay(mine.captureCountryCode, {
     sampleUri: mineUri,
@@ -935,6 +1023,7 @@ function PhotoPair({
           style={styles.photo}
           recyclingKey={mine.id || mineUri}
           transitionMs={0}
+          viewerOwnPhoto
         />
         <Text style={[styles.photoLabel, { color: colors.mutedForeground }]}>
           {myDisp.flag} yours

@@ -8,6 +8,32 @@ import { matchCountryFieldsFromCapture } from "@/utils/photoCountry";
 /** Default max width for in-app photo streams (Ripple deck, explore, echoes). */
 export const DISPLAY_PHOTO_MAX_WIDTH = 960;
 
+/**
+ * True when a URI may appear in the viewer's OWN-photo slot ("Yours" in the
+ * Waves timeline, the Ripple deck's top card, My Photos). Curated stock served
+ * from the Unsplash CDN is never a real user upload, so it must never render
+ * there — a stock image under "Yours" is always a bug.
+ *
+ * Kept dependency-free (pure string test) so it is safe to call from hot
+ * render paths and from Node test scripts without pulling native modules.
+ */
+export function isAllowedUserOwnPhotoUri(
+  uri: string | undefined | null,
+): boolean {
+  const u = uri?.trim() ?? "";
+  if (!u) return false;
+  if (u.includes("images.unsplash.com")) return false;
+  return true;
+}
+
+/** Strip stock/Unsplash URIs before rendering a viewer-owned photo. */
+export function sanitizeUserOwnPhotoUri(
+  uri: string | undefined | null,
+): string {
+  const u = uri?.trim() ?? "";
+  return isAllowedUserOwnPhotoUri(u) ? u : "";
+}
+
 /** Authenticated stream URL for a server photo row. */
 export function serverPhotoImageUrl(
   photoId: string,

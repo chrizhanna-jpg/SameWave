@@ -178,6 +178,16 @@ export default function TabLayout() {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.mutedForeground,
         headerShown: false,
+        // Freeze unfocused tabs: their render tree, effects, timers and
+        // requestAnimationFrame loops (e.g. the Atlas globe animation, the
+        // Ripple deck's vibe-music effect) stop running while the tab is in
+        // the background. This is what keeps music from playing after you
+        // leave Ripple, stops the Atlas RAF from draining the CPU behind
+        // other tabs, and makes tab switches snappy instead of laggy.
+        freezeOnBlur: true,
+        // Don't mount a tab's screen until it's first focused — a cold start
+        // only pays for the Home tab, not every heavy screen at once.
+        lazy: true,
         tabBarShowLabel: true,
         tabBarLabelStyle: {
           fontSize: 10,

@@ -19,7 +19,10 @@ import {
   getPublicApiOrigin,
   getStagedProductionApiOrigin,
 } from "@/utils/publicEnv";
-import { withDisplayPhotoWidth } from "@/utils/photoDisplayUri";
+import {
+  sanitizeUserOwnPhotoUri,
+  withDisplayPhotoWidth,
+} from "@/utils/photoDisplayUri";
 import {
   normalizeUnsplashUri,
   UNSPLASH_FALLBACK_URI,
@@ -48,6 +51,13 @@ type Props = {
    * deck avoid playing a card's vibe over a wrong stock image.
    */
   onResolved?: (loadedRealImage: boolean) => void;
+  /**
+   * Viewer-owned photo slot ("Yours" in Waves, the Ripple deck top card, My
+   * Photos). Strips stock/Unsplash URIs up front and never falls back to the
+   * generic Unsplash placeholder — a stock image must never appear as the
+   * user's own photo. On failure it holds on the skeleton instead.
+   */
+  viewerOwnPhoto?: boolean;
 };
 
 // A flaky / restarting API used to blank EVERY authed image to a bare blue
@@ -126,19 +136,24 @@ export function RemotePhotoImage({
   transitionMs = 220,
   recyclingKey,
   onResolved,
+  viewerOwnPhoto = false,
 }: Props) {
   const onResolvedRef = useRef(onResolved);
   onResolvedRef.current = onResolved;
+  const safeUri = viewerOwnPhoto ? sanitizeUserOwnPhotoUri(uri) : uri;
+  const safeFallback = viewerOwnPhoto
+    ? sanitizeUserOwnPhotoUri(fallbackUri)
+    : fallbackUri;
   const normalized = useMemo(
-    () => withDisplayPhotoWidth(normalizeUnsplashUri(uri)),
-    [uri],
+    () => withDisplayPhotoWidth(normalizeUnsplashUri(safeUri)),
+    [safeUri],
   );
   const normalizedFallback = useMemo(() => {
-    const f = fallbackUri?.trim();
+    const f = safeFallback?.trim();
     if (!f) return null;
     const n = withDisplayPhotoWidth(normalizeUnsplashUri(f));
     return n && n !== normalized ? n : null;
-  }, [fallbackUri, normalized]);
+  }, [safeFallback, normalized]);
 
   // Source chain: primary → (dev hosted retry) → durable fallback →
   // (dev hosted retry) → Unsplash placeholder. Each source also retries
@@ -208,9 +223,12 @@ export function RemotePhotoImage({
     };
   }, [needsAuth, activeUri]);
 
-  const src = exhausted
-    ? UNSPLASH_FALLBACK_URI
-    : withRetryNonce(activeUri, attempt);
+  // Viewer-owned slots never show the generic Unsplash placeholder — a stock
+  // image under "Yours" is always wrong. Hold on the skeleton instead.
+  const src =
+    exhausted && !viewerOwnPhoto
+      ? UNSPLASH_FALLBACK_URI
+      : withRetryNonce(activeUri, attempt);
   // Keep the recycle id stable across retry nonces so the view isn't torn
   // down on every retry — only the source bytes are refetched.
   const stableKey =
@@ -265,12 +283,17 @@ export function RemotePhotoImage({
   // Auth headers always resolve (at minimum X-Device-Id), so this is a brief
   // transient state — render the skeleton, never a blank/blue gap.
   const waitingForAuth = needsAuth && !authHeaders && !exhausted;
-  const showSkeleton = waitingForAuth || !loaded;
+  // An empty source (e.g. a viewer-own slot whose only candidate was stock and
+  // got stripped, or a fully-exhausted viewer-own chain) has nothing to draw —
+  // stay on the skeleton rather than asking expo-image to load "".
+  const hasDrawableSource =
+    src.trim().length > 0 && !(viewerOwnPhoto && exhausted);
+  const showSkeleton = waitingForAuth || !loaded || !hasDrawableSource;
 
   return (
     <View style={[style as StyleProp<ViewStyle>, styles.container]}>
       {showSkeleton ? <PhotoSkeleton /> : null}
-      {!waitingForAuth ? (
+      {!waitingForAuth && hasDrawableSource ? (
         <Image
           source={
             needsAuth && authHeaders && !exhausted

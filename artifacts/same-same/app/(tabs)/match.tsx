@@ -533,8 +533,15 @@ export default function SwipeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
 
+  // True only while the Ripple tab is the focused screen. The vibe-music
+  // effect reads this so a background state change (e.g. a cloud sync landing
+  // while the user is on another tab) can never restart the deck's music while
+  // we're away — the "music keeps playing after leaving Ripple" bug.
+  const isScreenFocusedRef = useRef(true);
+
   useFocusEffect(
     useCallback(() => {
+      isScreenFocusedRef.current = true;
       markTabVisited("match");
       warmAuthedImageHeaders();
       // Kill BOTH Atlas ambience players before the card vibe starts. The
@@ -549,6 +556,7 @@ export default function SwipeScreen() {
       // no-ops if another screen has since taken over the singleton)
       // and any voice-clip preview the user started via a mic badge.
       return () => {
+        isScreenFocusedRef.current = false;
         void pauseIfLease(playLeaseRef.current);
         void pausePreview();
       };
@@ -1202,6 +1210,11 @@ export default function SwipeScreen() {
   }, [candidateImageReady]);
   useEffect(() => {
     if (!theirPhoto?.uri) return;
+    // Never (re)start the deck's music while the tab is blurred. The blur
+    // cleanup already paused playback; if a dep here changes off-screen (a
+    // background sync, a late candidate), just stay silent until the user
+    // returns and the focus effect restarts the current card's clip.
+    if (!isScreenFocusedRef.current) return;
     // Keep the matched card's vibe during the Ripple celebration overlay.
     if (flashMatchRef.current) return;
     // Don't play until the user has uploaded today's photo, over the
