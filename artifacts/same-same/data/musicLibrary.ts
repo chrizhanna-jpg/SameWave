@@ -32,6 +32,7 @@ import { getCatalogMusicRef } from "@/utils/serverCatalog";
 // "the music vibe id".
 export type MusicGenre =
   | "joy"
+  | "excited"
   | "overjoyed"
   | "elated"
   | "amusement"
@@ -161,6 +162,18 @@ export const MUSIC_LIBRARY: GenreMeta[] = [
       { id: "joy-2", label: "Skipping", url: T.cheeryMonday },
       { id: "joy-3", label: "First Bite", url: T.happyBoy },
       { id: "joy-4", label: "Confetti", url: T.lifeOfRiley },
+    ],
+  },
+  {
+    id: "excited",
+    label: "Excited",
+    emoji: "🙌",
+    vibe: "buzzing, upbeat, can't sit still",
+    clips: [
+      { id: "excited-1", label: "Buzz", url: T.wallpaper },
+      { id: "excited-2", label: "Spark", url: T.inspired },
+      { id: "excited-3", label: "Pacing", url: T.martyGotsAPlan },
+      { id: "excited-4", label: "Almost There", url: T.takeAChance },
     ],
   },
   {
@@ -578,6 +591,7 @@ export function getClip(genre: string | undefined | null, clipId: string | undef
 
 const VIBE_KEYWORDS: Record<MusicGenre, string[]> = {
   joy: ["smile", "laugh", "fun", "play", "kid", "ice cream", "color", "bright", "celebrate", "dance", "balloon"],
+  excited: ["excited", "excitement", "buzzing", "hype", "hyped", "pumped", "stoked", "amped", "eager", "anticipation", "anticipating", "countdown", "jitters", "restless", "fidget", "can't wait", "bouncing", "squeal", "gasp", "wide eyes", "energetic", "energy"],
   overjoyed: ["overjoyed", "ecstatic", "thrilled", "screaming", "jumping", "best day", "happy tears", "engaged", "newborn", "yes", "passed", "got in"],
   elated: ["summit", "win", "finish", "podium", "medal", "graduation", "first", "achievement", "top", "peak"],
   amusement: ["silly", "funny", "joke", "prank", "goofy", "meme", "weird", "quirky", "lol", "absurd"],
@@ -665,7 +679,11 @@ const THEME_HINTS: Record<string, MusicGenre> = {
   graduation: "pride",
   award: "pride",
   city: "stress",
-  party: "joy",
+  party: "excited",
+  hype: "excited",
+  pumped: "excited",
+  stoked: "excited",
+  excited: "excited",
   concert: "passion",
   silly: "amusement",
   funny: "amusement",
