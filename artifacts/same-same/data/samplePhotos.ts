@@ -109,6 +109,7 @@ export function shouldShowExpoMatchPhotoDebug(
 export const BANNED_STOCK_PHOTO_KEYS = new Set([
   "photo-1554118811-1e0d58224f24", // three-hand latte toast
   "photo-1559056199-9c55c27a1e69", // same toast, alternate id
+  "photo-1578662996442-48f60103fc96", // nearly black texture — not a drink photo
 ]);
 
 export function isBannedStockPhotoUri(uri: string | undefined | null): boolean {
@@ -498,7 +499,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   {
     id: "128",
     launchSlot: "tea_drinks",
-    uri: "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400",
+    uri: unsplashPhotoUrl("1497636577773-f1231844b336"),
     country: "Italy",
     countryCode: "IT",
     countryFlag: "🇮🇹",

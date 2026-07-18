@@ -23,6 +23,10 @@ import { useCountUp } from "@/hooks/useCountUp";
 import { getTodaysChallenge } from "@/data/samplePhotos";
 import { RIPPLE_ONE_LINER, WAVE_ONE_LINER } from "@/data/waveRippleGlossary";
 import { scrollPaddingAboveTabBar } from "@/utils/tabBarSafeArea";
+import {
+  navigatePlayTheme,
+  navigateStartRippling,
+} from "@/utils/rippleNavigation";
 
 export default function HomeScreen() {
   const colors = useColors();
@@ -165,7 +169,7 @@ export default function HomeScreen() {
 
         {/* Daily challenge — gradient depth, springs on press */}
         <PressableScale
-          onPress={() => router.push("/camera?intent=challenge")}
+          onPress={() => navigatePlayTheme(router, "challenge")}
           haptic="light"
           style={styles.fullWidth}
         >
@@ -191,7 +195,7 @@ export default function HomeScreen() {
         </PressableScale>
 
         <PressableScale
-          onPress={() => router.push("/camera?intent=interests")}
+          onPress={() => navigatePlayTheme(router, "interests")}
           haptic="light"
           style={styles.fullWidth}
         >
@@ -220,7 +224,7 @@ export default function HomeScreen() {
             Open → Snap → Match loop starts in one tap. Label intentionally
             stays "Start Rippling" — the ripple begins with the snap. */}
         <PressableScale
-          onPress={() => router.push("/in-camera?from=home")}
+          onPress={() => navigateStartRippling(router)}
           haptic="medium"
           style={styles.fullWidth}
         >
