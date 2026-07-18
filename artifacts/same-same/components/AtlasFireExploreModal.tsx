@@ -493,8 +493,7 @@ export function AtlasFireExploreModal({
                   decelerationRate="fast"
                   style={{ flex: 1, width }}
                   nestedScrollEnabled
-                  onScroll={onPhotoScroll}
-                  scrollEventThrottle={16}
+                  onMomentumScrollEnd={onPhotoScroll}
                   initialNumToRender={1}
                   maxToRenderPerBatch={2}
                   windowSize={3}

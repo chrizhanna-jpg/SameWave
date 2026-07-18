@@ -68,7 +68,17 @@ function touchMemory(
       .slice(0, keys.length - CACHE_META_DISK_MAX)
       .forEach((k) => delete diskIndex[k]);
   }
-  void persistDiskIndex();
+  void schedulePersistDiskIndex();
+}
+
+let persistDiskTimer: ReturnType<typeof setTimeout> | null = null;
+
+function schedulePersistDiskIndex(): void {
+  if (persistDiskTimer) return;
+  persistDiskTimer = setTimeout(() => {
+    persistDiskTimer = null;
+    void persistDiskIndex();
+  }, 2500);
 }
 
 async function persistDiskIndex(): Promise<void> {
