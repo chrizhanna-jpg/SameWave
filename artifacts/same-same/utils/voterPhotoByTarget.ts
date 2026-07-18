@@ -56,21 +56,26 @@ function writeMapEntry(
   theirPhotoId: string,
   myPhotoId: string,
   theirPhotoUri?: string,
+  overwrite = true,
 ): boolean {
   const pid = myPhotoId.trim();
   if (!pid) return false;
   let changed = false;
   const tid = normTargetId(theirPhotoId);
-  if (tid && map[tid] !== pid) {
-    map[tid] = pid;
-    changed = true;
+  if (tid && (overwrite || !map[tid])) {
+    if (map[tid] !== pid) {
+      map[tid] = pid;
+      changed = true;
+    }
   }
   const pk = photoKey(theirPhotoUri ?? "");
   if (pk) {
     const pkKey = `pk:${pk}`;
-    if (map[pkKey] !== pid) {
-      map[pkKey] = pid;
-      changed = true;
+    if (overwrite || !map[pkKey]) {
+      if (map[pkKey] !== pid) {
+        map[pkKey] = pid;
+        changed = true;
+      }
     }
   }
   return changed;
@@ -126,7 +131,7 @@ export async function rememberVoterPhotoForTarget(
   await persistMap(map);
 }
 
-/** Bulk import from cloud journey rows. */
+/** Bulk import from cloud journey rows — never overwrite local swipe-time entries. */
 export async function importVoterPhotosFromJourney(
   rows: Array<{ theirPhotoId?: string | null; myPhotoId?: string | null }>,
 ): Promise<void> {
@@ -134,7 +139,15 @@ export async function importVoterPhotosFromJourney(
   const map = memMap ?? (await readMap());
   let changed = false;
   for (const row of rows) {
-    if (writeMapEntry(map, row.theirPhotoId ?? "", row.myPhotoId ?? "")) {
+    if (
+      writeMapEntry(
+        map,
+        row.theirPhotoId ?? "",
+        row.myPhotoId ?? "",
+        undefined,
+        false,
+      )
+    ) {
       changed = true;
     }
   }
