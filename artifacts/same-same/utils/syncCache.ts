@@ -4,6 +4,7 @@ import type { EchoCard, Match } from "@/context/AppContext";
 import type { AtlasConnection, AtlasCountry } from "@/utils/api";
 import { photoKey } from "@/utils/photoKey";
 import { photoCountryDisplay } from "@/utils/photoCountry";
+import { isPersistentPhotoUri } from "@/utils/localPhotoPaths";
 
 const CELEBRATED_KEY = "samesame_celebrated_echo_ids";
 const ECHO_CACHE_KEY = "samesame_echo_cache";
@@ -44,6 +45,7 @@ export function shouldPersistRemoteUri(uri: string | undefined): boolean {
   const u = uri.trim();
   // Inline base64 can exceed AsyncStorage limits; remote URLs are safe to keep.
   if (u.startsWith("data:")) return false;
+  if (isPersistentPhotoUri(u)) return true;
   return u.startsWith("http://") || u.startsWith("https://");
 }
 
@@ -133,6 +135,20 @@ export function parsePersistedEchoes(raw: unknown): EchoCard[] {
   return out;
 }
 
+function preferStoredMyPhoto(existing: string, incoming: string): string {
+  const ex = existing?.trim() ?? "";
+  const inc = incoming?.trim() ?? "";
+  if (
+    ex &&
+    (isPersistentPhotoUri(ex) ||
+      ex.startsWith("file:") ||
+      ex.startsWith("content:"))
+  ) {
+    return ex;
+  }
+  return inc || ex;
+}
+
 export function mergeMatchesById(prev: Match[], incoming: Match[]): Match[] {
   if (incoming.length === 0) return prev;
 
@@ -141,11 +157,11 @@ export function mergeMatchesById(prev: Match[], incoming: Match[]): Match[] {
     ...m,
     // Keep the local swipe id so late voter-photo patches still match.
     id: existing.id || m.id,
-    myPhoto: m.myPhoto || existing.myPhoto,
+    myPhoto: preferStoredMyPhoto(existing.myPhoto, m.myPhoto),
     theirPhoto: m.theirPhoto || existing.theirPhoto,
     theirPhotoId: m.theirPhotoId || existing.theirPhotoId,
-    myPhotoId: m.myPhotoId || existing.myPhotoId,
-    myPhotoUploadedAt: m.myPhotoUploadedAt || existing.myPhotoUploadedAt,
+    myPhotoId: existing.myPhotoId || m.myPhotoId,
+    myPhotoUploadedAt: existing.myPhotoUploadedAt || m.myPhotoUploadedAt,
   });
 
   const merged: Match[] = prev.map((m) => ({ ...m }));
