@@ -27,7 +27,8 @@ import {
   WAVES_TAB,
   WAVE_MUTUAL_TAGLINE,
 } from "@/data/waveRippleGlossary";
-import { fetchRecentWavesFeed, type RecentWaveFeedItem } from "@/utils/api";
+import { fetchRecentWavesFeed, warmAuthedImageHeaders, type RecentWaveFeedItem } from "@/utils/api";
+import { prefetchMatchMyPhotoThumbs } from "@/utils/myPhotoPrefetch";
 import {
   enrichMatchesForStorage,
   resolveEchoPhotoUri,
@@ -234,6 +235,9 @@ export default function WavesScreen() {
   useFocusEffect(
     useCallback(() => {
       markTabVisited("waves");
+      warmAuthedImageHeaders();
+      reconcileMatchPhotos();
+      prefetchMatchMyPhotoThumbs(matches, myPhotos, 20);
       const deferred = runAfterTabFocus(() => {
         if (!shouldRunThrottledFocusWork("waves-sync", 30_000)) return;
         reconcileMatchPhotos();
@@ -247,6 +251,8 @@ export default function WavesScreen() {
         clearTimeout(t);
       };
     }, [
+      matches,
+      myPhotos,
       refreshEchoes,
       syncCloudData,
       markAllEchoesSeen,

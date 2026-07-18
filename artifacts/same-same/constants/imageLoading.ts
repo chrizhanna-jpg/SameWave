@@ -7,6 +7,24 @@ export const IMAGE_LOAD_V2 =
   process.env.EXPO_PUBLIC_IMAGE_LOAD_V2 === "true" ||
   process.env.EXPO_PUBLIC_IMAGE_LOAD_V2 === "1";
 
+/** Flip via EXPO_PUBLIC_IMAGE_PERSISTENCE_V2=false to disable canary. */
+export function isImagePersistenceEnabled(): boolean {
+  if (
+    process.env.EXPO_PUBLIC_IMAGE_PERSISTENCE_V2 === "false" ||
+    process.env.EXPO_PUBLIC_IMAGE_PERSISTENCE_V2 === "0"
+  ) {
+    return false;
+  }
+  return (
+    process.env.EXPO_PUBLIC_IMAGE_LOAD_V2 === "true" ||
+    process.env.EXPO_PUBLIC_IMAGE_LOAD_V2 === "1" ||
+    process.env.EXPO_PUBLIC_IMAGE_PERSISTENCE_V2 === "true" ||
+    process.env.EXPO_PUBLIC_IMAGE_PERSISTENCE_V2 === "1"
+  );
+}
+
+export const IMAGE_PERSISTENCE_V2 = isImagePersistenceEnabled();
+
 /** Max width sent as the primary upload payload (replaces huge library originals). */
 export const UPLOAD_DISPLAY_WIDTH = 960;
 
