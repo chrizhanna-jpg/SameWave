@@ -39,6 +39,9 @@ yarn-error.*
 credentials.json
 **/keystore.jks
 
+# Local AAB output (build:aab:local)
+aab/
+
 # typescript
 *.tsbuildinfo
 .vercel

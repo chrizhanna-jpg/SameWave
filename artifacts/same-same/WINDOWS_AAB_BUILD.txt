@@ -1,39 +1,12 @@
-SameWave — Windows local AAB checklist
-=====================================
+SameWave — Windows local AAB (same as vc43 build)
+================================================
 
-CANONICAL OUTPUT (always use these for Play upload):
-  C:\w\app\aab\SameWave-latest.aab
-  C:\w\app\aab\SameWave-vc<versionCode>.aab   (versioned copy)
+1. Bump versionCode in app.json (already done in repo)
+2. From repo checkout:
+     cd artifacts\same-same
+     pnpm run build:aab:local
+3. Upload:
+     C:\w\app\aab\SameWave-vc47.aab
 
-Gradle also writes:
-  C:\w\app\android\app\build\outputs\bundle\release\app-release.aab
-
-COMMAND (from repo or from C:\w\app):
-  cd C:\Global-Unity-Match\artifacts\same-same
-  pnpm run build:aab:local
-
-The script syncs sources into C:\w\app, builds there, then copies the .aab into C:\w\app\aab\.
-
-REQUIREMENTS ON YOUR PC
------------------------
-[ ] Deploy tree at C:\w\app (app.json + android/ + node_modules)
-[ ] Android Studio + SDK (JAVA_HOME = Studio JBR)
-[ ] credentials.json + credentials\android\keystore.jks in C:\w\app
-[ ] LongPathsEnabled = 1 (optional; C:\w\app keeps native paths short)
-
-ONE-TIME DEPLOY TREE SETUP (if C:\w\app is missing)
--------------------------------------------------
-  pnpm --filter @workspace/same-same deploy C:\w\app --legacy
-  cd C:\w\app
-  pnpm install
-  pnpm exec eas credentials -p android   (keystore into C:\w\app\credentials\)
-
-RENDER (for testers using the AAB)
-----------------------------------
-[ ] API deployed from main (POST /api/photos/atlas/explore on samewave.onrender.com)
-[ ] CLERK_SECRET_KEY + OPENAI_API_KEY on Render
-
-OVERRIDES (rare)
------------------
-  SW_BUILD_ROOT=C:\other\path     — different deploy tree
-  SW_AAB_OUTPUT_DIR=C:\w\app\aab  — default is already C:\w\app\aab
+This is the identical workflow used for SameWave-vc43.aab:
+  sync repo -> C:\w\app, Gradle bundleRelease, copy to C:\w\app\aab\
