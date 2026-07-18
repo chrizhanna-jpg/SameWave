@@ -14,6 +14,10 @@ import { CelebrationMatchChips } from "@/components/CelebrationMatchChips";
 import { RemotePhotoImage } from "@/components/RemotePhotoImage";
 import { HERO_DISPLAY_WIDTH } from "@/utils/photoDisplayUri";
 import {
+  explorePhotoUriNeedsAuth,
+  warmAuthedImageHeaders,
+} from "@/utils/api";
+import {
   CelebrationSwipeDismissHint,
   CelebrationSwipeHandle,
   celebrationDragScale,
@@ -174,6 +178,12 @@ export function MatchFlash({
 
   useEffect(() => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (
+      explorePhotoUriNeedsAuth(myPhotoUri ?? "") ||
+      explorePhotoUriNeedsAuth(myPhotoFallbackUri ?? "")
+    ) {
+      warmAuthedImageHeaders();
+    }
     Animated.parallel([
       Animated.timing(fade, {
         toValue: 1,
