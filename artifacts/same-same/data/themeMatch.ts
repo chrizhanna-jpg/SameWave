@@ -42,7 +42,7 @@ export const DAILY_CHALLENGES = [
   { id: "furniture", title: "Your favourite chair", description: "Sofa, stool, bench, the seat you love", emoji: "🪑" },
   { id: "games", title: "What you're playing", description: "Board game, video game, cards, anything", emoji: "🎲" },
   { id: "hobbies", title: "Your hobby right now", description: "What you've been into lately", emoji: "🧶" },
-  { id: "passions", title: "Your passion", description: "The thing you'd stay up all night for", emoji: "❤️‍🔥" },
+  { id: "passion", title: "Your passion", description: "The thing you'd stay up all night for", emoji: "❤️‍🔥" },
   { id: "birds", title: "A bird you spotted", description: "Backyard, balcony, park, anywhere", emoji: "🐦" },
   { id: "plants", title: "A plant you noticed", description: "House plant, tree, weed, flower — close-up", emoji: "🪴" },
   { id: "music", title: "Your music", description: "What's playing — vinyl, speaker, headphones, anything", emoji: "🎵" },
@@ -89,18 +89,18 @@ export const THEME_ADJACENCY: Record<string, string[]> = {
   pets: ["nature", "joy", "birds"],
   furniture: ["plant", "hobbies", "objects"],
   games: ["hobbies", "joy", "playing"],
-  hobbies: ["games", "made", "music", "passions", "art", "fishing", "garden"],
+  hobbies: ["games", "made", "music", "passion", "art", "fishing", "garden"],
   birds: ["nature", "pets", "plants"],
   plants: ["nature", "plant", "furniture", "garden", "butterfly"],
-  music: ["hobbies", "joy", "made", "passions", "listening", "concert", "festival"],
-  passions: ["music", "hobbies", "joy", "made", "concert", "gym"],
+  music: ["hobbies", "joy", "made", "passion", "listening", "concert", "festival"],
+  passion: ["music", "hobbies", "joy", "made", "concert", "gym"],
   selfie: ["wearing", "joy", "hands"],
   shopping: ["groceries", "made", "wearing"],
   cafe: ["coffee", "morning", "food"],
   objects: ["made", "wall", "smallthing"],
   chores: ["ritual", "made"],
   wearing: ["selfie", "shoes", "movement", "joy"],
-  movement: ["shoes", "passions", "playing", "yoga", "gym", "hiking", "swimming"],
+  movement: ["shoes", "passion", "playing", "yoga", "gym", "hiking", "swimming"],
   instrument: ["music", "hobbies", "made"],
   view: ["sky", "work", "nature"],
   weather: ["sky", "nature", "morning"],
@@ -127,16 +127,16 @@ export const THEME_ADJACENCY: Record<string, string[]> = {
   fishing: ["water", "nature", "hobbies", "movement"],
   hiking: ["nature", "movement", "travel", "camping"],
   yoga: ["movement", "ritual", "nature", "gym"],
-  gym: ["movement", "passions", "yoga", "shoes"],
+  gym: ["movement", "passion", "yoga", "shoes"],
   camping: ["nature", "hiking", "travel", "night"],
   travel: ["view", "commute", "beach", "nature"],
   beach: ["water", "nature", "travel", "swimming"],
   swimming: ["water", "beach", "movement", "travel"],
-  concert: ["music", "passions", "listening", "instrument"],
-  festival: ["concert", "music", "joy", "passions"],
+  concert: ["music", "passion", "listening", "instrument"],
+  festival: ["concert", "music", "joy", "passion"],
   wedding: ["joy", "wearing", "selfie", "food"],
   baby: ["joy", "pets", "hands", "smallthing"],
-  graduation: ["joy", "passions", "selfie", "wearing"],
+  graduation: ["joy", "passion", "selfie", "wearing"],
   birthday: ["joy", "food", "playing", "selfie"],
   newhome: ["furniture", "door", "plant", "objects"],
   cooking: ["food", "baking", "groceries", "hands"],
@@ -205,7 +205,7 @@ const THEME_HINTS: Record<string, string[]> = {
   ritual: ["ritual", "routine"],
   furniture: ["chair", "sofa", "couch", "stool", "bench"],
   hobbies: ["hobby", "hobbies"],
-  passions: ["passion", "passions"],
+  passion: ["passion", "passions"],
   smallthing: ["small", "tiny", "little thing"],
   butterfly: ["butterfly", "butterflies"],
   moth: ["moth", "moths"],
@@ -259,6 +259,9 @@ export function resolveChallengeThemeId(theme: string): string {
   const t = theme.trim().toLowerCase();
   if (!t) return "";
 
+  // Legacy plural id — photos and interests posts may still carry "passions".
+  if (t === "passions") return "passion";
+
   const byId = DAILY_CHALLENGES.find((c) => c.id === t);
   if (byId) return byId.id;
 
@@ -266,6 +269,7 @@ export function resolveChallengeThemeId(theme: string): string {
   if (byTitle) return byTitle.id;
 
   const stripped = stripThemePrefixes(t);
+  if (stripped === "passions") return "passion";
   const byStrippedId = DAILY_CHALLENGES.find((c) => c.id === stripped);
   if (byStrippedId) return byStrippedId.id;
   const byStrippedTitle = DAILY_CHALLENGES.find(
