@@ -33,6 +33,11 @@ import {
   serverPhotoImageUrl,
   uploadTimesEqual,
 } from "@/utils/photoDisplayUri";
+import { isImagePersistenceEnabled } from "@/constants/imageLoading";
+import {
+  isPersistentPhotoUri,
+  persistLocalPhotoCapture,
+} from "@/utils/localPhotoCache";
 import {
   createMyPhotoLocalId,
   findMyPhotoRow,
@@ -418,7 +423,7 @@ interface AppContextValue extends AppState {
     declaredCountryCode?: string,
     /** Real capture time (ISO) — EXIF for library picks, shutter instant for camera. */
     capturedAt?: string,
-  ) => void;
+  ) => string;
   /**
    * Patch a previously-added local photo with the backend ID returned by
    * the upload API. Called from the camera screen once the network round
@@ -430,7 +435,7 @@ interface AppContextValue extends AppState {
    * analysis (and persisted row). Empty server fields no-op so we do not
    * wipe good pre-upload client state when the server analysis failed.
    */
-  setMyPhotoBackendId: (uri: string, ack: MyPhotoUploadAck) => void;
+  setMyPhotoBackendId: (uri: string, ack: MyPhotoUploadAck, localId?: string) => void;
   /** Attach voter photo id to a swipe row after upload ack or late vote ack. */
   patchMatchVoterPhoto: (
     matchId: string,
@@ -446,6 +451,7 @@ interface AppContextValue extends AppState {
   setMyPhotoUploadState: (
     uri: string,
     state: NonNullable<MyPhoto["uploadState"]>,
+    localId?: string,
   ) => void;
   /** Re-promote an existing upload for today's match deck (no duplicate row). */
   activateMyPhotoForMatch: (
@@ -1386,10 +1392,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     captureCountryCode?: string,
     declaredCountryCode?: string,
     capturedAt?: string,
-  ) => {
+  ): string => {
+    const localId = createMyPhotoLocalId();
     const photo: MyPhoto = {
       uri,
-      localId: createMyPhotoLocalId(),
+      localId,
       uploadedAt: new Date().toISOString(),
       capturedAt,
       theme,
@@ -1410,28 +1417,38 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       uploadState: isAI ? undefined : "pending",
     };
     setState((prev) => {
-      // Adding a new photo is a "fresh chance" moment: this new
-      // photo may match candidates the user already saw (and
-      // dismissed without voting) for previous photos. Clear the
-      // local seen ledger so the next /candidates fetch doesn't
-      // re-send those IDs as excludeIds. The server independently
-      // wipes its seen_photos table on POST /photos for the same
-      // reason. The votes table is untouched on both sides — past
-      // explicit same/no decisions still stand.
       const newState = {
         ...prev,
         myPhotos: [photo, ...prev.myPhotos],
         seenPhotoKeys: [],
         seenPhotoIds: [],
       };
-      saveState(newState);
+      // In-memory update only — AsyncStorage write happens after durable copy exists.
       return newState;
     });
-  }, []);
 
-  const setMyPhotoBackendId = useCallback((uri: string, ack: MyPhotoUploadAck) => {
+    void (async () => {
+      let finalUri = uri;
+      if (!isAI && isImagePersistenceEnabled() && uri.trim()) {
+        const result = await persistLocalPhotoCapture(uri, localId);
+        if (result?.fullUri) finalUri = result.fullUri;
+      }
+      setState((prev) => {
+        const newPhotos = prev.myPhotos.map((p) =>
+          p.localId === localId ? { ...p, uri: finalUri } : p,
+        );
+        const newState = { ...prev, myPhotos: newPhotos };
+        saveState(newState);
+        return newState;
+      });
+    })();
+
+    return localId;
+  }, [saveState]);
+
+  const setMyPhotoBackendId = useCallback((uri: string, ack: MyPhotoUploadAck, localId?: string) => {
     setState((prev) => {
-      const target = findMyPhotoRow(prev.myPhotos, { uri });
+      const target = findMyPhotoRow(prev.myPhotos, { uri, localId });
       if (!target) return prev;
       let changed = false;
       const tagsEqual = (a: string[] | undefined, b: string[] | undefined) => {
@@ -1481,7 +1498,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         changed = true;
         const localUri = p.uri?.trim() ?? "";
         const keepLocalCapture =
-          localUri.startsWith("file:") || localUri.startsWith("content:");
+          localUri.startsWith("file:") ||
+          localUri.startsWith("content:") ||
+          isPersistentPhotoUri(localUri);
         return {
           ...p,
           backendId: ack.backendId,
@@ -1544,11 +1563,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           m.id === matchId || (!!tid && m.theirPhotoId?.trim() === tid);
         if (!isTarget) return m;
         changed = true;
-        return {
-          ...m,
-          myPhotoId: bid,
-          myPhoto: serverPhotoImageUrl(bid),
-        };
+        return enrichMatchMyPhotoFields(
+          { ...m, myPhotoId: bid },
+          prev.myPhotos,
+        );
       });
       if (!changed) return prev;
       const newState = { ...prev, matches };
@@ -1560,9 +1578,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const setMyPhotoUploadState = useCallback(
-    (uri: string, uploadState: NonNullable<MyPhoto["uploadState"]>) => {
+    (uri: string, uploadState: NonNullable<MyPhoto["uploadState"]>, localId?: string) => {
       setState((prev) => {
-        const target = findMyPhotoRow(prev.myPhotos, { uri });
+        const target = findMyPhotoRow(prev.myPhotos, { uri, localId });
         if (!target) return prev;
         let changed = false;
         const newPhotos = prev.myPhotos.map((p) => {
@@ -2022,6 +2040,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     }
   }, [refreshEchoes, refreshJourney, reconcileMatchPhotos]);
+
+  // Warm auth headers as soon as local state is ready — do not wait for
+  // cloud sync. Waves / recent-photo thumbnails need Bearer on first paint
+  // after an Expo reload, and Clerk may resolve a beat after hydration.
+  React.useEffect(() => {
+    if (!hasHydrated) return;
+    warmAuthedImageHeaders();
+  }, [hasHydrated]);
 
   // Background cloud sync after local cache is ready — never blocks the UI.
   React.useEffect(() => {
