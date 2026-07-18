@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import Constants from "expo-constants";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { scrollPaddingAboveTabBar } from "@/utils/tabBarSafeArea";
 import { router, useFocusEffect } from "expo-router";
@@ -35,6 +36,27 @@ import {
   WAVE_BLUE,
 } from "@/data/studioLegal";
 import { getPublicApiOrigin } from "@/utils/publicEnv";
+
+// Installed app version shown at the bottom of the tab. Prefer the native
+// values baked into the binary (what the user actually has installed) and
+// fall back to the Expo config when running in dev / web.
+function getInstalledVersionLabel(): string {
+  const versionName =
+    Constants.nativeApplicationVersion ??
+    Constants.expoConfig?.version ??
+    "?";
+  const nativeBuild = Constants.nativeBuildVersion;
+  const expoVc = Constants.expoConfig?.android?.versionCode;
+  const versionCode =
+    nativeBuild != null && nativeBuild !== ""
+      ? String(nativeBuild)
+      : typeof expoVc === "number"
+        ? String(expoVc)
+        : null;
+  return versionCode
+    ? `v${versionName} (build ${versionCode})`
+    : `v${versionName}`;
+}
 
 // Region buckets used by the World Map breakdown. Order roughly matches
 // what feels exciting to the user — Europe & Asia first since the
@@ -910,6 +932,13 @@ export default function ProfileScreen() {
             </Text>
           </View>
         )}
+
+        <Text
+          style={[styles.appVersion, { color: colors.mutedForeground }]}
+          accessibilityLabel={`App version ${getInstalledVersionLabel()}`}
+        >
+          SameWave {getInstalledVersionLabel()}
+        </Text>
       </ScrollView>
 
       <CountryPickerModal
@@ -1359,6 +1388,15 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: "Inter_500Medium",
     lineHeight: 16,
+  },
+  appVersion: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+    textAlign: "center",
+    letterSpacing: 0.3,
+    marginTop: 16,
+    marginBottom: 4,
+    opacity: 0.7,
   },
   studioContactEmail: {
     fontSize: 11,
