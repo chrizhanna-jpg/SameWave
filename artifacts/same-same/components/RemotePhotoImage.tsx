@@ -140,16 +140,20 @@ export function RemotePhotoImage({
 }: Props) {
   const onResolvedRef = useRef(onResolved);
   onResolvedRef.current = onResolved;
-  const safeUri = viewerOwnPhoto ? sanitizeUserOwnPhotoUri(uri) : uri;
+  // Coerce before any string method — a missing/undefined uri must never
+  // throw inside normalizeUnsplashUri (`.includes`) and take down the screen.
+  const rawUri = typeof uri === "string" ? uri : "";
+  const rawFallback = typeof fallbackUri === "string" ? fallbackUri : "";
+  const safeUri = viewerOwnPhoto ? sanitizeUserOwnPhotoUri(rawUri) : rawUri;
   const safeFallback = viewerOwnPhoto
-    ? sanitizeUserOwnPhotoUri(fallbackUri)
-    : fallbackUri;
+    ? sanitizeUserOwnPhotoUri(rawFallback)
+    : rawFallback;
   const normalized = useMemo(
-    () => withDisplayPhotoWidth(normalizeUnsplashUri(safeUri)),
+    () => withDisplayPhotoWidth(normalizeUnsplashUri(safeUri || "")),
     [safeUri],
   );
   const normalizedFallback = useMemo(() => {
-    const f = safeFallback?.trim();
+    const f = safeFallback.trim();
     if (!f) return null;
     const n = withDisplayPhotoWidth(normalizeUnsplashUri(f));
     return n && n !== normalized ? n : null;
@@ -225,14 +229,19 @@ export function RemotePhotoImage({
 
   // Viewer-owned slots never show the generic Unsplash placeholder — a stock
   // image under "Yours" is always wrong. Hold on the skeleton instead.
+  const drawableBase =
+    typeof activeUri === "string" && activeUri.trim().length > 0
+      ? activeUri
+      : "";
   const src =
     exhausted && !viewerOwnPhoto
       ? UNSPLASH_FALLBACK_URI
-      : withRetryNonce(activeUri, attempt);
+      : withRetryNonce(drawableBase, attempt);
   // Keep the recycle id stable across retry nonces so the view isn't torn
   // down on every retry — only the source bytes are refetched.
   const stableKey =
-    recyclingKey ?? (usedFallback ? `fb:${activeUri}` : activeUri);
+    recyclingKey ??
+    (usedFallback ? `fb:${drawableBase || "empty"}` : drawableBase || "empty");
 
   const advanceChain = () => {
     // Dev: retry the current source via the hosted origin first.
@@ -287,7 +296,8 @@ export function RemotePhotoImage({
   // got stripped, or a fully-exhausted viewer-own chain) has nothing to draw —
   // stay on the skeleton rather than asking expo-image to load "".
   const hasDrawableSource =
-    src.trim().length > 0 && !(viewerOwnPhoto && exhausted);
+    (typeof src === "string" ? src : "").trim().length > 0 &&
+    !(viewerOwnPhoto && exhausted);
   const showSkeleton = waitingForAuth || !loaded || !hasDrawableSource;
 
   return (

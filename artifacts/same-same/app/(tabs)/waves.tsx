@@ -1018,25 +1018,49 @@ function PhotoPair({
   return (
     <View style={styles.photosRow}>
       <View style={styles.photoCol}>
-        <RemotePhotoImage
-          uri={mineUri}
-          style={styles.photo}
-          recyclingKey={mine.id || mineUri}
-          transitionMs={0}
-          viewerOwnPhoto
-        />
+        {mineUri ? (
+          <RemotePhotoImage
+            uri={mineUri}
+            style={styles.photo}
+            recyclingKey={mine.id || mineUri}
+            transitionMs={0}
+            viewerOwnPhoto
+          />
+        ) : (
+          <View
+            style={[
+              styles.photo,
+              styles.photoMissing,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
+            <Icon name="ripple" size={22} color={colors.mutedForeground} />
+          </View>
+        )}
         <Text style={[styles.photoLabel, { color: colors.mutedForeground }]}>
           {myDisp.flag} yours
         </Text>
       </View>
       <Icon name="arrow-right" size={18} color={colors.mutedForeground} />
       <View style={styles.photoCol}>
-        <RemotePhotoImage
-          uri={theirsUri}
-          style={styles.photo}
-          recyclingKey={theirs.id || theirsUri}
-          transitionMs={0}
-        />
+        {theirsUri ? (
+          <RemotePhotoImage
+            uri={theirsUri}
+            style={styles.photo}
+            recyclingKey={theirs.id || theirsUri}
+            transitionMs={0}
+          />
+        ) : (
+          <View
+            style={[
+              styles.photo,
+              styles.photoMissing,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
+            <Icon name="ripple" size={22} color={colors.mutedForeground} />
+          </View>
+        )}
         <Text style={[styles.photoLabel, { color: colors.mutedForeground }]}>
           {theirDisp.flag} theirs
         </Text>

@@ -101,17 +101,23 @@ import {
 } from "@/utils/audio";
 import { sampleMatchStats } from "@/utils/sampleStats";
 import { photoCountryDisplay } from "@/utils/photoCountry";
-import { resolveMyPhotoDisplayUri, pickVoterPhotoBackendId, serverPhotoImageUrl } from "@/utils/photoDisplayUri";
+import {
+  isAllowedUserOwnPhotoUri,
+  pickVoterPhotoBackendId,
+  resolveMyPhotoDisplayUri,
+  sanitizeUserOwnPhotoUri,
+  serverPhotoImageUrl,
+  withDisplayPhotoWidth,
+} from "@/utils/photoDisplayUri";
 import { stopWavefireAmbience } from "@/utils/wavefireAmbience";
 import { stopFirecircleAmbience } from "@/utils/firecircleAudio";
-import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
+import { timeAgo } from "@/utils/timeAgo";
 import type { Match } from "@/context/AppContext";
 import { photoKey } from "@/utils/photoKey";
 import { stashMatchPhotoUris } from "@/utils/matchPhotoSnapshot";
 import { rememberVoterPhotoForTarget } from "@/utils/voterPhotoByTarget";
 import { RIPPLE_CARD_WIDTH } from "@/constants/ripplePhotoFrame";
 import { normalizeUnsplashUri } from "@/utils/unsplashUri";
-import { withDisplayPhotoWidth } from "@/utils/photoDisplayUri";
 
 const { width } = Dimensions.get("window");
 /** How far (px) a drag must travel before it counts as a vote. */
@@ -538,6 +544,9 @@ export default function SwipeScreen() {
   // while the user is on another tab) can never restart the deck's music while
   // we're away — the "music keeps playing after leaving Ripple" bug.
   const isScreenFocusedRef = useRef(true);
+  // Lease for the vibe clip THIS screen started. Declared before the focus
+  // effect so blur cleanup can always read a live ref (never TDZ).
+  const playLeaseRef = useRef<number>(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -600,6 +609,14 @@ export default function SwipeScreen() {
     if (myPhotos.length === 0) return undefined;
     const todayUtcDay = Math.floor(Date.now() / 86_400_000);
     const p = myPhotos[0];
+    // Never treat curated stock / Unsplash as "today's upload".
+    if (
+      isSamplePhoto(p.uri) ||
+      !isAllowedUserOwnPhotoUri(p.uri) ||
+      !isAllowedUserOwnPhotoUri(resolveMyPhotoDisplayUri(p))
+    ) {
+      return undefined;
+    }
     const uploadedUtcDay = Math.floor(
       new Date(p.uploadedAt).getTime() / 86_400_000,
     );
@@ -642,7 +659,9 @@ export default function SwipeScreen() {
   }>(() => {
     if (todaysPhoto) {
       return {
-        uri: resolveMyPhotoDisplayUri(todaysPhoto, { preferLocalCapture: true }),
+        uri: sanitizeUserOwnPhotoUri(
+          resolveMyPhotoDisplayUri(todaysPhoto, { preferLocalCapture: true }),
+        ),
         uploadedAt: todaysPhoto.uploadedAt,
         capturedAt: todaysPhoto.capturedAt,
         theme: todaysPhoto.theme,
@@ -650,16 +669,15 @@ export default function SwipeScreen() {
         subjects: todaysPhoto.subjects ?? [],
       };
     }
-    const sample = SAMPLE_PHOTOS[0];
+    // No upload today — never substitute a stock sample as "your photo".
     return {
-      uri: sample.uri,
-      uploadedAt: simulatedPostedAt(5).toISOString(),
-      capturedAt: sample.capturedAt,
-      theme: sample.theme,
-      tags: sample.tags,
-      subjects: sample.subjects ?? [],
+      uri: "",
+      uploadedAt: "",
+      theme: todaysChallenge.id,
+      tags: [],
+      subjects: [],
     };
-  }, [todaysPhoto]);
+  }, [todaysPhoto, todaysChallenge.id]);
 
   const myPhotoUri = myPhotoData.uri;
   // Durable fallback for the viewer's own photo: if the `file://` capture has
@@ -1170,11 +1188,6 @@ export default function SwipeScreen() {
   useEffect(() => {
     return onMuteChange(setMutedState);
   }, []);
-  // Lease handed back by the audio singleton for the most recent
-  // clip THIS screen started. The unmount cleanup uses it with
-  // stopIfLease() so we only stop audio we actually own — never
-  // another screen's freshly-started playback.
-  const playLeaseRef = useRef<number>(0);
   // True once the candidate's REAL image has actually rendered (not the
   // skeleton, not the stock placeholder). The audio effect below GATES the
   // start of playback on this so a card's vibe only begins once its photo is
@@ -1799,7 +1812,8 @@ export default function SwipeScreen() {
   // Treat the user as "no photo for today" if their last upload is from a
   // previous UTC day — this makes Start Matching prompt for a fresh photo
   // each new daily-challenge cycle instead of recycling yesterday's.
-  const hasUploadedPhoto = todaysPhoto !== undefined;
+  const hasUploadedPhoto =
+    todaysPhoto !== undefined && sanitizeUserOwnPhotoUri(myPhotoUri) !== "";
 
   // Production builds used to mount with realPool=[] and stock off, so
   // `initial` was null → permanent "all caught up" even after /candidates
@@ -2288,6 +2302,7 @@ export default function SwipeScreen() {
                 resizeMode="cover"
                 transitionMs={0}
                 recyclingKey={myPhotoRecyclingKey}
+                viewerOwnPhoto
               />
               {isAiPhoto(myPhotoUri) ? <AiGeneratedBadge size="sm" /> : null}
               {myPhotoDisplay.code ? (
