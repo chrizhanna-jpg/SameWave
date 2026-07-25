@@ -12,7 +12,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { Image } from "expo-image";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Reanimated, {
   Easing,
@@ -25,6 +24,7 @@ import Reanimated, {
   type SharedValue,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useIsFocused } from "@react-navigation/native";
 import { router, useFocusEffect } from "expo-router";
 import { markTabVisited } from "@/utils/tabVisits";
 import { runAfterTabFocus } from "@/utils/deferTabFocus";
@@ -55,6 +55,7 @@ import {
   isSamplePhoto,
   type SamplePhoto,
 } from "@/data/samplePhotos";
+import { RIPPLE_SWIPE_LABEL } from "@/data/waveRippleGlossary";
 import { AiGeneratedBadge } from "@/components/AiGeneratedBadge";
 import { RemotePhotoImage, PhotoSkeleton } from "@/components/RemotePhotoImage";
 import { MatchPhotoDevOverlay } from "@/components/MatchPhotoDevOverlay";
@@ -71,8 +72,6 @@ import {
   fetchMatchStats,
   markPhotosSeen,
   matchByObject,
-  authedImageHeaders,
-  explorePhotoUriNeedsAuth,
   warmAuthedImageHeaders,
   type CandidatePhoto,
 } from "@/utils/api";
@@ -92,7 +91,6 @@ import {
   markUserInteracted,
   onMuteChange,
   pause as pauseAudio,
-  pauseIfLease,
   pausePreview,
   playClip,
   prewarmClip,
@@ -104,8 +102,16 @@ import { sampleMatchStats } from "@/utils/sampleStats";
 import { photoCountryDisplay } from "@/utils/photoCountry";
 import {
   HERO_DISPLAY_WIDTH,
+  isAllowedUserOwnPhotoUri,
   resolveMyPhotoDisplayUri,
+  resolveMyPhotoFallbackUri,
+  resolveMatchMyPhotoFallbackUri,
+  resolveMatchMyPhotoFlashFallbackUri,
+  resolveMatchMyPhotoFlashUri,
+  resolveMatchMyPhotoUri,
+  pickMatchMyPhotoDisplayUri,
   pickVoterPhotoBackendId,
+  sanitizeUserOwnPhotoUri,
   serverPhotoImageUrl,
   withDisplayPhotoWidth,
 } from "@/utils/photoDisplayUri";
@@ -343,14 +349,30 @@ function countThemeRelevantCandidates(
   ).length;
 }
 
+function normalizeDeckPhotoUri(uri: string): string {
+  const trimmed = uri.trim();
+  if (!trimmed) return "";
+  let normalized = normalizeUnsplashUri(trimmed);
+  if (normalized.includes("images.unsplash.com")) {
+    try {
+      const url = new URL(normalized);
+      url.searchParams.set("w", String(HERO_DISPLAY_WIDTH));
+      return url.toString();
+    } catch {
+      return normalized;
+    }
+  }
+  return withDisplayPhotoWidth(normalized, HERO_DISPLAY_WIDTH);
+}
+
 function resolveLiveCandidateUri(c: CandidatePhoto): string {
   const preview = c.previewUri?.trim() ?? "";
   if (preview.startsWith("data:")) return preview;
   const raw = c.uri?.trim() ?? "";
   if (raw.startsWith("https://")) {
-    return withDisplayPhotoWidth(normalizeUnsplashUri(raw) ?? raw);
+    return normalizeDeckPhotoUri(raw);
   }
-  return serverPhotoImageUrl(c.id);
+  return serverPhotoImageUrl(c.id, HERO_DISPLAY_WIDTH);
 }
 
 function mapFetchedCandidates(
@@ -551,6 +573,7 @@ function getTheirPhoto(
 export default function SwipeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const isFocused = useIsFocused();
 
   useFocusEffect(
     useCallback(() => {
@@ -564,11 +587,11 @@ export default function SwipeScreen() {
       // audio source on this screen.
       void stopWavefireAmbience();
       void stopFirecircleAmbience();
-      // On blur: pause the swipe card's background music (lease-aware,
+      // On blur: stop the swipe card's background music (lease-aware,
       // no-ops if another screen has since taken over the singleton)
       // and any voice-clip preview the user started via a mic badge.
       return () => {
-        void pauseIfLease(playLeaseRef.current);
+        void stopIfLease(playLeaseRef.current);
         void pausePreview();
       };
     }, []),
@@ -601,6 +624,8 @@ export default function SwipeScreen() {
   const seenSet = React.useMemo(() => new Set(seenPhotoKeys), [seenPhotoKeys]);
   const seenSetRef = useRef(seenSet);
   seenSetRef.current = seenSet;
+  const seenPhotoIdsRef = useRef(seenPhotoIds);
+  seenPhotoIdsRef.current = seenPhotoIds;
   const todaysChallenge = getTodaysChallenge();
 
   // Today's photo only — if the user's most recent upload is from a
@@ -611,6 +636,14 @@ export default function SwipeScreen() {
     if (myPhotos.length === 0) return undefined;
     const todayUtcDay = Math.floor(Date.now() / 86_400_000);
     const p = myPhotos[0];
+    const hasServerId = Boolean(p.backendId?.trim());
+    if (
+      !hasServerId &&
+      (!isAllowedUserOwnPhotoUri(p.uri) ||
+        !isAllowedUserOwnPhotoUri(resolveMyPhotoDisplayUri(p)))
+    ) {
+      return undefined;
+    }
     const uploadedUtcDay = Math.floor(
       new Date(p.uploadedAt).getTime() / 86_400_000,
     );
@@ -653,7 +686,9 @@ export default function SwipeScreen() {
   }>(() => {
     if (todaysPhoto) {
       return {
-        uri: resolveMyPhotoDisplayUri(todaysPhoto, { preferLocalCapture: true }),
+        uri: sanitizeUserOwnPhotoUri(
+          resolveMyPhotoDisplayUri(todaysPhoto, { preferLocalCapture: true }),
+        ),
         uploadedAt: todaysPhoto.uploadedAt,
         capturedAt: todaysPhoto.capturedAt,
         theme: todaysPhoto.theme,
@@ -661,25 +696,24 @@ export default function SwipeScreen() {
         subjects: todaysPhoto.subjects ?? [],
       };
     }
-    const sample = SAMPLE_PHOTOS[0];
+    // No upload today — never substitute a stock sample as "your photo".
     return {
-      uri: sample.uri,
-      uploadedAt: simulatedPostedAt(5).toISOString(),
-      capturedAt: sample.capturedAt,
-      theme: sample.theme,
-      tags: sample.tags,
-      subjects: sample.subjects ?? [],
+      uri: "",
+      uploadedAt: "",
+      theme: todaysChallenge.id,
+      tags: [],
+      subjects: [],
     };
-  }, [todaysPhoto]);
+  }, [todaysPhoto, todaysChallenge.id]);
 
   const myPhotoUri = myPhotoData.uri;
   // Durable fallback for the viewer's own photo: if the `file://` capture has
   // been purged while backgrounded, RemotePhotoImage falls back to the authed
   // server image (their real upload) instead of a stock Unsplash placeholder.
   const myPhotoFallbackUri = React.useMemo(() => {
-    const bid = todaysPhoto?.backendId?.trim();
-    return bid ? serverPhotoImageUrl(bid, HERO_DISPLAY_WIDTH) : undefined;
-  }, [todaysPhoto?.backendId]);
+    if (!todaysPhoto) return undefined;
+    return resolveMyPhotoFallbackUri(todaysPhoto, HERO_DISPLAY_WIDTH);
+  }, [todaysPhoto]);
   /** Stable across local→server display URI swaps during upload sync. */
   const myPhotoSessionKey =
     todaysPhoto?.backendId?.trim() ||
@@ -826,6 +860,7 @@ export default function SwipeScreen() {
   }, [todaysPhoto?.backendId, runEchoVoteRetry]);
 
   useEffect(() => {
+    if (!todaysPhoto) return;
     let cancelled = false;
     fetchCandidates({
       theme: activeTheme,
@@ -846,7 +881,7 @@ export default function SwipeScreen() {
       // server-side `seen_photos` table — if a `markPhotosSeen` POST
       // ever dropped (flaky network, app backgrounded mid-flight),
       // this guarantees the photo still won't come back.
-      excludeIds: seenPhotoIds,
+      excludeIds: seenPhotoIdsRef.current,
     })
       .then((cands) => {
         if (cancelled) return;
@@ -877,13 +912,9 @@ export default function SwipeScreen() {
     return () => {
       cancelled = true;
     };
-    // mySubjectsKey: see comment on the useMemo. Including it ensures
-    // the candidate fetch re-runs after `setMyPhotoBackendId` patches
-    // the local photo with the upload-time subjects, so the deck
-    // re-ranks against the authoritative subjects.
-    // seenPhotoIds: re-fetch when the local seen ledger grows so we never
-    // surface a card the device already swiped past (belt over server gaps).
-  }, [activeTheme, myTagsKey, mySubjectsKey, seenPhotoIds]);
+    // Deck exclusion still uses seenSetRef on every pick — no per-swipe refetch.
+    // excludeIds is a snapshot at fetch time (theme/tags/upload changes only).
+  }, [activeTheme, myTagsKey, mySubjectsKey, todaysPhoto]);
 
   useEffect(() => {
     if (!usingSuggestedThemeFallback || !suggestedThemeId) return;
@@ -894,7 +925,7 @@ export default function SwipeScreen() {
       subjects: expandSubjectsForQuery(mySubjects),
       musicGenre: todaysPhoto?.musicGenre,
       limit: 24,
-      excludeIds: seenPhotoIds,
+      excludeIds: seenPhotoIdsRef.current,
     })
       .then((cands) => {
         if (cancelled) return;
@@ -925,7 +956,6 @@ export default function SwipeScreen() {
     myTagsKey,
     mySubjectsKey,
     todaysPhoto?.musicGenre,
-    seenPhotoIds,
   ]);
 
   const realPoolRef = useRef<SamplePhoto[]>(realPool);
@@ -1058,15 +1088,20 @@ export default function SwipeScreen() {
         setNoMore(true);
         return;
       }
+      const normalizedUri = normalizeDeckPhotoUri(next.photo.uri);
+      const photo =
+        normalizedUri && normalizedUri !== next.photo.uri
+          ? { ...next.photo, uri: normalizedUri }
+          : next.photo;
       const { requestId } = commitDisplayedCandidate(
         sessionDisplayedRef.current,
-        next.photo.uri,
+        photo.uri,
         reason,
       );
       candidateRequestIdRef.current = requestId;
-      candidateImageBindRef.current = { requestId, uri: next.photo.uri };
+      candidateImageBindRef.current = { requestId, uri: photo.uri };
       setCandidateDisplayToken(requestId);
-      setTheirPhoto(next.photo);
+      setTheirPhoto(photo);
       setMatchedTheme(next.matchedTheme);
       setSharedTags(next.sharedTags);
       setNoMore(false);
@@ -1242,6 +1277,14 @@ export default function SwipeScreen() {
     if (candidateImageReady) setCandidateImageGateOpen(true);
   }, [candidateImageReady]);
   useEffect(() => {
+    if (!isFocused) {
+      // Leaving the Ripple tab must silence vibe music even while MatchFlash
+      // is up — the flash keeps the clip playing on-tab by design, but a
+      // stale play lease can make pauseIfLease a no-op on blur.
+      void stopIfLease(playLeaseRef.current);
+      void pausePreview();
+      return;
+    }
     if (!theirPhoto?.uri) return;
     // Keep the matched card's vibe during the Ripple celebration overlay.
     if (flashMatchRef.current) return;
@@ -1293,6 +1336,7 @@ export default function SwipeScreen() {
     fullscreenUri,
     flashMatch,
     candidateImageGateOpen,
+    isFocused,
   ]);
 
   // Stop audio when the screen unmounts (tab switch, navigation
@@ -1332,6 +1376,7 @@ export default function SwipeScreen() {
         musicFocusInitRef.current = true;
         return;
       }
+      if (flashMatchRef.current) return;
       if (pendingAdvanceRef.current) {
         pendingAdvanceRef.current = false;
         // loadNextCandidate updates theirPhoto, which the music useEffect
@@ -1362,24 +1407,11 @@ export default function SwipeScreen() {
     Haptics.selectionAsync().catch(() => {});
   }, []);
 
-  const prefetchInflightRef = useRef(new Set<string>());
   const prefetchPhotoUri = useCallback((uri: string) => {
-    const normalized = withDisplayPhotoWidth(normalizeUnsplashUri(uri));
+    const normalized = normalizeDeckPhotoUri(uri);
     if (!normalized) return Promise.resolve();
-    if (prefetchInflightRef.current.has(normalized)) {
-      return Promise.resolve();
-    }
-    prefetchInflightRef.current.add(normalized);
-    const release = () => {
-      prefetchInflightRef.current.delete(normalized);
-    };
-    if (explorePhotoUriNeedsAuth(normalized)) {
-      return authedImageHeaders()
-        .then((headers) => Image.prefetch(normalized, { headers }))
-        .catch(() => {})
-        .finally(release);
-    }
-    return Image.prefetch(normalized).catch(() => {}).finally(release);
+    prefetchPhotoUris([normalized], { max: 1, priority: "hero" });
+    return Promise.resolve();
   }, []);
 
   // Audio analogue of prefetchPhotoUri: preload an upcoming card's vibe
@@ -1417,7 +1449,7 @@ export default function SwipeScreen() {
       for (let i = 0; i < count; i++) {
         const pick = pickDeckCandidate(skipKey, skipKey);
         if (!pick?.photo.uri) break;
-        uris.push(pick.photo.uri);
+        uris.push(normalizeDeckPhotoUri(pick.photo.uri));
         skipKey = photoKey(pick.photo.uri);
       }
       const ahead = IMAGE_LOAD_V2 ? PREFETCH_AHEAD_COUNT : count;
@@ -1591,17 +1623,28 @@ export default function SwipeScreen() {
         snapshotPhoto.createdAt ??
         new Date(Date.now() - snapshotPhoto.minutesAgo * 60000).toISOString();
 
-      prefetchDeckAhead(1, snapshotPhoto.uri);
+      InteractionManager.runAfterInteractions(() => {
+        prefetchDeckAhead(1, snapshotPhoto.uri);
+      });
 
       const onSwipeOutComplete = () => {
         const voterPhotoId = pickVoterPhotoBackendId(myPhotos, {
           uploadedAt: snapshotMyUploadedAt,
           preferUri: snapshotMyUri,
         });
-        const snapshotMyPhoto =
-          voterPhotoId && voterPhotoId.length > 0
-            ? serverPhotoImageUrl(voterPhotoId)
-            : snapshotMyUri;
+        const snapshotMyPhoto = pickMatchMyPhotoDisplayUri(
+          {
+            id: "",
+            myPhoto: snapshotMyUri,
+            myPhotoId: voterPhotoId,
+            myPhotoUploadedAt: snapshotMyUploadedAt,
+            theirPhoto: snapshotPhoto.uri,
+            theirPhotoId: snapshotPhoto.id,
+            timestamp: new Date().toISOString(),
+          },
+          myPhotos,
+          snapshotMyUri,
+        );
         // Build a match record for BOTH verdicts so the user can revisit
         // and flip a previous swipe from My Journey. Stats / countries /
         // badges only count "same" — the context handles that branching.
@@ -1851,7 +1894,8 @@ export default function SwipeScreen() {
   // Treat the user as "no photo for today" if their last upload is from a
   // previous UTC day — this makes Start Matching prompt for a fresh photo
   // each new daily-challenge cycle instead of recycling yesterday's.
-  const hasUploadedPhoto = todaysPhoto !== undefined;
+  const hasUploadedPhoto =
+    todaysPhoto !== undefined && sanitizeUserOwnPhotoUri(myPhotoUri) !== "";
 
   // Production builds used to mount with realPool=[] and stock off, so
   // `initial` was null → permanent "all caught up" even after /candidates
@@ -2104,7 +2148,7 @@ export default function SwipeScreen() {
                       // Same hard exclusion as the primary deck — we never
                       // want a previously-shown photo to resurface just
                       // because the user re-queried by subject matter.
-                      excludeIds: seenPhotoIds,
+                      excludeIds: seenPhotoIdsRef.current,
                     });
                     const ids = new Map<string, string>();
                     const exclude = buildExcludeKeys();
@@ -2314,7 +2358,7 @@ export default function SwipeScreen() {
             ]}
           >
             <Text style={[styles.labelText, { color: colors.teal }]}>
-              WAVE
+              {RIPPLE_SWIPE_LABEL}
             </Text>
           </Reanimated.View>
 
@@ -2337,6 +2381,7 @@ export default function SwipeScreen() {
                 recyclingKey={myPhotoRecyclingKey}
                 displayWidth={HERO_DISPLAY_WIDTH}
                 priority="hero"
+                viewerOwnPhoto
               />
               {isAiPhoto(myPhotoUri) ? <AiGeneratedBadge size="sm" /> : null}
               {myPhotoDisplay.code ? (
@@ -2519,12 +2564,11 @@ export default function SwipeScreen() {
             theirCaptureCountryCode={flashMatch.theirCaptureCountryCode}
             themeTitle={themeMeta?.title ?? flashMatch.theme ?? "the same thing"}
             themeEmoji={themeMeta?.emoji ?? "✨"}
-            myPhotoUri={flashMatch.myPhoto}
-            myPhotoFallbackUri={
-              flashMatch.myPhotoId
-                ? serverPhotoImageUrl(flashMatch.myPhotoId)
-                : myPhotoFallbackUri
-            }
+            myPhotoUri={resolveMatchMyPhotoFlashUri(flashMatch, myPhotos)}
+            myPhotoFallbackUri={resolveMatchMyPhotoFlashFallbackUri(
+              flashMatch,
+              myPhotos,
+            )}
             theirPhotoUri={flashMatch.theirPhoto}
             myPhotoCapturedAt={flashMatch.myPhotoCapturedAt}
             myPhotoSharedAt={flashMatch.myPhotoUploadedAt}
@@ -2581,6 +2625,7 @@ export default function SwipeScreen() {
                 }
                 style={styles.fullscreenImage}
                 resizeMode="contain"
+                viewerOwnPhoto={fullscreenUri === myPhotoUri}
               />
               {isAiPhoto(fullscreenUri) ? (
                 <AiGeneratedBadge
