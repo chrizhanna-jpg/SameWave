@@ -12,7 +12,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { Image } from "expo-image";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Reanimated, {
   Easing,
@@ -71,8 +70,6 @@ import {
   fetchMatchStats,
   markPhotosSeen,
   matchByObject,
-  authedImageHeaders,
-  explorePhotoUriNeedsAuth,
   warmAuthedImageHeaders,
   type CandidatePhoto,
 } from "@/utils/api";
@@ -105,6 +102,10 @@ import { photoCountryDisplay } from "@/utils/photoCountry";
 import {
   HERO_DISPLAY_WIDTH,
   resolveMyPhotoDisplayUri,
+  resolveMyPhotoFallbackUri,
+  resolveMatchMyPhotoFallbackUri,
+  resolveMatchMyPhotoUri,
+  pickMatchMyPhotoDisplayUri,
   pickVoterPhotoBackendId,
   serverPhotoImageUrl,
   withDisplayPhotoWidth,
@@ -343,14 +344,30 @@ function countThemeRelevantCandidates(
   ).length;
 }
 
+function normalizeDeckPhotoUri(uri: string): string {
+  const trimmed = uri.trim();
+  if (!trimmed) return "";
+  let normalized = normalizeUnsplashUri(trimmed);
+  if (normalized.includes("images.unsplash.com")) {
+    try {
+      const url = new URL(normalized);
+      url.searchParams.set("w", String(HERO_DISPLAY_WIDTH));
+      return url.toString();
+    } catch {
+      return normalized;
+    }
+  }
+  return withDisplayPhotoWidth(normalized, HERO_DISPLAY_WIDTH);
+}
+
 function resolveLiveCandidateUri(c: CandidatePhoto): string {
   const preview = c.previewUri?.trim() ?? "";
   if (preview.startsWith("data:")) return preview;
   const raw = c.uri?.trim() ?? "";
   if (raw.startsWith("https://")) {
-    return withDisplayPhotoWidth(normalizeUnsplashUri(raw) ?? raw);
+    return normalizeDeckPhotoUri(raw);
   }
-  return serverPhotoImageUrl(c.id);
+  return serverPhotoImageUrl(c.id, HERO_DISPLAY_WIDTH);
 }
 
 function mapFetchedCandidates(
@@ -677,9 +694,9 @@ export default function SwipeScreen() {
   // been purged while backgrounded, RemotePhotoImage falls back to the authed
   // server image (their real upload) instead of a stock Unsplash placeholder.
   const myPhotoFallbackUri = React.useMemo(() => {
-    const bid = todaysPhoto?.backendId?.trim();
-    return bid ? serverPhotoImageUrl(bid, HERO_DISPLAY_WIDTH) : undefined;
-  }, [todaysPhoto?.backendId]);
+    if (!todaysPhoto) return undefined;
+    return resolveMyPhotoFallbackUri(todaysPhoto, HERO_DISPLAY_WIDTH);
+  }, [todaysPhoto]);
   /** Stable across local→server display URI swaps during upload sync. */
   const myPhotoSessionKey =
     todaysPhoto?.backendId?.trim() ||
@@ -1058,15 +1075,20 @@ export default function SwipeScreen() {
         setNoMore(true);
         return;
       }
+      const normalizedUri = normalizeDeckPhotoUri(next.photo.uri);
+      const photo =
+        normalizedUri && normalizedUri !== next.photo.uri
+          ? { ...next.photo, uri: normalizedUri }
+          : next.photo;
       const { requestId } = commitDisplayedCandidate(
         sessionDisplayedRef.current,
-        next.photo.uri,
+        photo.uri,
         reason,
       );
       candidateRequestIdRef.current = requestId;
-      candidateImageBindRef.current = { requestId, uri: next.photo.uri };
+      candidateImageBindRef.current = { requestId, uri: photo.uri };
       setCandidateDisplayToken(requestId);
-      setTheirPhoto(next.photo);
+      setTheirPhoto(photo);
       setMatchedTheme(next.matchedTheme);
       setSharedTags(next.sharedTags);
       setNoMore(false);
@@ -1362,24 +1384,11 @@ export default function SwipeScreen() {
     Haptics.selectionAsync().catch(() => {});
   }, []);
 
-  const prefetchInflightRef = useRef(new Set<string>());
   const prefetchPhotoUri = useCallback((uri: string) => {
-    const normalized = withDisplayPhotoWidth(normalizeUnsplashUri(uri));
+    const normalized = normalizeDeckPhotoUri(uri);
     if (!normalized) return Promise.resolve();
-    if (prefetchInflightRef.current.has(normalized)) {
-      return Promise.resolve();
-    }
-    prefetchInflightRef.current.add(normalized);
-    const release = () => {
-      prefetchInflightRef.current.delete(normalized);
-    };
-    if (explorePhotoUriNeedsAuth(normalized)) {
-      return authedImageHeaders()
-        .then((headers) => Image.prefetch(normalized, { headers }))
-        .catch(() => {})
-        .finally(release);
-    }
-    return Image.prefetch(normalized).catch(() => {}).finally(release);
+    prefetchPhotoUris([normalized], { max: 1, priority: "hero" });
+    return Promise.resolve();
   }, []);
 
   // Audio analogue of prefetchPhotoUri: preload an upcoming card's vibe
@@ -1417,7 +1426,7 @@ export default function SwipeScreen() {
       for (let i = 0; i < count; i++) {
         const pick = pickDeckCandidate(skipKey, skipKey);
         if (!pick?.photo.uri) break;
-        uris.push(pick.photo.uri);
+        uris.push(normalizeDeckPhotoUri(pick.photo.uri));
         skipKey = photoKey(pick.photo.uri);
       }
       const ahead = IMAGE_LOAD_V2 ? PREFETCH_AHEAD_COUNT : count;
@@ -1598,10 +1607,17 @@ export default function SwipeScreen() {
           uploadedAt: snapshotMyUploadedAt,
           preferUri: snapshotMyUri,
         });
-        const snapshotMyPhoto =
-          voterPhotoId && voterPhotoId.length > 0
-            ? serverPhotoImageUrl(voterPhotoId)
-            : snapshotMyUri;
+        const snapshotMyPhoto = pickMatchMyPhotoDisplayUri(
+          {
+            id: "",
+            myPhoto: snapshotMyUri,
+            myPhotoId: voterPhotoId,
+            myPhotoUploadedAt: snapshotMyUploadedAt,
+            timestamp: new Date().toISOString(),
+          },
+          myPhotos,
+          snapshotMyUri,
+        );
         // Build a match record for BOTH verdicts so the user can revisit
         // and flip a previous swipe from My Journey. Stats / countries /
         // badges only count "same" — the context handles that branching.
@@ -2519,11 +2535,15 @@ export default function SwipeScreen() {
             theirCaptureCountryCode={flashMatch.theirCaptureCountryCode}
             themeTitle={themeMeta?.title ?? flashMatch.theme ?? "the same thing"}
             themeEmoji={themeMeta?.emoji ?? "✨"}
-            myPhotoUri={flashMatch.myPhoto}
+            myPhotoUri={
+              todaysPhoto
+                ? resolveMyPhotoDisplayUri(todaysPhoto)
+                : resolveMatchMyPhotoUri(flashMatch, myPhotos)
+            }
             myPhotoFallbackUri={
-              flashMatch.myPhotoId
-                ? serverPhotoImageUrl(flashMatch.myPhotoId)
-                : myPhotoFallbackUri
+              todaysPhoto
+                ? resolveMyPhotoFallbackUri(todaysPhoto, HERO_DISPLAY_WIDTH)
+                : resolveMatchMyPhotoFallbackUri(flashMatch, myPhotos)
             }
             theirPhotoUri={flashMatch.theirPhoto}
             myPhotoCapturedAt={flashMatch.myPhotoCapturedAt}

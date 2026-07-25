@@ -308,7 +308,7 @@ export default function InCameraScreen() {
           typeof myCountryCode === "string" && myCountryCode.length === 2
             ? myCountryCode.toUpperCase()
             : undefined;
-        addMyPhoto(
+        const uploadLocalId = addMyPhoto(
           displayUri,
           theme,
           tags,
@@ -336,6 +336,7 @@ export default function InCameraScreen() {
             {
               requestId,
               localUri: displayUri,
+              localId: uploadLocalId,
               theme,
               tags,
               musicGenre,

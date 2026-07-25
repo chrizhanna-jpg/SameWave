@@ -41,6 +41,7 @@ import {
   TAG_LIBRARY,
 } from "@/data/samplePhotos";
 import { analyzePhoto, reactivateMyPhoto, warmAuthedImageHeaders } from "@/utils/api";
+import { prefetchMyPhotoLibrary } from "@/utils/myPhotoPrefetch";
 import { detectCountryFromGPS } from "@/utils/gpsCountry";
 import {
   detectPhotoOrigin,
@@ -55,6 +56,7 @@ import {
   photoStreamFallbackUri,
   resolveMyPhotoDisplayUri,
   resolveMyPhotoThumbnailUri,
+  resolveMyPhotoFallbackUri,
 } from "@/utils/photoDisplayUri";
 import {
   MUSIC_LIBRARY,
@@ -272,6 +274,7 @@ export default function CameraScreen() {
     myPhotos,
     myCountryCode,
     myVibe,
+    reconcileMatchPhotos,
   } = useApp();
   const { proActive } = useProAccess();
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
@@ -919,6 +922,8 @@ export default function CameraScreen() {
   useFocusEffect(
     useCallback(() => {
       warmAuthedImageHeaders();
+      reconcileMatchPhotos();
+      prefetchMyPhotoLibrary(myPhotos, 8);
       const cap = consumePendingCapture();
       if (cap) {
         captureRequestIdRef.current = cap.requestId;
@@ -955,7 +960,7 @@ export default function CameraScreen() {
         void pausePreview();
         endCaptureTransition();
       };
-    }, []),
+    }, [myPhotos, reconcileMatchPhotos]),
   );
 
   const runAiSuggestions = () => {
@@ -1139,7 +1144,7 @@ export default function CameraScreen() {
         typeof myCountryCode === "string" && myCountryCode.length === 2
           ? myCountryCode.toUpperCase()
           : undefined;
-      addMyPhoto(
+      const uploadLocalId = addMyPhoto(
         localUri,
         finalTheme,
         merged,
@@ -1157,6 +1162,7 @@ export default function CameraScreen() {
         {
           requestId: uploadRequestId,
           localUri,
+          localId: uploadLocalId,
           theme: finalTheme,
           tags: merged,
           musicGenre: finalGenre,
@@ -1744,7 +1750,7 @@ export default function CameraScreen() {
                       {displayUri ? (
                         <RemotePhotoImage
                           uri={displayUri}
-                          fallbackUri={photoStreamFallbackUri(photo.backendId)}
+                          fallbackUri={resolveMyPhotoFallbackUri(photo)}
                           style={[styles.prevPhoto, { borderColor: colors.border }]}
                           resizeMode="cover"
                           transitionMs={0}

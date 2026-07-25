@@ -2132,10 +2132,6 @@ export const CURATED_BY_UNSPLASH_ID = {
     subjects: ["dumbbells","weights","workout","gym"],
     shapes: ["geometric","centered","lines","vertical"],
   },
-  "1578662996442-48f60103fc96": {
-    tags: ["coffee","drink","warm","cafe"],
-    subjects: ["coffee cup","latte art","wood table"],
-    shapes: ["circles","centered","horizontal"],
   },
   "1579454566790-f9e5697ddf36": {
     tags: ["yoga","fitness","home","outdoors"],

@@ -5,6 +5,10 @@
 (globalThis as { __DEV__?: boolean }).__DEV__ = true;
 process.env.EXPO_PUBLIC_API_URL = "https://samewave.onrender.com";
 process.env.EXPO_PUBLIC_HOSTED_API_URL = "https://samewave.onrender.com";
+process.env.EXPO_PUBLIC_IMAGE_LOAD_V2 = "true";
+process.env.EXPO_PUBLIC_IMAGE_PERSISTENCE_V2 = "true";
+process.env.SAMEWAVE_TEST_DOCUMENT_DIRECTORY =
+  "file:///data/user/0/com.samewave.app/files/";
 
 import {
   canonicalizePhotoStreamUri,
@@ -13,11 +17,16 @@ import {
   myPhotoRowKey,
   repairMyPhotos,
   resolveMatchMyPhotoUri,
+  resolveMyPhotoDisplayUri,
+  setDocumentDirectoryForTests,
   shouldCanonicalizePhotoStreamUri,
 } from "../utils/photoDisplayUri";
+import { persistentPhotoUriForLocalId } from "../utils/localPhotoPaths";
 import { mergeMatchesById } from "../utils/syncCache";
 import { setVoterPhotoMapForTests } from "../utils/voterPhotoByTarget";
 import type { Match, MyPhoto } from "../context/AppContext";
+
+setDocumentDirectoryForTests(process.env.SAMEWAVE_TEST_DOCUMENT_DIRECTORY!);
 
 function assert(label: string, uri: string, expectNonEmpty: boolean): void {
   const ok = expectNonEmpty ? uri.trim().length > 0 : uri.trim().length === 0;
@@ -278,6 +287,24 @@ assert(
   !sampleEnriched.myPhotoId && sampleEnriched.myPhoto.includes("unsplash")
     ? "ok"
     : sampleEnriched.myPhotoId ?? "",
+  true,
+);
+
+// H14: stripped uri + localId resolves to durable on-disk path
+const testLocalId = "22222222-2222-4222-8222-222222222222";
+const expectedPersistent = persistentPhotoUriForLocalId(
+  process.env.SAMEWAVE_TEST_DOCUMENT_DIRECTORY!,
+  testLocalId,
+);
+assert(
+  "resolve display from localId after storage strip",
+  resolveMyPhotoDisplayUri({
+    uri: "",
+    localId: testLocalId,
+    uploadState: "pending",
+  }) === expectedPersistent
+    ? expectedPersistent
+    : "",
   true,
 );
 
