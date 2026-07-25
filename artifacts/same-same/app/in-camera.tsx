@@ -30,10 +30,19 @@ import * as ImageManipulator from "expo-image-manipulator";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
+import { FlowIntentHeader } from "@/components/FlowIntentHeader";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { getTodaysChallenge } from "@/data/samplePhotos";
 import { suggestGenre, type MusicGenre } from "@/data/musicLibrary";
+import {
+  isActiveInterestsFlow,
+  isLegacyHomeRippleStart,
+  isPlayThemeIntent,
+  isRippleNavFixEnabled,
+  recordInterestsTelemetry,
+  resolvePostCaptureComposeHref,
+} from "@/utils/rippleNavigation";
 import {
   computeRipplePhotoViewportCrop,
   getRipplePhotoGuideRect,
@@ -137,9 +146,10 @@ export default function InCameraScreen() {
     myCountryCode,
     myVibe,
   } = useApp();
-  const { from, intent } = useLocalSearchParams<{
+  const { from, intent, flow } = useLocalSearchParams<{
     from?: string;
     intent?: string;
+    flow?: string;
   }>();
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<CameraType>("back");
@@ -162,6 +172,18 @@ export default function InCameraScreen() {
     () => getRipplePhotoGuideRect(frameInsets),
     [frameInsets],
   );
+  const challenge = useMemo(() => getTodaysChallenge(), []);
+  const flowVariant = useMemo((): "challenge" | "interests" | null => {
+    if (isPlayThemeIntent(intent)) return "challenge";
+    if (isActiveInterestsFlow({ flow, intent })) return "interests";
+    return null;
+  }, [flow, intent]);
+
+  useEffect(() => {
+    if (flowVariant === "interests") {
+      recordInterestsTelemetry("interests_view", { screen: "in-camera" });
+    }
+  }, [flowVariant]);
 
   useEffect(() => {
     if (permission === null) {
@@ -299,7 +321,11 @@ export default function InCameraScreen() {
       const capturedAt = new Date().toISOString();
       recordCameraEvent("camera.capture.success");
 
-      if (from === "home" && CAPTURE_FAST_MATCH) {
+      if (
+        !isRippleNavFixEnabled() &&
+        isLegacyHomeRippleStart(from) &&
+        CAPTURE_FAST_MATCH
+      ) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
           () => {},
         );
@@ -308,7 +334,7 @@ export default function InCameraScreen() {
           typeof myCountryCode === "string" && myCountryCode.length === 2
             ? myCountryCode.toUpperCase()
             : undefined;
-        addMyPhoto(
+        const uploadLocalId = addMyPhoto(
           displayUri,
           theme,
           tags,
@@ -336,6 +362,7 @@ export default function InCameraScreen() {
             {
               requestId,
               localUri: displayUri,
+              localId: uploadLocalId,
               theme,
               tags,
               musicGenre,
@@ -368,12 +395,9 @@ export default function InCameraScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
         () => {},
       );
-      if (from === "home" || intent) {
-        const q = new URLSearchParams();
-        if (from === "home") q.set("from", "home");
-        if (intent) q.set("intent", intent);
-        const suffix = q.toString();
-        router.replace(suffix ? `/camera?${suffix}` : "/camera");
+      const composeHref = resolvePostCaptureComposeHref({ flow, intent, from });
+      if (composeHref) {
+        router.replace(composeHref);
       } else {
         router.back();
       }
@@ -519,6 +543,27 @@ export default function InCameraScreen() {
           </TouchableOpacity>
         </View>
 
+        {flowVariant ? (
+          <View
+            style={[styles.flowHeaderWrap, { top: topPadding + 52 }]}
+            pointerEvents="none"
+          >
+            <FlowIntentHeader
+              variant={flowVariant}
+              presentation="overlay"
+              challenge={
+                flowVariant === "challenge"
+                  ? {
+                      title: challenge.title,
+                      emoji: challenge.emoji,
+                      description: challenge.description,
+                    }
+                  : undefined
+              }
+            />
+          </View>
+        ) : null}
+
         <View
           style={[styles.controls, { paddingBottom: bottomPadding + 20 }]}
           onLayout={() => {
@@ -636,6 +681,12 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.35)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  flowHeaderWrap: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    zIndex: 9,
   },
   guideViewport: {
     position: "absolute",
