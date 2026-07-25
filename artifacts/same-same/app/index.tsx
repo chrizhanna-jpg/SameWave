@@ -17,7 +17,7 @@ import { useApp } from "@/context/AppContext";
 // Routing post-tutorial / post-sign-in through "/" keeps the decision in
 // one place instead of hard-coding /(tabs) after OAuth.
 export default function Index() {
-  const { hasHydrated, onboardingComplete, appOpenCount, tutorialLaunchAck } =
+  const { hasHydrated, onboardingComplete, appOpenCount, tutorialLaunchAck, matches, myPhotos } =
     useApp();
   const { isLoaded, isSignedIn } = useAuth();
 
@@ -32,8 +32,11 @@ export default function Index() {
   // trails the open count for exactly one more launch (launch 2) before
   // catching up — that breaks any redirect loop within a session and caps the
   // replay at the first two opens.
+  const hasUsageHistory = matches.length > 0 || myPhotos.length > 0;
   const replayTutorial =
-    appOpenCount <= 2 && tutorialLaunchAck < appOpenCount;
+    !hasUsageHistory &&
+    appOpenCount <= 2 &&
+    tutorialLaunchAck < appOpenCount;
 
   if (!onboardingComplete || replayTutorial) {
     return <Redirect href="/onboarding" />;
