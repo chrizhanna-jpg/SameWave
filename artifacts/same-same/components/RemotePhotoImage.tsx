@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Easing,
@@ -32,6 +32,7 @@ import {
 } from "@/utils/unsplashUri";
 import { BLANK_FRAME_THRESHOLD_MS, CACHE_HIT_LATENCY_MS, IMAGE_LOAD_V2 } from "@/constants/imageLoading";
 import {
+  isLikelyCached,
   prioritizeHeroPrefetch,
   recordImageLoadComplete,
   recordImageLoadStart,
@@ -72,6 +73,22 @@ type Props = {
 
 const MAX_RETRIES_PER_SOURCE = 2;
 const RETRY_BACKOFF_MS = [500, 1300];
+/** Stop blocking the image mount if Clerk token warm-up stalls after reload. */
+const AUTH_RETRY_MAX = 14;
+
+function hasBearerAuth(headers: Record<string, string> | undefined): boolean {
+  return Boolean(headers?.Authorization?.startsWith("Bearer "));
+}
+
+function isOfflineSafePhotoUri(uri: string): boolean {
+  const trimmed = uri.trim();
+  if (!trimmed) return false;
+  return (
+    trimmed.startsWith("file:") ||
+    trimmed.startsWith("content:") ||
+    trimmed.startsWith("data:")
+  );
+}
 
 function normalizeRemotePhotoUri(uri: string, displayWidth?: number): string {
   const trimmed = uri.trim();
@@ -79,7 +96,17 @@ function normalizeRemotePhotoUri(uri: string, displayWidth?: number): string {
     ? canonicalizePhotoStreamUri(trimmed)
     : trimmed;
   const w = displayWidth && displayWidth > 0 ? displayWidth : undefined;
-  return withDisplayPhotoWidth(normalizeUnsplashUri(stream), w ?? undefined);
+  let normalized = normalizeUnsplashUri(stream);
+  if (w && normalized.includes("images.unsplash.com")) {
+    try {
+      const url = new URL(normalized);
+      url.searchParams.set("w", String(Math.round(w)));
+      normalized = url.toString();
+    } catch {
+      /* keep normalized */
+    }
+  }
+  return withDisplayPhotoWidth(normalized, w ?? undefined);
 }
 
 function rewriteApiOrigin(uri: string, origin: string): string | null {
@@ -190,13 +217,15 @@ export function RemotePhotoImage({
     }
   };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     loadGeneration.current += 1;
+    const authNeeded = explorePhotoUriNeedsAuth(normalized);
+    const warmStart = !authNeeded && isLikelyCached(normalized);
     setUsedFallback(false);
     setUseHosted(false);
     setExhausted(false);
     setAttempt(0);
-    setLoaded(false);
+    setLoaded(warmStart);
     clearRetryTimer();
     clearBlankTimer();
     return () => {
@@ -212,6 +241,15 @@ export function RemotePhotoImage({
       if (normalizedFallback) prioritizeHeroPrefetch(normalizedFallback);
     }
   }, [normalized, normalizedFallback, priority]);
+
+  useEffect(() => {
+    if (exhausted) return;
+    if (!normalized.trim() && normalizedFallback) {
+      setUsedFallback(true);
+      setUseHosted(false);
+      setAttempt(0);
+    }
+  }, [normalized, normalizedFallback, exhausted]);
 
   const baseUri =
     usedFallback && normalizedFallback ? normalizedFallback : normalized;
@@ -230,48 +268,102 @@ export function RemotePhotoImage({
 
   const [authHeaders, setAuthHeaders] = useState<
     Record<string, string> | undefined
-  >(() => (needsAuth ? peekAuthedImageHeaders() : undefined));
+  >(() => {
+    const cached = peekAuthedImageHeaders();
+    return hasBearerAuth(cached) ? cached : undefined;
+  });
 
   const activeUri = useHosted && hostedUri ? hostedUri : baseUri;
 
   useEffect(() => {
-    if (!needsAuth) {
-      setAuthHeaders(undefined);
+    if (!needsAuth || exhausted) {
+      if (!needsAuth) setAuthHeaders(undefined);
       return;
     }
+    setAuthHeaders(undefined);
     const cached = peekAuthedImageHeaders();
-    if (cached?.Authorization?.startsWith("Bearer ")) {
+    if (hasBearerAuth(cached)) {
       setAuthHeaders(cached);
       return;
     }
-    warmAuthedImageHeaders();
+
     let cancelled = false;
     let authAttempt = 0;
+    const authRetryTimer = {
+      current: null as ReturnType<typeof setTimeout> | null,
+    };
+
     const loadAuth = () => {
       const run =
         authAttempt === 0 ? authedImageHeaders() : refreshAuthedImageHeaders();
       void run.then((h) => {
         if (cancelled) return;
-        setAuthHeaders(h);
-        if (!h.Authorization?.startsWith("Bearer ") && authAttempt < 6) {
-          authAttempt += 1;
-          authRetryTimer.current = setTimeout(loadAuth, 350 * authAttempt);
+        if (hasBearerAuth(h)) {
+          setAuthHeaders(h);
+          return;
         }
+        if (authAttempt < AUTH_RETRY_MAX) {
+          authAttempt += 1;
+          authRetryTimer.current = setTimeout(
+            loadAuth,
+            Math.min(350 * authAttempt, 1800),
+          );
+          return;
+        }
+        // Never mount authed streams without Bearer — fall back to durable local URI.
+        if (normalizedFallback) {
+          setUsedFallback(true);
+          setUseHosted(false);
+          setAttempt(0);
+          setAuthHeaders(undefined);
+          return;
+        }
+        setAuthHeaders(h);
       });
     };
-    const authRetryTimer = { current: null as ReturnType<typeof setTimeout> | null };
+
+    warmAuthedImageHeaders();
     loadAuth();
     return () => {
       cancelled = true;
       if (authRetryTimer.current) clearTimeout(authRetryTimer.current);
     };
-  }, [needsAuth, activeUri]);
+  }, [needsAuth, exhausted, activeUri, normalizedFallback]);
+
+  const hasAuthForRequest = !needsAuth || hasBearerAuth(authHeaders);
+  const showOfflineFallbackWhileAuth =
+    needsAuth &&
+    !exhausted &&
+    !usedFallback &&
+    !hasAuthForRequest &&
+    !!normalizedFallback &&
+    isOfflineSafePhotoUri(normalizedFallback) &&
+    !isOfflineSafePhotoUri(activeUri);
+  const displayUri = showOfflineFallbackWhileAuth
+    ? normalizedFallback!
+    : activeUri;
+  const waitingForAuth =
+    needsAuth &&
+    !hasAuthForRequest &&
+    !exhausted &&
+    !usedFallback &&
+    !showOfflineFallbackWhileAuth;
+  const showSkeleton = waitingForAuth || !loaded;
+  const canMountImage =
+    !waitingForAuth &&
+    displayUri.trim().length > 0 &&
+    (hasAuthForRequest || showOfflineFallbackWhileAuth || !needsAuth);
 
   const src = exhausted
     ? UNSPLASH_FALLBACK_URI
-    : withRetryNonce(activeUri, attempt);
+    : withRetryNonce(displayUri, attempt);
   const stableKey =
-    recyclingKey ?? (usedFallback ? `fb:${activeUri}` : activeUri);
+    recyclingKey ??
+    (showOfflineFallbackWhileAuth
+      ? `local:${displayUri}`
+      : usedFallback
+        ? `fb:${displayUri}`
+        : displayUri);
 
   const advanceChain = () => {
     if (!useHosted && hostedUri) {
@@ -306,7 +398,10 @@ export function RemotePhotoImage({
       retryTimer.current = setTimeout(() => {
         if (needsAuth) {
           void refreshAuthedImageHeaders()
-            .then((h) => setAuthHeaders(h))
+            .then((h) => {
+              setAuthHeaders(h);
+              if (hasBearerAuth(h)) setAuthHeaders(h);
+            })
             .catch(() => {});
         }
         setLoaded(false);
@@ -316,9 +411,6 @@ export function RemotePhotoImage({
     }
     advanceChain();
   };
-
-  const waitingForAuth = needsAuth && !authHeaders && !exhausted;
-  const showSkeleton = waitingForAuth || !loaded;
 
   useEffect(() => {
     if (!showSkeleton || exhausted) {
@@ -335,8 +427,8 @@ export function RemotePhotoImage({
   useEffect(() => {
     if (waitingForAuth || exhausted) return;
     loadStartedAt.current = Date.now();
-    recordImageLoadStart(activeUri, priority);
-  }, [activeUri, waitingForAuth, exhausted, priority, manualRetry]);
+    recordImageLoadStart(displayUri, priority);
+  }, [displayUri, waitingForAuth, exhausted, priority, manualRetry]);
 
   const handleLoad = () => {
     const gen = loadGeneration.current;
@@ -347,18 +439,20 @@ export function RemotePhotoImage({
     const started = loadStartedAt.current;
     const elapsed = started != null ? Date.now() - started : undefined;
     if (started != null) {
-      recordImageLoadComplete(activeUri, elapsed ?? 0);
+      recordImageLoadComplete(displayUri, elapsed ?? 0);
     }
     if (
       IMAGE_LOAD_V2 &&
       elapsed != null &&
       elapsed <= CACHE_HIT_LATENCY_MS &&
-      classifyImageUri(activeUri) === "user_upload"
+      classifyImageUri(displayUri) === "user_upload"
     ) {
-      void validateUserPhotoInBackground(activeUri);
+      void validateUserPhotoInBackground(displayUri);
     }
     onResolvedRef.current?.(!exhausted);
   };
+
+  const handleLoadEnd = handleLoad;
 
   const handleManualRetry = () => {
     setExhausted(false);
@@ -372,10 +466,10 @@ export function RemotePhotoImage({
   return (
     <View style={[style as StyleProp<ViewStyle>, styles.container]}>
       {showSkeleton ? <PhotoSkeleton /> : null}
-      {!waitingForAuth ? (
+      {canMountImage ? (
         <Image
           source={
-            needsAuth && authHeaders && !exhausted
+            needsAuth && hasBearerAuth(authHeaders) && !exhausted && !showOfflineFallbackWhileAuth
               ? { uri: src, headers: authHeaders }
               : { uri: src }
           }
@@ -386,6 +480,7 @@ export function RemotePhotoImage({
           transition={transitionMs > 0 ? transitionMs : undefined}
           accessibilityLabel={accessibilityLabel}
           onLoad={handleLoad}
+          onLoadEnd={handleLoadEnd}
           onError={handleError}
         />
       ) : null}

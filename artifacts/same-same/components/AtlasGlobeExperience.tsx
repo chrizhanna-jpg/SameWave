@@ -665,6 +665,7 @@ export function AtlasGlobeExperience({
   const [, rafPulse] = useReducer((x: number) => x + 1, 0);
 
   useEffect(() => {
+    if (!isTabFocused) return;
     let id = 0;
     const loop = () => {
       timeRef.current = Date.now();
@@ -673,7 +674,7 @@ export function AtlasGlobeExperience({
     };
     id = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(id);
-  }, []);
+  }, [isTabFocused]);
 
   const normalized = useMemo(
     () => normalizeConnections(connections),
