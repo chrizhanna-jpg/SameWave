@@ -41,6 +41,7 @@ import {
   TAG_LIBRARY,
 } from "@/data/samplePhotos";
 import { analyzePhoto, reactivateMyPhoto, warmAuthedImageHeaders } from "@/utils/api";
+import { prefetchMyPhotoLibrary } from "@/utils/myPhotoPrefetch";
 import { detectCountryFromGPS } from "@/utils/gpsCountry";
 import {
   detectPhotoOrigin,
@@ -55,6 +56,7 @@ import {
   photoStreamFallbackUri,
   resolveMyPhotoDisplayUri,
   resolveMyPhotoThumbnailUri,
+  resolveMyPhotoFallbackUri,
 } from "@/utils/photoDisplayUri";
 import {
   MUSIC_LIBRARY,
@@ -81,6 +83,7 @@ import { AiGeneratedBadge } from "@/components/AiGeneratedBadge";
 import { MicBadge } from "@/components/MicBadge";
 import { useProAccess } from "@/hooks/useProAccess";
 import { gateProFeature } from "@/lib/proFeatures";
+import { rippleCreateCameraHref } from "@/utils/rippleNavigation";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
 
@@ -272,6 +275,7 @@ export default function CameraScreen() {
     myPhotos,
     myCountryCode,
     myVibe,
+    reconcileMatchPhotos,
   } = useApp();
   const { proActive } = useProAccess();
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
@@ -901,7 +905,9 @@ export default function CameraScreen() {
     // Open the in-app square-viewfinder camera. It pushes the captured
     // photo onto the captureBus and pops back; useFocusEffect below
     // picks it up the next time this screen regains focus.
-    router.push(postIntent ? `/in-camera?intent=${postIntent}` : "/in-camera");
+    router.push(
+      postIntent ? `/in-camera?intent=${postIntent}` : rippleCreateCameraHref(),
+    );
   };
 
   // Drain anything the in-app camera left for us when we regain focus
@@ -919,6 +925,8 @@ export default function CameraScreen() {
   useFocusEffect(
     useCallback(() => {
       warmAuthedImageHeaders();
+      reconcileMatchPhotos();
+      prefetchMyPhotoLibrary(myPhotos, 8);
       const cap = consumePendingCapture();
       if (cap) {
         captureRequestIdRef.current = cap.requestId;
@@ -955,7 +963,7 @@ export default function CameraScreen() {
         void pausePreview();
         endCaptureTransition();
       };
-    }, []),
+    }, [myPhotos, reconcileMatchPhotos]),
   );
 
   const runAiSuggestions = () => {
@@ -1139,7 +1147,7 @@ export default function CameraScreen() {
         typeof myCountryCode === "string" && myCountryCode.length === 2
           ? myCountryCode.toUpperCase()
           : undefined;
-      addMyPhoto(
+      const uploadLocalId = addMyPhoto(
         localUri,
         finalTheme,
         merged,
@@ -1157,6 +1165,7 @@ export default function CameraScreen() {
         {
           requestId: uploadRequestId,
           localUri,
+          localId: uploadLocalId,
           theme: finalTheme,
           tags: merged,
           musicGenre: finalGenre,
@@ -1744,7 +1753,7 @@ export default function CameraScreen() {
                       {displayUri ? (
                         <RemotePhotoImage
                           uri={displayUri}
-                          fallbackUri={photoStreamFallbackUri(photo.backendId)}
+                          fallbackUri={resolveMyPhotoFallbackUri(photo)}
                           style={[styles.prevPhoto, { borderColor: colors.border }]}
                           resizeMode="cover"
                           transitionMs={0}
