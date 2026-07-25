@@ -71,7 +71,7 @@ const THEME_EXPECTED_TAGS: Record<string, string[]> = {
   furniture: ["home", "cozy", "vintage"],
   games: ["gaming", "play", "hobby"],
   hobbies: ["hobby", "music", "photography", "crafts"],
-  passions: ["music", "fitness", "sports", "dancing"],
+  passion: ["music", "fitness", "sports", "dancing"],
   birds: ["bird", "wildlife", "outdoors"],
   plants: ["plants", "flowers", "garden", "trees"],
   music: ["music", "vintage", "hobby", "party"],

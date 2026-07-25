@@ -1,7 +1,7 @@
 import { photoKey } from "@/utils/photoKey";
 import { normalizeUnsplashUri, unsplashPhotoUrl } from "@/utils/unsplashUri";
 import { suggestGenre, type MusicGenre } from "@/data/musicLibrary";
-import { DAILY_CHALLENGES } from "./themeMatch";
+import { DAILY_CHALLENGES, resolveChallengeThemeId } from "./themeMatch";
 
 export interface SamplePhoto {
   id: string;
@@ -422,7 +422,7 @@ export const SAMPLE_PHOTOS: SamplePhoto[] = [
   { id: "70", uri: "https://images.unsplash.com/photo-1502920917128-1aa500764cbd?w=400", country: "Taiwan", countryCode: "TW", countryFlag: "🇹🇼", theme: "commute", minutesAgo: 110, tags: ["city","transit","night"] },
   // Pets reused with new countries (these images are well-loved animals)
   // Active / outdoors movement
-  { id: "73", uri: "https://images.unsplash.com/photo-1518611012118-696072aa579a?w=400", country: "Slovenia", countryCode: "SI", countryFlag: "🇸🇮", theme: "passions", minutesAgo: 80, tags: ["hiking","outdoors","mountains","fitness"] },
+  { id: "73", uri: "https://images.unsplash.com/photo-1518611012118-696072aa579a?w=400", country: "Slovenia", countryCode: "SI", countryFlag: "🇸🇮", theme: "passion", minutesAgo: 80, tags: ["hiking","outdoors","mountains","fitness"] },
   { id: "74", uri: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=400", country: "Bulgaria", countryCode: "BG", countryFlag: "🇧🇬", theme: "movement", minutesAgo: 220, tags: ["running","fitness","outdoors"] },
   { id: "75", uri: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400", country: "Costa Rica", countryCode: "CR", countryFlag: "🇨🇷", theme: "movement", minutesAgo: 460, tags: ["yoga","fitness","outdoors"] },
   { id: "76", uri: "https://images.unsplash.com/photo-1545205597-3d9d02c29597?w=400", country: "Lithuania", countryCode: "LT", countryFlag: "🇱🇹", theme: "movement", minutesAgo: 700, tags: ["cycling","outdoors"] },
@@ -962,7 +962,7 @@ const SYNTH_PHOTO_BANK = {
   // proven-loadable buckets above (active = workouts/cycling/running,
   // music = concerts/party). Synth-only buckets like this are fine —
   // sample-photo dedup only matters in SAMPLE_PHOTOS, not here.
-  passions: [
+  passion: [
     "1518611012118-696072aa579a","1517836357463-d25dfeac3438","1571019613454-1cb2f99b2d8b",
     "1545205597-3d9d02c29597","1514525253161-7a46d19cd819","1485579149621-3123dd979885",
   ],
@@ -1069,7 +1069,7 @@ const BUCKET_TAG_POOL: Record<keyof typeof SYNTH_PHOTO_BANK, string[]> = {
   // Passions = high-intensity tags only. Deliberately excludes calm
   // hobby tags (reading, crafts, photography) so a passion synth photo
   // never gets labelled with low-energy chips.
-  passions: ["music", "dancing", "party", "sports", "fitness", "celebration", "running", "cycling"],
+  passion: ["music", "dancing", "party", "sports", "fitness", "celebration", "running", "cycling"],
 };
 
 // Builds synthetic candidates that look like real samples but are sampled
@@ -1096,8 +1096,9 @@ export function generateSyntheticCandidates(
   // sunrise / kayak shots instead of other hand photos. The user's
   // explicit theme choice ("Your hands") is by far the strongest signal
   // we have, so it always wins when it maps to a real bucket.
-  const themeBucket = preferredTheme in SYNTH_PHOTO_BANK
-    ? (preferredTheme as keyof typeof SYNTH_PHOTO_BANK)
+  const canonicalTheme = resolveChallengeThemeId(preferredTheme);
+  const themeBucket = canonicalTheme in SYNTH_PHOTO_BANK
+    ? (canonicalTheme as keyof typeof SYNTH_PHOTO_BANK)
     : null;
   const bucketKey =
     themeBucket ??
@@ -1265,7 +1266,7 @@ export const SUGGESTED_TAGS_BY_THEME: Record<string, string[]> = {
   birds: ["bird", "wildlife", "outdoors", "animal"],
   plants: ["plants", "flowers", "garden", "trees"],
   music: ["music", "vintage", "hobby", "cozy", "party"],
-  passions: ["music", "fitness", "sports", "dancing", "running", "cycling", "party"],
+  passion: ["music", "fitness", "sports", "dancing", "running", "cycling", "party"],
   // Lifestyle themes — tag chips for camera when these challenges run.
   selfie: ["selfie", "mirror", "smile", "people", "fashion"],
   shopping: ["shopping", "grocery", "fashion", "parcel", "city"],

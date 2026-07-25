@@ -139,7 +139,7 @@ Return FOUR things based on what is ACTUALLY visible:
    morning, coffee, hands, sky, shoes, food, instrument, view, movement, pets,
    reading, commute, listening, plant, work, wearing, made, night, water, joy,
    door, wheels, ritual, nature, playing, groceries, wall, handwriting, weather,
-   smallthing, furniture, games, hobbies, passions, birds, plants, music, selfie,
+   smallthing, furniture, games, hobbies, passion, birds, plants, music, selfie,
    shopping, cafe, objects, chores.
    Prefer "${args.expectedTheme}" only when the image honestly matches that id.
 2. "tags" — up to 6 from: ${ALLOWED_TAGS.join(", ")}

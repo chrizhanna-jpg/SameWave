@@ -1,10 +1,11 @@
-import { DAILY_CHALLENGES } from "@/data/samplePhotos";
+import { DAILY_CHALLENGES, resolveChallengeThemeId } from "@/data/samplePhotos";
 
 export function resolveThemeChip(raw: string): { title: string; emoji: string } {
   const t = raw.trim();
   if (!t) return { title: "", emoji: "✨" };
+  const canonical = resolveChallengeThemeId(t);
   const meta = DAILY_CHALLENGES.find(
-    (c) => c.id === t || c.title.toLowerCase() === t.toLowerCase(),
+    (c) => c.id === canonical || c.title.toLowerCase() === t.toLowerCase(),
   );
   return { title: meta?.title ?? t, emoji: meta?.emoji ?? "✨" };
 }

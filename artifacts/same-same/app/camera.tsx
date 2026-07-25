@@ -121,6 +121,7 @@ const QUICK_THEMES: { label: string; emoji: string }[] = [
   { label: "weekend brunch", emoji: "🥞" },
   { label: "beach day", emoji: "🏖️" },
   { label: "gym session", emoji: "💪" },
+  { label: "your passion", emoji: "❤️‍🔥" },
   { label: "concert night", emoji: "🎤" },
   { label: "family dinner", emoji: "🍽️" },
   { label: "road trip", emoji: "🚗" },
@@ -758,7 +759,7 @@ export default function CameraScreen() {
         setSelectedTags(suggested.slice(0, MAX_TAGS));
       }
     } else {
-      setThemeText("passions");
+      setThemeText("passion");
       setThemeEdited(true);
       themeEditedRef.current = true;
       if (myVibe.length > 0) {
