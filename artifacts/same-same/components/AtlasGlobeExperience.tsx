@@ -50,6 +50,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { useFocusEffect } from "expo-router";
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -664,16 +665,24 @@ export function AtlasGlobeExperience({
   const timeRef = useRef(Date.now());
   const [, rafPulse] = useReducer((x: number) => x + 1, 0);
 
-  useEffect(() => {
-    let id = 0;
-    const loop = () => {
-      timeRef.current = Date.now();
-      rafPulse();
+  // Drive the arc/dot animation ONLY while the Atlas tab is focused. A raw
+  // useEffect kept the requestAnimationFrame loop (a full re-render every
+  // frame) running forever in the background on every other tab, which was a
+  // major cause of the app feeling sluggish and of laggy tab switches. Tying
+  // it to focus means the globe animates when visible and goes completely
+  // idle the moment you leave.
+  useFocusEffect(
+    useCallback(() => {
+      let id = 0;
+      const loop = () => {
+        timeRef.current = Date.now();
+        rafPulse();
+        id = requestAnimationFrame(loop);
+      };
       id = requestAnimationFrame(loop);
-    };
-    id = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(id);
-  }, []);
+      return () => cancelAnimationFrame(id);
+    }, []),
+  );
 
   const normalized = useMemo(
     () => normalizeConnections(connections),

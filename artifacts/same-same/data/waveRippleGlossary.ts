@@ -20,6 +20,9 @@ export const WAVE_ONE_LINER = WAVE_MUTUAL_TAGLINE;
 export const RIPPLE_WAVE_RULE =
   "Ripple when you tap Same. When they Ripple back, it becomes a Wave.";
 
+/** Shown on the match deck while swiping right — sends a Ripple, not a Wave. */
+export const RIPPLE_SWIPE_LABEL = "RIPPLE";
+
 export const ATLAS_FILTER_A11Y = {
   all: "All — every live Ripple and Wave on the map",
   ripples:

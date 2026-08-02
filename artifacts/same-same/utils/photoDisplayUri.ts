@@ -17,6 +17,29 @@ export {
   HERO_DISPLAY_WIDTH,
 } from "@/constants/imageLoading";
 
+/**
+ * True when a URI may appear in the viewer's OWN-photo slot ("Yours" in the
+ * Waves timeline, the Ripple deck's top card, My Photos). Curated stock and
+ * any Unsplash CDN URL are never valid user uploads.
+ */
+export function isAllowedUserOwnPhotoUri(
+  uri: string | undefined | null,
+): boolean {
+  const u = uri?.trim() ?? "";
+  if (!u) return false;
+  if (isSamplePhoto(u)) return false;
+  if (u.includes("images.unsplash.com")) return false;
+  return true;
+}
+
+/** Strip stock/Unsplash URIs before rendering a viewer-owned photo. */
+export function sanitizeUserOwnPhotoUri(
+  uri: string | undefined | null,
+): string {
+  const u = uri?.trim() ?? "";
+  return isAllowedUserOwnPhotoUri(u) ? u : "";
+}
+
 /** Authenticated stream URL for a server photo row. */
 export function serverPhotoImageUrl(
   photoId: string,
