@@ -13,7 +13,9 @@ loadDotenv({ path: path.join(root, ".env") });
 
 // Never use shell: true with paths under "C:\Program Files\..." — cmd splits on the space
 // and you get `'C:\Program' is not recognized`.
-const build = spawnSync(process.execPath, [path.join(root, "build.mjs")], {
+// Use cwd-relative paths — absolute Windows paths (C:\...) trip Node's ESM loader
+// with ERR_UNSUPPORTED_ESM_URL_SCHEME (protocol 'c:').
+const build = spawnSync(process.execPath, ["build.mjs"], {
   cwd: root,
   stdio: "inherit",
   shell: false,
@@ -24,7 +26,7 @@ if (build.error) throw build.error;
 
 const start = spawnSync(
   process.execPath,
-  ["--enable-source-maps", path.join(root, "dist", "index.mjs")],
+  ["--enable-source-maps", path.join("dist", "index.mjs")],
   {
     cwd: root,
     stdio: "inherit",

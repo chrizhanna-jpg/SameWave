@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { readFileSync } from "node:fs";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
@@ -34,7 +34,10 @@ async function buildAll() {
   await rm(distDir, { recursive: true, force: true });
 
   // Stock CDN map for instant Ripple deck loads (must exist before bundle).
-  await import(path.resolve(artifactDir, "scripts/gen-stock-cdn-map.mjs"));
+  // pathToFileURL: Windows absolute paths fail ESM import (protocol 'c:').
+  await import(
+    pathToFileURL(path.resolve(artifactDir, "scripts/gen-stock-cdn-map.mjs")).href
+  );
 
   const androidLatestJson = readAndroidLatestJsonForBuild();
 
