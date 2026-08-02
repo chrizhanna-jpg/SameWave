@@ -23,6 +23,7 @@ import {
 } from "@/utils/publicEnv";
 import {
   canonicalizePhotoStreamUri,
+  sanitizeUserOwnPhotoUri,
   shouldCanonicalizePhotoStreamUri,
   withDisplayPhotoWidth,
 } from "@/utils/photoDisplayUri";
@@ -68,13 +69,22 @@ type Props = {
   displayWidth?: number;
   /** Fetch priority — hero warms cache on mount. */
   priority?: ImageLoadPriority;
+  /**
+   * Viewer-owned photo slot ("Yours" / Ripple top card). Strips stock/Unsplash
+   * URIs and never falls back to the generic Unsplash placeholder.
+   */
+  viewerOwnPhoto?: boolean;
 };
 
 const MAX_RETRIES_PER_SOURCE = 2;
 const RETRY_BACKOFF_MS = [500, 1300];
 
-function normalizeRemotePhotoUri(uri: string, displayWidth?: number): string {
-  const trimmed = uri.trim();
+function normalizeRemotePhotoUri(
+  uri: string | null | undefined,
+  displayWidth?: number,
+): string {
+  const trimmed = typeof uri === "string" ? uri.trim() : "";
+  if (!trimmed) return "";
   const stream = shouldCanonicalizePhotoStreamUri(trimmed)
     ? canonicalizePhotoStreamUri(trimmed)
     : trimmed;
@@ -151,19 +161,26 @@ export function RemotePhotoImage({
   onResolved,
   displayWidth,
   priority = "normal",
+  viewerOwnPhoto = false,
 }: Props) {
   const onResolvedRef = useRef(onResolved);
   onResolvedRef.current = onResolved;
+  const rawUri = typeof uri === "string" ? uri : "";
+  const rawFallback = typeof fallbackUri === "string" ? fallbackUri : "";
+  const safeUri = viewerOwnPhoto ? sanitizeUserOwnPhotoUri(rawUri) : rawUri;
+  const safeFallback = viewerOwnPhoto
+    ? sanitizeUserOwnPhotoUri(rawFallback)
+    : rawFallback;
   const normalized = useMemo(
-    () => normalizeRemotePhotoUri(uri, displayWidth),
-    [uri, displayWidth],
+    () => normalizeRemotePhotoUri(safeUri, displayWidth),
+    [safeUri, displayWidth],
   );
   const normalizedFallback = useMemo(() => {
-    const f = fallbackUri?.trim();
+    const f = safeFallback.trim();
     if (!f) return null;
     const n = normalizeRemotePhotoUri(f, displayWidth);
     return n && n !== normalized ? n : null;
-  }, [fallbackUri, normalized, displayWidth]);
+  }, [safeFallback, normalized, displayWidth]);
 
   const [usedFallback, setUsedFallback] = useState(false);
   const [useHosted, setUseHosted] = useState(false);
@@ -267,11 +284,18 @@ export function RemotePhotoImage({
     };
   }, [needsAuth, activeUri]);
 
-  const src = exhausted
-    ? UNSPLASH_FALLBACK_URI
-    : withRetryNonce(activeUri, attempt);
+  const drawableBase =
+    typeof activeUri === "string" && activeUri.trim().length > 0
+      ? activeUri
+      : "";
+  // Viewer-owned slots never show the generic Unsplash placeholder.
+  const src =
+    exhausted && !viewerOwnPhoto
+      ? UNSPLASH_FALLBACK_URI
+      : withRetryNonce(drawableBase, attempt);
   const stableKey =
-    recyclingKey ?? (usedFallback ? `fb:${activeUri}` : activeUri);
+    recyclingKey ??
+    (usedFallback ? `fb:${drawableBase || "empty"}` : drawableBase || "empty");
 
   const advanceChain = () => {
     if (!useHosted && hostedUri) {
@@ -318,7 +342,10 @@ export function RemotePhotoImage({
   };
 
   const waitingForAuth = needsAuth && !authHeaders && !exhausted;
-  const showSkeleton = waitingForAuth || !loaded;
+  const hasDrawableSource =
+    (typeof src === "string" ? src : "").trim().length > 0 &&
+    !(viewerOwnPhoto && exhausted);
+  const showSkeleton = waitingForAuth || !loaded || !hasDrawableSource;
 
   useEffect(() => {
     if (!showSkeleton || exhausted) {
@@ -333,10 +360,10 @@ export function RemotePhotoImage({
   }, [showSkeleton, exhausted, stableKey, priority]);
 
   useEffect(() => {
-    if (waitingForAuth || exhausted) return;
+    if (waitingForAuth || exhausted || !hasDrawableSource) return;
     loadStartedAt.current = Date.now();
-    recordImageLoadStart(activeUri, priority);
-  }, [activeUri, waitingForAuth, exhausted, priority, manualRetry]);
+    recordImageLoadStart(drawableBase, priority);
+  }, [drawableBase, waitingForAuth, exhausted, hasDrawableSource, priority, manualRetry]);
 
   const handleLoad = () => {
     const gen = loadGeneration.current;
@@ -372,7 +399,7 @@ export function RemotePhotoImage({
   return (
     <View style={[style as StyleProp<ViewStyle>, styles.container]}>
       {showSkeleton ? <PhotoSkeleton /> : null}
-      {!waitingForAuth ? (
+      {!waitingForAuth && hasDrawableSource ? (
         <Image
           source={
             needsAuth && authHeaders && !exhausted
@@ -389,7 +416,7 @@ export function RemotePhotoImage({
           onError={handleError}
         />
       ) : null}
-      {exhausted ? (
+      {exhausted && !viewerOwnPhoto ? (
         <Pressable
           style={styles.retryOverlay}
           onPress={handleManualRetry}

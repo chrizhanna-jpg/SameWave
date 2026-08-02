@@ -2,10 +2,13 @@
   "expo": {
     "name": "SameWave",
     "slug": "same-same",
-    "version": "1.3.19",
+    "version": "1.3.20",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": ["same-same", "echo.samewaveripple.app"],
+    "scheme": [
+      "same-same",
+      "echo.samewaveripple.app"
+    ],
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
@@ -26,7 +29,7 @@
     },
     "android": {
       "package": "echo.samewaveripple.app",
-      "versionCode": 49,
+      "versionCode": 50,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#166FFC"

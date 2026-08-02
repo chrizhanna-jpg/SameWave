@@ -104,8 +104,10 @@ import { sampleMatchStats } from "@/utils/sampleStats";
 import { photoCountryDisplay } from "@/utils/photoCountry";
 import {
   HERO_DISPLAY_WIDTH,
+  isAllowedUserOwnPhotoUri,
   resolveMyPhotoDisplayUri,
   pickVoterPhotoBackendId,
+  sanitizeUserOwnPhotoUri,
   serverPhotoImageUrl,
   withDisplayPhotoWidth,
 } from "@/utils/photoDisplayUri";
@@ -122,12 +124,13 @@ import {
 } from "@/utils/matchCarouselController";
 import { stopWavefireAmbience } from "@/utils/wavefireAmbience";
 import { stopFirecircleAmbience } from "@/utils/firecircleAudio";
-import { timeAgo, simulatedPostedAt } from "@/utils/timeAgo";
+import { timeAgo } from "@/utils/timeAgo";
 import type { Match } from "@/context/AppContext";
 import { photoKey } from "@/utils/photoKey";
 import { stashMatchPhotoUris } from "@/utils/matchPhotoSnapshot";
 import { rememberVoterPhotoForTarget } from "@/utils/voterPhotoByTarget";
 import { RIPPLE_CARD_WIDTH } from "@/constants/ripplePhotoFrame";
+import { RIPPLE_SWIPE_LABEL } from "@/data/waveRippleGlossary";
 import { normalizeUnsplashUri } from "@/utils/unsplashUri";
 import { flushImageTelemetryIfDue } from "@/utils/imageLoadTelemetry";
 import { getPublicApiOrigin } from "@/utils/publicEnv";
@@ -552,8 +555,15 @@ export default function SwipeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
 
+  // True only while Ripple is focused — prevents background state changes
+  // from restarting vibe music after the user leaves this tab.
+  const isScreenFocusedRef = useRef(true);
+  // Declared before the focus effect so blur cleanup never hits a TDZ.
+  const playLeaseRef = useRef<number>(0);
+
   useFocusEffect(
     useCallback(() => {
+      isScreenFocusedRef.current = true;
       markTabVisited("match");
       warmAuthedImageHeaders();
       // Kill BOTH Atlas ambience players before the card vibe starts. The
@@ -568,6 +578,7 @@ export default function SwipeScreen() {
       // no-ops if another screen has since taken over the singleton)
       // and any voice-clip preview the user started via a mic badge.
       return () => {
+        isScreenFocusedRef.current = false;
         void pauseIfLease(playLeaseRef.current);
         void pausePreview();
       };
@@ -611,6 +622,14 @@ export default function SwipeScreen() {
     if (myPhotos.length === 0) return undefined;
     const todayUtcDay = Math.floor(Date.now() / 86_400_000);
     const p = myPhotos[0];
+    // Never treat curated stock / Unsplash as today's upload.
+    if (
+      isSamplePhoto(p.uri) ||
+      !isAllowedUserOwnPhotoUri(p.uri) ||
+      !isAllowedUserOwnPhotoUri(resolveMyPhotoDisplayUri(p))
+    ) {
+      return undefined;
+    }
     const uploadedUtcDay = Math.floor(
       new Date(p.uploadedAt).getTime() / 86_400_000,
     );
@@ -653,7 +672,9 @@ export default function SwipeScreen() {
   }>(() => {
     if (todaysPhoto) {
       return {
-        uri: resolveMyPhotoDisplayUri(todaysPhoto, { preferLocalCapture: true }),
+        uri: sanitizeUserOwnPhotoUri(
+          resolveMyPhotoDisplayUri(todaysPhoto, { preferLocalCapture: true }),
+        ),
         uploadedAt: todaysPhoto.uploadedAt,
         capturedAt: todaysPhoto.capturedAt,
         theme: todaysPhoto.theme,
@@ -661,16 +682,15 @@ export default function SwipeScreen() {
         subjects: todaysPhoto.subjects ?? [],
       };
     }
-    const sample = SAMPLE_PHOTOS[0];
+    // No upload today — never substitute a stock sample as "your photo".
     return {
-      uri: sample.uri,
-      uploadedAt: simulatedPostedAt(5).toISOString(),
-      capturedAt: sample.capturedAt,
-      theme: sample.theme,
-      tags: sample.tags,
-      subjects: sample.subjects ?? [],
+      uri: "",
+      uploadedAt: "",
+      theme: todaysChallenge.id,
+      tags: [],
+      subjects: [],
     };
-  }, [todaysPhoto]);
+  }, [todaysPhoto, todaysChallenge.id]);
 
   const myPhotoUri = myPhotoData.uri;
   // Durable fallback for the viewer's own photo: if the `file://` capture has
@@ -1203,11 +1223,6 @@ export default function SwipeScreen() {
   useEffect(() => {
     return onMuteChange(setMutedState);
   }, []);
-  // Lease handed back by the audio singleton for the most recent
-  // clip THIS screen started. The unmount cleanup uses it with
-  // stopIfLease() so we only stop audio we actually own — never
-  // another screen's freshly-started playback.
-  const playLeaseRef = useRef<number>(0);
   // True once the candidate's REAL image has actually rendered (not the
   // skeleton, not the stock placeholder). The audio effect below GATES the
   // start of playback on this so a card's vibe only begins once its photo is
@@ -1243,6 +1258,8 @@ export default function SwipeScreen() {
   }, [candidateImageReady]);
   useEffect(() => {
     if (!theirPhoto?.uri) return;
+    // Never (re)start deck music while the Ripple tab is blurred.
+    if (!isScreenFocusedRef.current) return;
     // Keep the matched card's vibe during the Ripple celebration overlay.
     if (flashMatchRef.current) return;
     // Don't play until the user has uploaded today's photo, over the
@@ -1851,7 +1868,8 @@ export default function SwipeScreen() {
   // Treat the user as "no photo for today" if their last upload is from a
   // previous UTC day — this makes Start Matching prompt for a fresh photo
   // each new daily-challenge cycle instead of recycling yesterday's.
-  const hasUploadedPhoto = todaysPhoto !== undefined;
+  const hasUploadedPhoto =
+    todaysPhoto !== undefined && sanitizeUserOwnPhotoUri(myPhotoUri) !== "";
 
   // Production builds used to mount with realPool=[] and stock off, so
   // `initial` was null → permanent "all caught up" even after /candidates
@@ -2314,7 +2332,7 @@ export default function SwipeScreen() {
             ]}
           >
             <Text style={[styles.labelText, { color: colors.teal }]}>
-              WAVE
+              {RIPPLE_SWIPE_LABEL}
             </Text>
           </Reanimated.View>
 
@@ -2331,6 +2349,7 @@ export default function SwipeScreen() {
               <RemotePhotoImage
                 uri={myPhotoUri}
                 fallbackUri={myPhotoFallbackUri}
+                viewerOwnPhoto
                 style={styles.fillPhoto}
                 resizeMode="cover"
                 transitionMs={0}
@@ -2579,6 +2598,7 @@ export default function SwipeScreen() {
                 fallbackUri={
                   fullscreenUri === myPhotoUri ? myPhotoFallbackUri : undefined
                 }
+                viewerOwnPhoto={fullscreenUri === myPhotoUri}
                 style={styles.fullscreenImage}
                 resizeMode="contain"
               />
