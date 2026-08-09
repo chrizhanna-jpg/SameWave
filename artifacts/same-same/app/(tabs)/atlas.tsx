@@ -25,7 +25,6 @@ import {
   fetchAtlasSummary,
   fetchAtlasTabDiagnostics,
   invalidateAtlasSummaryCache,
-  warmAuthedImageHeaders,
   type AtlasConnection,
   type AtlasCountry,
   type AtlasFireExploreOptions,
@@ -46,7 +45,10 @@ import {
   saveAtlasCache,
 } from "@/utils/syncCache";
 import { markTabVisited } from "@/utils/tabVisits";
-import { runAfterTabFocus } from "@/utils/deferTabFocus";
+import {
+  runAfterTabFocus,
+  shouldRunThrottledFocusWork,
+} from "@/utils/deferTabFocus";
 import { stopWavefireAmbience, startWavefireAmbience } from "@/utils/wavefireAmbience";
 import type { MyPhoto } from "@/context/AppContext";
 
@@ -267,9 +269,9 @@ export default function AtlasScreen() {
       setAtlasTabFocused(true);
       atlasFocusedRef.current = true;
       markTabVisited("atlas");
-      warmAuthedImageHeaders();
       const deferred = runAfterTabFocus(() => {
-        // Cache-first refresh — avoid invalidating atlas data on every tab tap.
+        // Cache-first refresh — throttle so tab taps stay instant.
+        if (!shouldRunThrottledFocusWork("atlas-refresh", 30_000)) return;
         void load(false);
       });
       void startWavefireAmbience();
