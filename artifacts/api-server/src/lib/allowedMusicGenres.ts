@@ -1,6 +1,7 @@
 /** Canonical emotional vibe ids (artifacts/same-same/data/musicLibrary.ts). */
 export const ALLOWED_MUSIC_GENRES = new Set([
   "joy",
+  "excited",
   "overjoyed",
   "elated",
   "amusement",
