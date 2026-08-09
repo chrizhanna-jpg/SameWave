@@ -4,6 +4,7 @@ import type { EchoCard, Match } from "@/context/AppContext";
 import type { AtlasConnection, AtlasCountry } from "@/utils/api";
 import { photoKey } from "@/utils/photoKey";
 import { photoCountryDisplay } from "@/utils/photoCountry";
+import { isPersistentPhotoUri } from "@/utils/localPhotoPaths";
 
 const CELEBRATED_KEY = "samesame_celebrated_echo_ids";
 const ECHO_CACHE_KEY = "samesame_echo_cache";
@@ -44,6 +45,7 @@ export function shouldPersistRemoteUri(uri: string | undefined): boolean {
   const u = uri.trim();
   // Inline base64 can exceed AsyncStorage limits; remote URLs are safe to keep.
   if (u.startsWith("data:")) return false;
+  if (isPersistentPhotoUri(u)) return true;
   return u.startsWith("http://") || u.startsWith("https://");
 }
 
