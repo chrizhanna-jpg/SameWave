@@ -2,6 +2,8 @@ import type { MyPhoto } from "@/context/AppContext";
 import {
   findMyPhotoByUri,
   hydrateMyPhotoUri,
+  isAllowedUserOwnPhotoUri,
+  resolveMyPhotoDisplayUri,
   serverPhotoImageUrl,
 } from "@/utils/photoDisplayUri";
 
@@ -39,6 +41,11 @@ export function mergeMyPhotos(...groups: MyPhoto[][]): MyPhoto[] {
   const sorted = groups
     .flat()
     .map((p) => hydrateMyPhotoUri(p))
+    .filter(
+      (p) =>
+        isAllowedUserOwnPhotoUri(p.uri) &&
+        isAllowedUserOwnPhotoUri(resolveMyPhotoDisplayUri(p)),
+    )
     .sort(
       (a, b) =>
         Date.parse(b.uploadedAt || "0") - Date.parse(a.uploadedAt || "0"),

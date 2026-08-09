@@ -19,6 +19,7 @@
     "build": "node scripts/build.js",
     "serve": "node server/serve.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:core": "node scripts/run-core-tests.mjs",
     "gen:atlas-iso": "node ./scripts/gen-atlas-iso-map.mjs",
     "gen:firecircle": "node ./scripts/gen-firecircle-assets.mjs",
     "setup:android-env": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-android-build-env.ps1",
@@ -73,12 +74,14 @@
     "react-native-svg": "15.12.1",
     "react-native-web": "^0.21.0",
     "react-native-worklets": "0.5.1",
+    "tsx": "catalog:",
     "typescript": "~5.9.2",
     "zod": "catalog:",
     "zod-validation-error": "^3.4.0"
   },
   "dependencies": {
     "@clerk/expo": "^3.2.8",
+    "expo": "~54.0.34",
     "expo-auth-session": "~7.0.11",
     "expo-av": "^16.0.8",
     "expo-build-properties": "~1.0.10",
@@ -94,12 +97,11 @@
     "expo-sharing": "^14.0.8",
     "expo-updates": "~29.0.17",
     "lucide-react-native": "^1.8.0",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
     "react-native-purchases": "9.7.2",
     "react-native-view-shot": "^4.0.3",
     "topojson-client": "^3.1.0",
-    "world-atlas": "^2.0.2",
-    "expo": "~54.0.34",
-    "react": "19.1.0",
-    "react-native": "0.81.5"
+    "world-atlas": "^2.0.2"
   }
 }
