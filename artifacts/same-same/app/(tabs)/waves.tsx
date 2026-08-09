@@ -27,14 +27,14 @@ import {
   WAVES_TAB,
   WAVE_MUTUAL_TAGLINE,
 } from "@/data/waveRippleGlossary";
-import { fetchRecentWavesFeed, type RecentWaveFeedItem } from "@/utils/api";
+import { fetchRecentWavesFeed, warmAuthedImageHeaders, type RecentWaveFeedItem } from "@/utils/api";
+import { prefetchMatchMyPhotoThumbs } from "@/utils/myPhotoPrefetch";
 import {
-  enrichMatchesForStorage,
   resolveEchoPhotoUri,
-  resolveMatchMyPhotoUri,
   resolveMatchMyPhotoThumbnailUri,
   resolveMatchMyPhotoFallbackUri,
   resolveMatchPhotoDisplay,
+  resolveMatchVoterPhotoId,
   photoStreamFallbackUri,
 } from "@/utils/photoDisplayUri";
 import { markTabVisited } from "@/utils/tabVisits";
@@ -73,7 +73,7 @@ function matchToCaughtEcho(match: Match, myPhotos: MyPhoto[]): EchoCard {
     mutualAt: match.timestamp,
     youSentFirst: true,
     mine: {
-      id: match.myPhotoId ?? "",
+      id: resolveMatchVoterPhotoId(match, myPhotos) ?? "",
       uri: photos.myPhoto,
       countryCode: myDisp.code ?? null,
       captureCountryCode: myCapture ?? null,
@@ -109,8 +109,8 @@ const WAVE_SECTIONS: {
   icon: "ripple" | "wave-glyph" | "globe";
 }[] = [
   { id: "sent", chip: "sectionSentChip", icon: "ripple" },
-  { id: "caught", chip: "sectionCaughtChip", icon: "wave-glyph" },
   { id: "received", chip: "sectionReceivedChip", icon: "ripple" },
+  { id: "caught", chip: "sectionCaughtChip", icon: "wave-glyph" },
   { id: "world", chip: "sectionWorldChip", icon: "globe" },
 ];
 
@@ -123,9 +123,7 @@ export default function WavesScreen() {
     matches,
     myPhotos,
     markAllEchoesSeen,
-    refreshEchoes,
     respondToEcho,
-    cloudSyncInProgress,
     syncCloudData,
     reconcileMatchPhotos,
   } = useApp();
@@ -178,11 +176,6 @@ export default function WavesScreen() {
     [matches],
   );
 
-  const ripplesSentDisplay = useMemo(
-    () => enrichMatchesForStorage(ripplesSent, myPhotos),
-    [ripplesSent, myPhotos],
-  );
-
   const wavesCaught = useMemo(() => {
     const echoPairKeys = new Set<string>();
     for (const e of mutualEchoes) {
@@ -231,13 +224,23 @@ export default function WavesScreen() {
     }
   }, []);
 
+  const matchesRef = useRef(matches);
+  const myPhotosRef = useRef(myPhotos);
+  matchesRef.current = matches;
+  myPhotosRef.current = myPhotos;
+
   useFocusEffect(
     useCallback(() => {
       markTabVisited("waves");
+      warmAuthedImageHeaders();
+      reconcileMatchPhotos();
+      prefetchMatchMyPhotoThumbs(
+        matchesRef.current,
+        myPhotosRef.current,
+        20,
+      );
       const deferred = runAfterTabFocus(() => {
         if (!shouldRunThrottledFocusWork("waves-sync", 30_000)) return;
-        reconcileMatchPhotos();
-        void refreshEchoes();
         void syncCloudData();
         void loadWorldWaves();
       });
@@ -247,7 +250,6 @@ export default function WavesScreen() {
         clearTimeout(t);
       };
     }, [
-      refreshEchoes,
       syncCloudData,
       markAllEchoesSeen,
       loadWorldWaves,
@@ -257,8 +259,11 @@ export default function WavesScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([refreshEchoes(), syncCloudData(), loadWorldWaves()]);
-    setRefreshing(false);
+    try {
+      await Promise.all([syncCloudData(), loadWorldWaves()]);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const handleRespond = async (id: string, verdict: "same" | "different") => {
@@ -291,7 +296,7 @@ export default function WavesScreen() {
           </Text>
         </View>
         <SyncRefreshButton
-          syncing={refreshing || cloudSyncInProgress || worldLoading}
+          syncing={refreshing}
           onPress={() => void onRefresh()}
           accessibilityLabel="Refresh Ripples and Waves"
         />
@@ -340,6 +345,7 @@ export default function WavesScreen() {
                 <PendingRippleCard
                   key={echo.id}
                   echo={echo}
+                  myPhotos={myPhotos}
                   onRespond={handleRespond}
                   celebrating={celebratingId === echo.id}
                 />
@@ -365,7 +371,7 @@ export default function WavesScreen() {
               />
             ) : (
               wavesCaught.map((echo) => (
-                <WaveCaughtCard key={echo.id} echo={echo} />
+                <WaveCaughtCard key={echo.id} echo={echo} myPhotos={myPhotos} />
               ))
             )}
           </>
@@ -387,7 +393,7 @@ export default function WavesScreen() {
                 body="Ripple on photos in the match deck — they'll appear here while you wait for a Wave back."
               />
             ) : (
-              ripplesSentDisplay.map((match) => (
+              ripplesSent.map((match) => (
                 <RippleSentCard
                   key={match.id}
                   match={match}
@@ -607,10 +613,12 @@ function SectionHeader({
 
 function PendingRippleCard({
   echo,
+  myPhotos,
   onRespond,
   celebrating,
 }: {
   echo: EchoCard;
+  myPhotos: MyPhoto[];
   onRespond: (id: string, verdict: "same" | "different") => void;
   celebrating: boolean;
 }) {
@@ -649,7 +657,7 @@ function PendingRippleCard({
         </View>
       </View>
 
-      <PhotoPair mine={echo.mine} theirs={echo.theirs} />
+      <PhotoPair mine={echo.mine} theirs={echo.theirs} myPhotos={myPhotos} />
 
       {celebrating ? (
         <View
@@ -697,7 +705,13 @@ function PendingRippleCard({
   );
 }
 
-function WaveCaughtCard({ echo }: { echo: EchoCard }) {
+function WaveCaughtCard({
+  echo,
+  myPhotos,
+}: {
+  echo: EchoCard;
+  myPhotos: MyPhoto[];
+}) {
   const colors = useColors();
   const stamp = echo.mutualAt ? new Date(echo.mutualAt) : new Date(echo.createdAt);
   const ago = timeAgo(stamp);
@@ -736,7 +750,7 @@ function WaveCaughtCard({ echo }: { echo: EchoCard }) {
           </Text>
         </View>
       </View>
-      <PhotoPair mine={echo.mine} theirs={echo.theirs} />
+      <PhotoPair mine={echo.mine} theirs={echo.theirs} myPhotos={myPhotos} />
     </TouchableOpacity>
   );
 }
@@ -825,6 +839,7 @@ function RippleSentCard({
   const ago = timeAgo(new Date(match.timestamp));
   const myUri = resolveMatchMyPhotoThumbnailUri(match, myPhotos);
   const myFallbackUri = resolveMatchMyPhotoFallbackUri(match, myPhotos);
+  const voterId = resolveMatchVoterPhotoId(match, myPhotos);
   const theirUri = resolveMatchPhotoDisplay(match, myPhotos).theirPhoto;
   const myDisp = photoCountryDisplay(match.myCaptureCountryCode, {
     sampleUri: myUri,
@@ -881,7 +896,7 @@ function RippleSentCard({
               uri={myUri}
               fallbackUri={myFallbackUri}
               style={styles.photo}
-              recyclingKey={`waves-my:${match.id}`}
+              recyclingKey={`waves-my:${voterId || match.id}`}
               displayWidth={FEED_THUMB_WIDTH}
               priority="thumbnail"
               transitionMs={0}
@@ -936,12 +951,14 @@ function RippleSentCard({
 function PhotoPair({
   mine,
   theirs,
+  myPhotos,
 }: {
   mine: EchoCard["mine"];
   theirs: EchoCard["theirs"];
+  myPhotos: MyPhoto[];
 }) {
   const colors = useColors();
-  const mineUri = resolveEchoPhotoUri(mine);
+  const mineUri = resolveEchoPhotoUri(mine, myPhotos);
   const theirsUri = resolveEchoPhotoUri(theirs);
   const myDisp = photoCountryDisplay(mine.captureCountryCode, {
     sampleUri: mineUri,

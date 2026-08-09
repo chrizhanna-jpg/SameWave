@@ -19,13 +19,28 @@ import { timeAgo } from "@/utils/timeAgo";
 import { pausePreview, togglePreview } from "@/utils/audio";
 import { confirmDeleteMyPhoto } from "@/utils/photoModeration";
 import { photoCountryDisplay } from "@/utils/photoCountry";
-import { resolveMyPhotoDisplayUri } from "@/utils/photoDisplayUri";
+import {
+  myPhotoRowKey,
+  resolveMyPhotoFallbackUri,
+  resolveMyPhotoThumbnailUri,
+} from "@/utils/photoDisplayUri";
+import { isSamplePhoto } from "@/data/samplePhotos";
 
 export default function MyPhotosScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { myPhotos, removeMyPhoto, myCountryCode } = useApp();
   const [removingUri, setRemovingUri] = useState<string | null>(null);
+
+  const displayPhotos = React.useMemo(
+    () =>
+      myPhotos.filter(
+        (p) =>
+          !isSamplePhoto(p.uri) &&
+          !isSamplePhoto(resolveMyPhotoThumbnailUri(p)),
+      ),
+    [myPhotos],
+  );
 
   const handleRemove = (uri: string) => {
     confirmDeleteMyPhoto(async () => {
@@ -81,8 +96,8 @@ export default function MyPhotosScreen() {
             My Photos
           </Text>
           <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
-            {myPhotos.length}{" "}
-            {myPhotos.length === 1 ? "photo posted" : "photos posted"}
+            {displayPhotos.length}{" "}
+            {displayPhotos.length === 1 ? "photo posted" : "photos posted"}
           </Text>
         </View>
       </View>
@@ -94,7 +109,7 @@ export default function MyPhotosScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {myPhotos.length === 0 ? (
+        {displayPhotos.length === 0 ? (
           <View
             style={[
               styles.emptyCard,
@@ -111,10 +126,12 @@ export default function MyPhotosScreen() {
             </Text>
           </View>
         ) : (
-          myPhotos.map((photo, i) => {
+          displayPhotos.map((photo, i) => {
             const hasAudio = !!photo.customAudioUrl;
             const loc = photoCountryDisplay(photo.captureCountryCode);
-            const rowKey = `${photo.uri}-${i}`;
+            const rowKey = myPhotoRowKey(photo, i);
+            const thumbUri = resolveMyPhotoThumbnailUri(photo);
+            const thumbFallback = resolveMyPhotoFallbackUri(photo);
             const rowStyle = [
               styles.photoRow,
               { backgroundColor: colors.card, borderColor: colors.border },
@@ -125,7 +142,8 @@ export default function MyPhotosScreen() {
             const inner = (
               <>
                 <PhotoCard
-                  uri={resolveMyPhotoDisplayUri(photo)}
+                  uri={thumbUri}
+                  fallbackUri={thumbFallback}
                   size="md"
                   audioUrl={photo.customAudioUrl}
                   audioInteractive={false}
