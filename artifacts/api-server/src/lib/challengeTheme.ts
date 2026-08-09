@@ -43,7 +43,7 @@ const CHALLENGES: ChallengeMeta[] = [
   { id: "furniture", title: "Your favourite chair", description: "Sofa, stool, bench, the seat you love" },
   { id: "games", title: "What you're playing", description: "Board game, video game, cards, anything" },
   { id: "hobbies", title: "Your hobby right now", description: "What you've been into lately" },
-  { id: "passions", title: "Your passion", description: "The thing you'd stay up all night for" },
+  { id: "passion", title: "Your passion", description: "The thing you'd stay up all night for" },
   { id: "birds", title: "A bird you spotted", description: "Backyard, balcony, park, anywhere" },
   { id: "plants", title: "A plant you noticed", description: "House plant, tree, weed, flower — close-up" },
   { id: "music", title: "Your music", description: "What's playing — vinyl, speaker, headphones, anything" },
@@ -68,18 +68,18 @@ const THEME_ADJACENCY: Record<string, string[]> = {
   pets: ["nature", "joy", "birds"],
   furniture: ["plant", "hobbies", "objects"],
   games: ["hobbies", "joy", "playing"],
-  hobbies: ["games", "made", "music", "passions"],
+  hobbies: ["games", "made", "music", "passion"],
   birds: ["nature", "pets", "plants"],
   plants: ["nature", "plant", "furniture"],
-  music: ["hobbies", "joy", "made", "passions", "listening"],
-  passions: ["music", "hobbies", "joy", "made"],
+  music: ["hobbies", "joy", "made", "passion", "listening"],
+  passion: ["music", "hobbies", "joy", "made"],
   selfie: ["wearing", "joy", "hands"],
   shopping: ["groceries", "made", "wearing"],
   cafe: ["coffee", "morning", "food"],
   objects: ["made", "wall", "smallthing"],
   chores: ["ritual", "made"],
   wearing: ["selfie", "shoes", "movement", "joy"],
-  movement: ["shoes", "passions", "playing"],
+  movement: ["shoes", "passion", "playing"],
   instrument: ["music", "hobbies", "made"],
   view: ["sky", "work", "nature"],
   weather: ["sky", "nature", "morning"],
@@ -155,6 +155,8 @@ export function resolveChallengeThemeId(theme: string): string {
   const t = theme.trim().toLowerCase();
   if (!t) return "";
 
+  if (t === "passions") return "passion";
+
   const byId = CHALLENGES.find((c) => c.id === t);
   if (byId) return byId.id;
 
@@ -162,6 +164,7 @@ export function resolveChallengeThemeId(theme: string): string {
   if (byTitle) return byTitle.id;
 
   const stripped = stripThemePrefixes(t);
+  if (stripped === "passions") return "passion";
   const byStrippedId = CHALLENGES.find((c) => c.id === stripped);
   if (byStrippedId) return byStrippedId.id;
   const byStrippedTitle = CHALLENGES.find(

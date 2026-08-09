@@ -33,7 +33,7 @@ const PRESET_THEME_IDS = new Set<string>([
   "movement", "pets", "reading", "commute", "listening", "plant", "work",
   "wearing", "made", "night", "water", "joy", "door", "wheels", "ritual",
   "nature", "playing", "groceries", "wall", "handwriting", "weather",
-  "smallthing", "furniture", "games", "hobbies", "passions", "birds", "plants",
+  "smallthing", "furniture", "games", "hobbies", "passion", "birds", "plants",
   "music", "selfie", "shopping", "cafe", "objects", "chores",
 ]);
 
