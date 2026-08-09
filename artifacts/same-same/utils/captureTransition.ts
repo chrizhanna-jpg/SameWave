@@ -20,6 +20,10 @@ import {
   recordImageLoadComplete,
 } from "@/utils/imageLoadCache";
 import type { MyPhotoUploadAck } from "@/context/AppContext";
+import {
+  persistLocalPhotoCapture,
+  resolveCaptureSourceUri,
+} from "@/utils/localPhotoCache";
 
 export const CAPTURE_FAST_MATCH =
   IMAGE_LOAD_V2 ||
@@ -149,6 +153,8 @@ async function readBase64FromUri(uri: string): Promise<string | null> {
 export type BackgroundPhotoUploadInput = {
   requestId: string;
   localUri: string;
+  /** Stable row id from addMyPhoto — used to read durable copy if cache is purged. */
+  localId?: string;
   theme: string;
   tags: string[];
   musicGenre?: MusicGenre;
@@ -163,12 +169,16 @@ export type BackgroundPhotoUploadInput = {
 export function startBackgroundPhotoUpload(
   input: BackgroundPhotoUploadInput,
   handlers: {
-    setMyPhotoBackendId: (uri: string, ack: MyPhotoUploadAck) => void;
-    setMyPhotoUploadState: (uri: string, state: "ok" | "failed" | "pending") => void;
+    setMyPhotoBackendId: (uri: string, ack: MyPhotoUploadAck, localId?: string) => void;
+    setMyPhotoUploadState: (
+      uri: string,
+      state: "ok" | "failed" | "pending",
+      localId?: string,
+    ) => void;
     requestAtlasRefresh?: () => void;
   },
 ): void {
-  const { requestId, localUri } = input;
+  const { requestId, localUri, localId } = input;
   if (!localUri.trim()) return;
   recordCaptureTransitionEvent("upload.start", { requestId });
   void (async () => {
@@ -177,14 +187,21 @@ export function startBackgroundPhotoUpload(
       return;
     }
     try {
-      const rawBase64 = await readBase64FromUri(localUri);
+      const persisted = localId
+        ? await persistLocalPhotoCapture(localUri, localId)
+        : null;
+      const sourceUri = await resolveCaptureSourceUri(
+        persisted?.fullUri ?? localUri,
+        localId,
+      );
+      const rawBase64 = await readBase64FromUri(sourceUri);
       if (!rawBase64) {
-        handlers.setMyPhotoUploadState(localUri, "failed");
+        handlers.setMyPhotoUploadState(localUri, "failed", localId);
         return;
       }
       const prepared = await prepareUploadImages({
         base64: rawBase64,
-        uri: localUri,
+        uri: sourceUri,
         mimeType: "image/jpeg",
       });
       if (!isCaptureRequestCurrent(requestId)) {
@@ -211,23 +228,23 @@ export function startBackgroundPhotoUpload(
         return;
       }
       if (res?.id) {
-        handlers.setMyPhotoBackendId(localUri, {
+        handlers.setMyPhotoBackendId(sourceUri, {
           backendId: res.id,
           subjects: res.subjects,
           theme: res.theme,
           tags: res.tags,
           musicGenre: res.musicGenre,
           suggestedTheme: res.suggestedTheme,
-        });
+        }, localId);
         handlers.requestAtlasRefresh?.();
         recordCaptureTransitionEvent("upload.complete", { requestId, ok: true });
       } else {
-        handlers.setMyPhotoUploadState(localUri, "failed");
+        handlers.setMyPhotoUploadState(localUri, "failed", localId);
         recordCaptureTransitionEvent("upload.complete", { requestId, ok: false });
       }
     } catch {
       if (isCaptureRequestCurrent(requestId)) {
-        handlers.setMyPhotoUploadState(localUri, "failed");
+        handlers.setMyPhotoUploadState(localUri, "failed", localId);
       }
       recordCaptureTransitionEvent("upload.complete", { requestId, ok: false });
     }
