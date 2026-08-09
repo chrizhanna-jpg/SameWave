@@ -12,6 +12,7 @@ import {
   classifyImageUri,
   type ImageAssetClass,
 } from "@/utils/imageAssetClass";
+import { photoKey } from "@/utils/photoKey";
 import {
   authedImageHeaders,
   explorePhotoUriNeedsAuth,
@@ -37,7 +38,10 @@ let inflightFetches = 0;
 const inflightUris = new Set<string>();
 
 function cacheKey(uri: string): string {
-  return uri.trim().split(/[?&]r=\d+/)[0] ?? uri.trim();
+  const trimmed = uri.trim().split(/[?&]r=\d+/)[0] ?? uri.trim();
+  const stable = photoKey(trimmed);
+  if (stable.startsWith("photo-") || stable.startsWith("data-")) return stable;
+  return trimmed;
 }
 
 function touchMemory(
