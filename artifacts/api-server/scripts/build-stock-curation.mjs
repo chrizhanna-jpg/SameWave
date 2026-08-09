@@ -210,11 +210,6 @@ const OVERRIDES = {
     subjects: ["coffee cup", "cafe table", "espresso"],
     shapes: ["circles", "centered", "minimal"],
   },
-  "1578662996442-48f60103fc96": {
-    tags: ["coffee", "drink", "warm", "cafe"],
-    subjects: ["coffee cup", "latte art", "wood table"],
-    shapes: ["circles", "centered", "horizontal"],
-  },
   "1544787219-7f47ccb76574": {
     tags: ["coffee", "breakfast", "cafe", "warm"],
     subjects: ["pour over", "coffee", "ceramic mug"],

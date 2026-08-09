@@ -141,21 +141,47 @@ export async function authedImageHeaders(
   return headers;
 }
 
+/** Clerk getToken() can stall when the session is refreshing — never block sync forever. */
+const AUTH_TOKEN_WAIT_MS = 12_000;
+
+async function readAuthToken(): Promise<string | null> {
+  if (!authTokenGetter) return null;
+  try {
+    return await Promise.race([
+      authTokenGetter(),
+      new Promise<null>((resolve) =>
+        setTimeout(() => resolve(null), AUTH_TOKEN_WAIT_MS),
+      ),
+    ]);
+  } catch {
+    return null;
+  }
+}
+
+/** Per-request ceiling for dead TCP connections (not a total sync budget). */
+const CLOUD_SYNC_FETCH_TIMEOUT_MS = 120_000;
+
+async function fetchForCloudSync(
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), CLOUD_SYNC_FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(tid);
+  }
+}
+
 async function authedHeaders(extra?: Record<string, string>): Promise<Record<string, string>> {
   const id = await getDeviceId();
   const headers: Record<string, string> = {
     "X-Device-Id": id,
     ...(extra ?? {}),
   };
-  if (authTokenGetter) {
-    try {
-      const token = await authTokenGetter();
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-    } catch {
-      // No token yet (e.g. during sign-in) — fall through with just the
-      // device id; the server will return 401 and the caller decides.
-    }
-  }
+  const token = await readAuthToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
   return headers;
 }
 
@@ -940,7 +966,7 @@ export async function fetchMyJourneyAtOrigin(
 ): Promise<JourneyFetchResult> {
   try {
     const origin = base.replace(/\/$/, "");
-    const res = await fetch(`${origin}/api/photos/my-journey`, {
+    const res = await fetchForCloudSync(`${origin}/api/photos/my-journey`, {
       headers: await authedHeaders(),
       cache: "no-store",
     });
@@ -958,7 +984,7 @@ export async function fetchMyJourneyAtOrigin(
 export async function fetchEchoesInbox(): Promise<EchoListFetchResult> {
   try {
     const base = getApiBase();
-    const res = await fetch(`${base}/api/echoes/inbox`, {
+    const res = await fetchForCloudSync(`${base}/api/echoes/inbox`, {
       headers: await authedHeaders(),
     });
     if (!res.ok) return { ok: false, echoes: [] };
@@ -975,7 +1001,7 @@ export async function fetchEchoesInbox(): Promise<EchoListFetchResult> {
 export async function fetchEchoesMine(): Promise<EchoListFetchResult> {
   try {
     const base = getApiBase();
-    const res = await fetch(`${base}/api/echoes/mine`, {
+    const res = await fetchForCloudSync(`${base}/api/echoes/mine`, {
       headers: await authedHeaders(),
     });
     if (!res.ok) return { ok: false, echoes: [] };
@@ -1103,7 +1129,7 @@ export async function fetchRecentWavesFeed(
 ): Promise<RecentWaveFeedItem[]> {
   try {
     const base = getApiBase();
-    const res = await fetch(
+    const res = await fetchForCloudSync(
       `${base}/api/echoes/recent-waves?limit=${encodeURIComponent(String(limit))}`,
       { headers: await authedHeaders() },
     );
