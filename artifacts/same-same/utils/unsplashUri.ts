@@ -10,7 +10,8 @@ export function unsplashPhotoUrl(photoId: string, width = 400): string {
 }
 
 /** Add format/fit/quality params so RN loads reliably on device networks. */
-export function normalizeUnsplashUri(uri: string): string {
+export function normalizeUnsplashUri(uri: string | null | undefined): string {
+  if (typeof uri !== "string" || !uri) return "";
   if (!uri.includes("images.unsplash.com")) return uri;
   try {
     const url = new URL(uri);
