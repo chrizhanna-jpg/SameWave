@@ -75,9 +75,10 @@ migration files — schema is synced via push.
   map, camera, feed) in this environment without the repo owner configuring Google OAuth in
   the Clerk dashboard (or providing working credentials). The pre-auth flow (onboarding →
   country picker → sign-in) renders fine and is the extent of UI testable here.
-- **Expo web** is the only way to view the app UI here (no device/emulator). First bundle
+- **Expo web** is the quickest way to view the app UI (`expo start --web`). First bundle
   takes ~15-30s. `react-native-web` is present; native-only modules (camera, purchases)
-  degrade gracefully on web.
+  degrade gracefully on web. A real Android build/launch is also possible here — see
+  "Local Android AAB build" below.
 - **Typecheck currently fails on pre-existing committed code**, not on setup:
   `pnpm typecheck` errors in `lib/db` (drizzle-zod + zod 3.25 `ZodType` mismatch) and
   cascades into `api-server` (implicit-any, missing `previewUri`, unbuilt `lib/db/dist`).
@@ -85,3 +86,38 @@ migration files — schema is synced via push.
   build (`pnpm --filter @workspace/api-server run build`) and runtime are unaffected.
 - **No linter and no test framework** are configured (only Prettier as a dep, no `lint`/
   `test` scripts). `tsc` typecheck is the only automated static check.
+
+### Local Android AAB build (managed Expo → Gradle)
+
+The real Play artifact is normally built by EAS, but it can be built locally to verify the
+production launch. `android/`, `ios/`, and `.env*` are **not committed** (managed workflow),
+so regenerate as needed. The Android SDK/NDK are **not** preinstalled.
+
+1. Install SDK: `cmdline-tools`, `platform-tools`, `platforms;android-36`,
+   `build-tools;36.0.0`, `ndk;27.1.12297006`, `cmake;3.22.1` (SDK 54 defaults live in
+   `expo-modules-autolinking`'s `ExpoRootProjectPlugin.kt`). Point Gradle at it via
+   `android/local.properties` (`sdk.dir=...`) or `ANDROID_HOME`.
+2. `pnpm exec expo prebuild -p android --no-install` to generate `android/`. For a
+   production-representative JS bundle, provide the `eas.json` production `env` values (e.g.
+   via a temporary `.env.production`) so `EXPO_PUBLIC_*` bake in correctly.
+3. `cd android && ./gradlew :app:bundleRelease`. Output:
+   `android/app/build/outputs/bundle/release/app-release.aab`. The `release` build type
+   signs with the bundled `app/debug.keystore` (fine for local/sideload; Play uses
+   EAS-managed keys). Validate with `bundletool` (`dump manifest`, `build-apks
+   --mode=universal`).
+- **Gotcha — Gradle OOM:** the generated `android/gradle.properties` ships
+  `org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m`, which OOMs late in the build on
+  `mergeReleaseArtProfile` (Metaspace) and `lintVitalAnalyzeRelease` (heap). Raise to
+  `-Xmx6g -XX:MaxMetaspaceSize=2g` and/or skip the non-essential release lint with
+  `-x lintVitalRelease -x lintVitalAnalyzeRelease -x lintVitalReportRelease`. (`GRADLE_OPTS`
+  is ignored for this — `org.gradle.jvmargs` wins.)
+- **Gotcha — emulator can't use KVM:** `/dev/kvm` exists but nested-guest vCPU creation
+  faults in the host (`dmesg` shows `kvm_spurious_fault` in `kvm_arch_vcpu_create`), so a
+  hardware-accelerated AVD hangs at ~0% CPU. Boot with `-accel off` (TCG software
+  emulation): it works but is ~50× slow, so `am start -W` "times out", first boot takes
+  ~9 min, and the system itself may show "System UI/Process system isn't responding" ANRs —
+  those are emulation-speed artifacts, not app bugs.
+- **Launch verification:** on Android the app boots with `hermes yes` / `newArch yes` and
+  its `LaunchDiagnosticsView` reports "No JS error captured"; the boot watchdog shows that
+  screen (not a blank splash) if `boot-ready` isn't reached within 8s — which it won't be
+  under TCG, but reaches `app-hydrated` in ~200 ms on real hardware/web.
