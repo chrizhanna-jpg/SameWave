@@ -54,50 +54,21 @@ import {
   useSubscription,
 } from "@/lib/revenuecat";
 import { getPublicApiOrigin } from "@/utils/publicEnv";
+import {
+  hideSplashSafe,
+  installBootDiagnostics,
+  isBootReady,
+  markBootReady,
+  recordBootError,
+  recordBootStep,
+  subscribeBootDiagnostics,
+  getBootSnapshot,
+} from "@/utils/bootDiagnostics";
+import { LaunchDiagnosticsView } from "@/components/LaunchDiagnosticsView";
 
 SplashScreen.preventAutoHideAsync();
-
-// --- Production safety net -------------------------------------------------
-// v1.2.1 / v1.2.2 shipped to Play Store and got stuck on the splash screen
-// for users on cold start. We never got a clear stack trace because any
-// uncaught JS error during boot died silently behind the splash. These two
-// nets exist to:
-//   (1) Surface ANY uncaught JS error or unhandled promise rejection to the
-//       user via Alert, so production crashes are diagnosable instead of
-//       invisible ("the app just sits there").
-//   (2) Guarantee the splash hides after a hard cap (4 s) regardless of
-//       what the bootstrap chain is doing — so a hung font load, a hung
-//       Clerk init, or a hung native module can never again leave the user
-//       parked on the splash forever. They'll at least see the React tree.
-// Both are no-ops in dev (LogBox already shows JS errors) but invaluable
-// for diagnosing production-only failures via field reports + screenshots.
-type GlobalErrorHandler = (error: Error, isFatal?: boolean) => void;
-type ErrorUtilsLike = {
-  getGlobalHandler?: () => GlobalErrorHandler | undefined;
-  setGlobalHandler?: (handler: GlobalErrorHandler) => void;
-};
-const errorUtils: ErrorUtilsLike | undefined = (globalThis as unknown as {
-  ErrorUtils?: ErrorUtilsLike;
-}).ErrorUtils;
-if (errorUtils?.setGlobalHandler && errorUtils?.getGlobalHandler) {
-  const previous = errorUtils.getGlobalHandler();
-  errorUtils.setGlobalHandler((error, isFatal) => {
-    console.error(
-      "[SameWave uncaught]",
-      isFatal ? "(fatal)" : "(non-fatal)",
-      error?.message ?? error,
-      "\n",
-      error?.stack ?? "",
-    );
-    try {
-      Alert.alert(
-        isFatal ? "SameWave hit an error" : "Something went wrong",
-        `${error?.name ?? "Error"}: ${error?.message ?? "Unknown"}\n\n${(error?.stack ?? "").split("\n").slice(0, 5).join("\n")}`,
-      );
-    } catch {}
-    if (typeof previous === "function") previous(error, isFatal);
-  });
-}
+installBootDiagnostics();
+recordBootStep("layout-module");
 
 // Configure the RevenueCat SDK exactly once at module load. Wrapped in
 // try/catch so a missing public key (e.g. a misconfigured EAS profile)
@@ -288,39 +259,60 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   // a known union and rejects the empty-string / undefined case).
   const firstSegment = segments[0] as string | undefined;
   const onSignIn = firstSegment === "sign-in";
-  // Tutorial is pre-auth: an unauthenticated user is allowed to be on
-  // /onboarding so the brand and flow can land before we ask them to
-  // sign in. The decision in index.tsx routes them here on first opens.
   const onOnboarding = firstSegment === "onboarding";
-  // The root router (no segment, i.e. on "/") is the decision point —
-  // never block it; let index.tsx pick the next destination.
+  const onDiagnostics = firstSegment === "diagnostics";
   const onRoot = !firstSegment;
-  const onPreAuthScreen = onSignIn || onOnboarding || onRoot;
+  const onPreAuthScreen = onSignIn || onOnboarding || onRoot || onDiagnostics;
 
-  // Two cases need a redirect through "/" so the central decision in
-  // index.tsx runs again with fresh state:
-  //  (a) user signed in but is still parked on /sign-in (tutorial may
-  //      still be pending — index.tsx handles either case correctly);
-  //  (b) user is NOT signed in and is on a protected screen (i.e. not
-  //      pre-auth). Bouncing through "/" lets index.tsx decide whether
-  //      to send them to /onboarding or /sign-in next.
-  //
-  // We use a declarative <Redirect> (not an imperative
-  // navRouter.replace in a useEffect) because the imperative form
-  // races with in-flight navigations — e.g. while the Stack is still
-  // settling on /onboarding from index.tsx's <Redirect>, a useEffect
-  // here can fire a second REPLACE that the navigator has already
-  // moved past, producing a "The action 'REPLACE' with payload
-  // {name:'index'} was not handled by any navigator" warning toast on
-  // the first onboarding card. <Redirect> is timed by React's render
-  // cycle and stays in lock-step with whatever screen is mounting.
   const needsRedirect =
     isLoaded &&
+    !onDiagnostics &&
     ((isSignedIn && onSignIn) || (!isSignedIn && !onPreAuthScreen));
 
-  if (!hasHydrated) return null;
+  useEffect(() => {
+    if (onDiagnostics) {
+      recordBootStep("auth-gate-diagnostics");
+      return;
+    }
+    if (!hasHydrated) return;
+    if (needsRedirect) {
+      recordBootStep("auth-gate-redirect");
+      return;
+    }
+    markBootReady("auth-gate");
+  }, [hasHydrated, needsRedirect, onDiagnostics]);
+
+  if (!hasHydrated && !onDiagnostics) {
+    return <HydrationHold />;
+  }
   if (needsRedirect) return <Redirect href="/" />;
   return <>{children}</>;
+}
+
+/** Visible stand-in while AsyncStorage hydrates — never return a blank tree. */
+function HydrationHold() {
+  const [stuck, setStuck] = useState(false);
+  useEffect(() => {
+    recordBootStep("hydration-hold");
+    const t = setTimeout(() => {
+      recordBootStep("hydration-timeout", "AsyncStorage hydrate >6s");
+      setStuck(true);
+    }, 6000);
+    return () => clearTimeout(t);
+  }, []);
+  if (stuck) {
+    return (
+      <LaunchDiagnosticsView
+        onContinue={() => setStuck(false)}
+        continueLabel="Hide and keep waiting"
+      />
+    );
+  }
+  return (
+    <View style={bootGateStyles.loadingRoot}>
+      <Text style={bootGateStyles.buttonLabel}>Starting SameWave…</Text>
+    </View>
+  );
 }
 
 function RootLayoutNav() {
@@ -339,6 +331,7 @@ function RootLayoutNav() {
       <Stack screenOptions={{ headerBackTitle: "Back", headerShown: false }}>
         <Stack.Screen name="sign-in" options={{ headerShown: false, gestureEnabled: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+        <Stack.Screen name="diagnostics" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="reveal" options={{ headerShown: false, presentation: "modal" }} />
         <Stack.Screen name="camera" options={{ headerShown: false, presentation: "modal" }} />
@@ -387,6 +380,44 @@ function RootLayoutNav() {
   );
 }
 
+function BootWatchdog({ children }: { children: React.ReactNode }) {
+  const [stuck, setStuck] = useState(false);
+  const [dismissedFatal, setDismissedFatal] = useState(false);
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    recordBootStep("boot-watchdog-mount");
+    hideSplashSafe();
+    const unsub = subscribeBootDiagnostics(() => setTick((n) => n + 1));
+    const t = setTimeout(() => {
+      if (!isBootReady()) {
+        recordBootStep("boot-watchdog-stuck", "no boot-ready after 8s");
+        setStuck(true);
+      }
+    }, 8000);
+    return () => {
+      unsub();
+      clearTimeout(t);
+    };
+  }, []);
+
+  const fatal =
+    getBootSnapshot().lastError?.kind === "fatal" ||
+    getBootSnapshot().lastError?.kind === "boundary";
+  if ((stuck && !isBootReady()) || (fatal && !dismissedFatal)) {
+    return (
+      <LaunchDiagnosticsView
+        onContinue={() => {
+          setStuck(false);
+          setDismissedFatal(true);
+        }}
+        continueLabel="Hide and keep waiting"
+      />
+    );
+  }
+  return <>{children}</>;
+}
+
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular,
@@ -403,26 +434,24 @@ export default function RootLayout() {
   // user doesn't perceive it as a hang.
   const [fontTimedOut, setFontTimedOut] = useState(false);
   useEffect(() => {
+    recordBootStep("root-layout-mount");
+    hideSplashSafe();
     const t = setTimeout(() => setFontTimedOut(true), 3000);
     return () => clearTimeout(t);
   }, []);
   const fontsReady = fontsLoaded || fontError != null || fontTimedOut;
 
   useEffect(() => {
-    if (fontsReady) {
-      SplashScreen.hideAsync().catch(() => {});
-    }
-  }, [fontsReady]);
+    if (fontsLoaded) recordBootStep("fonts-loaded");
+    if (fontError) recordBootStep("fonts-error", fontError.message);
+    if (fontTimedOut && !fontsLoaded) recordBootStep("fonts-timeout");
+    if (fontsReady) hideSplashSafe();
+  }, [fontsReady, fontsLoaded, fontError, fontTimedOut]);
 
   // Defence in depth: a *second* hard cap (4 s) on hideAsync that fires
-  // regardless of where the rest of the bootstrap is. If anything above
-  // useFonts has thrown / hung at module load, this still tears down
-  // the splash so the user sees the React tree (which can then surface
-  // an error via the global handler installed at the top of this file).
+  // regardless of where the rest of the bootstrap is.
   useEffect(() => {
-    const t = setTimeout(() => {
-      SplashScreen.hideAsync().catch(() => {});
-    }, 4000);
+    const t = setTimeout(() => hideSplashSafe(), 4000);
     return () => clearTimeout(t);
   }, []);
 
@@ -435,9 +464,17 @@ export default function RootLayout() {
     );
   }, []);
 
-  if (!fontsReady) return null;
-
-  return <RootLayoutWithClerk />;
+  return (
+    <BootWatchdog>
+      {fontsReady ? (
+        <RootLayoutWithClerk />
+      ) : (
+        <View style={bootGateStyles.loadingRoot}>
+          <Text style={bootGateStyles.buttonLabel}>Starting SameWave…</Text>
+        </View>
+      )}
+    </BootWatchdog>
+  );
 }
 
 // `clerkBootNonce` lets the boot gate's "Try again" button fully
@@ -508,7 +545,15 @@ function RootLayoutWithClerk() {
   }
 
   return (
-    <ErrorBoundary>
+    <ErrorBoundary
+      onError={(error, stack) => {
+        recordBootError(
+          Object.assign(error, { stack: error.stack ?? stack }),
+          "boundary",
+        );
+        hideSplashSafe();
+      }}
+    >
       <ClerkProvider
         key={clerkBootNonce}
         publishableKey={boot.publishableKey}

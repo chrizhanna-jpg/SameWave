@@ -48,6 +48,7 @@ import {
 } from "@/utils/voterPhotoByTarget";
 import { photoKey } from "@/utils/photoKey";
 import { getPublicApiOrigin, getStagedProductionApiOrigin } from "@/utils/publicEnv";
+import { recordBootStep } from "@/utils/bootDiagnostics";
 import {
   hydrateCelebratedEchoIds,
   hydrateEchoFromCache,
@@ -1039,6 +1040,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       hasHydratedRef.current = true;
       setHasHydrated(true);
       void persistState(stateRef.current);
+      recordBootStep("app-hydrated");
     });
   }, [persistState]);
 

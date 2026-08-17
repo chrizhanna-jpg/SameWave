@@ -86,4 +86,24 @@ assert(
     photoUri.includes("sanitizeUserOwnPhotoUri"),
 );
 
+const rootLayout = read("app/_layout.tsx");
+assert(
+  "root layout installs boot diagnostics",
+  rootLayout.includes("installBootDiagnostics()"),
+);
+assert(
+  "root layout never Alert.alerts uncaught JS during boot",
+  !rootLayout.includes("SameWave hit an error"),
+);
+assert(
+  "diagnostics route is registered",
+  rootLayout.includes('name="diagnostics"'),
+);
+
+const diag = read("app/diagnostics.tsx");
+assert(
+  "diagnostics screen exists",
+  diag.includes("LaunchDiagnosticsView"),
+);
+
 console.log("Done. exitCode=", process.exitCode ?? 0);
