@@ -1,6 +1,8 @@
 import { Redirect } from "expo-router";
+import { useEffect } from "react";
 import { useAuth } from "@clerk/expo";
 import { useApp } from "@/context/AppContext";
+import { recordBootStep } from "@/utils/bootDiagnostics";
 
 // Single decision point for "where should the user land right now?"
 // First-time flow (production AAB):
@@ -20,6 +22,31 @@ export default function Index() {
   const { hasHydrated, onboardingComplete, appOpenCount, tutorialLaunchAck } =
     useApp();
   const { isLoaded, isSignedIn } = useAuth();
+
+  useEffect(() => {
+    if (!hasHydrated) {
+      recordBootStep("index-wait-hydrate");
+      return;
+    }
+    const replayTutorial =
+      appOpenCount <= 2 && tutorialLaunchAck < appOpenCount;
+    if (!onboardingComplete || replayTutorial) {
+      recordBootStep("index-redirect", "onboarding");
+      return;
+    }
+    if (isLoaded && !isSignedIn) {
+      recordBootStep("index-redirect", "sign-in");
+      return;
+    }
+    recordBootStep("index-redirect", "tabs");
+  }, [
+    hasHydrated,
+    onboardingComplete,
+    appOpenCount,
+    tutorialLaunchAck,
+    isLoaded,
+    isSignedIn,
+  ]);
 
   // Route from local cache as soon as AsyncStorage hydrates — do not wait
   // for Clerk or server sync (Home / Atlas show a header sync spinner).

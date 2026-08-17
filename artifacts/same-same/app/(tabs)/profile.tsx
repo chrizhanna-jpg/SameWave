@@ -939,6 +939,16 @@ export default function ProfileScreen() {
         >
           SameWave {getInstalledVersionLabel()}
         </Text>
+        <TouchableOpacity
+          onPress={() => router.push("/diagnostics")}
+          accessibilityRole="button"
+          accessibilityLabel="Open launch diagnostics"
+          style={{ alignItems: "center", paddingVertical: 8, marginBottom: 12 }}
+        >
+          <Text style={[styles.appVersion, { color: WAVE_BLUE }]}>
+            Launch diagnostics
+          </Text>
+        </TouchableOpacity>
       </ScrollView>
 
       <CountryPickerModal

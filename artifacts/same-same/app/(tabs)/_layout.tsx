@@ -21,6 +21,7 @@ import {
 } from "@/utils/tabBarSafeArea";
 import { detectCountryFromGPS } from "@/utils/gpsCountry";
 import { flagFor, nameFor } from "@/data/countries";
+import { recordBootStep } from "@/utils/bootDiagnostics";
 
 const RUN_GPS_CHECK = !__DEV__;
 
@@ -129,6 +130,10 @@ export default function TabLayout() {
     myCountryFlag,
     setMyCountry,
   } = useApp();
+
+  useEffect(() => {
+    recordBootStep("tabs-layout-mount");
+  }, []);
 
   const gpsRanRef = useRef(false);
   useEffect(() => {

@@ -281,6 +281,15 @@ export default function SignInScreen() {
           </Text>
         </View>
 
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Open launch diagnostics"
+          onPress={() => router.push("/diagnostics")}
+          style={styles.probeBtn}
+        >
+          <Text style={styles.probeBtnLabel}>Launch diagnostics</Text>
+        </TouchableOpacity>
+
         <Text style={styles.fineprint}>
           We don't show or store your name, email, or profile photo. Your
           Google account is only used as a private anchor for your data.
