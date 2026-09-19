@@ -167,17 +167,22 @@ run_test() {
     sleep 10
   done
   "$ADB" shell pm path "$PKG" >/dev/null 2>&1 || fail "package $PKG did not install (see /tmp/launch-test-install.log)"
-  log "Package registered; letting post-install optimization (dexopt) settle..."
-  sleep 25
+  # Right after install the package is "frozen" while dex2oat AOT-compiles it
+  # (slow under software emulation). Wait for dex2oat to finish before launching.
+  log "Package registered; waiting for post-install optimization (dex2oat) to finish..."
+  for i in $(seq 1 120); do
+    "$ADB" shell "ps -A 2>/dev/null | grep -q dex2oat" || break
+    sleep 10
+  done
+  sleep 5
 
   "$ADB" shell logcat -c 2>/dev/null || true
   log "Launching $ACT ..."
   local started=""
-  for i in 1 2 3 4 5 6; do
+  for i in $(seq 1 12); do
     "$ADB" shell am start -n "$ACT" >/tmp/launch-test-start.log 2>&1
     sleep 6
-    # The package can be transiently "frozen" while dexopt finishes right after
-    # install; retry the launch until it takes.
+    # Backstop: if dexopt froze the package again, retry the launch.
     if "$ADB" shell "logcat -d -t 300" 2>/dev/null | grep -q "is currently frozen"; then
       log "package still optimizing (frozen), retrying launch in 15s..."; sleep 15; continue
     fi
