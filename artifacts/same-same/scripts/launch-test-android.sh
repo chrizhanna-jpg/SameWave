@@ -104,11 +104,22 @@ resolve_apk() {
   [ -n "$AAB" ] && [ -f "$AAB" ] || fail "No .aab or .apk found. Build one first (scripts/build-android-aab.sh) or pass --aab/--apk."
   ensure_bundletool
   log "Converting AAB -> universal APK: $AAB"
+  # A universal APK must be signed to be installable. Prefer the project's
+  # debug keystore; otherwise generate a throwaway debug keystore so the launch
+  # test is self-contained (signing is irrelevant to whether the app launches).
   local ks="$SAME_SAME/android/app/debug.keystore"
-  local ksargs=()
-  [ -f "$ks" ] && ksargs=(--ks="$ks" --ks-pass=pass:android --ks-key-alias=androiddebugkey --key-pass=pass:android)
+  if [ ! -f "$ks" ]; then
+    ks="/tmp/lt-debug.keystore"
+    if [ ! -f "$ks" ]; then
+      log "Generating throwaway debug keystore for install signing..."
+      keytool -genkeypair -keystore "$ks" -storepass android -keypass android \
+        -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+        -dname "CN=Android Debug,O=Android,C=US" >/dev/null 2>&1 || fail "could not create debug keystore"
+    fi
+  fi
   rm -f /tmp/lt.apks
-  java -jar "$BT" build-apks --bundle="$AAB" --output=/tmp/lt.apks --mode=universal --overwrite "${ksargs[@]}" \
+  java -jar "$BT" build-apks --bundle="$AAB" --output=/tmp/lt.apks --mode=universal --overwrite \
+    --ks="$ks" --ks-pass=pass:android --ks-key-alias=androiddebugkey --key-pass=pass:android \
     || fail "bundletool build-apks failed"
   rm -rf /tmp/lt_apks && mkdir -p /tmp/lt_apks
   (cd /tmp/lt_apks && unzip -oq /tmp/lt.apks)
@@ -145,14 +156,34 @@ boot_emulator() {
 
 # ---- 4. Install, launch, verify --------------------------------------------
 run_test() {
-  log "Installing APK: $APK"
-  "$ADB" install -r -g "$APK" >/tmp/launch-test-install.log 2>&1 || "$ADB" install -r "$APK" >/tmp/launch-test-install.log 2>&1 \
-    || fail "adb install failed (see /tmp/launch-test-install.log)"
-  "$ADB" shell pm list packages | grep -q "$PKG" || fail "package $PKG not installed"
+  log "Installing APK: $APK (streamed install can be slow under software emulation)"
+  # Under software (TCG) emulation the adb install client can hang AFTER the
+  # package has actually committed. So run it in the background and poll the
+  # package manager for the package instead of blocking on the client.
+  ( "$ADB" install -r "$APK" >/tmp/launch-test-install.log 2>&1 ) &
+  local i
+  for i in $(seq 1 120); do
+    "$ADB" shell pm path "$PKG" >/dev/null 2>&1 && break
+    sleep 10
+  done
+  "$ADB" shell pm path "$PKG" >/dev/null 2>&1 || fail "package $PKG did not install (see /tmp/launch-test-install.log)"
+  log "Package registered; letting post-install optimization (dexopt) settle..."
+  sleep 25
 
   "$ADB" shell logcat -c 2>/dev/null || true
   log "Launching $ACT ..."
-  "$ADB" shell am start -n "$ACT" >/dev/null 2>&1 || fail "am start failed"
+  local started=""
+  for i in 1 2 3 4 5 6; do
+    "$ADB" shell am start -n "$ACT" >/tmp/launch-test-start.log 2>&1
+    sleep 6
+    # The package can be transiently "frozen" while dexopt finishes right after
+    # install; retry the launch until it takes.
+    if "$ADB" shell "logcat -d -t 300" 2>/dev/null | grep -q "is currently frozen"; then
+      log "package still optimizing (frozen), retrying launch in 15s..."; sleep 15; continue
+    fi
+    started=1; break
+  done
+  [ -n "$started" ] || fail "could not start MainActivity (package stayed frozen through dexopt)"
 
   local waited=0 pid="" top="" fatal="" anr="" jsup=""
   while [ "$waited" -lt "$TIMEOUT" ]; do
