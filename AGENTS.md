@@ -121,3 +121,11 @@ so regenerate as needed. The Android SDK/NDK are **not** preinstalled.
   its `LaunchDiagnosticsView` reports "No JS error captured"; the boot watchdog shows that
   screen (not a blank splash) if `boot-ready` isn't reached within 8s — which it won't be
   under TCG, but reaches `app-hydrated` in ~200 ms on real hardware/web.
+- **Automated launch test:** `artifacts/same-same/scripts/launch-test-android.sh` is a
+  reproducible end-to-end launch check — it converts an AAB to a universal APK (self-signs
+  with a throwaway debug key), boots a headless emulator, installs, launches `MainActivity`,
+  waits out the post-install `dex2oat`, and asserts the app comes up (process alive,
+  MainActivity foreground, Hermes/JS runtime initialized via expo-updates, no FATAL/ANR).
+  Exit 0 = launch OK. Defaults to `--accel off` (TCG) because this VM's nested KVM faults;
+  pass `--accel auto` on a host with working KVM for a ~10-50x faster run. Under TCG a full
+  run is slow (~9 min emulator boot + ~8 min APK install + dexopt), but it is hands-off.
