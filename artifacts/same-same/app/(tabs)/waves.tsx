@@ -46,6 +46,7 @@ import { scrollPaddingAboveTabBar, tabBarTotalHeight } from "@/utils/tabBarSafeA
 import { timeAgo } from "@/utils/timeAgo";
 import { photoKey } from "@/utils/photoKey";
 import { photoCountryDisplay, resolveCaptureCountryCode } from "@/utils/photoCountry";
+import { applyTabFocusSoundtrack } from "@/utils/tabSoundtrack";
 
 type WaveSectionId = "received" | "caught" | "sent" | "world";
 
@@ -245,6 +246,7 @@ export default function WavesScreen() {
   useFocusEffect(
     useCallback(() => {
       markTabVisited("waves");
+      applyTabFocusSoundtrack("waves");
       const deferred = runAfterTabFocus(() => {
         if (!shouldRunThrottledFocusWork("waves-sync", 30_000)) return;
         reconcileMatchPhotos();

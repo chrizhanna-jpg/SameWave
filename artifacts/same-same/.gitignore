@@ -43,5 +43,8 @@ credentials.json
 *.tsbuildinfo
 .vercel
 
+# Local Expo Go installer served for phone preview
+public/*.apk
+
 
 

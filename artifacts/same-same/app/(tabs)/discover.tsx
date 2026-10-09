@@ -210,7 +210,12 @@ export default function DiscoverScreen() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [playingSide, setPlayingSide] = useState<"a" | "b">("a");
   const [muted, setMutedState] = useState<boolean>(() => isMuted());
-  const [focused, setFocused] = useState(true);
+  // Start unfocused. This screen stays mounted (or mounts beside the
+  // visible tabs). `true` here made Discover claim the shared player
+  // and keep a feed clip running across Ripple swipes and tab changes.
+  const [focused, setFocused] = useState(false);
+  const focusedRef = useRef(false);
+  focusedRef.current = focused;
 
   // Subscribe to the global mute state so toggling it elsewhere (e.g.
   // the match tab header) keeps this UI in sync.
@@ -600,6 +605,10 @@ export default function DiscoverScreen() {
   }, [current]);
   useEffect(() => {
     return onUserInteracted(() => {
+      // This listener outlives a visit. A later Ripple swipe also counts as
+      // the first interaction; without the focus check it would start
+      // Discover's clip over the card the user is actually looking at.
+      if (!focusedRef.current) return;
       const c = currentRef.current;
       // Capture the lease here too — without this, the focus blur
       // cleanup's pauseIfLease() would no-op against a stale lease

@@ -11,6 +11,9 @@
 import { Audio } from "expo-av";
 import { AppState, type AppStateStatus } from "react-native";
 
+import { createAudioCommandQueue } from "@/utils/audioCommandQueue";
+import { clipShouldPlay } from "@/utils/clipPlayback";
+
 let activeSound: Audio.Sound | null = null;
 let activeUrl: string | null = null;
 // Tracks whether the active clip is currently playing (vs. paused but
@@ -24,14 +27,20 @@ function notifyPlayback() {
 }
 // Tracks the most recent play() request so a slow load for an old clip
 // can't clobber a newer one that the user has already moved on to.
-// `playToken` doubles as the "lease" handed back to callers of
+// The queue token doubles as the "lease" handed back to callers of
 // playClip(): each call gets a unique number, and screens use that
 // number with stopIfLease()/pauseIfLease() so an unmount cleanup
 // only kills audio that THIS call started — never another screen's
 // freshly-started playback. (URL-based ownership isn't enough: the
 // clip pool is small, two screens can pick the same URL, and an old
 // screen's cleanup would wrongly stop the new screen's audio.)
-let playToken = 0;
+// Commands run one at a time, so a swipe or tab change that bumps the
+// token cannot have an older load's play() land after the newer command.
+const audioCommands = createAudioCommandQueue();
+// True only while some screen still wants the vibe clip. Pause/stop clear
+// it synchronously. Mute does not — unmuting resumes a clip the current
+// screen still wants, and stays silent after a tab change.
+let desiredPlaying = false;
 let muted = false;
 const muteListeners = new Set<(m: boolean) => void>();
 let appStateSub: { remove: () => void } | null = null;
@@ -258,34 +267,33 @@ export function playClip(url: string | undefined | null): number {
   // music before the user even sees the first frame.
   if (!userInteracted) return 0;
   ensureAppStateHook();
+  desiredPlaying = true;
   // Bump the token SYNCHRONOUSLY so the returned lease matches the
   // one this call's async work will check against — and so any older
   // in-flight load is invalidated immediately, even if `audioModeReady`
   // hasn't resolved yet.
-  const lease = ++playToken;
-  void _doPlay(url, lease);
+  const lease = audioCommands.bump();
+  void audioCommands.enqueue(() => _doPlay(url, lease));
   return lease;
 }
 
 async function _doPlay(url: string, lease: number): Promise<void> {
   await audioModeReady();
-  if (lease !== playToken) return;
+  if (lease !== audioCommands.current()) return;
 
   // Same URL already loaded — just make sure it's playing (or muted).
   if (activeSound && activeUrl === url) {
+    if (lease !== audioCommands.current()) return;
     try {
-      if (muted) {
-        await activeSound.setStatusAsync({ shouldPlay: false });
-        if (activePlaying) {
-          activePlaying = false;
-          notifyPlayback();
-        }
-      } else {
-        await activeSound.setStatusAsync({ shouldPlay: true, isLooping: true });
-        if (!activePlaying) {
-          activePlaying = true;
-          notifyPlayback();
-        }
+      const shouldPlay = clipShouldPlay(desiredPlaying, muted);
+      await activeSound.setStatusAsync({
+        shouldPlay,
+        isLooping: true,
+      });
+      if (lease !== audioCommands.current()) return;
+      if (activePlaying !== shouldPlay) {
+        activePlaying = shouldPlay;
+        notifyPlayback();
       }
     } catch {}
     return;
@@ -297,13 +305,20 @@ async function _doPlay(url: string, lease: number): Promise<void> {
   // landed, so it's usually done by swipe time.
   const inflight = prewarmInFlight.get(url);
   if (inflight) {
-    try { await inflight; } catch {}
-    if (lease !== playToken) return;
+    // Do not hold the command queue while the decode finishes. A tab change
+    // or a newer swipe has to be able to pause the clip that's already
+    // playing; waiting here kept that old clip running until the prefetch
+    // returned.
+    void inflight.finally(() => {
+      if (lease !== audioCommands.current()) return;
+      void audioCommands.enqueue(() => _doPlay(url, lease));
+    });
+    return;
   }
 
   // Tear down whatever's currently playing before loading the new clip.
   await unloadActive();
-  if (lease !== playToken) return; // user moved on while we were tearing down
+  if (lease !== audioCommands.current()) return; // user moved on while we were tearing down
 
   // Fast path: adopt a prewarmed, already-decoded sound — playback starts
   // immediately with no network fetch or decode. This is what makes a
@@ -311,34 +326,50 @@ async function _doPlay(url: string, lease: number): Promise<void> {
   const pre = prewarmed.get(url);
   if (pre) {
     prewarmed.delete(url);
+    if (lease !== audioCommands.current()) {
+      // A newer swipe or tab change won while we waited. Keep the decoded
+      // clip cached; do not start it.
+      prewarmed.set(url, pre);
+      return;
+    }
     activeSound = pre;
     activeUrl = url;
     try {
       await pre.setStatusAsync({
-        shouldPlay: !muted,
+        shouldPlay: clipShouldPlay(desiredPlaying, muted),
         isLooping: true,
         volume: 0.55,
       });
     } catch {}
-    const nowPlaying = !muted;
+    if (lease !== audioCommands.current()) return;
+    const nowPlaying = clipShouldPlay(desiredPlaying, muted);
     activePlaying = nowPlaying;
     notifyPlayback();
     return;
   }
 
   try {
+    // Load paused. shouldPlay:true inside createAsync can start the clip
+    // after a tab change has already asked us to stop, because that native
+    // call is not tied to the lease.
     const { sound } = await Audio.Sound.createAsync(
       { uri: url },
-      { shouldPlay: !muted, isLooping: true, volume: 0.55 },
+      { shouldPlay: false, isLooping: true, volume: 0.55 },
     );
-    if (lease !== playToken) {
+    if (lease !== audioCommands.current()) {
       // A newer play() landed while we were loading — discard.
       try { await sound.unloadAsync(); } catch {}
       return;
     }
     activeSound = sound;
     activeUrl = url;
-    const nowPlaying = !muted;
+    if (clipShouldPlay(desiredPlaying, muted)) {
+      try {
+        await sound.playAsync();
+      } catch {}
+    }
+    if (lease !== audioCommands.current()) return;
+    const nowPlaying = clipShouldPlay(desiredPlaying, muted);
     if (activePlaying !== nowPlaying) {
       activePlaying = nowPlaying;
       notifyPlayback();
@@ -355,30 +386,39 @@ async function _doPlay(url: string, lease: number): Promise<void> {
 /**
  * Pause the active clip without unloading. Cheap to call repeatedly.
  *
- * Importantly, bumps `playToken` so any in-flight `createAsync` from a
+ * Importantly, bumps the command token so any in-flight load from a
  * prior `playClip()` call sees the mismatch and discards itself instead
- * of starting playback after we've already been told to stop. Without
- * this, an audio clip can begin playing milliseconds after the app is
- * backgrounded or a fullscreen modal opens — violating the "auto-pause
- * on background/fullscreen" guarantee the Match screen relies on.
+ * of starting playback after we've already been told to stop. The pause
+ * itself is queued behind that load so its native play() cannot land
+ * afterwards. Without this, an audio clip can begin playing milliseconds
+ * after the app is backgrounded, a fullscreen modal opens, or the user
+ * leaves the tab.
  */
-export async function pause(): Promise<void> {
-  playToken++;
-  if (!activeSound) return;
-  if (activePlaying) {
-    activePlaying = false;
-    notifyPlayback();
-  }
-  try {
-    await activeSound.setStatusAsync({ shouldPlay: false });
-  } catch {}
+export function pause(): Promise<void> {
+  desiredPlaying = false;
+  const lease = audioCommands.bump();
+  return audioCommands.enqueue(async () => {
+    if (lease !== audioCommands.current()) return;
+    if (!activeSound) return;
+    if (activePlaying) {
+      activePlaying = false;
+      notifyPlayback();
+    }
+    try {
+      await activeSound.setStatusAsync({ shouldPlay: false });
+    } catch {}
+  });
 }
 
 /** Stop and fully release the active clip. Call on screen unmount. */
-export async function stop(): Promise<void> {
-  playToken++; // invalidate any in-flight loads
-  clearPrewarm(); // release preloaded clips so they can't leak native memory
-  await unloadActive();
+export function stop(): Promise<void> {
+  desiredPlaying = false;
+  const lease = audioCommands.bump();
+  return audioCommands.enqueue(async () => {
+    if (lease !== audioCommands.current()) return;
+    clearPrewarm(); // release preloaded clips so they can't leak native memory
+    await unloadActive();
+  });
 }
 
 /**
@@ -393,7 +433,7 @@ export async function stop(): Promise<void> {
  */
 export async function stopIfLease(lease: number): Promise<void> {
   if (!lease) return;
-  if (lease !== playToken) return;
+  if (lease !== audioCommands.current()) return;
   await stop();
 }
 
@@ -404,7 +444,7 @@ export async function stopIfLease(lease: number): Promise<void> {
  */
 export async function pauseIfLease(lease: number): Promise<void> {
   if (!lease) return;
-  if (lease !== playToken) return;
+  if (lease !== audioCommands.current()) return;
   await pause();
 }
 
@@ -413,14 +453,19 @@ export function setMuted(next: boolean) {
   if (muted === next) return;
   muted = next;
   muteListeners.forEach((cb) => cb(muted));
-  if (activeSound) {
-    activeSound.setStatusAsync({ shouldPlay: !muted }).catch(() => {});
-    const nowPlaying = !muted;
-    if (activePlaying !== nowPlaying) {
-      activePlaying = nowPlaying;
+  void audioCommands.enqueue(async () => {
+    if (!activeSound) return;
+    // Read desiredPlaying at run time. A tab change may have paused the
+    // clip after this mute toggle was queued; unmuting must leave it paused.
+    const shouldPlay = clipShouldPlay(desiredPlaying, muted);
+    try {
+      await activeSound.setStatusAsync({ shouldPlay });
+    } catch {}
+    if (activePlaying !== shouldPlay) {
+      activePlaying = shouldPlay;
       notifyPlayback();
     }
-  }
+  });
 }
 
 export function isMuted(): boolean {
@@ -454,7 +499,7 @@ export function onPlaybackChange(cb: () => void): () => void {
 // so screens can simply call `pausePreview()` on blur without juggling
 // per-row lease state. If anything else has taken playback since (a
 // vibe clip on Discover, a different mic badge), the lease no longer
-// matches `playToken` and `pausePreview()` is a no-op — exactly what we
+// matches the command token and `pausePreview()` is a no-op — exactly what we
 // want, so leaving the photos screen never kills audio another surface
 // just started.
 let lastPreviewLease = 0;
