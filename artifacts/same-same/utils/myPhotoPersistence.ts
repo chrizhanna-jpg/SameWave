@@ -27,11 +27,25 @@ function photoRichnessScore(photo: MyPhoto): number {
   return score;
 }
 
+function isLocalCaptureUri(uri: string | undefined): boolean {
+  const u = uri?.trim() ?? "";
+  return u.startsWith("file:") || u.startsWith("content:");
+}
+
 function pickRicherMyPhoto(a: MyPhoto, b: MyPhoto): MyPhoto {
   const sa = photoRichnessScore(a);
   const sb = photoRichnessScore(b);
-  if (sb > sa) return { ...a, ...b, localId: a.localId ?? b.localId };
-  return { ...b, ...a, localId: a.localId ?? b.localId };
+  const chosen =
+    sb > sa
+      ? { ...a, ...b, localId: a.localId ?? b.localId }
+      : { ...b, ...a, localId: a.localId ?? b.localId };
+  // Match history stores the server stream. Merging it over the in-session
+  // camera file is what blanks the Ripple photo after a few swipes.
+  const local = [a.uri, b.uri].find((u) => isLocalCaptureUri(u));
+  if (local && !isLocalCaptureUri(chosen.uri)) {
+    return { ...chosen, uri: local.trim() };
+  }
+  return chosen;
 }
 
 /** Union photo rows — prefer backendId, upload ok, and in-memory uploads during hydration races. */
