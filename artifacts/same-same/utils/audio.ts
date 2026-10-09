@@ -8,7 +8,7 @@
 // flow. The whole feature is "nice to have" — never block matching on
 // audio.
 
-import { Audio } from "expo-av";
+import { Audio } from "@/utils/expoAvCompat";
 import { AppState, type AppStateStatus } from "react-native";
 
 import { createAudioCommandQueue } from "@/utils/audioCommandQueue";

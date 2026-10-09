@@ -54,6 +54,7 @@
         {}
       ],
       "@clerk/expo",
+      "expo-secure-store",
       "expo-font",
       "expo-web-browser",
       [
