@@ -134,6 +134,14 @@ assert(
   "viewerOwnPhoto never falls back to Unsplash placeholder",
   remote.includes("exhausted && !viewerOwnPhoto"),
 );
+assert(
+  "Ripple photo reload ignores fallback-only updates",
+  remote.includes("shouldResetDisplayedPhoto"),
+);
+assert(
+  "painted viewer photo ignores later load errors",
+  remote.includes("if (viewerOwnPhoto && loaded) return;"),
+);
 
 const atlas = read("components/AtlasGlobeExperience.tsx");
 assert(
