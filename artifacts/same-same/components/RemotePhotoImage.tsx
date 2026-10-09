@@ -25,6 +25,7 @@ import {
   canonicalizePhotoStreamUri,
   sanitizeUserOwnPhotoUri,
   shouldCanonicalizePhotoStreamUri,
+  shouldResetDisplayedPhoto,
   withDisplayPhotoWidth,
 } from "@/utils/photoDisplayUri";
 import {
@@ -192,6 +193,7 @@ export function RemotePhotoImage({
   const loadStartedAt = useRef<number | null>(null);
   const blankTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadGeneration = useRef(0);
+  const loadResetRef = useRef({ uri: "", retry: -1 });
 
   const clearRetryTimer = () => {
     if (retryTimer.current) {
@@ -208,11 +210,21 @@ export function RemotePhotoImage({
   };
 
   useEffect(() => {
+    const prev = loadResetRef.current;
+    const reset = shouldResetDisplayedPhoto({
+      previousUri: prev.uri,
+      nextUri: normalized,
+      previousManualRetry: prev.retry,
+      nextManualRetry: manualRetry,
+    });
+    loadResetRef.current = { uri: normalized, retry: manualRetry };
+    if (!reset) return;
     loadGeneration.current += 1;
     setUsedFallback(false);
     setUseHosted(false);
     setExhausted(false);
     setAttempt(0);
+    // Fallback arriving (upload ack) must not hide a frame already painted.
     setLoaded(false);
     clearRetryTimer();
     clearBlankTimer();
@@ -220,7 +232,7 @@ export function RemotePhotoImage({
       clearRetryTimer();
       clearBlankTimer();
     };
-  }, [normalized, normalizedFallback, manualRetry]);
+  }, [normalized, manualRetry]);
 
   useEffect(() => {
     if (!IMAGE_LOAD_V2 || !normalized) return;
@@ -314,7 +326,12 @@ export function RemotePhotoImage({
   };
 
   const handleError = () => {
+    const gen = loadGeneration.current;
     if (exhausted) return;
+    // Once the viewer's own photo is on screen, ignore later errors. Swiping
+    // the deck re-renders this image; a stale onError used to spend the retry
+    // budget, hide the frame, and leave the black pane under the flag badge.
+    if (viewerOwnPhoto && loaded) return;
     clearRetryTimer();
     const onLocalCapture =
       !usedFallback &&
@@ -328,6 +345,7 @@ export function RemotePhotoImage({
       const delay =
         RETRY_BACKOFF_MS[Math.min(attempt, RETRY_BACKOFF_MS.length - 1)] ?? 800;
       retryTimer.current = setTimeout(() => {
+        if (gen !== loadGeneration.current) return;
         if (needsAuth) {
           void refreshAuthedImageHeaders()
             .then((h) => setAuthHeaders(h))
@@ -416,7 +434,7 @@ export function RemotePhotoImage({
           onError={handleError}
         />
       ) : null}
-      {exhausted && !viewerOwnPhoto ? (
+      {exhausted ? (
         <Pressable
           style={styles.retryOverlay}
           onPress={handleManualRetry}

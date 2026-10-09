@@ -10,10 +10,13 @@ import {
   canonicalizePhotoStreamUri,
   enrichMatchMyPhotoFields,
   findMyPhotoForMatch,
+  hydrateMyPhotoUri,
   myPhotoRowKey,
   repairMyPhotos,
   resolveMatchMyPhotoUri,
+  resolveMyPhotoDisplayUri,
   shouldCanonicalizePhotoStreamUri,
+  shouldResetDisplayedPhoto,
 } from "../utils/photoDisplayUri";
 import { mergeMatchesById } from "../utils/syncCache";
 import { setVoterPhotoMapForTests } from "../utils/voterPhotoByTarget";
@@ -278,6 +281,86 @@ assert(
   !sampleEnriched.myPhotoId && sampleEnriched.myPhoto.includes("unsplash")
     ? "ok"
     : sampleEnriched.myPhotoId ?? "",
+  true,
+);
+
+// H14: upload ack must not replace the capture the user is already looking at
+const liveCapture: MyPhoto = {
+  uri: "file:///cache/ripple.jpg",
+  uploadedAt: "2026-10-09T19:30:00.000Z",
+  theme: "food",
+  backendId: "uploaded-id",
+  uploadState: "ok",
+};
+assert(
+  "hydrate keeps file capture after backend id",
+  hydrateMyPhotoUri(liveCapture).uri.startsWith("file:") ? "ok" : "",
+  true,
+);
+assert(
+  "Ripple display keeps file capture after upload ack",
+  resolveMyPhotoDisplayUri(liveCapture, { preferLocalCapture: true }).startsWith(
+    "file:",
+  )
+    ? "ok"
+    : "",
+  true,
+);
+assert(
+  "non-Ripple display still uses server stream",
+  resolveMyPhotoDisplayUri(liveCapture).includes("/api/photos/uploaded-id/image")
+    ? "ok"
+    : "",
+  true,
+);
+const repairedLive = repairMyPhotos([liveCapture], []);
+assert(
+  "repairMyPhotos does not strip live file capture",
+  repairedLive[0]?.uri.startsWith("file:") ? "ok" : "",
+  true,
+);
+
+// H15: a new fallback must not hide a photo that is already painted
+assert(
+  "same uri does not reset displayed photo",
+  shouldResetDisplayedPhoto({
+    previousUri: "file:///cache/ripple.jpg",
+    nextUri: "file:///cache/ripple.jpg",
+    previousManualRetry: 0,
+    nextManualRetry: 0,
+  })
+    ? ""
+    : "ok",
+  true,
+);
+assert(
+  "uri change resets displayed photo",
+  shouldResetDisplayedPhoto({
+    previousUri: "file:///cache/ripple.jpg",
+    nextUri: "https://samewave.onrender.com/api/photos/uploaded-id/image?w=480",
+    previousManualRetry: 0,
+    nextManualRetry: 0,
+  })
+    ? "ok"
+    : "",
+  true,
+);
+
+const mergedAfterAck = mergeMyPhotos(
+  [liveCapture],
+  [
+    {
+      uri: "https://samewave.onrender.com/api/photos/uploaded-id/image",
+      backendId: "uploaded-id",
+      uploadedAt: liveCapture.uploadedAt,
+      theme: "food",
+      uploadState: "ok",
+    },
+  ],
+);
+assert(
+  "merge keeps file capture over match-history server uri",
+  mergedAfterAck[0]?.uri.startsWith("file:") ? "ok" : mergedAfterAck[0]?.uri ?? "",
   true,
 );
 
