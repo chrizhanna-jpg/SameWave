@@ -5,11 +5,28 @@ import { resolveUserFromRequest } from "../lib/users";
 import { sendPushToUser } from "../lib/push";
 import { PUSH_COPY } from "../lib/pushCopy";
 import { logger } from "../lib/logger";
+import { waveNameFromVibes } from "../lib/waveName";
 
 const router: IRouter = Router();
 
 // Helper: build the canonical (low, high) photo-pair ordering used by
 // the unique index on `echoes`. Lexicographic on the varchar UUIDs.
+async function storeWaveName(
+  echoId: string,
+  themeA: string | null | undefined,
+  themeB: string | null | undefined,
+): Promise<void> {
+  try {
+    const name = waveNameFromVibes(themeA, themeB).slice(0, 80);
+    await db
+      .update(echoesTable)
+      .set({ waveName: name })
+      .where(eq(echoesTable.id, echoId));
+  } catch (err) {
+    logger.warn({ err, echoId }, "wave name not stored");
+  }
+}
+
 function orderPair<A>(
   aId: string,
   bId: string,
@@ -171,6 +188,7 @@ export async function recordEchoOffer(input: {
       : pair.lowPayload.userId;
   const echoId = row.id;
   if (becameMutual) {
+    void storeWaveName(echoId, voterPhoto.theme, targetPhoto.theme);
     // Both sides care: the responder (voterUserId) just tapped and the
     // original offerer (recipientUserId) needs to know it stuck. Mutual
     // taps deep-link straight into the side-by-side pair view (the
@@ -333,6 +351,7 @@ type EchoCard = {
     capturedAt: string | null;
     createdAt: string | null;
     theme: string;
+    whisper: string | null;
   };
   theirs: {
     id: string;
@@ -342,7 +361,13 @@ type EchoCard = {
     capturedAt: string | null;
     createdAt: string | null;
     theme: string;
+    whisper: string | null;
   };
+  waveName?: string;
+  mineWaveCount?: number;
+  theirsWaveCount?: number;
+  keptForMe?: boolean;
+  shareForMe?: boolean;
 };
 
 /** Normalise a DB timestamp to an ISO string (or null) for JSON transport. */
@@ -364,6 +389,7 @@ function photoSideFromRow(
   capturedAt: string | null;
   createdAt: string | null;
   theme: string;
+  whisper: string | null;
 } {
   const captureRaw = row[`${side}CaptureCountry`] as string | null;
   const declaredRaw = row[`${side}Country`] as string | null;
@@ -385,7 +411,23 @@ function photoSideFromRow(
     capturedAt: isoOrNull(row[`${side}CapturedAt`]),
     createdAt: isoOrNull(row[`${side}CreatedAt`]),
     theme: String(row[`${side}Theme`] ?? ""),
+    whisper: whisperOrNull(row[`${side}Whisper`]),
   };
+}
+
+function whisperOrNull(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().slice(0, 60);
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function countOrUndefined(value: unknown): number | undefined {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+function asBool(value: unknown): boolean {
+  return value === true || value === "t" || value === "true" || value === 1;
 }
 
 function buildEchoCard(
@@ -395,8 +437,9 @@ function buildEchoCard(
   const lowId = String(row.userLowId);
   const lowSide = photoSideFromRow(row, "low");
   const highSide = photoSideFromRow(row, "high");
-  const mine = lowId === meId ? lowSide : highSide;
-  const theirs = lowId === meId ? highSide : lowSide;
+  const mineIsLow = lowId === meId;
+  const mine = mineIsLow ? lowSide : highSide;
+  const theirs = mineIsLow ? highSide : lowSide;
   const stateRaw = String(row.state);
   const firstRippleUserId =
     typeof row.firstRippleUserId === "string" ? row.firstRippleUserId : null;
@@ -407,6 +450,11 @@ function buildEchoCard(
     createdAt: row.createdAt as string | Date,
     mutualAt: (row.mutualAt as string | Date | null) ?? null,
     youSentFirst: firstRippleUserId ? firstRippleUserId === meId : undefined,
+    waveName: typeof row.waveName === "string" && row.waveName.trim() ? row.waveName : undefined,
+    mineWaveCount: countOrUndefined(mineIsLow ? row.lowWaveCount : row.highWaveCount),
+    theirsWaveCount: countOrUndefined(mineIsLow ? row.highWaveCount : row.lowWaveCount),
+    keptForMe: asBool(mineIsLow ? row.keptLow : row.keptHigh),
+    shareForMe: asBool(mineIsLow ? row.shareLow : row.shareHigh),
     mine,
     theirs,
   };
@@ -447,7 +495,24 @@ router.get("/echoes/inbox", async (req, res) => {
         ph.capture_country_code AS "highCaptureCountry",
         ph.captured_at AS "highCapturedAt",
         ph.created_at AS "highCreatedAt",
-        ph.theme AS "highTheme"
+        ph.theme AS "highTheme",
+        pl.whisper AS "lowWhisper",
+        ph.whisper AS "highWhisper",
+        e.wave_name AS "waveName",
+        e.kept_low AS "keptLow",
+        e.kept_high AS "keptHigh",
+        e.share_low AS "shareLow",
+        e.share_high AS "shareHigh",
+        (
+          SELECT count(*)::int FROM echoes ec
+          WHERE ec.state = 'mutual'
+            AND (ec.user_low_id = e.user_low_id OR ec.user_high_id = e.user_low_id)
+        ) AS "lowWaveCount",
+        (
+          SELECT count(*)::int FROM echoes ec
+          WHERE ec.state = 'mutual'
+            AND (ec.user_low_id = e.user_high_id OR ec.user_high_id = e.user_high_id)
+        ) AS "highWaveCount"
       FROM echoes e
       JOIN photos pl ON pl.id = e.photo_low_id
       JOIN photos ph ON ph.id = e.photo_high_id
@@ -501,6 +566,23 @@ router.get("/echoes/mine", async (req, res) => {
         ph.captured_at AS "highCapturedAt",
         ph.created_at AS "highCreatedAt",
         ph.theme AS "highTheme",
+        pl.whisper AS "lowWhisper",
+        ph.whisper AS "highWhisper",
+        e.wave_name AS "waveName",
+        e.kept_low AS "keptLow",
+        e.kept_high AS "keptHigh",
+        e.share_low AS "shareLow",
+        e.share_high AS "shareHigh",
+        (
+          SELECT count(*)::int FROM echoes ec
+          WHERE ec.state = 'mutual'
+            AND (ec.user_low_id = e.user_low_id OR ec.user_high_id = e.user_low_id)
+        ) AS "lowWaveCount",
+        (
+          SELECT count(*)::int FROM echoes ec
+          WHERE ec.state = 'mutual'
+            AND (ec.user_low_id = e.user_high_id OR ec.user_high_id = e.user_high_id)
+        ) AS "highWaveCount",
         (
           SELECT v.voter_user_id
           FROM votes v
@@ -587,6 +669,16 @@ router.post("/echoes/:id/respond", async (req, res) => {
         mutualAt: new Date(),
       })
       .where(eq(echoesTable.id, echoId));
+
+    const themeRows = await db
+      .select({ id: photosTable.id, theme: photosTable.theme })
+      .from(photosTable)
+      .where(
+        or(eq(photosTable.id, echo.photoLowId), eq(photosTable.id, echo.photoHighId)),
+      );
+    const lowTheme = themeRows.find((row) => row.id === echo.photoLowId)?.theme;
+    const highTheme = themeRows.find((row) => row.id === echo.photoHighId)?.theme;
+    void storeWaveName(echoId, lowTheme, highTheme);
 
     // The OTHER side of the pair (whoever made the original offer) is
     // the one who needs to know — the responder is already in-app. Fire

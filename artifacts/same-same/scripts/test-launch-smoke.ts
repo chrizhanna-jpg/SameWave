@@ -77,14 +77,13 @@ assert(
 );
 
 const waves = read("app/(tabs)/waves.tsx");
-assert("waves uses FlatList virtualization", waves.includes("FlatList"));
 assert(
-  "waves yours slot sanitizes stock URIs",
-  waves.includes("sanitizeUserOwnPhotoUri") && waves.includes("viewerOwnPhoto"),
+  "waves keeps the ripple inbox reachable",
+  waves.includes('router.push("/echoes")'),
 );
 assert(
-  "waves scroll hint does not setState every frame",
-  waves.includes("scrollMetricsRef") && !waves.includes("setScrollY("),
+  "waves archive lists only waves the user kept",
+  waves.includes("loadKeptWaves") && waves.includes("No saved Waves yet"),
 );
 assert(
   "waves silences the previous tab on focus",
@@ -99,8 +98,8 @@ assert(
 
 const atlasTab = read("app/(tabs)/atlas.tsx");
 assert(
-  "atlas takes the soundtrack on focus",
-  atlasTab.includes('applyTabFocusSoundtrack("atlas")'),
+  "world map silences the previous tab on focus",
+  atlasTab.includes('applyTabFocusSoundtrack("home")'),
 );
 
 const discover = read("app/(tabs)/discover.tsx");

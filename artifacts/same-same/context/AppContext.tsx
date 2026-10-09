@@ -306,6 +306,7 @@ export interface PhotoSide {
   country: string;
   countryFlag: string;
   theme?: string;
+  whisper?: string | null;
 }
 
 export interface EchoCard {
@@ -316,6 +317,11 @@ export interface EchoCard {
   mutualAt: string | null;
   /** True when this user sent the first Ripple on the pair. */
   youSentFirst?: boolean;
+  waveName?: string;
+  mineWaveCount?: number;
+  theirsWaveCount?: number;
+  keptForMe?: boolean;
+  shareForMe?: boolean;
   mine: PhotoSide;
   theirs: PhotoSide;
 }

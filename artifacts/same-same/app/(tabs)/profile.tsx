@@ -5,6 +5,7 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TouchableOpacity,
   View,
@@ -37,6 +38,7 @@ import {
 } from "@/data/studioLegal";
 import { getPublicApiOrigin } from "@/utils/publicEnv";
 import { applyTabFocusSoundtrack } from "@/utils/tabSoundtrack";
+import { loadRippleSoundEnabled, setRippleSoundEnabled } from "@/utils/keptWaves";
 
 // Installed app version shown at the bottom of the tab. Prefer the native
 // values baked into the binary (what the user actually has installed) and
@@ -250,6 +252,10 @@ export default function ProfileScreen() {
     setMyCountry,
   } = useApp();
   const [countryPickerOpen, setCountryPickerOpen] = React.useState(false);
+  const [rippleSound, setRippleSound] = React.useState(false);
+  React.useEffect(() => {
+    void loadRippleSoundEnabled().then(setRippleSound);
+  }, []);
   // Region flag grids are collapsed by default — the user wanted a more
   // scannable My World tab. Tapping a region's header toggles its grid.
   const [expandedRegions, setExpandedRegions] = React.useState<Record<string, boolean>>({});
@@ -418,6 +424,32 @@ export default function ProfileScreen() {
             </View>
           </View>
         </GradientCard>
+
+        <View
+          style={{
+            marginTop: 14,
+            backgroundColor: "#0D2B3A",
+            borderRadius: 12,
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <Text style={{ color: "#F0F8FF", fontFamily: "Inter_500Medium", fontSize: 16 }}>
+            Ripple sound
+          </Text>
+          <Switch
+            value={rippleSound}
+            onValueChange={(on) => {
+              setRippleSound(on);
+              void setRippleSoundEnabled(on);
+            }}
+            trackColor={{ true: "#00C9B1", false: "#1E4D5C" }}
+            accessibilityLabel="Ripple sound"
+          />
+        </View>
 
         {/* ─────────────── Recent matches preview ───────────────
             Shows a peek of the user's most recent "same" verdicts so the

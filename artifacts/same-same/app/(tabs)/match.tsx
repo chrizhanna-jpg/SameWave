@@ -31,6 +31,8 @@ import { tabBarTotalHeight } from "@/utils/tabBarSafeArea";
 import { Icon } from "@/components/Icon";
 import { MicBadge } from "@/components/MicBadge";
 import { MatchFlash } from "@/components/MatchFlash";
+import { RippleTravellingMap, useReduceMotion } from "@/components/RippleTravellingMap";
+import { playRippleSoundIfEnabled } from "@/utils/rippleSound";
 import { EchoLogo } from "@/components/EchoLogo";
 import { OceanShimmer } from "@/components/OceanShimmer";
 import { PressableScale } from "@/components/PressableScale";
@@ -67,6 +69,7 @@ import { ENABLE_STOCK_PHOTO_POOL } from "@/lib/stockPhotos";
 import {
   fetchCandidates,
   votePhoto,
+  fetchOwnPhotoViewCount,
   fetchMatchStats,
   markPhotosSeen,
   matchByObject,
@@ -1016,6 +1019,24 @@ export default function SwipeScreen() {
   // stay in flow. The full /reveal screen remains accessible via the
   // overlay's "Open" pill (and from My Journey).
   const [flashMatch, setFlashMatch] = useState<Match | null>(null);
+  const [travelOn, setTravelOn] = useState(false);
+  const [ownViews, setOwnViews] = useState<number | null>(null);
+  const reduceMotion = useReduceMotion();
+  const ownPhotoId = todaysPhoto?.backendId;
+
+  useEffect(() => {
+    if (!ownPhotoId) {
+      setOwnViews(null);
+      return;
+    }
+    let alive = true;
+    void fetchOwnPhotoViewCount(ownPhotoId).then((count) => {
+      if (alive) setOwnViews(count);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [ownPhotoId]);
 
   // Refs mirror state so callbacks stay stable and read latest values
   // without triggering re-creation (which previously caused stale closures
@@ -1697,6 +1718,9 @@ export default function SwipeScreen() {
         }
         if (dir === "right") {
           // Celebration overlay — leave card off-screen; advance deck on dismiss.
+          void playRippleSoundIfEnabled();
+          setTravelOn(true);
+          setTimeout(() => setTravelOn(false), reduceMotion ? 600 : 2000);
           setFlashMatch(matchWithStats);
           deckAdvancedForFlashRef.current = false;
           sameLabelOpacity.value = 0;
@@ -1747,6 +1771,7 @@ export default function SwipeScreen() {
       todaysPhoto?.backendId,
       todaysPhoto?.captureCountryCode,
       runEchoVoteRetry,
+      reduceMotion,
       prefetchDeckAhead,
       runSwipeOutComplete,
       setAnimatingOut,
@@ -2336,6 +2361,21 @@ export default function SwipeScreen() {
                 <Icon name="maximize" size={12} color="#fff" />
               </View>
             </Pressable>
+            {ownViews != null ? (
+              <Text
+                style={{
+                  color: "#A8D8EA",
+                  fontSize: 12,
+                  textAlign: "center",
+                  paddingVertical: 6,
+                  fontFamily: "Inter_400Regular",
+                }}
+              >
+                {ownViews === 1
+                  ? "1 person has seen your moment"
+                  : `${ownViews.toLocaleString("en-US")} people have seen your moment`}
+              </Text>
+            ) : null}
 
             <View style={[styles.divider, { backgroundColor: colors.card }]}>
               <View style={[styles.vsChip, { backgroundColor: colors.secondary }]}>
@@ -2470,6 +2510,16 @@ export default function SwipeScreen() {
         </GestureDetector>
         )}
       </View>
+
+      {travelOn ? (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <RippleTravellingMap
+            width={Dimensions.get("window").width}
+            height={Dimensions.get("window").height}
+            reduceMotion={reduceMotion}
+          />
+        </View>
+      ) : null}
 
       {/* Celebration overlay — deck advances under it on Ripple swipe. */}
       {flashMatch && (() => {

@@ -28,8 +28,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { EchoFlash } from "@/components/EchoFlash";
-import { formatDualWaveThemes } from "@/utils/shareThemeLabels";
+import { WaveTakeover } from "@/components/WaveTakeover";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ToastHost } from "@/components/ToastHost";
 import { UpdateAvailableBanner } from "@/components/UpdateAvailableBanner";
@@ -344,45 +343,21 @@ function RootLayoutNav() {
         <Stack.Screen name="camera" options={{ headerShown: false, presentation: "modal" }} />
         <Stack.Screen name="echoes" options={{ headerShown: false }} />
         <Stack.Screen name="echo-pair" options={{ headerShown: false, presentation: "modal" }} />
+        <Stack.Screen name="wave-moment" options={{ headerShown: false, presentation: "modal" }} />
         <Stack.Screen name="echoes-theme/[theme]" options={{ headerShown: false }} />
         <Stack.Screen name="photo-viewer" options={{ headerShown: false, presentation: "modal" }} />
       </Stack>
-      {pendingFlashEcho && (() => {
-        const { title: flashThemeTitle, emoji: flashThemeEmoji } =
-          formatDualWaveThemes(
-            pendingFlashEcho.mine.theme ?? pendingFlashEcho.theme,
-            pendingFlashEcho.theirs.theme ?? pendingFlashEcho.theme,
-          );
-        return (
-        <EchoFlash
-          myPhotoUri={pendingFlashEcho.mine.uri}
-          theirPhotoUri={pendingFlashEcho.theirs.uri}
-          myCountryFlag={pendingFlashEcho.mine.countryFlag}
-          myCountryCode={pendingFlashEcho.mine.countryCode ?? undefined}
-          myCaptureCountryCode={pendingFlashEcho.mine.captureCountryCode ?? undefined}
-          theirCountry={pendingFlashEcho.theirs.country}
-          theirCountryFlag={pendingFlashEcho.theirs.countryFlag}
-          theirCountryCode={pendingFlashEcho.theirs.countryCode ?? undefined}
-          theirCaptureCountryCode={pendingFlashEcho.theirs.captureCountryCode ?? undefined}
-          myPhotoCapturedAt={pendingFlashEcho.mine.capturedAt ?? undefined}
-          myPhotoSharedAt={pendingFlashEcho.mine.createdAt ?? undefined}
-          theirPhotoCapturedAt={pendingFlashEcho.theirs.capturedAt ?? undefined}
-          theirPhotoSharedAt={pendingFlashEcho.theirs.createdAt ?? undefined}
-          themeTitle={flashThemeTitle}
-          themeEmoji={flashThemeEmoji}
-          onDone={dismissFlashEcho}
-          onOpen={() => {
-            const a = String(pendingFlashEcho.mine.id);
-            const b = String(pendingFlashEcho.theirs.id);
-            router.push({
-              pathname: "/echo-pair",
-              params: { a, b, celebrate: "1" },
-            });
-            setTimeout(() => dismissFlashEcho(), 400);
+      {pendingFlashEcho ? (
+        <WaveTakeover
+          myPhoto={pendingFlashEcho.mine.uri}
+          theirPhoto={pendingFlashEcho.theirs.uri}
+          onFinished={() => {
+            const echoId = pendingFlashEcho.id;
+            dismissFlashEcho();
+            router.push({ pathname: "/wave-moment", params: { echoId } });
           }}
         />
-        );
-      })()}
+      ) : null}
     </>
   );
 }
