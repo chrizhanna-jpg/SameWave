@@ -60,6 +60,15 @@ assert(
   "match claims the soundtrack when Ripple is focused",
   match.includes('applyTabFocusSoundtrack("match")'),
 );
+assert(
+  "match recenters the next card only after that card is committed",
+  match.includes("deckSettleToken") &&
+    match.includes("setDeckSettleToken((n) => n + 1)"),
+);
+assert(
+  "returning to Ripple stays quiet while a photo is fullscreen",
+  match.includes("fullscreenUriRef.current != null"),
+);
 
 const home = read("app/(tabs)/index.tsx");
 assert(
@@ -97,14 +106,16 @@ assert(
 const discover = read("app/(tabs)/discover.tsx");
 assert(
   "discover does not start focused and steal the player",
-  discover.includes("const [focused, setFocused] = useState(false)"),
+  discover.includes("const [focused, setFocused] = useState(false)") &&
+    discover.includes("if (!focusedRef.current) return;"),
 );
 
 const audio = read("utils/audio.ts");
 assert(
   "vibe playback is serialized on one command queue",
   audio.includes("audioCommands.enqueue") &&
-    audio.includes("shouldPlay: false"),
+    audio.includes("shouldPlay: false") &&
+    audio.includes("clipShouldPlay(desiredPlaying, muted)"),
 );
 
 const wavefire = read("utils/wavefireAmbience.ts");

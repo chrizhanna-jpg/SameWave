@@ -12,6 +12,7 @@ import { Audio } from "expo-av";
 import { AppState, type AppStateStatus } from "react-native";
 
 import { createAudioCommandQueue } from "@/utils/audioCommandQueue";
+import { clipShouldPlay } from "@/utils/clipPlayback";
 
 let activeSound: Audio.Sound | null = null;
 let activeUrl: string | null = null;
@@ -36,6 +37,10 @@ function notifyPlayback() {
 // Commands run one at a time, so a swipe or tab change that bumps the
 // token cannot have an older load's play() land after the newer command.
 const audioCommands = createAudioCommandQueue();
+// True only while some screen still wants the vibe clip. Pause/stop clear
+// it synchronously. Mute does not — unmuting resumes a clip the current
+// screen still wants, and stays silent after a tab change.
+let desiredPlaying = false;
 let muted = false;
 const muteListeners = new Set<(m: boolean) => void>();
 let appStateSub: { remove: () => void } | null = null;
@@ -262,6 +267,7 @@ export function playClip(url: string | undefined | null): number {
   // music before the user even sees the first frame.
   if (!userInteracted) return 0;
   ensureAppStateHook();
+  desiredPlaying = true;
   // Bump the token SYNCHRONOUSLY so the returned lease matches the
   // one this call's async work will check against — and so any older
   // in-flight load is invalidated immediately, even if `audioModeReady`
@@ -279,19 +285,15 @@ async function _doPlay(url: string, lease: number): Promise<void> {
   if (activeSound && activeUrl === url) {
     if (lease !== audioCommands.current()) return;
     try {
-      if (muted) {
-        await activeSound.setStatusAsync({ shouldPlay: false });
-        if (activePlaying) {
-          activePlaying = false;
-          notifyPlayback();
-        }
-      } else {
-        await activeSound.setStatusAsync({ shouldPlay: true, isLooping: true });
-        if (lease !== audioCommands.current()) return;
-        if (!activePlaying) {
-          activePlaying = true;
-          notifyPlayback();
-        }
+      const shouldPlay = clipShouldPlay(desiredPlaying, muted);
+      await activeSound.setStatusAsync({
+        shouldPlay,
+        isLooping: true,
+      });
+      if (lease !== audioCommands.current()) return;
+      if (activePlaying !== shouldPlay) {
+        activePlaying = shouldPlay;
+        notifyPlayback();
       }
     } catch {}
     return;
@@ -334,13 +336,13 @@ async function _doPlay(url: string, lease: number): Promise<void> {
     activeUrl = url;
     try {
       await pre.setStatusAsync({
-        shouldPlay: !muted,
+        shouldPlay: clipShouldPlay(desiredPlaying, muted),
         isLooping: true,
         volume: 0.55,
       });
     } catch {}
     if (lease !== audioCommands.current()) return;
-    const nowPlaying = !muted;
+    const nowPlaying = clipShouldPlay(desiredPlaying, muted);
     activePlaying = nowPlaying;
     notifyPlayback();
     return;
@@ -361,13 +363,13 @@ async function _doPlay(url: string, lease: number): Promise<void> {
     }
     activeSound = sound;
     activeUrl = url;
-    if (!muted) {
+    if (clipShouldPlay(desiredPlaying, muted)) {
       try {
         await sound.playAsync();
       } catch {}
     }
     if (lease !== audioCommands.current()) return;
-    const nowPlaying = !muted;
+    const nowPlaying = clipShouldPlay(desiredPlaying, muted);
     if (activePlaying !== nowPlaying) {
       activePlaying = nowPlaying;
       notifyPlayback();
@@ -393,6 +395,7 @@ async function _doPlay(url: string, lease: number): Promise<void> {
  * leaves the tab.
  */
 export function pause(): Promise<void> {
+  desiredPlaying = false;
   const lease = audioCommands.bump();
   return audioCommands.enqueue(async () => {
     if (lease !== audioCommands.current()) return;
@@ -409,6 +412,7 @@ export function pause(): Promise<void> {
 
 /** Stop and fully release the active clip. Call on screen unmount. */
 export function stop(): Promise<void> {
+  desiredPlaying = false;
   const lease = audioCommands.bump();
   return audioCommands.enqueue(async () => {
     if (lease !== audioCommands.current()) return;
@@ -451,12 +455,14 @@ export function setMuted(next: boolean) {
   muteListeners.forEach((cb) => cb(muted));
   void audioCommands.enqueue(async () => {
     if (!activeSound) return;
+    // Read desiredPlaying at run time. A tab change may have paused the
+    // clip after this mute toggle was queued; unmuting must leave it paused.
+    const shouldPlay = clipShouldPlay(desiredPlaying, muted);
     try {
-      await activeSound.setStatusAsync({ shouldPlay: !muted });
+      await activeSound.setStatusAsync({ shouldPlay });
     } catch {}
-    const nowPlaying = !muted;
-    if (activePlaying !== nowPlaying) {
-      activePlaying = nowPlaying;
+    if (activePlaying !== shouldPlay) {
+      activePlaying = shouldPlay;
       notifyPlayback();
     }
   });

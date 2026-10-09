@@ -3,6 +3,7 @@
  * Run: pnpm exec tsx scripts/test-tab-audio.ts
  */
 import { createAudioCommandQueue } from "../utils/audioCommandQueue";
+import { clipShouldPlay } from "../utils/clipPlayback";
 import { focusActions } from "../utils/tabSoundtrackPolicy";
 
 function assert(label: string, ok: boolean): void {
@@ -46,6 +47,16 @@ assert(
   !match.includes("pause-vibe"),
 );
 assert("ripple plays the visible card on focus", match.includes("play-ripple"));
+
+assert(
+  "an unmuted clip the screen still wants is audible",
+  clipShouldPlay(true, false) === true,
+);
+assert("mute keeps a wanted clip silent", clipShouldPlay(true, true) === false);
+assert(
+  "unmuting does not wake a clip a tab change already paused",
+  clipShouldPlay(false, false) === false,
+);
 
 async function main(): Promise<void> {
   const events: string[] = [];

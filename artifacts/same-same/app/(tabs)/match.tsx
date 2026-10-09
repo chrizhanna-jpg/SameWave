@@ -1003,6 +1003,8 @@ export default function SwipeScreen() {
   const [matchedTheme, setMatchedTheme] = useState<string>(initial?.matchedTheme ?? "");
   const [sharedTags, setSharedTags] = useState<string[]>(initial?.sharedTags ?? []);
   const [fullscreenUri, setFullscreenUri] = useState<string | null>(null);
+  const fullscreenUriRef = useRef<string | null>(null);
+  fullscreenUriRef.current = fullscreenUri;
   // True when the candidate pool is exhausted (production: no real photos
   // matched the user's theme/tags and we can't fall back to fakes).
   // Only treat a null `initial` as "all caught up" once we've actually
@@ -1130,6 +1132,11 @@ export default function SwipeScreen() {
   const sameLabelOpacity = useSharedValue(0);
   const panStartX = useSharedValue(0);
   const [deckGestureEnabled, setDeckGestureEnabled] = useState(true);
+  // Bumped when a swipe commits the next card. The recenter effect runs
+  // after that render, so the new photo is already committed before the
+  // card slides back to center. Resetting in the animation callback put
+  // the previous photo back in the middle for a frame.
+  const [deckSettleToken, setDeckSettleToken] = useState(0);
 
   const setAnimatingOut = useCallback((v: boolean) => {
     isAnimatingOutRef.current = v;
@@ -1308,6 +1315,9 @@ export default function SwipeScreen() {
       }
       const photo = theirPhotoRef.current;
       if (!photo?.uri || photo.id === "placeholder" || noMore || !todaysPhoto) return;
+      // Fullscreen is a look-closer surface. Coming back to the tab while it
+      // is still open should stay quiet; closing it restarts the clip.
+      if (fullscreenUriRef.current != null) return;
       // Restart the visible card immediately. Tab focus is the cue — do not
       // wait for the photo decode, or returning to Ripple stays silent (or
       // on the previous tab's loop) until the image catches up.
@@ -1409,29 +1419,36 @@ export default function SwipeScreen() {
     if (next?.photo.uri) {
       void prefetchPhotoUri(next.photo.uri);
     }
-    // The swipe-out animation has already finished, and the card is still
-    // off-screen. Swap now — before resetting the transform — so the new
-    // picture and its clip land together at the end of the swipe.
+    // The swipe-out animation has already finished and the card is off-screen.
+    // Commit the next photo first. Recenter only after that render so the
+    // previous picture cannot snap back to the middle.
     if (next) {
       applyDeckCandidate(next, "user_swipe");
       prefetchDeckAhead(1, next.photo.uri);
     } else {
       setNoMore(true);
     }
+    setDeckSettleToken((n) => n + 1);
+  }, [
+    buildExcludeKeys,
+    prefetchPhotoUri,
+    prefetchDeckAhead,
+    pickDeckCandidate,
+    tryActivateSuggestedThemeFallback,
+    applyDeckCandidate,
+  ]);
+
+  useEffect(() => {
+    if (deckSettleToken === 0) return;
     resetCardMotion(translateX, translateY, cardScale, sameLabelOpacity);
     setAnimatingOut(false);
   }, [
+    deckSettleToken,
     translateX,
     translateY,
     cardScale,
     sameLabelOpacity,
-    buildExcludeKeys,
-    prefetchPhotoUri,
-    prefetchDeckAhead,
     setAnimatingOut,
-    pickDeckCandidate,
-    tryActivateSuggestedThemeFallback,
-    applyDeckCandidate,
   ]);
 
   // Warm the next card in the deck so the swap does not flash a blank pane.
