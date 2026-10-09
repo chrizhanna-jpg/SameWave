@@ -1044,9 +1044,12 @@ export function AtlasGlobeExperience({
     return buildFirecircleTiles(projection, wavefireCluster.connections);
   }, [wavefireActive, wavefireCluster, projection]);
 
-  /** Pause beach + campfire when Explore opens; resume when it closes. */
+  /** Pause beach + campfire when Explore opens or the tab blurs; resume when it closes. */
   useEffect(() => {
-    if (!isTabFocused) return;
+    if (!isTabFocused) {
+      void stopWavefireAmbience();
+      return;
+    }
 
     if (fireExploreOpen) {
       void stopWavefireAmbience();

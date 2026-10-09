@@ -50,6 +50,31 @@ assert(
   "match refuses to start audio while blurred",
   match.includes("isScreenFocusedRef"),
 );
+assert(
+  "match plays the card clip without waiting for the image",
+  match.includes("playClip(url)") &&
+    !match.includes("candidateImageGateOpen") &&
+    !match.includes("IMAGE_AUDIO_GATE"),
+);
+assert(
+  "match claims the soundtrack when Ripple is focused",
+  match.includes('applyTabFocusSoundtrack("match")'),
+);
+assert(
+  "match recenters the next card only after that card is committed",
+  match.includes("deckSettleToken") &&
+    match.includes("setDeckSettleToken((n) => n + 1)"),
+);
+assert(
+  "returning to Ripple stays quiet while a photo is fullscreen",
+  match.includes("fullscreenUriRef.current != null"),
+);
+
+const home = read("app/(tabs)/index.tsx");
+assert(
+  "home silences the previous tab on focus",
+  home.includes('applyTabFocusSoundtrack("home")'),
+);
 
 const waves = read("app/(tabs)/waves.tsx");
 assert("waves uses FlatList virtualization", waves.includes("FlatList"));
@@ -60,6 +85,44 @@ assert(
 assert(
   "waves scroll hint does not setState every frame",
   waves.includes("scrollMetricsRef") && !waves.includes("setScrollY("),
+);
+assert(
+  "waves silences the previous tab on focus",
+  waves.includes('applyTabFocusSoundtrack("waves")'),
+);
+
+const profile = read("app/(tabs)/profile.tsx");
+assert(
+  "my path silences the previous tab on focus",
+  profile.includes('applyTabFocusSoundtrack("profile")'),
+);
+
+const atlasTab = read("app/(tabs)/atlas.tsx");
+assert(
+  "atlas takes the soundtrack on focus",
+  atlasTab.includes('applyTabFocusSoundtrack("atlas")'),
+);
+
+const discover = read("app/(tabs)/discover.tsx");
+assert(
+  "discover does not start focused and steal the player",
+  discover.includes("const [focused, setFocused] = useState(false)") &&
+    discover.includes("if (!focusedRef.current) return;"),
+);
+
+const audio = read("utils/audio.ts");
+assert(
+  "vibe playback is serialized on one command queue",
+  audio.includes("audioCommands.enqueue") &&
+    audio.includes("shouldPlay: false") &&
+    audio.includes("clipShouldPlay(desiredPlaying, muted)"),
+);
+
+const wavefire = read("utils/wavefireAmbience.ts");
+assert(
+  "atlas ambience pauses in place instead of reloading each tab change",
+  wavefire.includes("ambienceCommands.enqueue") &&
+    !wavefire.includes("unloadAsync"),
 );
 
 const remote = read("components/RemotePhotoImage.tsx");
