@@ -210,7 +210,10 @@ export default function DiscoverScreen() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [playingSide, setPlayingSide] = useState<"a" | "b">("a");
   const [muted, setMutedState] = useState<boolean>(() => isMuted());
-  const [focused, setFocused] = useState(true);
+  // Start unfocused. This screen stays mounted (or mounts beside the
+  // visible tabs). `true` here made Discover claim the shared player
+  // and keep a feed clip running across Ripple swipes and tab changes.
+  const [focused, setFocused] = useState(false);
 
   // Subscribe to the global mute state so toggling it elsewhere (e.g.
   // the match tab header) keeps this UI in sync.

@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
-  InteractionManager,
   Modal,
   Platform,
   Pressable,
@@ -119,11 +118,9 @@ import {
 import { getActiveCaptureRequestId } from "@/utils/captureTransition";
 import {
   commitDisplayedCandidate,
-  shouldApplyCandidateImageResponse,
   type CarouselTransitionReason,
 } from "@/utils/matchCarouselController";
-import { stopWavefireAmbience } from "@/utils/wavefireAmbience";
-import { stopFirecircleAmbience } from "@/utils/firecircleAudio";
+import { applyTabFocusSoundtrack } from "@/utils/tabSoundtrack";
 import { timeAgo } from "@/utils/timeAgo";
 import type { Match } from "@/context/AppContext";
 import { photoKey } from "@/utils/photoKey";
@@ -572,8 +569,7 @@ export default function SwipeScreen() {
       // either is still looping when the user lands on Ripple you hear two
       // tracks at once. Stopping both here makes the Ripple deck the only
       // audio source on this screen.
-      void stopWavefireAmbience();
-      void stopFirecircleAmbience();
+      applyTabFocusSoundtrack("match");
       // On blur: pause the swipe card's background music (lease-aware,
       // no-ops if another screen has since taken over the singleton)
       // and any voice-clip preview the user started via a mic badge.
@@ -770,8 +766,6 @@ export default function SwipeScreen() {
   // (which means we showed a stale candidate while waiting for hydration)
   // from "current photo was just marked seen by us" (no action needed).
   const sessionDisplayedRef = useRef<Set<string>>(new Set());
-  const candidateRequestIdRef = useRef(0);
-  const candidateImageBindRef = useRef({ requestId: 0, uri: "" });
   const [candidateDisplayToken, setCandidateDisplayToken] = useState(0);
 
   // ---- "Match by object" mode ---------------------------------------------
@@ -1083,8 +1077,6 @@ export default function SwipeScreen() {
         next.photo.uri,
         reason,
       );
-      candidateRequestIdRef.current = requestId;
-      candidateImageBindRef.current = { requestId, uri: next.photo.uri };
       setCandidateDisplayToken(requestId);
       setTheirPhoto(next.photo);
       setMatchedTheme(next.matchedTheme);
@@ -1128,8 +1120,6 @@ export default function SwipeScreen() {
       theirPhoto.uri,
       "initial_mount",
     );
-    candidateRequestIdRef.current = requestId;
-    candidateImageBindRef.current = { requestId, uri: theirPhoto.uri };
     setCandidateDisplayToken(requestId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1223,39 +1213,11 @@ export default function SwipeScreen() {
   useEffect(() => {
     return onMuteChange(setMutedState);
   }, []);
-  // True once the candidate's REAL image has actually rendered (not the
-  // skeleton, not the stock placeholder). The audio effect below GATES the
-  // start of playback on this so a card's vibe only begins once its photo is
-  // on screen — image + music land together. Crucially we never flip this
-  // back to false for a slow/failed load once the real image has shown, so a
-  // late image result can never PAUSE music mid-play (that mid-play pause was
-  // the audible "stutter"). Reset to false whenever the displayed candidate
-  // changes; the previous card's clip keeps playing smoothly until the new
-  // card's image resolves (no gap-pause on the handoff).
-  const [candidateImageReady, setCandidateImageReady] = useState(false);
-  // After a slow image load, don't leave the previous card's vibe playing
-  // forever — open the audio gate after a short timeout so music can advance
-  // even when the photo endpoint is backed up.
-  const IMAGE_AUDIO_GATE_MS = 2800;
-  const [candidateImageGateOpen, setCandidateImageGateOpen] = useState(false);
-  // Ref mirror so the focus effect (stable closure) can read the latest
-  // ready-state without being re-created and without re-introducing the
-  // gate logic — it must apply the same "only start once the image is on
-  // screen" rule as the main audio effect.
-  const candidateImageGateOpenRef = useRef(candidateImageGateOpen);
-  candidateImageGateOpenRef.current = candidateImageGateOpen;
-  useEffect(() => {
-    setCandidateImageReady(false);
-    setCandidateImageGateOpen(false);
-    const t = setTimeout(
-      () => setCandidateImageGateOpen(true),
-      IMAGE_AUDIO_GATE_MS,
-    );
-    return () => clearTimeout(t);
-  }, [theirPhoto.uri]);
-  useEffect(() => {
-    if (candidateImageReady) setCandidateImageGateOpen(true);
-  }, [candidateImageReady]);
+  // Play the new card's clip as soon as that card is the one on screen.
+  // Waiting for the image's onLoad (or a multi-second fallback) left the
+  // previous clip running through fast swipes: each swipe reset the wait,
+  // so the music stayed several pictures behind. The player serializes
+  // loads, so only the latest card finishes starting.
   useEffect(() => {
     if (!theirPhoto?.uri) return;
     // Never (re)start deck music while the Ripple tab is blurred.
@@ -1274,18 +1236,6 @@ export default function SwipeScreen() {
       void pauseAudio();
       return;
     }
-    // GATE THE START on the card's real image resolving. We do NOT pause
-    // here when the image is still pending/failed — pausing mid-play was the
-    // "music stutter" (a clip would start over the skeleton, then get yanked
-    // when the image gave up). Instead:
-    //   • pending  → return without pausing: the previous card's clip keeps
-    //                playing smoothly until this card's photo is on screen.
-    //   • failed   → return without pausing: a clearly-failed image simply
-    //                never starts this card's vibe (suppressed before play,
-    //                not yanked after) — and a slow-but-fine image that
-    //                resolves late just starts a touch later, no stutter.
-    //   • resolved → start once, below.
-    if (!candidateImageGateOpen) return;
     // Single source of truth: `resolveMusicUrl` is the same helper the
     // /reveal screen uses, so the URL we play here is byte-identical to
     // the one /reveal will play after a tap on Open or Share. That's
@@ -1309,7 +1259,6 @@ export default function SwipeScreen() {
     noMore,
     fullscreenUri,
     flashMatch,
-    candidateImageGateOpen,
   ]);
 
   // Stop audio when the screen unmounts (tab switch, navigation
@@ -1359,9 +1308,9 @@ export default function SwipeScreen() {
       }
       const photo = theirPhotoRef.current;
       if (!photo?.uri || photo.id === "placeholder" || noMore || !todaysPhoto) return;
-      // Same start-gate as the main audio effect: never start a clip over a
-      // card whose real image hasn't resolved (still skeleton / stock).
-      if (!candidateImageGateOpenRef.current) return;
+      // Restart the visible card immediately. Tab focus is the cue — do not
+      // wait for the photo decode, or returning to Ripple stays silent (or
+      // on the previous tab's loop) until the image catches up.
       const url = resolveMusicUrl({
         customAudioUrl: photo.customAudioUrl,
         musicGenre: photo.musicGenre,
@@ -1460,19 +1409,17 @@ export default function SwipeScreen() {
     if (next?.photo.uri) {
       void prefetchPhotoUri(next.photo.uri);
     }
-    // Card is still off-screen from swipe-out — swap photos before resetting
-    // transform so the old image never flashes at center.
-    const applyNext = () => {
-      if (next) {
-        applyDeckCandidate(next, "user_swipe");
-        prefetchDeckAhead(1, next.photo.uri);
-      } else {
-        setNoMore(true);
-      }
-      resetCardMotion(translateX, translateY, cardScale, sameLabelOpacity);
-      setAnimatingOut(false);
-    };
-    InteractionManager.runAfterInteractions(applyNext);
+    // The swipe-out animation has already finished, and the card is still
+    // off-screen. Swap now — before resetting the transform — so the new
+    // picture and its clip land together at the end of the swipe.
+    if (next) {
+      applyDeckCandidate(next, "user_swipe");
+      prefetchDeckAhead(1, next.photo.uri);
+    } else {
+      setNoMore(true);
+    }
+    resetCardMotion(translateX, translateY, cardScale, sameLabelOpacity);
+    setAnimatingOut(false);
   }, [
     translateX,
     translateY,
@@ -1490,16 +1437,16 @@ export default function SwipeScreen() {
   // Warm the next card in the deck so the swap does not flash a blank pane.
   useEffect(() => {
     if (noMore || theirPhoto.id === "placeholder") return;
-    const currentKey = photoKey(theirPhoto.uri);
-    const next = pickDeckCandidate(currentKey, currentKey);
-    if (next?.photo.uri) {
-      void prefetchPhotoUri(next.photo.uri);
-      // Preload the next card's vibe so a swipe to it plays music instantly
-      // instead of waiting on an on-demand network fetch + decode.
+    let skipKey = photoKey(theirPhoto.uri);
+    for (let i = 0; i < 2; i++) {
+      const next = pickDeckCandidate(skipKey, skipKey);
+      if (!next?.photo.uri) break;
+      // Images: only the immediate next card. Audio: the next two clips,
+      // so a quick second swipe is already decoded.
+      if (i === 0) void prefetchPhotoUri(next.photo.uri);
       prewarmAudioForPhoto(next.photo);
+      skipKey = photoKey(next.photo.uri);
     }
-    // Next card only — prefetchDeckAhead here used to stack 3+ concurrent
-    // cold image jobs on the server and stall the visible card.
   }, [
     theirPhoto.uri,
     theirPhoto.id,
@@ -2402,21 +2349,6 @@ export default function SwipeScreen() {
                 recyclingKey={`match-their:${candidateDisplayToken}:${photoKey(theirPhoto.uri)}`}
                 displayWidth={HERO_DISPLAY_WIDTH}
                 priority="hero"
-                onResolved={(ok) => {
-                  if (!ok) return;
-                  const bind = candidateImageBindRef.current;
-                  if (
-                    !shouldApplyCandidateImageResponse(
-                      bind.requestId,
-                      bind.uri,
-                      candidateRequestIdRef.current,
-                      theirPhotoRef.current.uri,
-                    )
-                  ) {
-                    return;
-                  }
-                  setCandidateImageReady(true);
-                }}
               />
               )}
               {theirPhoto.uri ? (

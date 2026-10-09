@@ -4,6 +4,7 @@
 import { Audio } from "expo-av";
 
 import { isMuted, onMuteChange } from "@/utils/audio";
+import { createAudioCommandQueue } from "@/utils/audioCommandQueue";
 import { dbToLinear } from "@/utils/dbLinear";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -15,8 +16,8 @@ const ZOOM_OUT_BREAK = 0.92;
 const ZOOM_OUT_GAIN = 0.55;
 
 let ambienceSound: Audio.Sound | null = null;
-/** Bumped on every stop so in-flight start() cannot play after leaving the screen. */
-let playSession = 0;
+/** One start/stop at a time so a late play() cannot outlive a tab change. */
+const ambienceCommands = createAudioCommandQueue();
 let mapScale = 1;
 /** True while Wavefire / explore should keep the loop running (honors global mute). */
 let wantPlaying = false;
@@ -26,7 +27,7 @@ function ensureMuteHook(): void {
   if (muteHooked) return;
   muteHooked = true;
   onMuteChange(() => {
-    void syncAmbiencePlayback();
+    void ambienceCommands.enqueue(() => syncAmbiencePlayback());
   });
 }
 
@@ -67,7 +68,7 @@ async function applyVolume(): Promise<void> {
 export function setWavefireMapScale(s: number): void {
   if (!Number.isFinite(s) || s <= 0) return;
   mapScale = s;
-  void applyVolume();
+  void ambienceCommands.enqueue(() => applyVolume());
 }
 
 async function ensureLoaded(): Promise<boolean> {
@@ -85,14 +86,12 @@ async function ensureLoaded(): Promise<boolean> {
   }
 }
 
-function aborted(session: number): boolean {
-  return session !== playSession;
+function stillCurrent(lease: number): boolean {
+  return lease === ambienceCommands.current();
 }
 
-export async function startWavefireAmbience(): Promise<void> {
-  ensureMuteHook();
-  wantPlaying = true;
-  const session = playSession;
+async function runStart(lease: number): Promise<void> {
+  if (!stillCurrent(lease)) return;
   try {
     await Audio.setAudioModeAsync({
       allowsRecordingIOS: false,
@@ -104,12 +103,13 @@ export async function startWavefireAmbience(): Promise<void> {
   } catch {
     /* non-fatal */
   }
+  if (!stillCurrent(lease)) return;
 
   const ok = await ensureLoaded();
-  if (!ok || aborted(session)) return;
+  if (!ok || !stillCurrent(lease)) return;
 
   await applyVolume();
-  if (aborted(session)) return;
+  if (!stillCurrent(lease)) return;
 
   try {
     const status = await ambienceSound!.getStatusAsync();
@@ -125,43 +125,43 @@ export async function startWavefireAmbience(): Promise<void> {
     } else {
       await ambienceSound!.setPositionAsync(0);
     }
-    if (aborted(session)) return;
-    if (isMuted()) return;
+    if (!stillCurrent(lease)) return;
+    if (isMuted() || !wantPlaying) return;
     await ambienceSound!.playAsync();
   } catch {
     /* non-fatal */
   }
 }
 
-export async function stopWavefireAmbience(): Promise<void> {
+export function startWavefireAmbience(): Promise<void> {
+  ensureMuteHook();
+  wantPlaying = true;
+  const lease = ambienceCommands.bump();
+  return ambienceCommands.enqueue(() => runStart(lease));
+}
+
+export function stopWavefireAmbience(): Promise<void> {
   wantPlaying = false;
-  playSession += 1;
-  if (!ambienceSound) return;
-  try {
-    await ambienceSound.stopAsync();
-    await ambienceSound.unloadAsync();
-  } catch {
-    /* non-fatal */
-  }
-  ambienceSound = null;
+  // Invalidate an in-flight start(), but keep the decoded loop loaded so
+  // the next visit to Atlas resumes without decoding the file again.
+  // Unloading on every tab change is what made the beach loop lag the tap.
+  const lease = ambienceCommands.bump();
+  return ambienceCommands.enqueue(async () => {
+    if (!stillCurrent(lease) || !ambienceSound) return;
+    try {
+      await ambienceSound.pauseAsync();
+    } catch {
+      /* non-fatal */
+    }
+  });
 }
 
 /** Pause loop while a photo vibe plays in explore fullscreen; does not unload. */
-export async function pauseWavefireAmbienceForOverlay(): Promise<void> {
-  if (!ambienceSound) return;
-  try {
-    await ambienceSound.pauseAsync();
-  } catch {
-    /* non-fatal */
-  }
+export function pauseWavefireAmbienceForOverlay(): Promise<void> {
+  return stopWavefireAmbience();
 }
 
 /** Resume campfire / wave ambience after closing explore fullscreen. */
-export async function resumeWavefireAmbienceAfterOverlay(): Promise<void> {
-  if (!ambienceSound) {
-    void startWavefireAmbience();
-    return;
-  }
-  wantPlaying = true;
-  await syncAmbiencePlayback();
+export function resumeWavefireAmbienceAfterOverlay(): Promise<void> {
+  return startWavefireAmbience();
 }

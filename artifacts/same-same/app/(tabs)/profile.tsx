@@ -36,6 +36,7 @@ import {
   WAVE_BLUE,
 } from "@/data/studioLegal";
 import { getPublicApiOrigin } from "@/utils/publicEnv";
+import { applyTabFocusSoundtrack } from "@/utils/tabSoundtrack";
 
 // Installed app version shown at the bottom of the tab. Prefer the native
 // values baked into the binary (what the user actually has installed) and
@@ -225,6 +226,7 @@ export default function ProfileScreen() {
   useFocusEffect(
     useCallback(() => {
       markTabVisited("profile");
+      applyTabFocusSoundtrack("profile");
     }, []),
   );
   const {

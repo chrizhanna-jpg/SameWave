@@ -47,7 +47,8 @@ import {
 } from "@/utils/syncCache";
 import { markTabVisited } from "@/utils/tabVisits";
 import { runAfterTabFocus } from "@/utils/deferTabFocus";
-import { stopWavefireAmbience, startWavefireAmbience } from "@/utils/wavefireAmbience";
+import { stopWavefireAmbience } from "@/utils/wavefireAmbience";
+import { applyTabFocusSoundtrack } from "@/utils/tabSoundtrack";
 import type { MyPhoto } from "@/context/AppContext";
 
 /** Never replace a non-empty map with an empty/partial API payload (degraded refresh, races). */
@@ -272,7 +273,7 @@ export default function AtlasScreen() {
         // Cache-first refresh — avoid invalidating atlas data on every tab tap.
         void load(false);
       });
-      void startWavefireAmbience();
+      applyTabFocusSoundtrack("atlas");
       return () => {
         deferred.cancel();
         setAtlasTabFocused(false);

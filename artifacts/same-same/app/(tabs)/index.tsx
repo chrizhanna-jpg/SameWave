@@ -23,6 +23,7 @@ import { useCountUp } from "@/hooks/useCountUp";
 import { getTodaysChallenge } from "@/data/samplePhotos";
 import { RIPPLE_ONE_LINER, WAVE_ONE_LINER } from "@/data/waveRippleGlossary";
 import { scrollPaddingAboveTabBar } from "@/utils/tabBarSafeArea";
+import { applyTabFocusSoundtrack } from "@/utils/tabSoundtrack";
 
 export default function HomeScreen() {
   const colors = useColors();
@@ -42,6 +43,9 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       markTabVisited("home");
+      // Home has no music. Take the player immediately so a Ripple clip
+      // or Atlas loop cannot keep playing after the tab tap.
+      applyTabFocusSoundtrack("home");
     }, []),
   );
 
