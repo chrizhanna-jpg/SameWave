@@ -1,4 +1,4 @@
-import { Audio } from "expo-av";
+import { Audio } from "@/utils/expoAvCompat";
 
 import { isMuted, markUserInteracted, onMuteChange } from "@/utils/audio";
 import { setFirecircleFocusSlot as publishFirecircleFocusSlot } from "@/utils/firecircleFocus";

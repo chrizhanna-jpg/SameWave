@@ -1,7 +1,7 @@
 // Wavefire ambience: single beach + campfire loop (separate from global vibe
 // clip singleton in utils/audio.ts so Atlas does not steal Match playback).
 
-import { Audio } from "expo-av";
+import { Audio } from "@/utils/expoAvCompat";
 
 import { isMuted, onMuteChange } from "@/utils/audio";
 import { createAudioCommandQueue } from "@/utils/audioCommandQueue";

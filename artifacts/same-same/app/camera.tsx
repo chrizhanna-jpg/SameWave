@@ -81,7 +81,7 @@ import { AiGeneratedBadge } from "@/components/AiGeneratedBadge";
 import { MicBadge } from "@/components/MicBadge";
 import { useProAccess } from "@/hooks/useProAccess";
 import { gateProFeature } from "@/lib/proFeatures";
-import { Audio } from "expo-av";
+import { Audio } from "@/utils/expoAvCompat";
 import * as FileSystem from "expo-file-system/legacy";
 
 // Hard cap on recordings: 10s of audio at the AAC preset below lands well
