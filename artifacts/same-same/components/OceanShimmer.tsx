@@ -259,7 +259,7 @@ export function OceanShimmer({
   }, [count, width, height, tint, highlight, seed]);
 
   return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       <Svg width={width} height={height}>
         {sparkles.map((s) => (
           <Sparkle

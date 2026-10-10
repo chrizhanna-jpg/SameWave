@@ -27,6 +27,7 @@ import {
   startBackgroundPhotoUpload,
 } from "@/utils/captureTransition";
 import { requestAtlasRefresh } from "@/utils/atlasHub";
+import { saveWhisper } from "@/utils/keptWaves";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { RemotePhotoImage } from "@/components/RemotePhotoImage";
 import { Icon } from "@/components/Icon";
@@ -288,6 +289,7 @@ export default function CameraScreen() {
   const challenge = getTodaysChallenge();
   const intentSeedAppliedRef = useRef(false);
   const [themeText, setThemeText] = useState<string>("");
+  const [whisperText, setWhisperText] = useState("");
   const [themeEdited, setThemeEdited] = useState(false);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [aiTags, setAiTags] = useState<string[]>([]);
@@ -1139,6 +1141,9 @@ export default function CameraScreen() {
         typeof myCountryCode === "string" && myCountryCode.length === 2
           ? myCountryCode.toUpperCase()
           : undefined;
+      if (whisperText.trim()) {
+        void saveWhisper(localUri, whisperText);
+      }
       addMyPhoto(
         localUri,
         finalTheme,
@@ -1166,6 +1171,7 @@ export default function CameraScreen() {
           subjects: aiSubjectsRef.current,
           customAudioBase64: recordedBase64 ?? undefined,
           customAudioMime: recordedBase64 ? RECORDING_MIME : undefined,
+          whisper: whisperText.trim().slice(0, 60) || undefined,
         },
         {
           setMyPhotoBackendId,
@@ -1441,6 +1447,22 @@ export default function CameraScreen() {
                   <Icon name="x" size={16} color={colors.mutedForeground} />
                 </TouchableOpacity>
               )}
+            </View>
+            <View
+              style={[
+                styles.customInputRow,
+                { backgroundColor: colors.card, borderColor: colors.border, marginTop: 10 },
+              ]}
+            >
+              <TextInput
+                value={whisperText}
+                onChangeText={(value) => setWhisperText(value.slice(0, 60))}
+                onFocus={scrollPostFormInputIntoView}
+                placeholder="Add a whisper..."
+                placeholderTextColor={colors.mutedForeground}
+                maxLength={60}
+                style={[styles.customInputText, { color: colors.foreground }]}
+              />
             </View>
           </View>
 

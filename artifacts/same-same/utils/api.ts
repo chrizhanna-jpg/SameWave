@@ -403,6 +403,8 @@ export async function uploadPhoto(input: {
   tags?: string[];
   subjects?: string[];
   shapes?: string[];
+  /** Optional one-line whisper. Max 60 characters. Omitted when empty. */
+  whisper?: string;
 }): Promise<UploadedPhoto | null> {
   try {
     const base = getApiBase();
@@ -626,6 +628,7 @@ export interface VoteResult {
   ok: boolean;
   echo: "pending" | "mutual" | "skipped";
   voterPhotoId?: string | null;
+  echoId?: string;
 }
 
 /**
@@ -649,6 +652,7 @@ export async function votePhoto(
     const json = (await res.json().catch(() => ({}))) as {
       echo?: string;
       voterPhotoId?: string | null;
+      echoId?: string;
     };
     const echo =
       json.echo === "mutual" || json.echo === "pending" ? json.echo : "skipped";
@@ -656,7 +660,12 @@ export async function votePhoto(
       typeof json.voterPhotoId === "string" && json.voterPhotoId.length > 0
         ? json.voterPhotoId
         : null;
-    return { ok: true, echo, voterPhotoId: resolvedVoterPhotoId };
+    return {
+      ok: true,
+      echo,
+      voterPhotoId: resolvedVoterPhotoId,
+      echoId: typeof json.echoId === "string" && json.echoId.length > 0 ? json.echoId : undefined,
+    };
   } catch {
     return { ok: false, echo: "skipped" };
   }
@@ -805,6 +814,7 @@ export interface ServerEchoSide {
   country: string;
   countryFlag: string;
   theme?: string;
+  whisper?: string | null;
   // Data URL (`data:audio/...;base64,...`) for the custom voice clip
   // attached to this photo, if any. The mic badge on the relevant
   // surfaces uses this URL to drive the play/pause preview.
@@ -818,6 +828,11 @@ export interface ServerEcho {
   createdAt: string;
   mutualAt: string | null;
   youSentFirst?: boolean;
+  waveName?: string;
+  mineWaveCount?: number;
+  theirsWaveCount?: number;
+  keptForMe?: boolean;
+  shareForMe?: boolean;
   mine: ServerEchoSide;
   theirs: ServerEchoSide;
 }
@@ -834,6 +849,7 @@ function decorateSide(side: {
   capturedAt?: string | null;
   createdAt?: string | null;
   theme?: string;
+  whisper?: string | null;
   customAudioBase64?: string | null;
   customAudioMime?: string | null;
 }): ServerEchoSide {
@@ -873,6 +889,7 @@ function decorateSide(side: {
     country: display.name,
     countryFlag: display.flag,
     theme: typeof side.theme === "string" ? side.theme : undefined,
+    whisper: typeof side.whisper === "string" && side.whisper.trim() ? side.whisper.trim() : null,
     customAudioUrl: audio,
   };
 }
@@ -884,6 +901,11 @@ function decorateEcho(raw: {
   createdAt: string;
   mutualAt: string | null;
   youSentFirst?: boolean;
+  waveName?: string;
+  mineWaveCount?: number;
+  theirsWaveCount?: number;
+  keptForMe?: boolean;
+  shareForMe?: boolean;
   mine: {
     id: string;
     uri: string;
@@ -892,6 +914,7 @@ function decorateEcho(raw: {
     capturedAt?: string | null;
     createdAt?: string | null;
     theme?: string;
+    whisper?: string | null;
     customAudioBase64?: string | null;
     customAudioMime?: string | null;
   };
@@ -903,6 +926,7 @@ function decorateEcho(raw: {
     capturedAt?: string | null;
     createdAt?: string | null;
     theme?: string;
+    whisper?: string | null;
     customAudioBase64?: string | null;
     customAudioMime?: string | null;
   };
@@ -914,6 +938,11 @@ function decorateEcho(raw: {
     createdAt: raw.createdAt,
     mutualAt: raw.mutualAt ?? null,
     youSentFirst: raw.youSentFirst,
+    waveName: typeof raw.waveName === "string" ? raw.waveName : undefined,
+    mineWaveCount: typeof raw.mineWaveCount === "number" ? raw.mineWaveCount : undefined,
+    theirsWaveCount: typeof raw.theirsWaveCount === "number" ? raw.theirsWaveCount : undefined,
+    keptForMe: raw.keptForMe === true,
+    shareForMe: raw.shareForMe === true,
     mine: decorateSide(raw.mine),
     theirs: decorateSide(raw.theirs),
   };
@@ -3232,5 +3261,124 @@ export async function fetchAtlasCountryPhotos(
     return photos;
   } catch {
     return cached?.photos ?? [];
+  }
+}
+
+export type WaveOfTheDay = {
+  id: string;
+  name: string;
+  left: { countryCode: string; vibe: string; photoId: string };
+  right: { countryCode: string; vibe: string; photoId: string };
+};
+
+export async function fetchWaveOfTheDay(): Promise<WaveOfTheDay | null> {
+  try {
+    const base = getApiBase();
+    const res = await fetch(`${base}/api/waves/of-the-day`, {
+      headers: await authedHeaders(),
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { wave?: WaveOfTheDay | null };
+    const wave = json.wave;
+    if (!wave || typeof wave.id !== "string") return null;
+    return wave;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchWavesMadeToday(): Promise<number | null> {
+  try {
+    const base = getApiBase();
+    const res = await fetch(`${base}/api/waves/today-count`, {
+      headers: await authedHeaders(),
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { count?: number };
+    return typeof json.count === "number" ? json.count : null;
+  } catch {
+    return null;
+  }
+}
+
+export type WorldYearCounts = { ripples: number; waves: number };
+
+export async function fetchWorldYearCounts(): Promise<WorldYearCounts | null> {
+  try {
+    const base = getApiBase();
+    const res = await fetch(`${base}/api/waves/year-counts`, {
+      headers: await authedHeaders(),
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { ripples?: number; waves?: number };
+    if (typeof json.ripples !== "number" || typeof json.waves !== "number") return null;
+    return { ripples: json.ripples, waves: json.waves };
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchLiveWaveCountries(): Promise<
+  { countryCode: string; at: string }[] | null
+> {
+  try {
+    const base = getApiBase();
+    const res = await fetch(`${base}/api/waves/live`, {
+      headers: await authedHeaders(),
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as {
+      waves?: { countryCode?: string; at?: string }[];
+    };
+    if (!Array.isArray(json.waves)) return null;
+    return json.waves
+      .filter((row) => typeof row.countryCode === "string" && typeof row.at === "string")
+      .map((row) => ({ countryCode: row.countryCode as string, at: row.at as string }));
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchOwnPhotoViewCount(photoId: string): Promise<number | null> {
+  try {
+    const base = getApiBase();
+    const res = await fetch(
+      `${base}/api/photos/${encodeURIComponent(photoId)}/seen`,
+      { headers: await authedHeaders(), cache: "no-store" },
+    );
+    if (!res.ok) return null;
+    const json = (await res.json()) as { viewCount?: number };
+    return typeof json.viewCount === "number" ? json.viewCount : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function postWaveKeep(echoId: string): Promise<void> {
+  try {
+    const base = getApiBase();
+    await fetch(`${base}/api/waves/${encodeURIComponent(echoId)}/keep`, {
+      method: "POST",
+      headers: await authedHeaders(),
+    });
+  } catch {
+    /* local keep still stands */
+  }
+}
+
+export async function postWaveShare(echoId: string, enabled: boolean): Promise<void> {
+  try {
+    const base = getApiBase();
+    await fetch(`${base}/api/waves/${encodeURIComponent(echoId)}/share`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(await authedHeaders()) },
+      body: JSON.stringify({ enabled }),
+    });
+  } catch {
+    /* opt-in is stored on device either way */
   }
 }

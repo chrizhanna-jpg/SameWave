@@ -11,7 +11,7 @@ import {
   useAuth,
 } from "@clerk/expo";
 import { tokenCache } from "@clerk/expo/token-cache";
-import { Redirect, router, Stack, useSegments } from "expo-router";
+import { router, Stack, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -28,8 +28,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { EchoFlash } from "@/components/EchoFlash";
-import { formatDualWaveThemes } from "@/utils/shareThemeLabels";
+import { WaveTakeover } from "@/components/WaveTakeover";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ToastHost } from "@/components/ToastHost";
 import { UpdateAvailableBanner } from "@/components/UpdateAvailableBanner";
@@ -305,21 +304,21 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   //      pre-auth). Bouncing through "/" lets index.tsx decide whether
   //      to send them to /onboarding or /sign-in next.
   //
-  // We use a declarative <Redirect> (not an imperative
-  // navRouter.replace in a useEffect) because the imperative form
-  // races with in-flight navigations — e.g. while the Stack is still
-  // settling on /onboarding from index.tsx's <Redirect>, a useEffect
-  // here can fire a second REPLACE that the navigator has already
-  // moved past, producing a "The action 'REPLACE' with payload
-  // {name:'index'} was not handled by any navigator" warning toast on
-  // the first onboarding card. <Redirect> is timed by React's render
-  // cycle and stays in lock-step with whatever screen is mounting.
+  // Keep the Stack mounted and replace once. Returning `<Redirect>` here
+  // unmounts the navigator and, on Expo Router 57, the redirect effect
+  // calls `router.replace` again on every render until React aborts with
+  // "Maximum update depth exceeded" right after Google sign-in.
   const needsRedirect =
     isLoaded &&
+    hasHydrated &&
     ((isSignedIn && onSignIn) || (!isSignedIn && !onPreAuthScreen));
 
+  useEffect(() => {
+    if (!needsRedirect) return;
+    router.replace("/");
+  }, [needsRedirect]);
+
   if (!hasHydrated) return null;
-  if (needsRedirect) return <Redirect href="/" />;
   return <>{children}</>;
 }
 
@@ -344,45 +343,21 @@ function RootLayoutNav() {
         <Stack.Screen name="camera" options={{ headerShown: false, presentation: "modal" }} />
         <Stack.Screen name="echoes" options={{ headerShown: false }} />
         <Stack.Screen name="echo-pair" options={{ headerShown: false, presentation: "modal" }} />
+        <Stack.Screen name="wave-moment" options={{ headerShown: false, presentation: "modal" }} />
         <Stack.Screen name="echoes-theme/[theme]" options={{ headerShown: false }} />
         <Stack.Screen name="photo-viewer" options={{ headerShown: false, presentation: "modal" }} />
       </Stack>
-      {pendingFlashEcho && (() => {
-        const { title: flashThemeTitle, emoji: flashThemeEmoji } =
-          formatDualWaveThemes(
-            pendingFlashEcho.mine.theme ?? pendingFlashEcho.theme,
-            pendingFlashEcho.theirs.theme ?? pendingFlashEcho.theme,
-          );
-        return (
-        <EchoFlash
-          myPhotoUri={pendingFlashEcho.mine.uri}
-          theirPhotoUri={pendingFlashEcho.theirs.uri}
-          myCountryFlag={pendingFlashEcho.mine.countryFlag}
-          myCountryCode={pendingFlashEcho.mine.countryCode ?? undefined}
-          myCaptureCountryCode={pendingFlashEcho.mine.captureCountryCode ?? undefined}
-          theirCountry={pendingFlashEcho.theirs.country}
-          theirCountryFlag={pendingFlashEcho.theirs.countryFlag}
-          theirCountryCode={pendingFlashEcho.theirs.countryCode ?? undefined}
-          theirCaptureCountryCode={pendingFlashEcho.theirs.captureCountryCode ?? undefined}
-          myPhotoCapturedAt={pendingFlashEcho.mine.capturedAt ?? undefined}
-          myPhotoSharedAt={pendingFlashEcho.mine.createdAt ?? undefined}
-          theirPhotoCapturedAt={pendingFlashEcho.theirs.capturedAt ?? undefined}
-          theirPhotoSharedAt={pendingFlashEcho.theirs.createdAt ?? undefined}
-          themeTitle={flashThemeTitle}
-          themeEmoji={flashThemeEmoji}
-          onDone={dismissFlashEcho}
-          onOpen={() => {
-            const a = String(pendingFlashEcho.mine.id);
-            const b = String(pendingFlashEcho.theirs.id);
-            router.push({
-              pathname: "/echo-pair",
-              params: { a, b, celebrate: "1" },
-            });
-            setTimeout(() => dismissFlashEcho(), 400);
+      {pendingFlashEcho ? (
+        <WaveTakeover
+          myPhoto={pendingFlashEcho.mine.uri}
+          theirPhoto={pendingFlashEcho.theirs.uri}
+          onFinished={() => {
+            const echoId = pendingFlashEcho.id;
+            dismissFlashEcho();
+            router.push({ pathname: "/wave-moment", params: { echoId } });
           }}
         />
-        );
-      })()}
+      ) : null}
     </>
   );
 }

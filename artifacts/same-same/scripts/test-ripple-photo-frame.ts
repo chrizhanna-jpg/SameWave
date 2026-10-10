@@ -3,6 +3,7 @@
  *   pnpm exec tsx scripts/test-ripple-photo-frame.ts
  */
 import {
+  RIPPLE_CARD_WIDTH,
   computeRipplePhotoViewportCrop,
   getRipplePhotoGuideRect,
   getRipplePhotoPaneMetrics,
@@ -15,7 +16,9 @@ function assert(label: string, ok: boolean): void {
 }
 
 const insets = { top: 48, bottom: 34 };
+const pane0 = getRipplePhotoPaneMetrics(insets);
 
+assert("pane spans the full screen width", pane0.width === RIPPLE_CARD_WIDTH);
 assert("guide aspect matches pane", rippleGuideMatchesPaneAspect(insets));
 
 const pane = getRipplePhotoPaneMetrics(insets);

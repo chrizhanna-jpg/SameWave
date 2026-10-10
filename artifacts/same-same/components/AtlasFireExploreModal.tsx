@@ -109,7 +109,7 @@ function ExploreAtlasPhoto({
       source={
         needsAuth && headers ? { uri: displayUri, headers } : { uri: displayUri }
       }
-      style={StyleSheet.absoluteFillObject}
+      style={StyleSheet.absoluteFill}
       contentFit="contain"
       cachePolicy="memory-disk"
       recyclingKey={displayUri}
@@ -626,13 +626,13 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   explorePhotoLoader: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#0a0a0a",
   },
   pageScrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0, 16, 24, 0.35)",
   },
   listViewport: {
@@ -670,7 +670,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#000",
   },
   immersiveScrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0, 16, 24, 0.2)",
   },
   immersiveTopBar: {

@@ -1,4 +1,5 @@
-import { Redirect } from "expo-router";
+import { useEffect } from "react";
+import { router } from "expo-router";
 import { useAuth } from "@clerk/expo";
 import { useApp } from "@/context/AppContext";
 
@@ -21,12 +22,6 @@ export default function Index() {
     useApp();
   const { isLoaded, isSignedIn } = useAuth();
 
-  // Route from local cache as soon as AsyncStorage hydrates — do not wait
-  // for Clerk or server sync (Home / Atlas show a header sync spinner).
-  if (!hasHydrated) {
-    return null;
-  }
-
   // Show the tutorial again on the user's SECOND launch. `tutorialLaunchAck`
   // is bumped to the current `appOpenCount` whenever they finish/skip, so it
   // trails the open count for exactly one more launch (launch 2) before
@@ -35,13 +30,24 @@ export default function Index() {
   const replayTutorial =
     appOpenCount <= 2 && tutorialLaunchAck < appOpenCount;
 
-  if (!onboardingComplete || replayTutorial) {
-    return <Redirect href="/onboarding" />;
-  }
+  // `<Redirect>` on Expo Router 57 re-runs its focus effect whenever the
+  // callback identity changes, and each run calls `router.replace`. After
+  // Google sign-in that stacks updates until React throws "Maximum update
+  // depth exceeded". A stable href runs the replace once.
+  const href = !hasHydrated
+    ? null
+    : !onboardingComplete || replayTutorial
+      ? "/onboarding"
+      : isLoaded && !isSignedIn
+        ? "/sign-in"
+        : isLoaded
+          ? "/(tabs)"
+          : null;
 
-  if (isLoaded && !isSignedIn) {
-    return <Redirect href="/sign-in" />;
-  }
+  useEffect(() => {
+    if (!href) return;
+    router.replace(href);
+  }, [href]);
 
-  return <Redirect href="/(tabs)" />;
+  return null;
 }

@@ -71,7 +71,7 @@ export function ConnectionAtlasShareCard({
         locations={[...SHARE_POSTER_GRADIENT.locations]}
         start={SHARE_POSTER_GRADIENT.start}
         end={SHARE_POSTER_GRADIENT.end}
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
       />
       <View style={[styles.root, { padding: L.pad, gap: L.gapXs }]}>
         <SharePosterTopSection

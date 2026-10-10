@@ -35,6 +35,30 @@ function toSource(source: AvSource): number | string | { uri: string } | null {
   return null;
 }
 
+const LOAD_TIMEOUT_MS = 10_000;
+
+/** expo-av resolved createAsync only once the clip was loaded; expo-audio does not. */
+function waitForLoad(player: Player, timeoutMs: number): Promise<boolean> {
+  if (player.isLoaded) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    let done = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let sub: { remove: () => void } | null = null;
+    const finish = (ok: boolean) => {
+      if (done) return;
+      done = true;
+      if (timer) clearTimeout(timer);
+      sub?.remove();
+      resolve(ok);
+    };
+    sub = player.addListener("playbackStatusUpdate", (status) => {
+      if (status.isLoaded) finish(true);
+    });
+    timer = setTimeout(() => finish(player.isLoaded), timeoutMs);
+    if (player.isLoaded) finish(true);
+  });
+}
+
 type LegacyAudioMode = {
   allowsRecordingIOS?: boolean;
   playsInSilentModeIOS?: boolean;
@@ -61,11 +85,22 @@ export namespace Audio {
       source: AvSource,
       initialStatus?: StatusUpdate,
     ): Promise<{ sound: Sound }> {
+      const startsPlaying = initialStatus?.shouldPlay === true;
       const player = createAudioPlayer(toSource(source), {
-        downloadFirst: initialStatus?.shouldPlay !== true,
+        downloadFirst: !startsPlaying,
       });
       const sound = new Sound(player);
-      if (initialStatus) await sound.setStatusAsync(initialStatus);
+      try {
+        if (initialStatus) await sound.setStatusAsync(initialStatus);
+        const loaded = await waitForLoad(player, LOAD_TIMEOUT_MS);
+        // A paused load that never finishes must not be handed back as
+        // ready: the caller would play() it later, mid-swipe, on top of
+        // whatever clip belongs to the card on screen by then.
+        if (!loaded && !startsPlaying) throw new Error("audio load timed out");
+      } catch (error) {
+        await sound.unloadAsync();
+        throw error;
+      }
       return { sound };
     }
 
@@ -134,7 +169,18 @@ export namespace Audio {
     async unloadAsync(): Promise<void> {
       this.sub?.remove();
       this.sub = null;
-      this.player.remove();
+      // Pause first so a clip that is still buffering cannot start once the
+      // native player has been told to go away.
+      try {
+        this.player.pause();
+      } catch {
+        /* already released */
+      }
+      try {
+        this.player.remove();
+      } catch {
+        /* already released */
+      }
     }
   }
 

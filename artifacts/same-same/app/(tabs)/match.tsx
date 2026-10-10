@@ -12,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Reanimated, {
   Easing,
@@ -31,6 +32,8 @@ import { tabBarTotalHeight } from "@/utils/tabBarSafeArea";
 import { Icon } from "@/components/Icon";
 import { MicBadge } from "@/components/MicBadge";
 import { MatchFlash } from "@/components/MatchFlash";
+import { RippleTravellingMap, useReduceMotion } from "@/components/RippleTravellingMap";
+import { playRippleSoundIfEnabled } from "@/utils/rippleSound";
 import { EchoLogo } from "@/components/EchoLogo";
 import { OceanShimmer } from "@/components/OceanShimmer";
 import { PressableScale } from "@/components/PressableScale";
@@ -67,6 +70,7 @@ import { ENABLE_STOCK_PHOTO_POOL } from "@/lib/stockPhotos";
 import {
   fetchCandidates,
   votePhoto,
+  fetchOwnPhotoViewCount,
   fetchMatchStats,
   markPhotosSeen,
   matchByObject,
@@ -87,9 +91,11 @@ import {
 } from "@/data/matchTuning";
 import { mergeCandidatePools } from "@/utils/candidatePool";
 import {
+  hasUserInteracted,
   isMuted as audioIsMuted,
   markUserInteracted,
   onMuteChange,
+  onUserInteracted,
   pause as pauseAudio,
   pauseIfLease,
   pausePreview,
@@ -139,6 +145,8 @@ const SWIPE_DISTANCE_THRESHOLD = width * 0.136;
 const SWIPE_VELOCITY_THRESHOLD = 336;
 const SWIPE_MIN_FLICK_DX = 22;
 const SWIPE_OUT_MS = 300;
+/** Longest a card's clip waits for its photo before it starts anyway. */
+const MUSIC_WAIT_FOR_PHOTO_MS = 6000;
 const SNAP_BACK_SPRING = { damping: 20, stiffness: 220, mass: 0.75 };
 
 function shouldCommitHorizontalSwipe(dx: number, vx: number): boolean {
@@ -1016,6 +1024,24 @@ export default function SwipeScreen() {
   // stay in flow. The full /reveal screen remains accessible via the
   // overlay's "Open" pill (and from My Journey).
   const [flashMatch, setFlashMatch] = useState<Match | null>(null);
+  const [travelOn, setTravelOn] = useState(false);
+  const [ownViews, setOwnViews] = useState<number | null>(null);
+  const reduceMotion = useReduceMotion();
+  const ownPhotoId = todaysPhoto?.backendId;
+
+  useEffect(() => {
+    if (!ownPhotoId) {
+      setOwnViews(null);
+      return;
+    }
+    let alive = true;
+    void fetchOwnPhotoViewCount(ownPhotoId).then((count) => {
+      if (alive) setOwnViews(count);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [ownPhotoId]);
 
   // Refs mirror state so callbacks stay stable and read latest values
   // without triggering re-creation (which previously caused stale closures
@@ -1130,6 +1156,9 @@ export default function SwipeScreen() {
   const translateY = useSharedValue(0);
   const cardScale = useSharedValue(1);
   const sameLabelOpacity = useSharedValue(0);
+  // 1 = title and buttons showing, 0 = photos only.
+  const chrome = useSharedValue(1);
+  const chromeShift = useSharedValue(0);
   const panStartX = useSharedValue(0);
   const [deckGestureEnabled, setDeckGestureEnabled] = useState(true);
   // Bumped when a swipe commits the next card. The recenter effect runs
@@ -1220,6 +1249,21 @@ export default function SwipeScreen() {
   useEffect(() => {
     return onMuteChange(setMutedState);
   }, []);
+  // playClip() is a no-op until the first gesture. A card that is already on
+  // screen at that moment would stay silent, so re-run the music effect once
+  // the gate opens.
+  const [audioArmed, setAudioArmed] = useState<boolean>(hasUserInteracted());
+  useEffect(() => {
+    if (audioArmed) return;
+    return onUserInteracted(() => setAudioArmed(true));
+  }, [audioArmed]);
+  // Key of the card whose photo has actually painted. A card is committed
+  // as soon as its candidate is picked, but its image can take seconds to
+  // arrive; the clip waits for the picture so the music always belongs to
+  // the photo the user is looking at.
+  const [shownPhotoKey, setShownPhotoKey] = useState("");
+  const shownPhotoKeyRef = useRef("");
+  shownPhotoKeyRef.current = shownPhotoKey;
   // Play the new card's clip as soon as that card is the one on screen.
   // Waiting for the image's onLoad (or a multi-second fallback) left the
   // previous clip running through fast swipes: each swipe reset the wait,
@@ -1255,7 +1299,21 @@ export default function SwipeScreen() {
       tags: theirPhoto.tags,
       seed: theirPhoto.uri,
     });
-    if (url) playLeaseRef.current = playClip(url);
+    if (!url) return;
+    const cardKey = photoKey(theirPhoto.uri);
+    if (shownPhotoKey !== cardKey) {
+      // The new photo is not on screen yet. Silence the previous card's clip
+      // now, decode this one in the background, and start it when the photo
+      // paints. The timer keeps a photo that never loads from muting the deck.
+      void pauseAudio();
+      prewarmClip(url);
+      const t = setTimeout(
+        () => setShownPhotoKey(cardKey),
+        MUSIC_WAIT_FOR_PHOTO_MS,
+      );
+      return () => clearTimeout(t);
+    }
+    playLeaseRef.current = playClip(url);
   }, [
     theirPhoto.uri,
     theirPhoto.id,
@@ -1266,6 +1324,8 @@ export default function SwipeScreen() {
     noMore,
     fullscreenUri,
     flashMatch,
+    audioArmed,
+    shownPhotoKey,
   ]);
 
   // Stop audio when the screen unmounts (tab switch, navigation
@@ -1318,9 +1378,10 @@ export default function SwipeScreen() {
       // Fullscreen is a look-closer surface. Coming back to the tab while it
       // is still open should stay quiet; closing it restarts the clip.
       if (fullscreenUriRef.current != null) return;
-      // Restart the visible card immediately. Tab focus is the cue — do not
-      // wait for the photo decode, or returning to Ripple stays silent (or
-      // on the previous tab's loop) until the image catches up.
+      // Restart the visible card immediately. Tab focus is the cue, so a photo
+      // that already painted does not wait for anything else. A photo still on
+      // its way starts its own clip from the music effect when it paints.
+      if (shownPhotoKeyRef.current !== photoKey(photo.uri)) return;
       const url = resolveMusicUrl({
         customAudioUrl: photo.customAudioUrl,
         musicGenre: photo.musicGenre,
@@ -1537,12 +1598,25 @@ export default function SwipeScreen() {
     handleSwipeRef.current(dir, false);
   }, []);
 
+  const [chromeShown, setChromeShown] = useState(true);
+  const setChrome = useCallback(
+    (show: boolean) => {
+      setChromeShown(show);
+      chrome.value = withTiming(show ? 1 : 0, {
+        duration: reduceMotion ? 0 : 260,
+      });
+    },
+    [chrome, reduceMotion],
+  );
+  const hideChromeForSwipe = useCallback(() => setChrome(false), [setChrome]);
+
   const handleSwipe = useCallback(
     (dir: "left" | "right", animateOut = true) => {
       if (isAnimatingOutRef.current) return;
       // Don't record a swipe when there's nothing to swipe on.
       if (noMore) return;
       setAnimatingOut(true);
+      setChrome(false);
 
       // A swipe is an explicit user gesture — open the audio gate so
       // the reveal effect's playClip() actually plays.
@@ -1697,6 +1771,9 @@ export default function SwipeScreen() {
         }
         if (dir === "right") {
           // Celebration overlay — leave card off-screen; advance deck on dismiss.
+          void playRippleSoundIfEnabled();
+          setTravelOn(true);
+          setTimeout(() => setTravelOn(false), reduceMotion ? 600 : 2000);
           setFlashMatch(matchWithStats);
           deckAdvancedForFlashRef.current = false;
           sameLabelOpacity.value = 0;
@@ -1747,9 +1824,11 @@ export default function SwipeScreen() {
       todaysPhoto?.backendId,
       todaysPhoto?.captureCountryCode,
       runEchoVoteRetry,
+      reduceMotion,
       prefetchDeckAhead,
       runSwipeOutComplete,
       setAnimatingOut,
+      setChrome,
       noMore,
       refreshEchoes,
     ]
@@ -1769,6 +1848,9 @@ export default function SwipeScreen() {
     .failOffsetY([-100, 100])
     .onBegin(() => {
       panStartX.value = translateX.value;
+    })
+    .onStart(() => {
+      runOnJS(hideChromeForSwipe)();
     })
     .onUpdate((e) => {
       translateX.value = panStartX.value + e.translationX;
@@ -1820,6 +1902,17 @@ export default function SwipeScreen() {
   const sameLabelAnimatedStyle = useAnimatedStyle(() => ({
     opacity: sameLabelOpacity.value,
   }));
+  const chromeAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: chrome.value,
+  }));
+  const chromeHandleAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: 1 - chrome.value,
+  }));
+  // Corner badges on the top photo sit below the title while it shows and
+  // slide up to the corner when it fades.
+  const topBadgeAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: chrome.value * chromeShift.value }],
+  }));
 
   useEffect(() => {
     setDeckGestureEnabled(!isAnimatingOutRef.current && flashMatch == null);
@@ -1829,11 +1922,24 @@ export default function SwipeScreen() {
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
   const tabBarClearance =
     Platform.OS === "web" ? 90 : tabBarTotalHeight(insets);
+  // Android's tab bar sits below the deck; elsewhere it floats over the photos.
+  const barOverlap = Platform.OS === "android" ? 0 : tabBarClearance;
+  const [headerHeight, setHeaderHeight] = useState(topPadding + 76);
+  useEffect(() => {
+    chromeShift.value = headerHeight;
+  }, [chromeShift, headerHeight]);
   // Treat the user as "no photo for today" if their last upload is from a
   // previous UTC day — this makes Start Matching prompt for a fresh photo
   // each new daily-challenge cycle instead of recycling yesterday's.
   const hasUploadedPhoto =
     todaysPhoto !== undefined && sanitizeUserOwnPhotoUri(myPhotoUri) !== "";
+  // Photos fill the screen while a deck is showing; the title and buttons
+  // fade away during swiping. Every other state keeps them visible.
+  const chromeActive = hasUploadedPhoto && !noMore;
+  const chromeVisible = !chromeActive || chromeShown;
+  useEffect(() => {
+    if (!chromeActive) setChrome(true);
+  }, [chromeActive, setChrome]);
 
   // Production builds used to mount with realPool=[] and stock off, so
   // `initial` was null → permanent "all caught up" even after /candidates
@@ -1870,17 +1976,38 @@ export default function SwipeScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <OceanShimmer />
-      <View style={[styles.header, { paddingTop: topPadding + 8 }]}>
+      <Reanimated.View
+        pointerEvents={chromeVisible ? "box-none" : "none"}
+        onLayout={(e) => setHeaderHeight(Math.round(e.nativeEvent.layout.height))}
+        style={[
+          styles.header,
+          styles.headerOverlay,
+          { paddingTop: topPadding + 8 },
+          chromeActive ? chromeAnimatedStyle : null,
+        ]}
+      >
+        {chromeActive ? (
+          <LinearGradient
+            colors={["rgba(0,0,0,0.6)", "rgba(0,0,0,0)"]}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+        ) : null}
         <View style={{ flex: 1, marginRight: 12, minWidth: 0 }}>
           <EchoLogo
             size="sm"
-            color={colors.foreground}
-            taglineColor={colors.mutedForeground}
+            color={chromeActive ? "#FFFFFF" : colors.foreground}
+            taglineColor={
+              chromeActive ? "rgba(255,255,255,0.8)" : colors.mutedForeground
+            }
           />
           <Text
             style={[
               styles.subtitle,
-              { color: colors.mutedForeground, marginTop: 4 },
+              {
+                color: chromeActive ? "rgba(255,255,255,0.8)" : colors.mutedForeground,
+                marginTop: 4,
+              },
             ]}
           >
             {streakCount > 0 ? `${streakCount} matches` : "Find your similar"}
@@ -1920,10 +2047,15 @@ export default function SwipeScreen() {
             <Icon name="camera" size={20} color="#fff" />
           </PressableScale>
         </View>
-      </View>
+      </Reanimated.View>
 
       {!hasUploadedPhoto ? (
-        <View style={[styles.challengeBar, { borderColor: colors.border }]}>
+        <View
+          style={[
+            styles.challengeBar,
+            { borderColor: colors.border, marginTop: headerHeight },
+          ]}
+        >
           <Text style={styles.challengeEmoji}>{todaysChallenge.emoji}</Text>
           <Text style={[styles.challengeText, { color: colors.mutedForeground }]}>
             {"Today's prompt: "}
@@ -1934,7 +2066,17 @@ export default function SwipeScreen() {
         </View>
       ) : null}
 
-      <View style={[styles.cardArea, { paddingBottom: tabBarClearance }]}>
+      <View
+        style={[
+          styles.cardArea,
+          chromeActive
+            ? styles.cardAreaFull
+            : {
+                paddingBottom: tabBarClearance,
+                paddingTop: hasUploadedPhoto ? headerHeight : 0,
+              },
+        ]}
+      >
         {!hasUploadedPhoto && (
           <View
             style={[
@@ -2242,7 +2384,11 @@ export default function SwipeScreen() {
             </View>
           </View>
         )}
-        {hasUploadedPhoto && !noMore && usingSuggestedThemeFallback && suggestedThemeId && (
+        <Reanimated.View
+          pointerEvents="none"
+          style={[styles.topChips, { top: headerHeight }, chromeAnimatedStyle]}
+        >
+        {chromeActive && usingSuggestedThemeFallback && suggestedThemeId && (
           <View
             style={{
               alignSelf: "center",
@@ -2262,7 +2408,7 @@ export default function SwipeScreen() {
             </Text>
           </View>
         )}
-        {hasUploadedPhoto && !noMore && objectMatchTags && objectMatchTags.length > 0 && (
+        {chromeActive && objectMatchTags && objectMatchTags.length > 0 && (
           <View
             style={{
               alignSelf: "center",
@@ -2283,6 +2429,7 @@ export default function SwipeScreen() {
             </Text>
           </View>
         )}
+        </Reanimated.View>
         {hasUploadedPhoto && !noMore && (
         <GestureDetector gesture={panGesture}>
         <Reanimated.View
@@ -2323,21 +2470,38 @@ export default function SwipeScreen() {
               />
               {isAiPhoto(myPhotoUri) ? <AiGeneratedBadge size="sm" /> : null}
               {myPhotoDisplay.code ? (
-                <View
-                  style={[styles.photoCountryBadge, { backgroundColor: "rgba(0,0,0,0.55)" }]}
+                <Reanimated.View
+                  style={[
+                    styles.photoCountryBadge,
+                    { backgroundColor: "rgba(0,0,0,0.55)" },
+                    topBadgeAnimatedStyle,
+                  ]}
                   accessibilityLabel={`Posted from ${myPhotoDisplay.name}`}
                 >
                   <Text style={styles.photoCountryBadgeText}>
                     {myPhotoDisplay.flag}
                   </Text>
-                </View>
+                </Reanimated.View>
               ) : null}
-              <View style={[styles.expandHint, { backgroundColor: "rgba(0,0,0,0.45)" }]}>
+              <Reanimated.View
+                style={[
+                  styles.expandHint,
+                  { backgroundColor: "rgba(0,0,0,0.45)" },
+                  topBadgeAnimatedStyle,
+                ]}
+              >
                 <Icon name="maximize" size={12} color="#fff" />
-              </View>
+              </Reanimated.View>
+              {ownViews != null ? (
+                <Text style={styles.ownViewsLine} pointerEvents="none">
+                  {ownViews === 1
+                    ? "1 person has seen your moment"
+                    : `${ownViews.toLocaleString("en-US")} people have seen your moment`}
+                </Text>
+              ) : null}
             </Pressable>
 
-            <View style={[styles.divider, { backgroundColor: colors.card }]}>
+            <View style={styles.divider} pointerEvents="none">
               <View style={[styles.vsChip, { backgroundColor: colors.secondary }]}>
                 <Text style={[styles.vsText, { color: colors.mutedForeground }]}>
                   vs
@@ -2366,6 +2530,11 @@ export default function SwipeScreen() {
                 recyclingKey={`match-their:${candidateDisplayToken}:${photoKey(theirPhoto.uri)}`}
                 displayWidth={HERO_DISPLAY_WIDTH}
                 priority="hero"
+                onResolved={(loadedRealImage) => {
+                  if (loadedRealImage) {
+                    setShownPhotoKey(photoKey(theirPhotoRef.current.uri));
+                  }
+                }}
               />
               )}
               {theirPhoto.uri ? (
@@ -2435,12 +2604,13 @@ export default function SwipeScreen() {
             </Pressable>
 
             {/* Floating action buttons overlaid on the bottom of the card */}
-            <View
+            <Reanimated.View
               style={[
                 styles.actionOverlay,
-                { paddingBottom: 14 },
+                { paddingBottom: 14 + barOverlap },
+                chromeAnimatedStyle,
               ]}
-              pointerEvents="box-none"
+              pointerEvents={chromeVisible ? "box-none" : "none"}
             >
               <TouchableOpacity
                 style={[styles.actionBtn, styles.skipBtn]}
@@ -2464,12 +2634,43 @@ export default function SwipeScreen() {
               >
                 <Icon name="ripple" size={30} color="#001018" />
               </TouchableOpacity>
-            </View>
+            </Reanimated.View>
+
+            {chromeActive ? (
+              <Reanimated.View
+                style={[
+                  styles.chromeHandleWrap,
+                  { bottom: 12 + barOverlap },
+                  chromeHandleAnimatedStyle,
+                ]}
+                pointerEvents={chromeShown ? "none" : "box-none"}
+              >
+                <Pressable
+                  onPress={() => setChrome(true)}
+                  hitSlop={14}
+                  style={styles.chromeHandle}
+                  accessibilityRole="button"
+                  accessibilityLabel="Show title and buttons"
+                >
+                  <Icon name="chevron-up" size={20} color="#FFFFFF" />
+                </Pressable>
+              </Reanimated.View>
+            ) : null}
           </View>
         </Reanimated.View>
         </GestureDetector>
         )}
       </View>
+
+      {travelOn ? (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <RippleTravellingMap
+            width={Dimensions.get("window").width}
+            height={Dimensions.get("window").height}
+            reduceMotion={reduceMotion}
+          />
+        </View>
+      ) : null}
 
       {/* Celebration overlay — deck advances under it on Ripple swipe. */}
       {flashMatch && (() => {
@@ -2657,7 +2858,7 @@ export default function SwipeScreen() {
   );
 }
 
-const CARD_WIDTH = RIPPLE_CARD_WIDTH;
+const EMPTY_CARD_WIDTH = RIPPLE_CARD_WIDTH - 24;
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -2773,12 +2974,62 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: Platform.OS === "web" ? 90 : 70,
   },
+  cardAreaFull: {
+    alignItems: "stretch",
+    justifyContent: "flex-start",
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: 0,
+  },
+  headerOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 20,
+  },
+  topChips: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    zIndex: 15,
+  },
+  ownViewsLine: {
+    position: "absolute",
+    bottom: 22,
+    left: 0,
+    right: 0,
+    textAlign: "center",
+    color: "#A8D8EA",
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    textShadowColor: "rgba(0,0,0,0.75)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  chromeHandleWrap: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 12,
+  },
+  chromeHandle: {
+    width: 56,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.4)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.22)",
+  },
   cardWrapper: {
-    width: CARD_WIDTH,
+    width: "100%",
     flex: 1,
   },
   emptyCard: {
-    width: CARD_WIDTH,
+    width: EMPTY_CARD_WIDTH,
     borderRadius: 24,
     borderWidth: 1,
     paddingVertical: 36,
@@ -2834,6 +3085,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 14,
     borderWidth: 1,
+    borderRadius: 24,
   },
   emptyStateEmoji: {
     fontSize: 56,
@@ -2878,11 +3130,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   card: {
-    width: CARD_WIDTH,
+    width: "100%",
     flex: 1,
-    borderRadius: 24,
     overflow: "hidden",
-    borderWidth: 1,
     position: "relative",
   },
   photoSection: {

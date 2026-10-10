@@ -77,14 +77,13 @@ assert(
 );
 
 const waves = read("app/(tabs)/waves.tsx");
-assert("waves uses FlatList virtualization", waves.includes("FlatList"));
 assert(
-  "waves yours slot sanitizes stock URIs",
-  waves.includes("sanitizeUserOwnPhotoUri") && waves.includes("viewerOwnPhoto"),
+  "waves keeps the ripple inbox reachable",
+  waves.includes('router.push("/echoes")'),
 );
 assert(
-  "waves scroll hint does not setState every frame",
-  waves.includes("scrollMetricsRef") && !waves.includes("setScrollY("),
+  "waves archive lists only waves the user kept",
+  waves.includes("loadKeptWaves") && waves.includes("No saved Waves yet"),
 );
 assert(
   "waves silences the previous tab on focus",
@@ -99,8 +98,14 @@ assert(
 
 const atlasTab = read("app/(tabs)/atlas.tsx");
 assert(
-  "atlas takes the soundtrack on focus",
-  atlasTab.includes('applyTabFocusSoundtrack("atlas")'),
+  "world map silences the previous tab on focus",
+  atlasTab.includes('applyTabFocusSoundtrack("home")'),
+);
+
+assert(
+  "world tab shows ripples and waves this year",
+  atlasTab.includes("fetchWorldYearCounts") &&
+    atlasTab.includes("yearCountLabels(counts.ripples, counts.waves)"),
 );
 
 const discover = read("app/(tabs)/discover.tsx");
@@ -135,6 +140,14 @@ assert(
   "viewerOwnPhoto never falls back to Unsplash placeholder",
   remote.includes("exhausted && !viewerOwnPhoto"),
 );
+assert(
+  "Ripple photo reload ignores fallback-only updates",
+  remote.includes("shouldResetDisplayedPhoto"),
+);
+assert(
+  "painted viewer photo ignores later load errors",
+  remote.includes("if (viewerOwnPhoto && loaded) return;"),
+);
 
 const atlas = read("components/AtlasGlobeExperience.tsx");
 assert(
@@ -147,6 +160,51 @@ assert(
   "user-own photo guards exported",
   photoUri.includes("isAllowedUserOwnPhotoUri") &&
     photoUri.includes("sanitizeUserOwnPhotoUri"),
+);
+
+assert(
+  "match starts a card's clip only after its photo painted",
+  match.includes("shownPhotoKey !== cardKey") &&
+    match.includes("onResolved={(loadedRealImage)") &&
+    match.includes("MUSIC_WAIT_FOR_PHOTO_MS"),
+);
+assert(
+  "match retries the first clip once the gesture gate opens",
+  match.includes("onUserInteracted(() => setAudioArmed(true))") &&
+    match.includes("audioArmed,"),
+);
+assert(
+  "slow clip loads never run inside the audio command queue",
+  audio.includes("function startLoad(") &&
+    audio.includes("if (afterLoad) return;"),
+);
+
+assert(
+  "ripple photos run full width and the title and buttons fade together",
+  match.includes('width: "100%"') &&
+    match.includes("hideChromeForSwipe") &&
+    match.includes("chromeAnimatedStyle") &&
+    match.includes("Show title and buttons") &&
+    !match.includes("const CARD_WIDTH"),
+);
+assert(
+  "ripple title and buttons stay up when there is no deck to swipe",
+  match.includes("const chromeActive = hasUploadedPhoto && !noMore;") &&
+    match.includes("if (!chromeActive) setChrome(true);"),
+);
+
+const shimmer = read("components/OceanShimmer.tsx");
+assert(
+  "ocean shimmer stays behind tab content",
+  shimmer.includes("StyleSheet.absoluteFill") &&
+    !shimmer.includes("absoluteFillObject"),
+);
+
+const deferFocus = read("utils/deferTabFocus.ts");
+assert(
+  "tab focus deferral does not touch InteractionManager",
+  deferFocus.includes("requestAnimationFrame") &&
+    !deferFocus.includes("InteractionManager"),
 );
 
 console.log("Done. exitCode=", process.exitCode ?? 0);
