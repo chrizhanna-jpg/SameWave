@@ -11,7 +11,7 @@ import {
   useAuth,
 } from "@clerk/expo";
 import { tokenCache } from "@clerk/expo/token-cache";
-import { Redirect, router, Stack, useSegments } from "expo-router";
+import { router, Stack, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -304,21 +304,21 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   //      pre-auth). Bouncing through "/" lets index.tsx decide whether
   //      to send them to /onboarding or /sign-in next.
   //
-  // We use a declarative <Redirect> (not an imperative
-  // navRouter.replace in a useEffect) because the imperative form
-  // races with in-flight navigations — e.g. while the Stack is still
-  // settling on /onboarding from index.tsx's <Redirect>, a useEffect
-  // here can fire a second REPLACE that the navigator has already
-  // moved past, producing a "The action 'REPLACE' with payload
-  // {name:'index'} was not handled by any navigator" warning toast on
-  // the first onboarding card. <Redirect> is timed by React's render
-  // cycle and stays in lock-step with whatever screen is mounting.
+  // Keep the Stack mounted and replace once. Returning `<Redirect>` here
+  // unmounts the navigator and, on Expo Router 57, the redirect effect
+  // calls `router.replace` again on every render until React aborts with
+  // "Maximum update depth exceeded" right after Google sign-in.
   const needsRedirect =
     isLoaded &&
+    hasHydrated &&
     ((isSignedIn && onSignIn) || (!isSignedIn && !onPreAuthScreen));
 
+  useEffect(() => {
+    if (!needsRedirect) return;
+    router.replace("/");
+  }, [needsRedirect]);
+
   if (!hasHydrated) return null;
-  if (needsRedirect) return <Redirect href="/" />;
   return <>{children}</>;
 }
 
