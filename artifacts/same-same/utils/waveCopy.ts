@@ -149,3 +149,21 @@ export function formatTakenAt(
     .replace(/\s/g, "");
   return `Taken at ${formatted}`;
 }
+
+/** World tab headline counters. Singular at exactly one. */
+export function yearCountLabels(ripples: number, waves: number): string[] {
+  const fmt = (n: number) => Math.max(0, Math.round(n)).toLocaleString("en-US");
+  const r = Math.max(0, Math.round(ripples));
+  const w = Math.max(0, Math.round(waves));
+  return [
+    `${fmt(r)} ${r === 1 ? "Ripple" : "Ripples"} this year`,
+    `${fmt(w)} ${w === 1 ? "Wave" : "Waves"} this year`,
+  ];
+}
+
+/** True when an ISO timestamp falls in the current UTC year. */
+export function isInUtcYear(iso: string | null | undefined, now: Date = new Date()): boolean {
+  if (!iso) return false;
+  const at = new Date(iso);
+  return !Number.isNaN(at.getTime()) && at.getUTCFullYear() === now.getUTCFullYear();
+}

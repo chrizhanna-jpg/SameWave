@@ -7,10 +7,12 @@ import {
   formatSeparation,
   formatTakenAt,
   haversineMiles,
+  isInUtcYear,
   ordinal,
   prefersMiles,
   waveNameFromVibes,
   weatherWord,
+  yearCountLabels,
 } from "../utils/waveCopy";
 
 assert.equal(waveNameFromVibes("quiet", "morning"), "The Quiet Morning Wave");
@@ -35,5 +37,14 @@ assert.ok(miles > 5000 && miles < 7000, `dublin-tokyo miles ${miles}`);
 
 const taken = formatTakenAt("2026-10-09T11:14:00.000Z", "JP");
 assert.equal(taken, "Taken at 8:14pm");
+
+assert.deepEqual(yearCountLabels(12345, 678), ["12,345 Ripples this year", "678 Waves this year"]);
+assert.deepEqual(yearCountLabels(1, 1), ["1 Ripple this year", "1 Wave this year"]);
+assert.deepEqual(yearCountLabels(0, 0), ["0 Ripples this year", "0 Waves this year"]);
+assert.deepEqual(yearCountLabels(-3, 2.4), ["0 Ripples this year", "2 Waves this year"]);
+const now = new Date("2026-10-10T12:00:00Z");
+assert.equal(isInUtcYear("2026-01-01T00:00:00Z", now), true);
+assert.equal(isInUtcYear("2025-12-31T23:59:59Z", now), false);
+assert.equal(isInUtcYear(undefined, now), false);
 
 console.log("wave experience copy checks passed");

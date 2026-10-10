@@ -20,12 +20,12 @@ export function WorldWaveMap({
   width,
   height,
   dots,
-  countLabel,
+  countLabels,
 }: {
   width: number;
   height: number;
   dots: LiveDot[];
-  countLabel: string;
+  countLabels: string[];
 }) {
   const [tip, setTip] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
@@ -94,7 +94,13 @@ export function WorldWaveMap({
 
   return (
     <View style={[styles.fill, { backgroundColor: BG }]}>
-      <Text style={styles.count}>{countLabel}</Text>
+      <View style={styles.counts} pointerEvents="none">
+        {countLabels.map((label) => (
+          <Text key={label.replace(/^[\d,]+/, "")} style={styles.count}>
+            {label}
+          </Text>
+        ))}
+      </View>
       <View style={styles.map}>
         <Pressable style={StyleSheet.absoluteFill} onPress={() => setTip(null)} />
         <Svg width={width} height={height} pointerEvents="none">
@@ -147,11 +153,15 @@ export function WorldWaveMap({
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  count: {
+  counts: {
     position: "absolute",
     top: 8,
     alignSelf: "center",
+    alignItems: "center",
+    gap: 2,
     zIndex: 2,
+  },
+  count: {
     color: DOT,
     fontSize: 13,
     fontFamily: "Inter_500Medium",

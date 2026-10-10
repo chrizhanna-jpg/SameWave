@@ -3303,6 +3303,24 @@ export async function fetchWavesMadeToday(): Promise<number | null> {
   }
 }
 
+export type WorldYearCounts = { ripples: number; waves: number };
+
+export async function fetchWorldYearCounts(): Promise<WorldYearCounts | null> {
+  try {
+    const base = getApiBase();
+    const res = await fetch(`${base}/api/waves/year-counts`, {
+      headers: await authedHeaders(),
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { ripples?: number; waves?: number };
+    if (typeof json.ripples !== "number" || typeof json.waves !== "number") return null;
+    return { ripples: json.ripples, waves: json.waves };
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchLiveWaveCountries(): Promise<
   { countryCode: string; at: string }[] | null
 > {

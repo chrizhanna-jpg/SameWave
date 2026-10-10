@@ -5,22 +5,34 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { WorldWaveMap, type LiveDot } from "@/components/WorldWaveMap";
 import { useApp } from "@/context/AppContext";
-import { fetchLiveWaveCountries, fetchWavesMadeToday } from "@/utils/api";
+import { fetchLiveWaveCountries, fetchWorldYearCounts } from "@/utils/api";
+import { isInUtcYear, yearCountLabels } from "@/utils/waveCopy";
 import { applyTabFocusSoundtrack } from "@/utils/tabSoundtrack";
 
 /** Live Wave map. Country centroids only — no GPS, no names, no photos. */
 export default function WorldScreen() {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
-  const { mutualEchoes } = useApp();
+  const { mutualEchoes, matches } = useApp();
   const [dots, setDots] = useState<LiveDot[]>([]);
-  const [count, setCount] = useState(0);
+  const [counts, setCounts] = useState({ ripples: 0, waves: 0 });
   const [focused, setFocused] = useState(false);
 
   const refresh = useCallback(async () => {
     const live = await fetchLiveWaveCountries();
-    const today = await fetchWavesMadeToday();
-    if (today != null) setCount(today);
+    const year = await fetchWorldYearCounts();
+    if (year) {
+      setCounts(year);
+    } else {
+      setCounts({
+        ripples: matches.filter(
+          (m) => m.verdict !== "different" && isInUtcYear(m.timestamp),
+        ).length,
+        waves: mutualEchoes.filter((echo) =>
+          isInUtcYear(echo.mutualAt || echo.createdAt),
+        ).length,
+      });
+    }
     if (live && live.length > 0) {
       setDots(
         live.map((row) => ({
@@ -40,15 +52,7 @@ export default function WorldScreen() {
       }
     }
     setDots(local);
-    if (today == null) {
-      const start = new Date();
-      start.setUTCHours(0, 0, 0, 0);
-      setCount(
-        mutualEchoes.filter((echo) => new Date(echo.mutualAt || echo.createdAt).getTime() >= start.getTime())
-          .length,
-      );
-    }
-  }, [mutualEchoes]);
+  }, [matches, mutualEchoes]);
 
   useFocusEffect(
     useCallback(() => {
@@ -74,7 +78,7 @@ export default function WorldScreen() {
         width={width}
         height={height - insets.top}
         dots={dots}
-        countLabel={`${count.toLocaleString("en-US")} Waves made today`}
+        countLabels={yearCountLabels(counts.ripples, counts.waves)}
       />
     </View>
   );

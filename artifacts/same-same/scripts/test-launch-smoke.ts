@@ -102,6 +102,12 @@ assert(
   atlasTab.includes('applyTabFocusSoundtrack("home")'),
 );
 
+assert(
+  "world tab shows ripples and waves this year",
+  atlasTab.includes("fetchWorldYearCounts") &&
+    atlasTab.includes("yearCountLabels(counts.ripples, counts.waves)"),
+);
+
 const discover = read("app/(tabs)/discover.tsx");
 assert(
   "discover does not start focused and steal the player",

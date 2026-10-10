@@ -29,6 +29,46 @@ router.get("/waves/today-count", async (req, res) => {
   }
 });
 
+/**
+ * Shared counters for the World tab, reset at UTC midnight on 1 January.
+ * A pending echo is one ripple; a mutual echo is two (both people rippled)
+ * and one wave.
+ */
+router.get("/waves/year-counts", async (req, res) => {
+  try {
+    const user = await resolveUserFromRequest(req);
+    if (!user) {
+      res.status(401).json({ error: "authentication required" });
+      return;
+    }
+    const rows = await db.execute(sql`
+      SELECT
+        (
+          SELECT count(*)::int FROM echoes
+          WHERE state = 'pending'
+            AND created_at >= date_trunc('year', (now() AT TIME ZONE 'UTC'))
+        ) + 2 * (
+          SELECT count(*)::int FROM echoes
+          WHERE state = 'mutual'
+            AND created_at >= date_trunc('year', (now() AT TIME ZONE 'UTC'))
+        ) AS "ripples",
+        (
+          SELECT count(*)::int FROM echoes
+          WHERE state = 'mutual'
+            AND mutual_at >= date_trunc('year', (now() AT TIME ZONE 'UTC'))
+        ) AS "waves"
+    `);
+    const row = rows.rows[0] as { ripples?: number; waves?: number } | undefined;
+    res.json({
+      ripples: Number(row?.ripples ?? 0),
+      waves: Number(row?.waves ?? 0),
+    });
+  } catch (err) {
+    req.log.error({ err }, "waves year-counts failed");
+    res.status(500).json({ error: "count failed" });
+  }
+});
+
 router.get("/waves/live", async (req, res) => {
   try {
     const user = await resolveUserFromRequest(req);
