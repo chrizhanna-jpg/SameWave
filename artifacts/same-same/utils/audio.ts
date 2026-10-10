@@ -216,6 +216,18 @@ export function prewarmClip(url: string | undefined | null): void {
   if (!userInteracted) return;
   if (activeUrl === url) return;
   if (prewarmed.has(url) || prewarmInFlight.has(url)) return;
+  void startLoad(url);
+}
+
+/**
+ * Load a clip paused into the prewarm cache. One load per URL at a time.
+ * Loading never touches the command queue, so a slow download cannot hold
+ * back a pause or a newer swipe. Resolves once the load settles; callers
+ * check `prewarmed` to see whether it worked.
+ */
+function startLoad(url: string): Promise<void> {
+  const existing = prewarmInFlight.get(url);
+  if (existing) return existing;
   const p = (async () => {
     await audioModeReady();
     // Re-check after the await: the clip may have become active or been
@@ -239,6 +251,20 @@ export function prewarmClip(url: string | undefined | null): void {
   })();
   prewarmInFlight.set(url, p);
   void p.finally(() => prewarmInFlight.delete(url));
+  return p;
+}
+
+/** Pause the loaded clip right now without unloading it. */
+async function silenceActive(): Promise<void> {
+  const s = activeSound;
+  if (!s) return;
+  if (activePlaying) {
+    activePlaying = false;
+    notifyPlayback();
+  }
+  try {
+    await s.setStatusAsync({ shouldPlay: false });
+  } catch {}
 }
 
 /**
@@ -277,7 +303,11 @@ export function playClip(url: string | undefined | null): number {
   return lease;
 }
 
-async function _doPlay(url: string, lease: number): Promise<void> {
+async function _doPlay(
+  url: string,
+  lease: number,
+  afterLoad = false,
+): Promise<void> {
   await audioModeReady();
   if (lease !== audioCommands.current()) return;
 
@@ -299,88 +329,43 @@ async function _doPlay(url: string, lease: number): Promise<void> {
     return;
   }
 
-  // If a prewarm of this exact clip is still in-flight, wait for it so we
-  // adopt the already-decoded sound below instead of racing a duplicate
-  // fetch. This is rare in practice — prewarm runs when the prior card
-  // landed, so it's usually done by swipe time.
-  const inflight = prewarmInFlight.get(url);
-  if (inflight) {
-    // Do not hold the command queue while the decode finishes. A tab change
-    // or a newer swipe has to be able to pause the clip that's already
-    // playing; waiting here kept that old clip running until the prefetch
-    // returned.
-    void inflight.finally(() => {
+  if (!prewarmed.has(url)) {
+    // The clip is not loaded yet (or still downloading). Never wait for it
+    // inside the command queue: a tab change or a newer swipe has to be able
+    // to run while the download is slow. Silence the clip that belongs to the
+    // previous card now, since a gap is better than the wrong song, then
+    // finish this command when the load lands.
+    if (afterLoad) return; // the load failed — stay silent
+    await silenceActive();
+    if (lease !== audioCommands.current()) return;
+    void startLoad(url).then(() => {
       if (lease !== audioCommands.current()) return;
-      void audioCommands.enqueue(() => _doPlay(url, lease));
+      void audioCommands.enqueue(() => _doPlay(url, lease, true));
     });
     return;
   }
 
-  // Tear down whatever's currently playing before loading the new clip.
+  // Tear down whatever's currently playing before adopting the new clip.
   await unloadActive();
   if (lease !== audioCommands.current()) return; // user moved on while we were tearing down
 
-  // Fast path: adopt a prewarmed, already-decoded sound — playback starts
-  // immediately with no network fetch or decode. This is what makes a
-  // swipe to the next card near-instant.
+  // Adopt the loaded sound. Only a fully loaded clip is ever started, and
+  // only here inside the queue, so exactly one clip can be audible.
   const pre = prewarmed.get(url);
-  if (pre) {
-    prewarmed.delete(url);
-    if (lease !== audioCommands.current()) {
-      // A newer swipe or tab change won while we waited. Keep the decoded
-      // clip cached; do not start it.
-      prewarmed.set(url, pre);
-      return;
-    }
-    activeSound = pre;
-    activeUrl = url;
-    try {
-      await pre.setStatusAsync({
-        shouldPlay: clipShouldPlay(desiredPlaying, muted),
-        isLooping: true,
-        volume: 0.55,
-      });
-    } catch {}
-    if (lease !== audioCommands.current()) return;
-    const nowPlaying = clipShouldPlay(desiredPlaying, muted);
-    activePlaying = nowPlaying;
-    notifyPlayback();
-    return;
-  }
-
+  if (!pre) return;
+  prewarmed.delete(url);
+  activeSound = pre;
+  activeUrl = url;
   try {
-    // Load paused. shouldPlay:true inside createAsync can start the clip
-    // after a tab change has already asked us to stop, because that native
-    // call is not tied to the lease.
-    const { sound } = await Audio.Sound.createAsync(
-      { uri: url },
-      { shouldPlay: false, isLooping: true, volume: 0.55 },
-    );
-    if (lease !== audioCommands.current()) {
-      // A newer play() landed while we were loading — discard.
-      try { await sound.unloadAsync(); } catch {}
-      return;
-    }
-    activeSound = sound;
-    activeUrl = url;
-    if (clipShouldPlay(desiredPlaying, muted)) {
-      try {
-        await sound.playAsync();
-      } catch {}
-    }
-    if (lease !== audioCommands.current()) return;
-    const nowPlaying = clipShouldPlay(desiredPlaying, muted);
-    if (activePlaying !== nowPlaying) {
-      activePlaying = nowPlaying;
-      notifyPlayback();
-    } else {
-      // URL changed even if play state didn't — listeners that key off
-      // a specific URL still need to re-evaluate.
-      notifyPlayback();
-    }
-  } catch {
-    // 404, network blip, or codec mismatch. Swallow — feature is optional.
-  }
+    await pre.setStatusAsync({
+      shouldPlay: clipShouldPlay(desiredPlaying, muted),
+      isLooping: true,
+      volume: 0.55,
+    });
+  } catch {}
+  if (lease !== audioCommands.current()) return;
+  activePlaying = clipShouldPlay(desiredPlaying, muted);
+  notifyPlayback();
 }
 
 /**
