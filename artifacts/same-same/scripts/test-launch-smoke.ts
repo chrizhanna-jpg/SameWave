@@ -179,6 +179,20 @@ assert(
     audio.includes("if (afterLoad) return;"),
 );
 
+assert(
+  "ripple photos run full width and the title and buttons fade together",
+  match.includes('width: "100%"') &&
+    match.includes("hideChromeForSwipe") &&
+    match.includes("chromeAnimatedStyle") &&
+    match.includes("Show title and buttons") &&
+    !match.includes("const CARD_WIDTH"),
+);
+assert(
+  "ripple title and buttons stay up when there is no deck to swipe",
+  match.includes("const chromeActive = hasUploadedPhoto && !noMore;") &&
+    match.includes("if (!chromeActive) setChrome(true);"),
+);
+
 const shimmer = read("components/OceanShimmer.tsx");
 assert(
   "ocean shimmer stays behind tab content",
