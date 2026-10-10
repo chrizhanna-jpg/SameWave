@@ -90,9 +90,11 @@ import {
 } from "@/data/matchTuning";
 import { mergeCandidatePools } from "@/utils/candidatePool";
 import {
+  hasUserInteracted,
   isMuted as audioIsMuted,
   markUserInteracted,
   onMuteChange,
+  onUserInteracted,
   pause as pauseAudio,
   pauseIfLease,
   pausePreview,
@@ -142,6 +144,8 @@ const SWIPE_DISTANCE_THRESHOLD = width * 0.136;
 const SWIPE_VELOCITY_THRESHOLD = 336;
 const SWIPE_MIN_FLICK_DX = 22;
 const SWIPE_OUT_MS = 300;
+/** Longest a card's clip waits for its photo before it starts anyway. */
+const MUSIC_WAIT_FOR_PHOTO_MS = 6000;
 const SNAP_BACK_SPRING = { damping: 20, stiffness: 220, mass: 0.75 };
 
 function shouldCommitHorizontalSwipe(dx: number, vx: number): boolean {
@@ -1241,6 +1245,21 @@ export default function SwipeScreen() {
   useEffect(() => {
     return onMuteChange(setMutedState);
   }, []);
+  // playClip() is a no-op until the first gesture. A card that is already on
+  // screen at that moment would stay silent, so re-run the music effect once
+  // the gate opens.
+  const [audioArmed, setAudioArmed] = useState<boolean>(hasUserInteracted());
+  useEffect(() => {
+    if (audioArmed) return;
+    return onUserInteracted(() => setAudioArmed(true));
+  }, [audioArmed]);
+  // Key of the card whose photo has actually painted. A card is committed
+  // as soon as its candidate is picked, but its image can take seconds to
+  // arrive; the clip waits for the picture so the music always belongs to
+  // the photo the user is looking at.
+  const [shownPhotoKey, setShownPhotoKey] = useState("");
+  const shownPhotoKeyRef = useRef("");
+  shownPhotoKeyRef.current = shownPhotoKey;
   // Play the new card's clip as soon as that card is the one on screen.
   // Waiting for the image's onLoad (or a multi-second fallback) left the
   // previous clip running through fast swipes: each swipe reset the wait,
@@ -1276,7 +1295,21 @@ export default function SwipeScreen() {
       tags: theirPhoto.tags,
       seed: theirPhoto.uri,
     });
-    if (url) playLeaseRef.current = playClip(url);
+    if (!url) return;
+    const cardKey = photoKey(theirPhoto.uri);
+    if (shownPhotoKey !== cardKey) {
+      // The new photo is not on screen yet. Silence the previous card's clip
+      // now, decode this one in the background, and start it when the photo
+      // paints. The timer keeps a photo that never loads from muting the deck.
+      void pauseAudio();
+      prewarmClip(url);
+      const t = setTimeout(
+        () => setShownPhotoKey(cardKey),
+        MUSIC_WAIT_FOR_PHOTO_MS,
+      );
+      return () => clearTimeout(t);
+    }
+    playLeaseRef.current = playClip(url);
   }, [
     theirPhoto.uri,
     theirPhoto.id,
@@ -1287,6 +1320,8 @@ export default function SwipeScreen() {
     noMore,
     fullscreenUri,
     flashMatch,
+    audioArmed,
+    shownPhotoKey,
   ]);
 
   // Stop audio when the screen unmounts (tab switch, navigation
@@ -1339,9 +1374,10 @@ export default function SwipeScreen() {
       // Fullscreen is a look-closer surface. Coming back to the tab while it
       // is still open should stay quiet; closing it restarts the clip.
       if (fullscreenUriRef.current != null) return;
-      // Restart the visible card immediately. Tab focus is the cue — do not
-      // wait for the photo decode, or returning to Ripple stays silent (or
-      // on the previous tab's loop) until the image catches up.
+      // Restart the visible card immediately. Tab focus is the cue, so a photo
+      // that already painted does not wait for anything else. A photo still on
+      // its way starts its own clip from the music effect when it paints.
+      if (shownPhotoKeyRef.current !== photoKey(photo.uri)) return;
       const url = resolveMusicUrl({
         customAudioUrl: photo.customAudioUrl,
         musicGenre: photo.musicGenre,
@@ -2406,6 +2442,11 @@ export default function SwipeScreen() {
                 recyclingKey={`match-their:${candidateDisplayToken}:${photoKey(theirPhoto.uri)}`}
                 displayWidth={HERO_DISPLAY_WIDTH}
                 priority="hero"
+                onResolved={(loadedRealImage) => {
+                  if (loadedRealImage) {
+                    setShownPhotoKey(photoKey(theirPhotoRef.current.uri));
+                  }
+                }}
               />
               )}
               {theirPhoto.uri ? (

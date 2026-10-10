@@ -156,6 +156,23 @@ assert(
     photoUri.includes("sanitizeUserOwnPhotoUri"),
 );
 
+assert(
+  "match starts a card's clip only after its photo painted",
+  match.includes("shownPhotoKey !== cardKey") &&
+    match.includes("onResolved={(loadedRealImage)") &&
+    match.includes("MUSIC_WAIT_FOR_PHOTO_MS"),
+);
+assert(
+  "match retries the first clip once the gesture gate opens",
+  match.includes("onUserInteracted(() => setAudioArmed(true))") &&
+    match.includes("audioArmed,"),
+);
+assert(
+  "slow clip loads never run inside the audio command queue",
+  audio.includes("function startLoad(") &&
+    audio.includes("if (afterLoad) return;"),
+);
+
 const shimmer = read("components/OceanShimmer.tsx");
 assert(
   "ocean shimmer stays behind tab content",
