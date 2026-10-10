@@ -148,4 +148,18 @@ assert(
     photoUri.includes("sanitizeUserOwnPhotoUri"),
 );
 
+const shimmer = read("components/OceanShimmer.tsx");
+assert(
+  "ocean shimmer stays behind tab content",
+  shimmer.includes("StyleSheet.absoluteFill") &&
+    !shimmer.includes("absoluteFillObject"),
+);
+
+const deferFocus = read("utils/deferTabFocus.ts");
+assert(
+  "tab focus deferral does not touch InteractionManager",
+  deferFocus.includes("requestAnimationFrame") &&
+    !deferFocus.includes("InteractionManager"),
+);
+
 console.log("Done. exitCode=", process.exitCode ?? 0);

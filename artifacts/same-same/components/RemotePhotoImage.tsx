@@ -442,7 +442,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#1b2027",
   },
   retryOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(15,17,21,0.55)",
