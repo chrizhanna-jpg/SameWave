@@ -339,6 +339,8 @@ assert(
   "the next card eases in after a swipe instead of popping in",
   match.includes("CARD_ARRIVE_MS") &&
     match.includes("cardOpacity.value = withTiming(1") &&
+    match.includes("CARD_ARRIVE_MAX_WAIT_MS") &&
+    match.includes("arrivePendingKeyRef.current ===") &&
     match.includes("opacity: cardOpacity.value") &&
     match.includes("reduceMotionRef.current"),
 );

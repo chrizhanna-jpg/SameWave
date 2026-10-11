@@ -159,6 +159,8 @@ const SWIPE_OUT_MS = 300;
 /** The next card eases in from slightly smaller and transparent instead of appearing at once. */
 const CARD_ARRIVE_MS = 220;
 const CARD_ARRIVE_FROM_SCALE = 0.95;
+/** The new card waits this long at most for its suggested photo before showing anyway. */
+const CARD_ARRIVE_MAX_WAIT_MS = 700;
 /** A swipe still unfinished after this long is abandoned and the card returns. */
 const SWIPE_STUCK_RECOVERY_MS = 3000;
 /** Longest a card's clip waits for its photo before it starts anyway. */
@@ -1560,24 +1562,48 @@ function SwipeScreenInner() {
     applyDeckCandidate,
   ]);
 
+  // After a swipe the next card is held back until its suggested photo has
+  // painted, then both halves ease in together. A photo that never reports in
+  // cannot keep the deck hidden: the wait is capped.
+  const arrivePendingKeyRef = useRef<string | null>(null);
+  const arriveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const arriveCard = useCallback(() => {
+    if (arriveTimerRef.current) {
+      clearTimeout(arriveTimerRef.current);
+      arriveTimerRef.current = null;
+    }
+    arrivePendingKeyRef.current = null;
+    const duration = reduceMotionRef.current ? 0 : CARD_ARRIVE_MS;
+    cardOpacity.value = withTiming(1, { duration });
+    cardScale.value = withTiming(1, {
+      duration,
+      easing: Easing.out(Easing.cubic),
+    });
+    setAnimatingOut(false);
+  }, [cardOpacity, cardScale, setAnimatingOut]);
+  useEffect(
+    () => () => {
+      if (arriveTimerRef.current) clearTimeout(arriveTimerRef.current);
+    },
+    [],
+  );
+
   useEffect(() => {
     if (deckSettleToken === 0) return;
     translateX.value = 0;
     translateY.value = 0;
     sameLabelOpacity.value = 0;
-    if (reduceMotionRef.current) {
-      cardScale.value = 1;
-      cardOpacity.value = 1;
-    } else {
-      cardScale.value = CARD_ARRIVE_FROM_SCALE;
-      cardOpacity.value = 0;
-      cardOpacity.value = withTiming(1, { duration: CARD_ARRIVE_MS });
-      cardScale.value = withTiming(1, {
-        duration: CARD_ARRIVE_MS,
-        easing: Easing.out(Easing.cubic),
-      });
+    cardScale.value = CARD_ARRIVE_FROM_SCALE;
+    cardOpacity.value = 0;
+    const current = theirPhotoRef.current;
+    const key = current.id === "placeholder" ? "" : photoKey(current.uri);
+    if (!key) {
+      arriveCard();
+      return;
     }
-    setAnimatingOut(false);
+    arrivePendingKeyRef.current = key;
+    if (arriveTimerRef.current) clearTimeout(arriveTimerRef.current);
+    arriveTimerRef.current = setTimeout(arriveCard, CARD_ARRIVE_MAX_WAIT_MS);
   }, [
     deckSettleToken,
     translateX,
@@ -1585,7 +1611,7 @@ function SwipeScreenInner() {
     cardScale,
     cardOpacity,
     sameLabelOpacity,
-    setAnimatingOut,
+    arriveCard,
   ]);
 
   // The first live pool replaces the stock cards the deck opened with. Keep the
@@ -2633,6 +2659,12 @@ function SwipeScreenInner() {
                 displayWidth={HERO_DISPLAY_WIDTH}
                 priority="hero"
                 onResolved={(loadedRealImage) => {
+                  if (
+                    arrivePendingKeyRef.current ===
+                    photoKey(theirPhotoRef.current.uri)
+                  ) {
+                    arriveCard();
+                  }
                   if (loadedRealImage) {
                     const key = photoKey(theirPhotoRef.current.uri);
                     setShownPhotoKey(key);
