@@ -226,7 +226,9 @@ const tabsLayout = read("app/(tabs)/_layout.tsx");
 assert(
   "the main menu hides with the Ripple title and buttons and always returns",
   match.includes("const menuHidden = tabFocused && chromeActive && !chromeShown;") &&
-    match.includes("if (!tabFocused || !chromeActive || !chromeShown) return;") &&
+    match.includes(
+      "if (!tabFocused || !deckEngaged || !chromeActive || !chromeShown) return;",
+    ) &&
     match.includes("setTabBarHidden(menuHidden)") &&
     match.includes("setTabBarHidden(false);") &&
     tabsLayout.includes("useTabBarHidden()") &&

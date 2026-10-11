@@ -1734,7 +1734,11 @@ export default function SwipeScreen() {
     },
     [chrome, reduceMotion],
   );
-  const hideChromeForSwipe = useCallback(() => setChrome(false), [setChrome]);
+  const [deckEngaged, setDeckEngaged] = useState(false);
+  const hideChromeForSwipe = useCallback(() => {
+    setDeckEngaged(true);
+    setChrome(false);
+  }, [setChrome]);
 
   const handleSwipe = useCallback(
     (dir: "left" | "right", animateOut = true) => {
@@ -1742,6 +1746,7 @@ export default function SwipeScreen() {
       // Don't record a swipe when there's nothing to swipe on.
       if (noMore) return;
       setAnimatingOut(true);
+      setDeckEngaged(true);
       setChrome(false);
 
       // A swipe is an explicit user gesture — open the audio gate so
@@ -2086,6 +2091,7 @@ export default function SwipeScreen() {
   useFocusEffect(
     useCallback(() => {
       setTabFocused(true);
+      setDeckEngaged(false);
       setChrome(true);
       return () => {
         setTabFocused(false);
@@ -2096,13 +2102,14 @@ export default function SwipeScreen() {
   useEffect(() => {
     return () => setTabBarHidden(false);
   }, []);
-  // Photos get the whole screen: the title and buttons step aside shortly after
-  // they appear, and again a few seconds after the handle brings them back.
+  // Nothing hides on its own until the user starts matching (so opening the
+  // app never leaves them without navigation); after that, the title, buttons
+  // and menu step aside a few seconds after the handle brings them back.
   useEffect(() => {
-    if (!tabFocused || !chromeActive || !chromeShown) return;
+    if (!tabFocused || !deckEngaged || !chromeActive || !chromeShown) return;
     const t = setTimeout(() => setChrome(false), CHROME_AUTO_HIDE_MS);
     return () => clearTimeout(t);
-  }, [tabFocused, chromeActive, chromeShown, setChrome]);
+  }, [tabFocused, deckEngaged, chromeActive, chromeShown, setChrome]);
 
   // Production builds used to mount with realPool=[] and stock off, so
   // `initial` was null → permanent "all caught up" even after /candidates
