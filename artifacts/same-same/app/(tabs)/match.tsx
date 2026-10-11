@@ -31,7 +31,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
 import { markTabVisited } from "@/utils/tabVisits";
 import { runAfterTabFocus } from "@/utils/deferTabFocus";
-import { tabBarTotalHeight } from "@/utils/tabBarSafeArea";
+import { tabBarBottomInset, tabBarTotalHeight } from "@/utils/tabBarSafeArea";
+import { setTabBarHidden } from "@/utils/tabBarVisibility";
 import { Icon } from "@/components/Icon";
 import { MicBadge } from "@/components/MicBadge";
 import { MatchFlash } from "@/components/MatchFlash";
@@ -568,7 +569,7 @@ function withExtraKeys(keys: Set<string>, extra?: string[]): Set<string> {
 }
 
 /** Title and buttons rest on screen this long before fading back out. */
-const CHROME_AUTO_HIDE_MS = 4000;
+const CHROME_AUTO_HIDE_MS = 5000;
 
 /** Small chevron at the bottom edge that brings the title and buttons back. */
 function ChromeHandle({
@@ -2073,6 +2074,21 @@ export default function SwipeScreen() {
   useEffect(() => {
     if (!chromeActive) setChrome(true);
   }, [chromeActive, setChrome]);
+  // The main menu goes with them. Leaving Ripple always brings it back, and
+  // coming back to Ripple shows everything again before it steps aside.
+  const menuHidden = chromeActive && !chromeShown;
+  useEffect(() => {
+    setTabBarHidden(menuHidden);
+  }, [menuHidden]);
+  useFocusEffect(
+    useCallback(() => {
+      setChrome(true);
+      return () => setTabBarHidden(false);
+    }, [setChrome]),
+  );
+  useEffect(() => {
+    return () => setTabBarHidden(false);
+  }, []);
   // Photos get the whole screen: the title and buttons step aside shortly after
   // they appear, and again a few seconds after the handle brings them back.
   useEffect(() => {
@@ -2780,7 +2796,7 @@ export default function SwipeScreen() {
               <Reanimated.View
                 style={[
                   styles.chromeHandleWrap,
-                  { bottom: 12 + barOverlap },
+                  { bottom: 12 + (menuHidden ? tabBarBottomInset(insets) : barOverlap) },
                   chromeHandleAnimatedStyle,
                 ]}
                 pointerEvents={chromeShown ? "none" : "box-none"}

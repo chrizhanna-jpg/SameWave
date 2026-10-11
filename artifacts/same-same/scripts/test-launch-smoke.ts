@@ -222,6 +222,16 @@ assert(
     match.includes("Show title and buttons"),
 );
 
+const tabsLayout = read("app/(tabs)/_layout.tsx");
+assert(
+  "the main menu hides with the Ripple title and buttons and always returns",
+  match.includes("const menuHidden = chromeActive && !chromeShown;") &&
+    match.includes("setTabBarHidden(menuHidden)") &&
+    match.includes("return () => setTabBarHidden(false);") &&
+    tabsLayout.includes("useTabBarHidden()") &&
+    tabsLayout.includes('display: "none"'),
+);
+
 const shimmer = read("components/OceanShimmer.tsx");
 assert(
   "ocean shimmer stays behind tab content",
