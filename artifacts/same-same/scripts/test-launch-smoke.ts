@@ -235,6 +235,47 @@ assert(
     tabsLayout.includes('display: "none"'),
 );
 
+const remoteSource = read("utils/remotePhotoSource.ts");
+const deckWarmer = read("utils/deckImageWarmer.ts");
+const samplePrefetch = read("utils/sampleAssetPrefetch.ts");
+assert(
+  "the photo view and the deck warm-up request the same URL",
+  remote.includes('import { normalizeRemotePhotoUri } from "@/utils/remotePhotoSource";') &&
+    !remote.includes("function normalizeRemotePhotoUri(") &&
+    remoteSource.includes("export function deckImageUri(") &&
+    remoteSource.includes("normalizeRemotePhotoUri(uri, HERO_DISPLAY_WIDTH)") &&
+    deckWarmer.includes("deckImageUri(uri)") &&
+    match.includes("displayWidth={HERO_DISPLAY_WIDTH}"),
+);
+assert(
+  "cold-start sample warm-up uses the deck warmer, not a different width",
+  samplePrefetch.includes("warmDeckImages(uris, 20)") &&
+    !samplePrefetch.includes("prefetchPhotoUris"),
+);
+assert(
+  "ripple deck warms four cards ahead and swipes to a downloaded one first",
+  match.includes("const DECK_LOOKAHEAD = 4;") &&
+    match.includes("warmDeckImages(") &&
+    match.includes("takeReadyFirst(upcomingRef.current") &&
+    match.includes("hasDeckImageFailed(pick.photo.uri)") &&
+    !match.includes("prefetchPhotoUris"),
+);
+assert(
+  "a swipe does not re-query candidates while the pool is healthy",
+  match.includes("shouldRefetchDeckPool({") &&
+    match.includes("poolQueryRef.current = { key: queryKey, at: Date.now() };"),
+);
+assert(
+  "a downloaded deck photo skips the placeholder flash",
+  remote.includes("const paintsImmediately =") &&
+    remote.includes("isDeckImageReady(safeUri)") &&
+    remote.includes("(!loaded && !paintsImmediately)"),
+);
+assert(
+  "the visible card loads ahead of background downloads",
+  remote.includes('priority={priority === "hero" ? "high" : "normal"}'),
+);
+
 const shimmer = read("components/OceanShimmer.tsx");
 assert(
   "ocean shimmer stays behind tab content",

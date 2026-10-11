@@ -3,7 +3,7 @@ import { SAMPLE_PHOTOS } from "@/data/samplePhotos";
 import { HERO_DISPLAY_WIDTH } from "@/constants/imageLoading";
 import { normalizeUnsplashUri } from "@/utils/unsplashUri";
 import { photoKey } from "@/utils/photoKey";
-import { prefetchPhotoUris } from "@/utils/imageLoadCache";
+import { warmDeckImages } from "@/utils/deckImageWarmer";
 import { recordImageTelemetry } from "@/utils/imageLoadTelemetry";
 
 const FIRST_RUN_KEY = "samesame_sample_prefetch_done_v1";
@@ -45,17 +45,31 @@ export function criticalSampleUris(max = SAMPLE_COLD_START_PREFETCH_COUNT): stri
   return out;
 }
 
+/** Curated sample URIs exactly as the deck lists them (the warmer resolves each to the URI the card requests). */
+export function deckSampleUris(max: number): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const p of SAMPLE_PHOTOS) {
+    const key = photoKey(p.uri);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(p.uri);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
 /**
- * Prefetch sample assets on app launch. Unsplash CDN serves with aggressive
- * edge caching; expo-image disk cache makes repeat views sub-200ms.
+ * Prefetch sample assets on app launch. The cache is keyed by exact URL, so the
+ * warm-up uses the URL the Ripple card will request, not a different width.
  */
 export async function prefetchSampleAssetsOnColdStart(): Promise<void> {
   try {
     const done = await AsyncStorage.getItem(FIRST_RUN_KEY);
     const count = done ? SAMPLE_WARM_PREFETCH_COUNT : SAMPLE_COLD_START_PREFETCH_COUNT;
-    const uris = criticalSampleUris(count);
+    const uris = deckSampleUris(count);
     recordImageTelemetry("img_sample_prefetch_batch", `count:${uris.length}`);
-    prefetchPhotoUris(uris, { max: uris.length, priority: "prefetch" });
+    warmDeckImages(uris, 20);
     if (!done) await AsyncStorage.setItem(FIRST_RUN_KEY, "1");
   } catch {
     /* best-effort */

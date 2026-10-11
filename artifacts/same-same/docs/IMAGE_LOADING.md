@@ -110,3 +110,25 @@ pnpm exec tsx scripts/test-image-asset-class.ts
 - Hero: `priority="hero"`, `displayWidth=480`.
 - Waves: `displayWidth=320`.
 - Upload: always `prepareUploadImages()` before `uploadPhoto`.
+
+## Ripple deck pipeline
+
+The Ripple deck warms photos through one path so every swipe lands on a photo
+that is already on the device.
+
+| Piece | File | Role |
+|-------|------|------|
+| Request URL | `utils/remotePhotoSource.ts` | `normalizeRemotePhotoUri` / `deckImageUri`: the single function that decides the URL a card requests. The photo view and every warm-up use it, because the image cache is keyed by exact URL. |
+| Warmer | `utils/imageWarmer.ts` (logic), `utils/deckImageWarmer.ts` (expo-image wiring) | Priority queue of downloads: 3 at a time, the authenticated server stream 1 at a time, one retry, 20s timeout, failed photos skipped for 30s. Tracks which photos are ready. |
+| Queue | `utils/deckQueue.ts` | `takeReadyFirst`: the next card is the first queued photo that has downloaded; failed photos are dropped. |
+| Lookahead | `app/(tabs)/match.tsx` (`DECK_LOOKAHEAD = 4`) | The cards that will follow are chosen ahead of time and all four are warmed in order. |
+| Pool refresh | `utils/deckPoolRefresh.ts` | A swipe no longer re-queries `/api/photos/candidates` (inline previews + heavy query). The pool is refetched when the theme/tags change, fewer than 8 unseen candidates remain, or it is 5 minutes old. |
+
+Dev builds log `[deck-img] ready|retry|failed <ms> <uri>` and
+`[deck] card painted <ms> after commit (warm=<bool>)` to Metro, so a slow card
+can be traced to its download.
+
+```bash
+cd artifacts/same-same
+pnpm exec tsx scripts/test-image-warmer.ts
+```

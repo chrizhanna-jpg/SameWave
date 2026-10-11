@@ -22,17 +22,18 @@ import {
   getStagedProductionApiOrigin,
 } from "@/utils/publicEnv";
 import {
-  canonicalizePhotoStreamUri,
   sanitizeUserOwnPhotoUri,
-  shouldCanonicalizePhotoStreamUri,
   shouldResetDisplayedPhoto,
-  withDisplayPhotoWidth,
 } from "@/utils/photoDisplayUri";
+import { normalizeRemotePhotoUri } from "@/utils/remotePhotoSource";
+import { isDeckImageReady } from "@/utils/deckImageWarmer";
+import { UNSPLASH_FALLBACK_URI } from "@/utils/unsplashUri";
 import {
-  normalizeUnsplashUri,
-  UNSPLASH_FALLBACK_URI,
-} from "@/utils/unsplashUri";
-import { BLANK_FRAME_THRESHOLD_MS, CACHE_HIT_LATENCY_MS, IMAGE_LOAD_V2 } from "@/constants/imageLoading";
+  BLANK_FRAME_THRESHOLD_MS,
+  CACHE_HIT_LATENCY_MS,
+  HERO_DISPLAY_WIDTH,
+  IMAGE_LOAD_V2,
+} from "@/constants/imageLoading";
 import {
   prioritizeHeroPrefetch,
   recordImageLoadComplete,
@@ -79,19 +80,6 @@ type Props = {
 
 const MAX_RETRIES_PER_SOURCE = 2;
 const RETRY_BACKOFF_MS = [500, 1300];
-
-function normalizeRemotePhotoUri(
-  uri: string | null | undefined,
-  displayWidth?: number,
-): string {
-  const trimmed = typeof uri === "string" ? uri.trim() : "";
-  if (!trimmed) return "";
-  const stream = shouldCanonicalizePhotoStreamUri(trimmed)
-    ? canonicalizePhotoStreamUri(trimmed)
-    : trimmed;
-  const w = displayWidth && displayWidth > 0 ? displayWidth : undefined;
-  return withDisplayPhotoWidth(normalizeUnsplashUri(stream), w ?? undefined);
-}
 
 function rewriteApiOrigin(uri: string, origin: string): string | null {
   try {
@@ -364,7 +352,19 @@ export function RemotePhotoImage({
   const hasDrawableSource =
     (typeof src === "string" ? src : "").trim().length > 0 &&
     !(viewerOwnPhoto && exhausted);
-  const showSkeleton = waitingForAuth || !loaded || !hasDrawableSource;
+  // A deck photo that already downloaded paints within a frame or two; the
+  // pulsing placeholder would only flash in between. A failed load (attempt or
+  // fallback change) brings the placeholder back.
+  const paintsImmediately =
+    displayWidth === HERO_DISPLAY_WIDTH &&
+    attempt === 0 &&
+    !usedFallback &&
+    !exhausted &&
+    isDeckImageReady(safeUri);
+  const showSkeleton =
+    waitingForAuth ||
+    (!loaded && !paintsImmediately) ||
+    !hasDrawableSource;
 
   useEffect(() => {
     if (!showSkeleton || exhausted) {
@@ -428,6 +428,7 @@ export function RemotePhotoImage({
           style={[StyleSheet.absoluteFill, { opacity: loaded ? 1 : 0 }]}
           contentFit={resizeMode}
           cachePolicy="memory-disk"
+          priority={priority === "hero" ? "high" : "normal"}
           recyclingKey={stableKey}
           transition={transitionMs > 0 ? transitionMs : undefined}
           accessibilityLabel={accessibilityLabel}

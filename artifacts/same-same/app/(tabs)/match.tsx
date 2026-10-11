@@ -120,11 +120,15 @@ import {
   serverPhotoImageUrl,
   withDisplayPhotoWidth,
 } from "@/utils/photoDisplayUri";
-import { IMAGE_LOAD_V2, PREFETCH_AHEAD_COUNT } from "@/constants/imageLoading";
+import { prioritizeHeroPrefetch } from "@/utils/imageLoadCache";
+import { shouldRefetchDeckPool } from "@/utils/deckPoolRefresh";
+import { takeReadyFirst } from "@/utils/deckQueue";
 import {
-  prioritizeHeroPrefetch,
-  prefetchPhotoUris,
-} from "@/utils/imageLoadCache";
+  hasDeckImageFailed,
+  isDeckImageReady,
+  subscribeDeckImages,
+  warmDeckImages,
+} from "@/utils/deckImageWarmer";
 import { getActiveCaptureRequestId } from "@/utils/captureTransition";
 import {
   commitDisplayedCandidate,
@@ -611,8 +615,12 @@ function ChromeHandle({
 
 type DeckPick = NonNullable<ReturnType<typeof getTheirPhoto>>;
 
-/** Cards chosen ahead of time so their photo and clip can be warmed. */
-const DECK_LOOKAHEAD = 2;
+/**
+ * Cards chosen ahead of time so their photo and clip can be warmed. Deeper than
+ * the swipe pace: when the card after next is already downloaded, a slow
+ * connection never makes a swipe wait.
+ */
+const DECK_LOOKAHEAD = 4;
 
 export default function SwipeScreen() {
   const colors = useColors();
@@ -905,7 +913,20 @@ export default function SwipeScreen() {
     }
   }, [todaysPhoto?.backendId, runEchoVoteRetry]);
 
+  const poolQueryRef = useRef({ key: "", at: 0 });
   useEffect(() => {
+    const queryKey = `${activeTheme}|${myTagsKey}|${mySubjectsKey}`;
+    const last = poolQueryRef.current;
+    if (
+      !shouldRefetchDeckPool({
+        sameQuery: last.key === queryKey,
+        poolKeys: realPoolRef.current.map((p) => photoKey(p.uri)),
+        seenKeys: seenSetRef.current,
+        ageMs: Date.now() - last.at,
+      })
+    ) {
+      return;
+    }
     let cancelled = false;
     fetchCandidates({
       theme: activeTheme,
@@ -930,6 +951,7 @@ export default function SwipeScreen() {
     })
       .then((cands) => {
         if (cancelled) return;
+        poolQueryRef.current = { key: queryKey, at: Date.now() };
         const { mapped, ids } = mapFetchedCandidates(cands, activeTheme);
         realPhotoIdsRef.current = ids;
         // Prime the local seen ledger with any candidates whose backend
@@ -940,11 +962,12 @@ export default function SwipeScreen() {
           cands.map((c) => ({ id: c.id, uri: c.uri })),
         );
         setRealPool(mapped);
-        // Warm only the opening card — the server priority-warms the first few
-        // IDs from this response; fanning more here queues concurrent cold
-        // resizes and was the main cause of 60s+ photo stalls.
-        const first = mapped[0];
-        if (first?.uri) void prefetchPhotoUri(first.uri);
+        // The warm effect below queues the cards the deck will actually show;
+        // the server's own top picks follow them as a cheap second line.
+        warmDeckImages(
+          mapped.slice(0, 2).map((p) => p.uri),
+          8,
+        );
       })
       .catch(() => {
         // Keep the last-good deck on a transient fetch failure (API restart /
@@ -986,8 +1009,10 @@ export default function SwipeScreen() {
           cands.map((c) => ({ id: c.id, uri: c.uri })),
         );
         setSuggestedPool(mapped);
-        const first = mapped[0];
-        if (first?.uri) void prefetchPhotoUri(first.uri);
+        warmDeckImages(
+          mapped.slice(0, 2).map((p) => p.uri),
+          8,
+        );
       })
       .catch(() => {
         // Preserve the last-good suggested pool on a transient failure rather
@@ -1153,6 +1178,10 @@ export default function SwipeScreen() {
   // here. Picks are randomised, so choosing again at swipe time would land on
   // a different photo than the one that was warmed — cold photo, cold clip.
   const upcomingRef = useRef<DeckPick[]>([]);
+  // Dev timing: how long a committed card took to paint (Metro log).
+  const deckCommitRef = useRef<{ key: string; at: number; warm: boolean } | null>(
+    null,
+  );
 
   const refillUpcoming = useCallback(
     (currentKey: string, depth: number): DeckPick[] => {
@@ -1165,13 +1194,17 @@ export default function SwipeScreen() {
         kept.push(pick);
         if (kept.length >= depth) break;
       }
-      while (kept.length < depth) {
-        const pick = pickDeckCandidate(
-          currentKey,
-          currentKey,
-          kept.map((q) => photoKey(q.photo.uri)),
-        );
+      const unusable: string[] = [];
+      for (let tries = 0; kept.length < depth && tries < depth + 8; tries++) {
+        const pick = pickDeckCandidate(currentKey, currentKey, [
+          ...kept.map((q) => photoKey(q.photo.uri)),
+          ...unusable,
+        ]);
         if (!pick?.photo.uri) break;
+        if (hasDeckImageFailed(pick.photo.uri)) {
+          unusable.push(photoKey(pick.photo.uri));
+          continue;
+        }
         kept.push(pick);
       }
       upcomingRef.current = kept;
@@ -1183,13 +1216,12 @@ export default function SwipeScreen() {
   const takeUpcoming = useCallback(
     (currentKey: string): DeckPick | null => {
       const exclude = buildExcludeKeys(currentKey);
-      const queue = upcomingRef.current;
-      while (queue.length > 0) {
-        const pick = queue.shift()!;
-        const k = photoKey(pick.photo.uri);
-        if (k && !exclude.has(k)) return pick;
-      }
-      return null;
+      return takeReadyFirst(upcomingRef.current, {
+        keyOf: photoKey,
+        isExcluded: (k) => exclude.has(k),
+        isReady: isDeckImageReady,
+        hasFailed: hasDeckImageFailed,
+      });
     },
     [buildExcludeKeys],
   );
@@ -1204,6 +1236,13 @@ export default function SwipeScreen() {
         return;
       }
       if (reason !== "user_swipe") upcomingRef.current = [];
+      if (__DEV__) {
+        deckCommitRef.current = {
+          key: photoKey(next.photo.uri),
+          at: Date.now(),
+          warm: isDeckImageReady(next.photo.uri),
+        };
+      }
       const { requestId } = commitDisplayedCandidate(
         sessionDisplayedRef.current,
         next.photo.uri,
@@ -1549,24 +1588,8 @@ export default function SwipeScreen() {
     Haptics.selectionAsync().catch(() => {});
   }, []);
 
-  const prefetchInflightRef = useRef(new Set<string>());
   const prefetchPhotoUri = useCallback((uri: string) => {
-    const normalized = withDisplayPhotoWidth(normalizeUnsplashUri(uri));
-    if (!normalized) return Promise.resolve();
-    if (prefetchInflightRef.current.has(normalized)) {
-      return Promise.resolve();
-    }
-    prefetchInflightRef.current.add(normalized);
-    const release = () => {
-      prefetchInflightRef.current.delete(normalized);
-    };
-    if (explorePhotoUriNeedsAuth(normalized)) {
-      return authedImageHeaders()
-        .then((headers) => Image.prefetch(normalized, { headers }))
-        .catch(() => {})
-        .finally(release);
-    }
-    return Image.prefetch(normalized).catch(() => {}).finally(release);
+    warmDeckImages([uri], -1);
   }, []);
 
   // Audio analogue of prefetchPhotoUri: preload an upcoming card's vibe
@@ -1595,9 +1618,9 @@ export default function SwipeScreen() {
     [],
   );
 
-  // Warms the queued upcoming cards: the next photo and clip always, and a
-  // second photo when it comes from a CDN (server photos stay one at a time so
-  // the single image endpoint is never flooded).
+  // Warms the queued upcoming cards: every queued photo downloads in the order
+  // it will be shown (the warmer paces the authenticated server stream), and
+  // the next card's clip is decoded ahead of time.
   const prefetchDeckAhead = useCallback(
     (afterUri?: string) => {
       const currentKey = afterUri
@@ -1605,17 +1628,33 @@ export default function SwipeScreen() {
         : photoKey(theirPhotoRef.current.uri);
       if (!currentKey) return;
       const picks = refillUpcoming(currentKey, DECK_LOOKAHEAD);
-      const uris = picks
-        .filter((p, i) => i === 0 || !explorePhotoUriNeedsAuth(p.photo.uri))
-        .map((p) => p.photo.uri);
-      if (IMAGE_LOAD_V2) {
-        prefetchPhotoUris(uris, { max: PREFETCH_AHEAD_COUNT, priority: "prefetch" });
-      } else {
-        uris.forEach((u) => void prefetchPhotoUri(u));
+      warmDeckImages(
+        picks.map((p) => p.photo.uri),
+        0,
+      );
+      // The deck swipes to the first downloaded card, which is not always the
+      // head of the queue, so its clip is decoded ahead of time too.
+      const head = picks[0];
+      const firstReady = picks.find((p) => isDeckImageReady(p.photo.uri));
+      if (head) prewarmAudioForPhoto(head.photo);
+      if (firstReady && firstReady !== head) {
+        prewarmAudioForPhoto(firstReady.photo);
       }
-      if (picks[0]) prewarmAudioForPhoto(picks[0].photo);
     },
-    [prefetchPhotoUri, refillUpcoming, prewarmAudioForPhoto],
+    [refillUpcoming, prewarmAudioForPhoto],
+  );
+
+  // A queued photo that finishes downloading becomes the likely next card, so
+  // its clip is decoded as soon as it is.
+  useEffect(
+    () =>
+      subscribeDeckImages(() => {
+        const ready = upcomingRef.current.find((p) =>
+          isDeckImageReady(p.photo.uri),
+        );
+        if (ready) prewarmAudioForPhoto(ready.photo);
+      }),
+    [prewarmAudioForPhoto],
   );
 
   const loadNextCandidate = useCallback(() => {
@@ -1625,9 +1664,6 @@ export default function SwipeScreen() {
     tryActivateSuggestedThemeFallback();
     const next =
       takeUpcoming(currentKey) ?? pickDeckCandidate(currentKey, currentKey);
-    if (next?.photo.uri) {
-      void prefetchPhotoUri(next.photo.uri);
-    }
     // The swipe-out animation has already finished and the card is off-screen.
     // Commit the next photo first. Recenter only after that render so the
     // previous picture cannot snap back to the middle.
@@ -1640,7 +1676,6 @@ export default function SwipeScreen() {
     setDeckSettleToken((n) => n + 1);
   }, [
     buildExcludeKeys,
-    prefetchPhotoUri,
     prefetchDeckAhead,
     pickDeckCandidate,
     takeUpcoming,
@@ -1660,6 +1695,17 @@ export default function SwipeScreen() {
     sameLabelOpacity,
     setAnimatingOut,
   ]);
+
+  // The first live pool replaces the stock cards the deck opened with. Keep the
+  // card that is next in line, but let the live ones follow it.
+  const prevPoolLenRef = useRef(0);
+  useEffect(() => {
+    const before = prevPoolLenRef.current;
+    prevPoolLenRef.current = realPool.length;
+    if (before === 0 && realPool.length > 0) {
+      upcomingRef.current = upcomingRef.current.slice(0, 1);
+    }
+  }, [realPool.length]);
 
   // Warm the next card in the deck so the swap does not flash a blank pane.
   useEffect(() => {
@@ -1689,16 +1735,7 @@ export default function SwipeScreen() {
         warmAudioSession();
         const current = theirPhotoRef.current;
         if (current?.uri && current.id !== "placeholder") {
-          if (IMAGE_LOAD_V2) {
-            prioritizeHeroPrefetch(
-              withDisplayPhotoWidth(
-                normalizeUnsplashUri(current.uri),
-                HERO_DISPLAY_WIDTH,
-              ),
-            );
-          } else {
-            void prefetchPhotoUri(current.uri);
-          }
+          prefetchPhotoUri(current.uri);
         }
         prefetchDeckAhead();
         const myUri = myPhotoUriRef.current;
@@ -2702,7 +2739,15 @@ export default function SwipeScreen() {
                 priority="hero"
                 onResolved={(loadedRealImage) => {
                   if (loadedRealImage) {
-                    setShownPhotoKey(photoKey(theirPhotoRef.current.uri));
+                    const key = photoKey(theirPhotoRef.current.uri);
+                    setShownPhotoKey(key);
+                    const commit = deckCommitRef.current;
+                    if (__DEV__ && commit && commit.key === key) {
+                      deckCommitRef.current = null;
+                      console.log(
+                        `[deck] card painted ${Date.now() - commit.at}ms after commit (warm=${commit.warm})`,
+                      );
+                    }
                   }
                 }}
               />
