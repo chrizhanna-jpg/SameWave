@@ -13,6 +13,8 @@ import {
 import { tokenCache } from "@clerk/expo/token-cache";
 import { router, Stack, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
+import { StatusBar } from "expo-status-bar";
+import * as SystemUI from "expo-system-ui";
 import React, { useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -28,6 +30,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import Colors from "@/constants/colors";
 import { WaveTakeover } from "@/components/WaveTakeover";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ToastHost } from "@/components/ToastHost";
@@ -54,7 +57,10 @@ import {
 } from "@/lib/revenuecat";
 import { getPublicApiOrigin } from "@/utils/publicEnv";
 
+const ROOT_BACKGROUND = Colors.light.background;
+
 SplashScreen.preventAutoHideAsync();
+SystemUI.setBackgroundColorAsync(ROOT_BACKGROUND).catch(() => {});
 
 // --- Production safety net -------------------------------------------------
 // v1.2.1 / v1.2.2 shipped to Play Store and got stuck on the splash screen
@@ -333,9 +339,16 @@ function RootLayoutNav() {
   // refresh) and dismisses cleanly without interrupting navigation.
   const { pendingFlashEcho, dismissFlashEcho } = useApp();
   return (
-    <>
+    <View style={{ flex: 1, backgroundColor: ROOT_BACKGROUND }}>
+      <StatusBar style="light" translucent backgroundColor="transparent" />
       <UpdateAvailableBanner />
-      <Stack screenOptions={{ headerBackTitle: "Back", headerShown: false }}>
+      <Stack
+        screenOptions={{
+          headerBackTitle: "Back",
+          headerShown: false,
+          contentStyle: { backgroundColor: ROOT_BACKGROUND },
+        }}
+      >
         <Stack.Screen name="sign-in" options={{ headerShown: false, gestureEnabled: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -358,7 +371,7 @@ function RootLayoutNav() {
           }}
         />
       ) : null}
-    </>
+    </View>
   );
 }
 
