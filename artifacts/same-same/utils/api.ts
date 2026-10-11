@@ -958,6 +958,24 @@ export type JourneyFetchResult = {
   matches: ServerJourneyMatch[];
 };
 
+const SYNC_FETCH_TIMEOUT_MS = 15_000;
+
+/** GET JSON with a hard timeout so background sync can never spin forever. */
+async function fetchSyncJson<T>(
+  url: string,
+  init: RequestInit,
+): Promise<{ ok: boolean; json: T | null }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SYNC_FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal });
+    if (!res.ok) return { ok: false, json: null };
+    return { ok: true, json: (await res.json()) as T };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Cloud backup of My Journey — ripples and passes for reinstall / new device. */
 export async function fetchMyJourney(): Promise<JourneyFetchResult> {
   return fetchMyJourneyAtOrigin(getApiBase());
@@ -969,12 +987,11 @@ export async function fetchMyJourneyAtOrigin(
 ): Promise<JourneyFetchResult> {
   try {
     const origin = base.replace(/\/$/, "");
-    const res = await fetch(`${origin}/api/photos/my-journey`, {
-      headers: await authedHeaders(),
-      cache: "no-store",
-    });
-    if (!res.ok) return { ok: false, matches: [] };
-    const json = (await res.json()) as { matches?: unknown[] };
+    const { ok, json } = await fetchSyncJson<{ matches?: unknown[] }>(
+      `${origin}/api/photos/my-journey`,
+      { headers: await authedHeaders(), cache: "no-store" },
+    );
+    if (!ok || !json) return { ok: false, matches: [] };
     const matches = Array.isArray(json.matches)
       ? (json.matches as ServerJourneyMatch[])
       : [];
@@ -987,11 +1004,11 @@ export async function fetchMyJourneyAtOrigin(
 export async function fetchEchoesInbox(): Promise<EchoListFetchResult> {
   try {
     const base = getApiBase();
-    const res = await fetch(`${base}/api/echoes/inbox`, {
-      headers: await authedHeaders(),
-    });
-    if (!res.ok) return { ok: false, echoes: [] };
-    const json = (await res.json()) as { echoes?: unknown[] };
+    const { ok, json } = await fetchSyncJson<{ echoes?: unknown[] }>(
+      `${base}/api/echoes/inbox`,
+      { headers: await authedHeaders() },
+    );
+    if (!ok || !json) return { ok: false, echoes: [] };
     const echoes = Array.isArray(json.echoes)
       ? json.echoes.map((e) => decorateEcho(e as Parameters<typeof decorateEcho>[0]))
       : [];
@@ -1004,11 +1021,11 @@ export async function fetchEchoesInbox(): Promise<EchoListFetchResult> {
 export async function fetchEchoesMine(): Promise<EchoListFetchResult> {
   try {
     const base = getApiBase();
-    const res = await fetch(`${base}/api/echoes/mine`, {
-      headers: await authedHeaders(),
-    });
-    if (!res.ok) return { ok: false, echoes: [] };
-    const json = (await res.json()) as { echoes?: unknown[] };
+    const { ok, json } = await fetchSyncJson<{ echoes?: unknown[] }>(
+      `${base}/api/echoes/mine`,
+      { headers: await authedHeaders() },
+    );
+    if (!ok || !json) return { ok: false, echoes: [] };
     const echoes = Array.isArray(json.echoes)
       ? json.echoes.map((e) => decorateEcho(e as Parameters<typeof decorateEcho>[0]))
       : [];

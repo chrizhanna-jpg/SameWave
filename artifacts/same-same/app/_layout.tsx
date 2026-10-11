@@ -15,7 +15,7 @@ import { router, Stack, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import {
@@ -56,8 +56,15 @@ import {
   useSubscription,
 } from "@/lib/revenuecat";
 import { getPublicApiOrigin } from "@/utils/publicEnv";
+import { startJsStallMonitor } from "@/utils/jsStallMonitor";
+import { hydrateImageCacheIndex } from "@/utils/imageLoadCache";
+import { hydrateImageTelemetry } from "@/utils/imageLoadTelemetry";
+import { prefetchSampleAssetsOnColdStart } from "@/utils/sampleAssetPrefetch";
 
 const ROOT_BACKGROUND = Colors.light.background;
+
+/** Let the first frames and tab taps run before network image warm-up starts. */
+const STARTUP_WARM_DELAY_MS = 1500;
 
 SplashScreen.preventAutoHideAsync();
 SystemUI.setBackgroundColorAsync(ROOT_BACKGROUND).catch(() => {});
@@ -338,6 +345,13 @@ function RootLayoutNav() {
   // detected by AppContext (either via respondToEcho or the polling
   // refresh) and dismisses cleanly without interrupting navigation.
   const { pendingFlashEcho, dismissFlashEcho } = useApp();
+  const segments = useSegments();
+  const segmentsRef = useRef(segments);
+  segmentsRef.current = segments;
+  useEffect(
+    () => startJsStallMonitor(() => `/${segmentsRef.current.join("/")}`),
+    [],
+  );
   return (
     <View style={{ flex: 1, backgroundColor: ROOT_BACKGROUND }}>
       <StatusBar style="light" />
@@ -416,11 +430,12 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!__DEV__) warmHostedApiOnLaunch();
-    void import("@/utils/imageLoadCache").then((m) => m.hydrateImageCacheIndex());
-    void import("@/utils/imageLoadTelemetry").then((m) => m.hydrateImageTelemetry());
-    void import("@/utils/sampleAssetPrefetch").then((m) =>
-      m.prefetchSampleAssetsOnColdStart(),
-    );
+    void hydrateImageCacheIndex();
+    void hydrateImageTelemetry();
+    const warmTimer = setTimeout(() => {
+      void prefetchSampleAssetsOnColdStart();
+    }, STARTUP_WARM_DELAY_MS);
+    return () => clearTimeout(warmTimer);
   }, []);
 
   if (!fontsReady) return null;

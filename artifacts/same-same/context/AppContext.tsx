@@ -167,6 +167,11 @@ export interface MyPhotoUploadAck {
   suggestedTheme?: string;
 }
 
+/** Header sync spinner never runs longer than this, whatever the network does. */
+const CLOUD_SYNC_MAX_MS = 25_000;
+/** First background sync waits so launch taps and tab switches stay responsive. */
+const CLOUD_SYNC_FIRST_DELAY_MS = 1200;
+
 // Module-scoped registry of URIs flagged as AI. Kept in sync with the
 // `myPhotos` slice so any PhotoCard rendering one of these URIs can show
 // the AI badge without prop drilling. Sample photos use the same pattern.
@@ -2017,10 +2022,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!hasHydratedRef.current) return;
     cloudSyncInflightRef.current += 1;
     setCloudSyncInProgress(true);
+    let giveUp: ReturnType<typeof setTimeout> | undefined;
     try {
-      await Promise.all([refreshEchoes(), refreshJourney()]);
+      // Backstop for hangs outside fetch (e.g. auth token lookup): the header
+      // spinner must always stop.
+      await Promise.race([
+        Promise.all([refreshEchoes(), refreshJourney()]),
+        new Promise<void>((resolve) => {
+          giveUp = setTimeout(resolve, CLOUD_SYNC_MAX_MS);
+        }),
+      ]);
       reconcileMatchPhotos();
     } finally {
+      if (giveUp) clearTimeout(giveUp);
       cloudSyncInflightRef.current -= 1;
       if (cloudSyncInflightRef.current <= 0) {
         cloudSyncInflightRef.current = 0;
@@ -2033,11 +2047,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     if (!hasHydrated || !clerkLoaded || !isSignedIn) return;
     warmAuthedImageHeaders();
-    void syncCloudData();
+    const first = setTimeout(() => {
+      void syncCloudData();
+    }, CLOUD_SYNC_FIRST_DELAY_MS);
     const id = setInterval(() => {
       void syncCloudData();
     }, 30_000);
-    return () => clearInterval(id);
+    return () => {
+      clearTimeout(first);
+      clearInterval(id);
+    };
   }, [hasHydrated, clerkLoaded, isSignedIn, syncCloudData]);
 
   // Keep the forward-declared ref in sync so removeMatch / changeVerdict

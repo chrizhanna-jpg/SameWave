@@ -283,6 +283,39 @@ assert(
     !shimmer.includes("absoluteFillObject"),
 );
 
+assert(
+  "only the focused tab runs shimmer animations, after launch settles",
+  shimmer.includes("useIsFocused()") &&
+    shimmer.includes("cancelAnimation(t)") &&
+    shimmer.includes("focused && settled") &&
+    !shimmer.includes("InteractionManager"),
+);
+
+const rootLayout = read("app/_layout.tsx");
+assert(
+  "launch does not fetch multi-megabyte dev chunks via dynamic import",
+  !/import\(\s*["']@\//.test(rootLayout),
+);
+assert(
+  "image warm-up waits for first frames",
+  rootLayout.includes("STARTUP_WARM_DELAY_MS") &&
+    rootLayout.includes("setTimeout(() => {\n      void prefetchSampleAssetsOnColdStart()"),
+);
+
+const appContextSrc = read("context/AppContext.tsx");
+assert(
+  "header sync spinner always stops and first sync is deferred",
+  appContextSrc.includes("CLOUD_SYNC_MAX_MS") &&
+    appContextSrc.includes("Promise.race([") &&
+    appContextSrc.includes("CLOUD_SYNC_FIRST_DELAY_MS"),
+);
+
+const apiSrc = read("utils/api.ts");
+assert(
+  "sync fetches have a hard timeout",
+  apiSrc.includes("fetchSyncJson<") && apiSrc.includes("SYNC_FETCH_TIMEOUT_MS"),
+);
+
 const deferFocus = read("utils/deferTabFocus.ts");
 assert(
   "tab focus deferral does not touch InteractionManager",
