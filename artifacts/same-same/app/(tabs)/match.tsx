@@ -607,7 +607,7 @@ function ChromeHandle({
       accessibilityLabel="Show title and buttons"
     >
       <Reanimated.View style={[styles.chromeHandle, bobStyle]}>
-        <Icon name="chevron-up" size={22} color="#FFFFFF" />
+        <Icon name="chevron-up" size={22} color="rgba(255,255,255,0.6)" />
       </Reanimated.View>
     </Pressable>
   );
@@ -1771,9 +1771,7 @@ export default function SwipeScreen() {
     },
     [chrome, reduceMotion],
   );
-  const [deckEngaged, setDeckEngaged] = useState(false);
   const hideChromeForSwipe = useCallback(() => {
-    setDeckEngaged(true);
     setChrome(false);
   }, [setChrome]);
 
@@ -1783,7 +1781,6 @@ export default function SwipeScreen() {
       // Don't record a swipe when there's nothing to swipe on.
       if (noMore) return;
       setAnimatingOut(true);
-      setDeckEngaged(true);
       setChrome(false);
 
       // A swipe is an explicit user gesture — open the audio gate so
@@ -2116,20 +2113,22 @@ export default function SwipeScreen() {
   useEffect(() => {
     if (!chromeActive) setChrome(true);
   }, [chromeActive, setChrome]);
-  // The main menu goes with them. Leaving Ripple always brings it back, and
-  // coming back to Ripple shows everything again before it steps aside.
-  // Ripple stays mounted while other tabs are open, so everything here is tied
-  // to this tab having focus: the menu must never hide anywhere else.
+  // The main menu goes with them. Leaving Ripple always brings it back. Once a
+  // deck is showing, the title, buttons and menu start hidden and only the
+  // handle brings them back (for a few seconds). Ripple stays mounted while
+  // other tabs are open, so everything here is tied to this tab having focus:
+  // the menu must never hide anywhere else.
   const [tabFocused, setTabFocused] = useState(false);
   const menuHidden = tabFocused && chromeActive && !chromeShown;
   useEffect(() => {
     setTabBarHidden(menuHidden);
   }, [menuHidden]);
+  const chromeActiveRef = useRef(chromeActive);
+  chromeActiveRef.current = chromeActive;
   useFocusEffect(
     useCallback(() => {
       setTabFocused(true);
-      setDeckEngaged(false);
-      setChrome(true);
+      setChrome(!chromeActiveRef.current);
       return () => {
         setTabFocused(false);
         setTabBarHidden(false);
@@ -2139,14 +2138,16 @@ export default function SwipeScreen() {
   useEffect(() => {
     return () => setTabBarHidden(false);
   }, []);
-  // Nothing hides on its own until the user starts matching (so opening the
-  // app never leaves them without navigation); after that, the title, buttons
-  // and menu step aside a few seconds after the handle brings them back.
+  // The deck appearing (after sign-in, upload or a refill) starts hidden too.
   useEffect(() => {
-    if (!tabFocused || !deckEngaged || !chromeActive || !chromeShown) return;
+    if (tabFocused && chromeActive) setChrome(false);
+  }, [tabFocused, chromeActive, setChrome]);
+  // After the handle brings them back, they step aside again a few seconds on.
+  useEffect(() => {
+    if (!tabFocused || !chromeActive || !chromeShown) return;
     const t = setTimeout(() => setChrome(false), CHROME_AUTO_HIDE_MS);
     return () => clearTimeout(t);
-  }, [tabFocused, deckEngaged, chromeActive, chromeShown, setChrome]);
+  }, [tabFocused, chromeActive, chromeShown, setChrome]);
 
   // Production builds used to mount with realPool=[] and stock off, so
   // `initial` was null → permanent "all caught up" even after /candidates
@@ -2855,7 +2856,7 @@ export default function SwipeScreen() {
               <Reanimated.View
                 style={[
                   styles.chromeHandleWrap,
-                  { bottom: 12 + (menuHidden ? tabBarBottomInset(insets) : barOverlap) },
+                  { bottom: 2 + (menuHidden ? tabBarBottomInset(insets) : barOverlap) },
                   chromeHandleAnimatedStyle,
                 ]}
                 pointerEvents={chromeShown ? "none" : "box-none"}
@@ -3230,9 +3231,9 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.45)",
+    backgroundColor: "rgba(0,0,0,0.16)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.4)",
+    borderColor: "rgba(255,255,255,0.18)",
   },
   cardWrapper: {
     width: "100%",
