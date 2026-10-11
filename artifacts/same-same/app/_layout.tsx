@@ -340,7 +340,7 @@ function RootLayoutNav() {
   const { pendingFlashEcho, dismissFlashEcho } = useApp();
   return (
     <View style={{ flex: 1, backgroundColor: ROOT_BACKGROUND }}>
-      <StatusBar style="light" translucent backgroundColor="transparent" />
+      <StatusBar style="light" />
       <UpdateAvailableBanner />
       <Stack
         screenOptions={{
