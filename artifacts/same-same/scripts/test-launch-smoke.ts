@@ -335,6 +335,14 @@ assert(
     appContextSrc.includes('status !== "active"'),
 );
 
+assert(
+  "the next card eases in after a swipe instead of popping in",
+  match.includes("CARD_ARRIVE_MS") &&
+    match.includes("cardOpacity.value = withTiming(1") &&
+    match.includes("opacity: cardOpacity.value") &&
+    match.includes("reduceMotionRef.current"),
+);
+
 const deferFocus = read("utils/deferTabFocus.ts");
 assert(
   "tab focus deferral does not touch InteractionManager",

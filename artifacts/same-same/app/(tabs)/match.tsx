@@ -156,6 +156,9 @@ const SWIPE_DISTANCE_THRESHOLD = width * 0.136;
 const SWIPE_VELOCITY_THRESHOLD = 336;
 const SWIPE_MIN_FLICK_DX = 22;
 const SWIPE_OUT_MS = 300;
+/** The next card eases in from slightly smaller and transparent instead of appearing at once. */
+const CARD_ARRIVE_MS = 220;
+const CARD_ARRIVE_FROM_SCALE = 0.95;
 /** A swipe still unfinished after this long is abandoned and the card returns. */
 const SWIPE_STUCK_RECOVERY_MS = 3000;
 /** Longest a card's clip waits for its photo before it starts anyway. */
@@ -1169,6 +1172,7 @@ function SwipeScreenInner() {
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const cardScale = useSharedValue(1);
+  const cardOpacity = useSharedValue(1);
   const sameLabelOpacity = useSharedValue(0);
   // 1 = title and buttons showing, 0 = photos only.
   const chrome = useSharedValue(1);
@@ -1180,6 +1184,8 @@ function SwipeScreenInner() {
   // card slides back to center. Resetting in the animation callback put
   // the previous photo back in the middle for a frame.
   const [deckSettleToken, setDeckSettleToken] = useState(0);
+  const reduceMotionRef = useRef(reduceMotion);
+  reduceMotionRef.current = reduceMotion;
 
   const swipeOutCompleteRef = useRef<(() => void) | null>(null);
   const swipeTokenRef = useRef(0);
@@ -1556,13 +1562,28 @@ function SwipeScreenInner() {
 
   useEffect(() => {
     if (deckSettleToken === 0) return;
-    resetCardMotion(translateX, translateY, cardScale, sameLabelOpacity);
+    translateX.value = 0;
+    translateY.value = 0;
+    sameLabelOpacity.value = 0;
+    if (reduceMotionRef.current) {
+      cardScale.value = 1;
+      cardOpacity.value = 1;
+    } else {
+      cardScale.value = CARD_ARRIVE_FROM_SCALE;
+      cardOpacity.value = 0;
+      cardOpacity.value = withTiming(1, { duration: CARD_ARRIVE_MS });
+      cardScale.value = withTiming(1, {
+        duration: CARD_ARRIVE_MS,
+        easing: Easing.out(Easing.cubic),
+      });
+    }
     setAnimatingOut(false);
   }, [
     deckSettleToken,
     translateX,
     translateY,
     cardScale,
+    cardOpacity,
     sameLabelOpacity,
     setAnimatingOut,
   ]);
@@ -1930,6 +1951,7 @@ function SwipeScreenInner() {
     });
 
   const cardAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: cardOpacity.value,
     transform: [
       { translateX: translateX.value },
       { translateY: translateY.value },
