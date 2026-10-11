@@ -187,7 +187,10 @@ export function RemotePhotoImage({
   const [useHosted, setUseHosted] = useState(false);
   const [exhausted, setExhausted] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  const [loaded, setLoaded] = useState(false);
+  // The source that finished loading. Tracking it (instead of a boolean that an
+  // effect clears on every photo change) means a cached image that loads before
+  // that effect runs is still treated as loaded.
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
   const [manualRetry, setManualRetry] = useState(0);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadStartedAt = useRef<number | null>(null);
@@ -224,8 +227,6 @@ export function RemotePhotoImage({
     setUseHosted(false);
     setExhausted(false);
     setAttempt(0);
-    // Fallback arriving (upload ack) must not hide a frame already painted.
-    setLoaded(false);
     clearRetryTimer();
     clearBlankTimer();
     return () => {
@@ -305,6 +306,7 @@ export function RemotePhotoImage({
     exhausted && !viewerOwnPhoto
       ? UNSPLASH_FALLBACK_URI
       : withRetryNonce(drawableBase, attempt);
+  const loaded = loadedSrc !== null && loadedSrc === src;
   const stableKey =
     recyclingKey ??
     (usedFallback ? `fb:${drawableBase || "empty"}` : drawableBase || "empty");
@@ -351,7 +353,6 @@ export function RemotePhotoImage({
             .then((h) => setAuthHeaders(h))
             .catch(() => {});
         }
-        setLoaded(false);
         setAttempt((a) => a + 1);
       }, delay);
       return;
@@ -388,7 +389,7 @@ export function RemotePhotoImage({
     clearRetryTimer();
     clearBlankTimer();
     if (gen !== loadGeneration.current) return;
-    setLoaded(true);
+    setLoadedSrc(src);
     const started = loadStartedAt.current;
     const elapsed = started != null ? Date.now() - started : undefined;
     if (started != null) {
@@ -410,7 +411,7 @@ export function RemotePhotoImage({
     setUsedFallback(false);
     setUseHosted(false);
     setAttempt(0);
-    setLoaded(false);
+    setLoadedSrc(null);
     setManualRetry((n) => n + 1);
   };
 

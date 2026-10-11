@@ -20,6 +20,7 @@ const failUrls = new Set<string>();
 class FakePlayer {
   static all: FakePlayer[] = [];
   url: string;
+  options: unknown;
   isLoaded = false;
   playing = false;
   removed = false;
@@ -28,7 +29,8 @@ class FakePlayer {
   currentTime = 0;
   duration = 10;
   private listeners = new Set<Listener>();
-  constructor(source: { uri: string } | string | number | null) {
+  constructor(source: { uri: string } | string | number | null, options?: unknown) {
+    this.options = options;
     this.url = typeof source === "object" && source ? source.uri : String(source);
     FakePlayer.all.push(this);
     const ms = loadMs.get(this.url) ?? 5;
@@ -75,7 +77,8 @@ function sample() {
 const fakeExpoAudio = {
   AudioModule: { AudioRecorder: class {} },
   RecordingPresets: { HIGH_QUALITY: {} },
-  createAudioPlayer: (source: { uri: string }) => new FakePlayer(source),
+  createAudioPlayer: (source: { uri: string }, options?: unknown) =>
+    new FakePlayer(source, options),
   requestRecordingPermissionsAsync: async () => ({ granted: true }),
   setAudioModeAsync: async () => {},
 };
@@ -121,6 +124,13 @@ async function main(): Promise<void> {
   assert(
     "createAsync resolves only after the clip loaded",
     FakePlayer.all[0].isLoaded && Date.now() - t0 >= 50,
+  );
+  const downloadsFirst = (FakePlayer.all[0].options as { downloadFirst?: boolean } | undefined)
+    ?.downloadFirst;
+  assert(
+    "clips stream instead of downloading the whole file first",
+    downloadsFirst !== true,
+    `downloadFirst=${String(downloadsFirst)}`,
   );
   await made.sound.unloadAsync();
   assert("unloadAsync pauses and removes the player", FakePlayer.all[0].removed && !FakePlayer.all[0].playing);

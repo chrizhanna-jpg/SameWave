@@ -193,6 +193,35 @@ assert(
     match.includes("if (!chromeActive) setChrome(true);"),
 );
 
+assert(
+  "a cached photo that loads before effects run still shows",
+  remote.includes("const [loadedSrc, setLoadedSrc]") &&
+    remote.includes("const loaded = loadedSrc !== null && loadedSrc === src;") &&
+    !remote.includes("setLoaded("),
+);
+assert(
+  "the next card is chosen ahead so its photo and clip are the ones warmed",
+  match.includes("const upcomingRef = useRef<DeckPick[]>([]);") &&
+    match.includes("takeUpcoming(currentKey) ?? pickDeckCandidate") &&
+    match.includes("refillUpcoming(currentKey, DECK_LOOKAHEAD)"),
+);
+assert(
+  "a swipe always commits even if the animation callback is dropped",
+  match.includes("SWIPE_OUT_MS + 250") &&
+    match.includes("swipeTokenRef.current === swipeToken") &&
+    match.includes("SWIPE_STUCK_RECOVERY_MS"),
+);
+assert(
+  "the upload ack does not re-roll the card being swiped",
+  match.includes("const sameUpload =") && match.includes("if (sameUpload) return;"),
+);
+assert(
+  "title and buttons step aside by themselves and a handle brings them back",
+  match.includes("CHROME_AUTO_HIDE_MS") &&
+    match.includes("function ChromeHandle(") &&
+    match.includes("Show title and buttons"),
+);
+
 const shimmer = read("components/OceanShimmer.tsx");
 assert(
   "ocean shimmer stays behind tab content",

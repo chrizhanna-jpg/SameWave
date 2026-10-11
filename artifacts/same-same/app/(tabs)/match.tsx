@@ -21,7 +21,10 @@ import Reanimated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  withRepeat,
+  withSequence,
   withTiming,
+  cancelAnimation,
   type SharedValue,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -145,6 +148,8 @@ const SWIPE_DISTANCE_THRESHOLD = width * 0.136;
 const SWIPE_VELOCITY_THRESHOLD = 336;
 const SWIPE_MIN_FLICK_DX = 22;
 const SWIPE_OUT_MS = 300;
+/** A swipe still unfinished after this long is abandoned and the card returns. */
+const SWIPE_STUCK_RECOVERY_MS = 3000;
 /** Longest a card's clip waits for its photo before it starts anyway. */
 const MUSIC_WAIT_FOR_PHOTO_MS = 6000;
 const SNAP_BACK_SPRING = { damping: 20, stiffness: 220, mass: 0.75 };
@@ -555,6 +560,58 @@ function getTheirPhoto(
     sharedTags: pick.sharedTags,
   };
 }
+
+function withExtraKeys(keys: Set<string>, extra?: string[]): Set<string> {
+  if (!extra || extra.length === 0) return keys;
+  for (const k of extra) if (k) keys.add(k);
+  return keys;
+}
+
+/** Title and buttons rest on screen this long before fading back out. */
+const CHROME_AUTO_HIDE_MS = 4000;
+
+/** Small chevron at the bottom edge that brings the title and buttons back. */
+function ChromeHandle({
+  onPress,
+  reduceMotion,
+}: {
+  onPress: () => void;
+  reduceMotion: boolean;
+}) {
+  const bob = useSharedValue(0);
+  useEffect(() => {
+    if (reduceMotion) return;
+    bob.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 900 }),
+        withTiming(0, { duration: 900 }),
+      ),
+      -1,
+      false,
+    );
+    return () => cancelAnimation(bob);
+  }, [bob, reduceMotion]);
+  const bobStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: -4 * bob.value }],
+  }));
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={{ top: 24, bottom: 24, left: 40, right: 40 }}
+      accessibilityRole="button"
+      accessibilityLabel="Show title and buttons"
+    >
+      <Reanimated.View style={[styles.chromeHandle, bobStyle]}>
+        <Icon name="chevron-up" size={22} color="#FFFFFF" />
+      </Reanimated.View>
+    </Pressable>
+  );
+}
+
+type DeckPick = NonNullable<ReturnType<typeof getTheirPhoto>>;
+
+/** Cards chosen ahead of time so their photo and clip can be warmed. */
+const DECK_LOOKAHEAD = 2;
 
 export default function SwipeScreen() {
   const colors = useColors();
@@ -1070,7 +1127,7 @@ export default function SwipeScreen() {
   );
 
   const pickDeckCandidate = useCallback(
-    (currentKey?: string, excludeExtra?: string) => {
+    (currentKey?: string, excludeExtra?: string, alsoExclude?: string[]) => {
       const theme =
         usingSuggestedThemeFallbackRef.current && suggestedThemeIdRef.current
           ? suggestedThemeIdRef.current
@@ -1081,12 +1138,57 @@ export default function SwipeScreen() {
       return getTheirPhoto(
         theme,
         myTagsRef.current,
-        buildExcludeKeys(excludeExtra ?? currentKey),
+        withExtraKeys(buildExcludeKeys(excludeExtra ?? currentKey), alsoExclude),
         currentKey,
         pool,
         [],
         mySubjectsRef.current,
       );
+    },
+    [buildExcludeKeys],
+  );
+
+  // The card that follows the current one is chosen ahead of time and kept
+  // here. Picks are randomised, so choosing again at swipe time would land on
+  // a different photo than the one that was warmed — cold photo, cold clip.
+  const upcomingRef = useRef<DeckPick[]>([]);
+
+  const refillUpcoming = useCallback(
+    (currentKey: string, depth: number): DeckPick[] => {
+      const exclude = buildExcludeKeys(currentKey);
+      const kept: DeckPick[] = [];
+      for (const pick of upcomingRef.current) {
+        const k = photoKey(pick.photo.uri);
+        if (!k || exclude.has(k)) continue;
+        if (kept.some((q) => photoKey(q.photo.uri) === k)) continue;
+        kept.push(pick);
+        if (kept.length >= depth) break;
+      }
+      while (kept.length < depth) {
+        const pick = pickDeckCandidate(
+          currentKey,
+          currentKey,
+          kept.map((q) => photoKey(q.photo.uri)),
+        );
+        if (!pick?.photo.uri) break;
+        kept.push(pick);
+      }
+      upcomingRef.current = kept;
+      return kept;
+    },
+    [buildExcludeKeys, pickDeckCandidate],
+  );
+
+  const takeUpcoming = useCallback(
+    (currentKey: string): DeckPick | null => {
+      const exclude = buildExcludeKeys(currentKey);
+      const queue = upcomingRef.current;
+      while (queue.length > 0) {
+        const pick = queue.shift()!;
+        const k = photoKey(pick.photo.uri);
+        if (k && !exclude.has(k)) return pick;
+      }
+      return null;
     },
     [buildExcludeKeys],
   );
@@ -1100,6 +1202,7 @@ export default function SwipeScreen() {
         setNoMore(true);
         return;
       }
+      if (reason !== "user_swipe") upcomingRef.current = [];
       const { requestId } = commitDisplayedCandidate(
         sessionDisplayedRef.current,
         next.photo.uri,
@@ -1167,9 +1270,36 @@ export default function SwipeScreen() {
   // the previous photo back in the middle for a frame.
   const [deckSettleToken, setDeckSettleToken] = useState(0);
 
-  const setAnimatingOut = useCallback((v: boolean) => {
-    isAnimatingOutRef.current = v;
-    setDeckGestureEnabled(!v && flashMatchRef.current == null);
+  const swipeOutCompleteRef = useRef<(() => void) | null>(null);
+  const swipeTokenRef = useRef(0);
+  const animatingOutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const setAnimatingOut = useCallback(
+    (v: boolean) => {
+      isAnimatingOutRef.current = v;
+      if (animatingOutTimerRef.current) {
+        clearTimeout(animatingOutTimerRef.current);
+        animatingOutTimerRef.current = null;
+      }
+      if (v) {
+        // A swipe that never finishes would leave the card off-screen and the
+        // deck refusing new swipes. Hand control back if that ever happens.
+        animatingOutTimerRef.current = setTimeout(() => {
+          animatingOutTimerRef.current = null;
+          if (!isAnimatingOutRef.current || flashMatchRef.current != null) return;
+          isAnimatingOutRef.current = false;
+          swipeOutCompleteRef.current = null;
+          setDeckGestureEnabled(true);
+          resetCardMotion(translateX, translateY, cardScale, sameLabelOpacity);
+        }, SWIPE_STUCK_RECOVERY_MS);
+      }
+      setDeckGestureEnabled(!v && flashMatchRef.current == null);
+    },
+    [translateX, translateY, cardScale, sameLabelOpacity],
+  );
+  useEffect(() => {
+    return () => {
+      if (animatingOutTimerRef.current) clearTimeout(animatingOutTimerRef.current);
+    };
   }, []);
 
   // When the user uploads a new photo (which may carry a new theme/tags),
@@ -1177,13 +1307,32 @@ export default function SwipeScreen() {
   // context. The persistent ledger still applies — only the per-session
   // bypass flag is reset.
   const prevMyPhotoSessionKeyRef = useRef<string | undefined>(undefined);
+  const prevMyPhotoIdentityRef = useRef<{
+    uploadedAt?: string;
+    backendId?: string;
+  }>({});
   useEffect(() => {
+    const identity = {
+      uploadedAt: todaysPhoto?.uploadedAt,
+      backendId: todaysPhoto?.backendId?.trim() || undefined,
+    };
+    const prevIdentity = prevMyPhotoIdentityRef.current;
+    prevMyPhotoIdentityRef.current = identity;
     if (prevMyPhotoSessionKeyRef.current === undefined) {
       prevMyPhotoSessionKeyRef.current = myPhotoSessionKey;
       return;
     }
     if (prevMyPhotoSessionKeyRef.current === myPhotoSessionKey) return;
     prevMyPhotoSessionKeyRef.current = myPhotoSessionKey;
+    // The upload ack gives the same photo a backend id, which changes the key
+    // but not the photo. Re-rolling the deck then swapped the card the user was
+    // already swiping and reset the card mid-flight.
+    const sameUpload =
+      (identity.backendId != null &&
+        prevIdentity.backendId === identity.backendId) ||
+      (identity.uploadedAt != null &&
+        prevIdentity.uploadedAt === identity.uploadedAt);
+    if (sameUpload) return;
     bypassSeenRef.current = false;
     sessionDisplayedRef.current = new Set();
     // A new photo means the user's frame has changed — the previously
@@ -1445,26 +1594,27 @@ export default function SwipeScreen() {
     [],
   );
 
+  // Warms the queued upcoming cards: the next photo and clip always, and a
+  // second photo when it comes from a CDN (server photos stay one at a time so
+  // the single image endpoint is never flooded).
   const prefetchDeckAhead = useCallback(
-    (count: number, afterUri?: string) => {
-      let skipKey = afterUri
+    (afterUri?: string) => {
+      const currentKey = afterUri
         ? photoKey(afterUri)
         : photoKey(theirPhotoRef.current.uri);
-      const uris: string[] = [];
-      for (let i = 0; i < count; i++) {
-        const pick = pickDeckCandidate(skipKey, skipKey);
-        if (!pick?.photo.uri) break;
-        uris.push(pick.photo.uri);
-        skipKey = photoKey(pick.photo.uri);
-      }
-      const ahead = IMAGE_LOAD_V2 ? PREFETCH_AHEAD_COUNT : count;
+      if (!currentKey) return;
+      const picks = refillUpcoming(currentKey, DECK_LOOKAHEAD);
+      const uris = picks
+        .filter((p, i) => i === 0 || !explorePhotoUriNeedsAuth(p.photo.uri))
+        .map((p) => p.photo.uri);
       if (IMAGE_LOAD_V2) {
-        prefetchPhotoUris(uris, { max: ahead, priority: "prefetch" });
+        prefetchPhotoUris(uris, { max: PREFETCH_AHEAD_COUNT, priority: "prefetch" });
       } else {
-        uris.slice(0, count).forEach((u) => void prefetchPhotoUri(u));
+        uris.forEach((u) => void prefetchPhotoUri(u));
       }
+      if (picks[0]) prewarmAudioForPhoto(picks[0].photo);
     },
-    [prefetchPhotoUri, pickDeckCandidate],
+    [prefetchPhotoUri, refillUpcoming, prewarmAudioForPhoto],
   );
 
   const loadNextCandidate = useCallback(() => {
@@ -1472,11 +1622,8 @@ export default function SwipeScreen() {
     const currentKey = photoKey(currentUri);
     sessionSwipeCountRef.current += 1;
     tryActivateSuggestedThemeFallback();
-    const next = pickDeckCandidate(currentKey, currentKey);
-    // Warm only the card that's about to land. Fanning more out here (this
-    // ran twice before) floods the single-CPU image endpoint with concurrent
-    // sharp jobs, which is what made every photo crawl in. The deck ahead is
-    // warmed once, after the swap, below.
+    const next =
+      takeUpcoming(currentKey) ?? pickDeckCandidate(currentKey, currentKey);
     if (next?.photo.uri) {
       void prefetchPhotoUri(next.photo.uri);
     }
@@ -1485,7 +1632,7 @@ export default function SwipeScreen() {
     // previous picture cannot snap back to the middle.
     if (next) {
       applyDeckCandidate(next, "user_swipe");
-      prefetchDeckAhead(1, next.photo.uri);
+      prefetchDeckAhead(next.photo.uri);
     } else {
       setNoMore(true);
     }
@@ -1495,6 +1642,7 @@ export default function SwipeScreen() {
     prefetchPhotoUri,
     prefetchDeckAhead,
     pickDeckCandidate,
+    takeUpcoming,
     tryActivateSuggestedThemeFallback,
     applyDeckCandidate,
   ]);
@@ -1515,23 +1663,13 @@ export default function SwipeScreen() {
   // Warm the next card in the deck so the swap does not flash a blank pane.
   useEffect(() => {
     if (noMore || theirPhoto.id === "placeholder") return;
-    let skipKey = photoKey(theirPhoto.uri);
-    for (let i = 0; i < 2; i++) {
-      const next = pickDeckCandidate(skipKey, skipKey);
-      if (!next?.photo.uri) break;
-      // Images: only the immediate next card. Audio: the next two clips,
-      // so a quick second swipe is already decoded.
-      if (i === 0) void prefetchPhotoUri(next.photo.uri);
-      prewarmAudioForPhoto(next.photo);
-      skipKey = photoKey(next.photo.uri);
-    }
+    prefetchDeckAhead();
   }, [
     theirPhoto.uri,
     theirPhoto.id,
     noMore,
-    pickDeckCandidate,
-    prefetchPhotoUri,
-    prewarmAudioForPhoto,
+    realPool.length,
+    prefetchDeckAhead,
   ]);
 
   // Warm-on-focus: when the Ripple tab regains focus the per-card prefetch
@@ -1560,15 +1698,8 @@ export default function SwipeScreen() {
           } else {
             void prefetchPhotoUri(current.uri);
           }
-          // Preload the upcoming card's vibe too so the first swipe after
-          // returning to Ripple starts its music instantly.
-          const next = pickDeckCandidate(
-            photoKey(current.uri),
-            photoKey(current.uri),
-          );
-          if (next?.photo.uri) prewarmAudioForPhoto(next.photo);
         }
-        prefetchDeckAhead(1);
+        prefetchDeckAhead();
         const myUri = myPhotoUriRef.current;
         if (myUri) {
           prioritizeHeroPrefetch(
@@ -1578,18 +1709,12 @@ export default function SwipeScreen() {
         void flushImageTelemetryIfDue(getPublicApiOrigin());
       });
       return () => deferred.cancel();
-    }, [
-      prefetchPhotoUri,
-      prefetchDeckAhead,
-      pickDeckCandidate,
-      prewarmAudioForPhoto,
-    ]),
+    }, [prefetchPhotoUri, prefetchDeckAhead]),
   );
 
   const handleSwipeRef = useRef<
     (dir: "left" | "right", animateOut?: boolean) => void
   >(() => {});
-  const swipeOutCompleteRef = useRef<(() => void) | null>(null);
   const runSwipeOutComplete = useCallback(() => {
     swipeOutCompleteRef.current?.();
     swipeOutCompleteRef.current = null;
@@ -1646,7 +1771,7 @@ export default function SwipeScreen() {
         snapshotPhoto.createdAt ??
         new Date(Date.now() - snapshotPhoto.minutesAgo * 60000).toISOString();
 
-      prefetchDeckAhead(1, snapshotPhoto.uri);
+      prefetchDeckAhead(snapshotPhoto.uri);
 
       const onSwipeOutComplete = () => {
         const voterPhotoId = pickVoterPhotoBackendId(myPhotos, {
@@ -1796,6 +1921,14 @@ export default function SwipeScreen() {
       };
 
       swipeOutCompleteRef.current = onSwipeOutComplete;
+      // The animation's completion callback crosses from the UI thread and is
+      // dropped if the animation is interrupted. This timer guarantees the
+      // swipe still commits; whichever runs second finds nothing to do.
+      swipeTokenRef.current += 1;
+      const swipeToken = swipeTokenRef.current;
+      setTimeout(() => {
+        if (swipeTokenRef.current === swipeToken) runSwipeOutComplete();
+      }, SWIPE_OUT_MS + 250);
 
       if (animateOut) {
         playSwipeOutAnimation(
@@ -1940,6 +2073,13 @@ export default function SwipeScreen() {
   useEffect(() => {
     if (!chromeActive) setChrome(true);
   }, [chromeActive, setChrome]);
+  // Photos get the whole screen: the title and buttons step aside shortly after
+  // they appear, and again a few seconds after the handle brings them back.
+  useEffect(() => {
+    if (!chromeActive || !chromeShown) return;
+    const t = setTimeout(() => setChrome(false), CHROME_AUTO_HIDE_MS);
+    return () => clearTimeout(t);
+  }, [chromeActive, chromeShown, setChrome]);
 
   // Production builds used to mount with realPool=[] and stock off, so
   // `initial` was null → permanent "all caught up" even after /candidates
@@ -2645,15 +2785,10 @@ export default function SwipeScreen() {
                 ]}
                 pointerEvents={chromeShown ? "none" : "box-none"}
               >
-                <Pressable
+                <ChromeHandle
                   onPress={() => setChrome(true)}
-                  hitSlop={14}
-                  style={styles.chromeHandle}
-                  accessibilityRole="button"
-                  accessibilityLabel="Show title and buttons"
-                >
-                  <Icon name="chevron-up" size={20} color="#FFFFFF" />
-                </Pressable>
+                  reduceMotion={reduceMotion}
+                />
               </Reanimated.View>
             ) : null}
           </View>
@@ -3015,14 +3150,14 @@ const styles = StyleSheet.create({
     zIndex: 12,
   },
   chromeHandle: {
-    width: 56,
-    height: 28,
-    borderRadius: 14,
+    width: 64,
+    height: 30,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.4)",
+    backgroundColor: "rgba(0,0,0,0.45)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.22)",
+    borderColor: "rgba(255,255,255,0.4)",
   },
   cardWrapper: {
     width: "100%",

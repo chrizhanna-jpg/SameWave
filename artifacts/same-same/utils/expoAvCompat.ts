@@ -86,9 +86,7 @@ export namespace Audio {
       initialStatus?: StatusUpdate,
     ): Promise<{ sound: Sound }> {
       const startsPlaying = initialStatus?.shouldPlay === true;
-      const player = createAudioPlayer(toSource(source), {
-        downloadFirst: !startsPlaying,
-      });
+      const player = createAudioPlayer(toSource(source));
       const sound = new Sound(player);
       try {
         if (initialStatus) await sound.setStatusAsync(initialStatus);
