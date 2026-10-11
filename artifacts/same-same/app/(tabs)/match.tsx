@@ -2076,14 +2076,21 @@ export default function SwipeScreen() {
   }, [chromeActive, setChrome]);
   // The main menu goes with them. Leaving Ripple always brings it back, and
   // coming back to Ripple shows everything again before it steps aside.
-  const menuHidden = chromeActive && !chromeShown;
+  // Ripple stays mounted while other tabs are open, so everything here is tied
+  // to this tab having focus: the menu must never hide anywhere else.
+  const [tabFocused, setTabFocused] = useState(false);
+  const menuHidden = tabFocused && chromeActive && !chromeShown;
   useEffect(() => {
     setTabBarHidden(menuHidden);
   }, [menuHidden]);
   useFocusEffect(
     useCallback(() => {
+      setTabFocused(true);
       setChrome(true);
-      return () => setTabBarHidden(false);
+      return () => {
+        setTabFocused(false);
+        setTabBarHidden(false);
+      };
     }, [setChrome]),
   );
   useEffect(() => {
@@ -2092,10 +2099,10 @@ export default function SwipeScreen() {
   // Photos get the whole screen: the title and buttons step aside shortly after
   // they appear, and again a few seconds after the handle brings them back.
   useEffect(() => {
-    if (!chromeActive || !chromeShown) return;
+    if (!tabFocused || !chromeActive || !chromeShown) return;
     const t = setTimeout(() => setChrome(false), CHROME_AUTO_HIDE_MS);
     return () => clearTimeout(t);
-  }, [chromeActive, chromeShown, setChrome]);
+  }, [tabFocused, chromeActive, chromeShown, setChrome]);
 
   // Production builds used to mount with realPool=[] and stock off, so
   // `initial` was null → permanent "all caught up" even after /candidates
