@@ -8,6 +8,7 @@ import {
   requestRecordingPermissionsAsync,
   setAudioModeAsync as setExpoAudioModeAsync,
 } from "expo-audio";
+import { AppState } from "react-native";
 
 type Player = ReturnType<typeof createAudioPlayer>;
 
@@ -36,6 +37,25 @@ function toSource(source: AvSource): number | string | { uri: string } | null {
 }
 
 const LOAD_TIMEOUT_MS = 10_000;
+
+// Every live player, so nothing can keep playing once the app is left. Callers
+// that want sound back (ambience loops) resume it themselves on foreground.
+const livePlayers = new Set<Player>();
+let backgroundGuard: { remove: () => void } | null = null;
+
+function ensureBackgroundGuard(): void {
+  if (backgroundGuard) return;
+  backgroundGuard = AppState.addEventListener("change", (state) => {
+    if (state !== "background") return;
+    for (const player of livePlayers) {
+      try {
+        player.pause();
+      } catch {
+        /* already released */
+      }
+    }
+  });
+}
 
 /** expo-av resolved createAsync only once the clip was loaded; expo-audio does not. */
 function waitForLoad(player: Player, timeoutMs: number): Promise<boolean> {
@@ -88,6 +108,8 @@ export namespace Audio {
       const startsPlaying = initialStatus?.shouldPlay === true;
       const player = createAudioPlayer(toSource(source));
       const sound = new Sound(player);
+      livePlayers.add(player);
+      ensureBackgroundGuard();
       try {
         if (initialStatus) await sound.setStatusAsync(initialStatus);
         const loaded = await waitForLoad(player, LOAD_TIMEOUT_MS);
@@ -165,6 +187,7 @@ export namespace Audio {
     }
 
     async unloadAsync(): Promise<void> {
+      livePlayers.delete(this.player);
       this.sub?.remove();
       this.sub = null;
       // Pause first so a clip that is still buffering cannot start once the

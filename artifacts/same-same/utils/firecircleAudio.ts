@@ -1,3 +1,5 @@
+import { AppState } from "react-native";
+
 import { Audio } from "@/utils/expoAvCompat";
 
 import { isMuted, markUserInteracted, onMuteChange } from "@/utils/audio";
@@ -33,6 +35,9 @@ function ensureMuteHook(): void {
   muteHooked = true;
   onMuteChange(() => {
     void syncFirecirclePlayback();
+  });
+  AppState.addEventListener("change", (state) => {
+    if (state === "active") void syncFirecirclePlayback();
   });
 }
 

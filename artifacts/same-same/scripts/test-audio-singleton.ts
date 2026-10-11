@@ -82,9 +82,16 @@ const fakeExpoAudio = {
   requestRecordingPermissionsAsync: async () => ({ granted: true }),
   setAudioModeAsync: async () => {},
 };
+const appStateHandlers = new Set<(state: string) => void>();
 const fakeReactNative = {
-  AppState: { addEventListener: () => ({ remove() {} }) },
+  AppState: {
+    addEventListener: (_name: string, cb: (state: string) => void) => {
+      appStateHandlers.add(cb);
+      return { remove: () => appStateHandlers.delete(cb) };
+    },
+  },
 };
+const emitAppState = (state: string) => appStateHandlers.forEach((cb) => cb(state));
 
 const load = (Module as unknown as {
   _load: (request: string, ...rest: unknown[]) => unknown;
@@ -134,6 +141,19 @@ async function main(): Promise<void> {
   );
   await made.sound.unloadAsync();
   assert("unloadAsync pauses and removes the player", FakePlayer.all[0].removed && !FakePlayer.all[0].playing);
+  reset();
+
+  // 1b. Leaving the app silences every player, including ambience loops that
+  // never go through the vibe-clip singleton.
+  const loop = await Audio.Sound.createAsync(
+    { uri: A },
+    { shouldPlay: true, isLooping: true },
+  );
+  await delay(20);
+  assert("a loop started outside the singleton is audible", FakePlayer.all[0].playing);
+  emitAppState("background");
+  assert("leaving the app pauses every player", !FakePlayer.all.some((p) => p.playing));
+  await loop.sound.unloadAsync();
   reset();
 
   // 2. Cold start gate.
