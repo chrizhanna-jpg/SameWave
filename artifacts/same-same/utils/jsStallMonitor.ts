@@ -12,7 +12,7 @@ export function startJsStallMonitor(label: () => string): () => void {
     const blocked = now - last - TICK_MS;
     last = now;
     if (blocked >= STALL_THRESHOLD_MS) {
-      console.warn(`[js-stall] ${blocked}ms blocked on ${label()}`);
+      console.log(`[js-stall] ${blocked}ms blocked on ${label()}`);
     }
   }, TICK_MS);
   stop = () => {
