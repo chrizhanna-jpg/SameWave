@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import "@/utils/perfTraceStart";
+import React, { Profiler, useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
@@ -29,6 +30,7 @@ import Reanimated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
+import { perfMark, reportSlowRender } from "@/utils/perfTrace";
 import { markTabVisited } from "@/utils/tabVisits";
 import { runAfterTabFocus } from "@/utils/deferTabFocus";
 import { tabBarBottomInset, tabBarTotalHeight } from "@/utils/tabBarSafeArea";
@@ -622,7 +624,7 @@ type DeckPick = NonNullable<ReturnType<typeof getTheirPhoto>>;
  */
 const DECK_LOOKAHEAD = 4;
 
-export default function SwipeScreen() {
+function SwipeScreenInner() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
 
@@ -635,6 +637,7 @@ export default function SwipeScreen() {
   useFocusEffect(
     useCallback(() => {
       isScreenFocusedRef.current = true;
+      perfMark("match focused");
       markTabVisited("match");
       warmAuthedImageHeaders();
       // Kill BOTH Atlas ambience players before the card vibe starts. The
@@ -3545,3 +3548,14 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
+
+perfMark("match module evaluated");
+
+export default function SwipeScreen() {
+  if (__DEV__) perfMark("SwipeScreen render start");
+  return (
+    <Profiler id="match" onRender={reportSlowRender}>
+      <SwipeScreenInner />
+    </Profiler>
+  );
+}

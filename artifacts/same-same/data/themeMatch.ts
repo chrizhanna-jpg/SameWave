@@ -252,10 +252,26 @@ export function stripThemePrefixes(raw: string): string {
   return t;
 }
 
+const resolvedThemeIds = new Map<string, string>();
+const RESOLVED_THEME_CACHE_MAX = 600;
+
 /**
  * Map free-form theme text to a canonical DAILY_CHALLENGES id when possible.
+ * Scoring calls this several times per candidate per pick, and the fuzzy path
+ * is slow, so results are cached by input string (the lookup tables are static).
  */
 export function resolveChallengeThemeId(theme: string): string {
+  const cached = resolvedThemeIds.get(theme);
+  if (cached !== undefined) return cached;
+  const resolved = resolveChallengeThemeIdUncached(theme);
+  if (resolvedThemeIds.size >= RESOLVED_THEME_CACHE_MAX) {
+    resolvedThemeIds.clear();
+  }
+  resolvedThemeIds.set(theme, resolved);
+  return resolved;
+}
+
+function resolveChallengeThemeIdUncached(theme: string): string {
   const t = theme.trim().toLowerCase();
   if (!t) return "";
 
