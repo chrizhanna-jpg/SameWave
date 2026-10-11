@@ -139,6 +139,7 @@ import {
 import { applyTabFocusSoundtrack } from "@/utils/tabSoundtrack";
 import { timeAgo } from "@/utils/timeAgo";
 import type { Match } from "@/context/AppContext";
+import { scoreCandidates } from "@/utils/deckScoring";
 import { photoKey } from "@/utils/photoKey";
 import { stashMatchPhotoUris } from "@/utils/matchPhotoSnapshot";
 import { rememberVoterPhotoForTarget } from "@/utils/voterPhotoByTarget";
@@ -203,139 +204,6 @@ function resetCardMotion(
   translateY.value = 0;
   scale.value = 1;
   sameLabelOpacity.value = 0;
-}
-
-// Candidate scoring: shared tags weigh most, then same theme, then adjacent
-// theme, then recency. Returns scored unseen candidates sorted high → low.
-type Scored = {
-  photo: typeof SAMPLE_PHOTOS[number];
-  score: number;
-  sharedTags: string[];
-  /**
-   * Visual-form / shape tags the candidate shares with the requester's
-   * photo. Filled from `photo.shapes ∩ myShapes`. Empty when either
-   * side has no shapes recorded — those candidates simply earn 0
-   * shape points instead of being excluded.
-   */
-  sharedShapes: string[];
-  /**
-   * Free-form concrete subjects the candidate shares with the
-   * requester's photo. Filled from `photo.subjects ∩ mySubjects` —
-   * empty when either side has no subjects recorded (legacy rows or
-   * sample data). Drives the heaviest single-axis bonus, mirrored on
-   * the server in the /candidates SQL.
-   */
-  sharedSubjects: string[];
-  inChain: boolean;
-};
-
-function scoreCandidates(
-  preferredTheme: string,
-  myTags: string[],
-  excludeKeys: Set<string>,
-  extraPool: SamplePhoto[] = [],
-  // `relaxFloor` is kept as an arg for source-compat with existing
-  // callers but is no longer consulted. The previous strict floor
-  // (same-theme OR ≥2 shared tags) hid almost every candidate when the
-  // pool was thin (95 sample photos spread across ~100 themes). The
-  // rebalanced score already promotes related photos to the top of the
-  // ranking, so we always return the full ranked list and let the
-  // caller's top-tier window do the curation.
-  _relaxFloor: boolean = false,
-  myShapes: string[] = [],
-  // Free-form concrete subjects (apple, sculpture, latte art…) from
-  // the requester's photo. Defaults to empty so legacy callers get the
-  // old 0-pt subject term and behaviour stays unchanged for them.
-  // Mirrors the server's `subjects=` query param exactly so live and
-  // dev/synthetic candidates rank in the same order.
-  mySubjects: string[] = [],
-): Scored[] {
-  const chain = getThemeChain(preferredTheme);
-  const chainIndex = (candidateTheme: string) => {
-    const id = resolveChallengeThemeId(candidateTheme) || candidateTheme;
-    const i = chain.indexOf(id);
-    return i;
-  };
-  const myTagSet = new Set(myTags);
-  const myShapeSet = new Set(myShapes);
-
-  // Production launch: curated stock (Unsplash) + live API candidates.
-  // Dev/Expo Go: stock + synthetic generator + API. Synthetic stays dev-only.
-  const synthetic = generateSyntheticCandidates(preferredTheme, myTags, 24, excludeKeys);
-  const stock = ENABLE_STOCK_PHOTO_POOL ? SAMPLE_PHOTOS : [];
-  const pool: SamplePhoto[] = ENABLE_SYNTHETIC_MATCHES
-    ? [...stock, ...synthetic, ...extraPool]
-    : [...stock, ...extraPool];
-
-  // Excluded keys + per-call key dedupe. We compare on the stable
-  // photoKey (not the raw URI) so two URIs pointing at the same image
-  // — different ?w= params, trailing slashes, etc. — never both pass.
-  const seenInPool = new Set<string>();
-  const candidates: Scored[] = pool
-    .filter((p) => {
-      const k = photoKey(p.uri);
-      if (!k) return false;
-      if (isBannedStockPhotoUri(p.uri)) return false;
-      if (excludeKeys.has(k)) return false;
-      if (seenInPool.has(k)) return false;
-      seenInPool.add(k);
-      return true;
-    })
-    .map((p) => {
-      const sharedTags = p.tags.filter((t) => myTagSet.has(t));
-      const sharedShapes = (p.shapes ?? []).filter((s) => myShapeSet.has(s));
-      const subjectMatch = scoreSubjectMatch(mySubjects, p.subjects ?? []);
-      const sharedSubjects = sharedSubjectLabels(
-        mySubjects,
-        p.subjects ?? [],
-      );
-      const idx = chainIndex(p.theme);
-      const inChain = idx >= 0;
-      const themeScore = themeMatchPoints(preferredTheme, p.theme);
-      const sameTheme = themeScore >= 10;
-      // SCORING — mirrors the server's /candidates SQL so live and stock
-      // candidates rank consistently. Subject overlap is heaviest; theme
-      // uses interpretive matching (titles, ids, adjacency, fuzzy text).
-      const subjectScore = subjectMatch.points;
-      const vibeScore = Math.min(sharedTags.length, 5) * 2;
-      const shapeScore = Math.min(sharedShapes.length, 5) * 2;
-      const chainBonus =
-        inChain && !sameTheme && themeScore < 10
-          ? Math.max(0, 3 - Math.max(idx, 0))
-          : 0;
-      const offTopic = shouldSinkOffTopic(
-        preferredTheme,
-        p.theme,
-        sharedTags.length,
-        subjectMatch.points > 0 ? 1 : 0,
-      );
-      const score =
-        subjectScore +
-        themeScore +
-        vibeScore +
-        shapeScore +
-        chainBonus +
-        Math.max(0, 0.6 - p.minutesAgo / 4320) -
-        (offTopic ? 14 : 0);
-      return {
-        photo: p,
-        score,
-        sharedTags,
-        sharedShapes,
-        sharedSubjects,
-        inChain,
-      };
-    })
-    // No hard floor — the rebalanced score (theme=10, vibe up to 10,
-    // shapes up to 10) already pushes related photos to the top. With
-    // only ~95 sample photos spread across ~100 themes the previous
-    // strict gate (same-theme OR ≥2 shared tags) silently dropped most
-    // of the pool, so the user saw "all caught up" while real
-    // candidates were sitting unseen. Trusting the score lets every
-    // sample/stock photo surface and the top-tier window in
-    // getTheirPhoto curates the actual pick.
-    .sort((a, b) => b.score - a.score);
-  return candidates;
 }
 
 function countThemeRelevantCandidates(
@@ -1671,15 +1539,15 @@ function SwipeScreenInner() {
     // Commit the next photo first. Recenter only after that render so the
     // previous picture cannot snap back to the middle.
     if (next) {
+      // The queue refill for the new card runs in the effect below, after the
+      // card has been committed and painted.
       applyDeckCandidate(next, "user_swipe");
-      prefetchDeckAhead(next.photo.uri);
     } else {
       setNoMore(true);
     }
     setDeckSettleToken((n) => n + 1);
   }, [
     buildExcludeKeys,
-    prefetchDeckAhead,
     pickDeckCandidate,
     takeUpcoming,
     tryActivateSuggestedThemeFallback,
@@ -1813,8 +1681,6 @@ function SwipeScreenInner() {
       const snapshotTheirSharedAt =
         snapshotPhoto.createdAt ??
         new Date(Date.now() - snapshotPhoto.minutesAgo * 60000).toISOString();
-
-      prefetchDeckAhead(snapshotPhoto.uri);
 
       const onSwipeOutComplete = () => {
         const voterPhotoId = pickVoterPhotoBackendId(myPhotos, {
@@ -1985,6 +1851,9 @@ function SwipeScreenInner() {
           },
         );
       }
+      // Queue refill and image warming run after the swipe animation has been
+      // handed to the UI thread, never in front of it.
+      setTimeout(() => prefetchDeckAhead(snapshotPhoto.uri), 0);
     },
     [
       sharedTags,

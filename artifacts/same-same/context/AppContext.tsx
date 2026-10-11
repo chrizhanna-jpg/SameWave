@@ -1,3 +1,4 @@
+import { AppState as AppLifecycle } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, {
   createContext,
@@ -169,6 +170,8 @@ export interface MyPhotoUploadAck {
 
 /** Header sync spinner never runs longer than this, whatever the network does. */
 const CLOUD_SYNC_MAX_MS = 25_000;
+/** State writes are batched this long so they never sit in front of a repaint. */
+const PERSIST_DEBOUNCE_MS = 400;
 /** First background sync waits so launch taps and tab switches stay responsive. */
 const CLOUD_SYNC_FIRST_DELAY_MS = 1200;
 
@@ -759,7 +762,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [serializeMyPhotosForStorage],
   );
 
+  const pendingPersistRef = useRef<AppState | null>(null);
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const persistState = useCallback(async (newState: AppState) => {
+    // A direct write is the freshest state; drop any queued older snapshot.
+    pendingPersistRef.current = null;
+    if (persistTimerRef.current) {
+      clearTimeout(persistTimerRef.current);
+      persistTimerRef.current = null;
+    }
     persistChainRef.current = persistChainRef.current.then(async () => {
       try {
         const { pendingEchoes: _p, mutualEchoes: _m, ...rest } = newState;
@@ -781,16 +793,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await persistChainRef.current;
   }, [serializeMyPhotosForStorage]);
 
+  const flushPendingPersist = useCallback(() => {
+    const pending = pendingPersistRef.current;
+    if (pending) void persistState(pending);
+  }, [persistState]);
+
+  // Serialising the whole state is synchronous JS work. Writes are batched so a
+  // swipe's state change paints before the save runs, and flushed straight away
+  // when the app leaves the foreground.
   const saveState = useCallback(
     (newState: AppState) => {
       if (!hasHydratedRef.current) {
         void persistMyPhotosEarly(newState.myPhotos);
         return;
       }
-      void persistState(newState);
+      pendingPersistRef.current = newState;
+      if (!persistTimerRef.current) {
+        persistTimerRef.current = setTimeout(
+          flushPendingPersist,
+          PERSIST_DEBOUNCE_MS,
+        );
+      }
     },
-    [persistMyPhotosEarly, persistState],
+    [persistMyPhotosEarly, flushPendingPersist],
   );
+
+  useEffect(() => {
+    const sub = AppLifecycle.addEventListener("change", (status) => {
+      if (status !== "active") flushPendingPersist();
+    });
+    return () => sub.remove();
+  }, [flushPendingPersist]);
 
   const reconcileMatchPhotos = useCallback(() => {
     if (!hasHydratedRef.current) return;
@@ -1134,13 +1167,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       };
       saveState(newState);
       if (enriched.verdict === "same") {
-        void saveRipplefireLocalCache(
-          buildLocalRippleConnections(
-            allMatches,
-            prev.myCountryCode,
-            prev.myPhotos,
-          ),
-        );
+        setTimeout(() => {
+          void saveRipplefireLocalCache(
+            buildLocalRippleConnections(
+              allMatches,
+              prev.myCountryCode,
+              prev.myPhotos,
+            ),
+          );
+        }, 0);
       }
       return newState;
     });

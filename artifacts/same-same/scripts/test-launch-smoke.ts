@@ -316,6 +316,25 @@ assert(
   apiSrc.includes("fetchSyncJson<") && apiSrc.includes("SYNC_FETCH_TIMEOUT_MS"),
 );
 
+const deckScoringSrc = read("utils/deckScoring.ts");
+assert(
+  "deck scoring reuses per-photo scores for the same requester context",
+  deckScoringSrc.includes("scoreMemo") &&
+    match.includes('from "@/utils/deckScoring"') &&
+    !match.includes("function scoreCandidates("),
+);
+assert(
+  "a swipe does not run the queue refill in front of the card change",
+  !/loadNextCandidate = useCallback\(\(\) => \{[\s\S]*?prefetchDeckAhead\(next/.test(match) &&
+    match.includes("setTimeout(() => prefetchDeckAhead(snapshotPhoto.uri), 0)"),
+);
+assert(
+  "state saves are batched off the swipe commit and flushed on background",
+  appContextSrc.includes("PERSIST_DEBOUNCE_MS") &&
+    appContextSrc.includes("flushPendingPersist") &&
+    appContextSrc.includes('status !== "active"'),
+);
+
 const deferFocus = read("utils/deferTabFocus.ts");
 assert(
   "tab focus deferral does not touch InteractionManager",
