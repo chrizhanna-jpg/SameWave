@@ -345,6 +345,13 @@ assert(
     match.includes("reduceMotionRef.current"),
 );
 
+assert(
+  "the seen-photos debug pill is off unless explicitly enabled",
+  match.includes("SHOW_DEDUP_DEBUG &&") &&
+    match.includes('EXPO_PUBLIC_SHOW_DEDUP_DEBUG === "1"') &&
+    !match.includes("{__DEV__ && ("),
+);
+
 const deferFocus = read("utils/deferTabFocus.ts");
 assert(
   "tab focus deferral does not touch InteractionManager",

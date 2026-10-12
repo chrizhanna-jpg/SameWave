@@ -156,6 +156,8 @@ const SWIPE_DISTANCE_THRESHOLD = width * 0.136;
 const SWIPE_VELOCITY_THRESHOLD = 336;
 const SWIPE_MIN_FLICK_DX = 22;
 const SWIPE_OUT_MS = 300;
+const SHOW_DEDUP_DEBUG =
+  __DEV__ && process.env.EXPO_PUBLIC_SHOW_DEDUP_DEBUG === "1";
 /** The next card eases in from slightly smaller and transparent instead of appearing at once. */
 const CARD_ARRIVE_MS = 220;
 const CARD_ARRIVE_FROM_SCALE = 0.95;
@@ -2925,10 +2927,10 @@ function SwipeScreenInner() {
 
       <View style={{ paddingBottom: bottomPadding }} />
 
-      {/* DEV-only dedup ledger debug pill. Anonymity-safe — shows only
-          opaque photo keys, never country, name, or any identity. Hidden
-          in release builds via the __DEV__ gate. */}
-      {__DEV__ && (
+      {/* Dedup ledger debug pill. Anonymity-safe — shows only opaque photo
+          keys, never country, name, or any identity. Off unless a dev build
+          sets EXPO_PUBLIC_SHOW_DEDUP_DEBUG=1. */}
+      {SHOW_DEDUP_DEBUG && (
         <>
           <TouchableOpacity
             onPress={() => setDebugOpen(true)}
