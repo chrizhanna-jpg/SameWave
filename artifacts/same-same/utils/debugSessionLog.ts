@@ -56,7 +56,10 @@ export function postDebugSessionLog(entry: {
   } as const;
 
   if (__DEV__) {
-    console.warn("[debug-ac992e]", body);
+    // LogBox treats console.warn as an on-device warning. These traces are
+    // successful debug notes (including "google sso setActive ok"), so they
+    // stay on the Metro log only.
+    console.log("[debug-ac992e]", body);
     void fetch(LOCAL_INGEST, { method: "POST", headers, body }).catch(() => {});
   }
 

@@ -105,6 +105,11 @@ export const photosTable = pgTable(
     // URI so the matching deck paints with zero extra image round-trips.
     deckPreviewBase64: text("deck_preview_base64"),
     deckPreviewMime: varchar("deck_preview_mime", { length: 32 }),
+
+    // Optional one-line note. Lives and dies with the photo (30-day retention).
+    whisper: varchar("whisper", { length: 60 }),
+    // How many other feeds have loaded this photo. Not a like count.
+    viewCount: integer("view_count").notNull().default(0),
   },
   (t) => ({
     statusIdx: index("photos_status_idx").on(t.status),

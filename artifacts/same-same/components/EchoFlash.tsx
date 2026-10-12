@@ -354,7 +354,7 @@ export function EchoFlash({
 
 const styles = StyleSheet.create({
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   center: {
     flex: 1,

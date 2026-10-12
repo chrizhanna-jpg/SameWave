@@ -1,9 +1,15 @@
-import { InteractionManager } from "react-native";
-
-/** Run tab-focus side work after the tab transition paints (keeps tab taps snappy). */
+/** Run tab-focus side work after the next paint so the tab tap stays snappy. */
 export function runAfterTabFocus(task: () => void): { cancel: () => void } {
-  const handle = InteractionManager.runAfterInteractions(task);
-  return { cancel: () => handle.cancel() };
+  let cancelled = false;
+  const frame = requestAnimationFrame(() => {
+    if (!cancelled) task();
+  });
+  return {
+    cancel: () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+    },
+  };
 }
 
 const lastFocusWorkAt = new Map<string, number>();

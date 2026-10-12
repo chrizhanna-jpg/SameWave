@@ -113,6 +113,7 @@ export function parsePersistedEchoes(raw: unknown): EchoCard[] {
         country: typeof mine.country === "string" ? mine.country : "",
         countryFlag: typeof mine.countryFlag === "string" ? mine.countryFlag : "",
         theme: typeof mine.theme === "string" ? mine.theme : undefined,
+        whisper: typeof mine.whisper === "string" ? mine.whisper : null,
       }),
       theirs: refreshEchoSideCountry({
         id: typeof theirs.id === "string" ? theirs.id : "",
@@ -127,7 +128,13 @@ export function parsePersistedEchoes(raw: unknown): EchoCard[] {
         countryFlag:
           typeof theirs.countryFlag === "string" ? theirs.countryFlag : "",
         theme: typeof theirs.theme === "string" ? theirs.theme : undefined,
+        whisper: typeof theirs.whisper === "string" ? theirs.whisper : null,
       }),
+      waveName: typeof e.waveName === "string" ? e.waveName : undefined,
+      mineWaveCount: typeof e.mineWaveCount === "number" ? e.mineWaveCount : undefined,
+      theirsWaveCount: typeof e.theirsWaveCount === "number" ? e.theirsWaveCount : undefined,
+      keptForMe: e.keptForMe === true,
+      shareForMe: e.shareForMe === true,
     });
   }
   return out;

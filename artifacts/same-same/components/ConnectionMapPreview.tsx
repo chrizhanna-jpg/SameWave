@@ -210,7 +210,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   flagOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     flexDirection: "row",
     alignItems: "flex-end",
     justifyContent: "space-between",

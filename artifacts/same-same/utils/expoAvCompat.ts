@@ -8,6 +8,7 @@ import {
   requestRecordingPermissionsAsync,
   setAudioModeAsync as setExpoAudioModeAsync,
 } from "expo-audio";
+import { AppState } from "react-native";
 
 type Player = ReturnType<typeof createAudioPlayer>;
 
@@ -33,6 +34,49 @@ function toSource(source: AvSource): number | string | { uri: string } | null {
   if (typeof source === "number" || typeof source === "string") return source;
   if (typeof source.uri === "string") return { uri: source.uri };
   return null;
+}
+
+const LOAD_TIMEOUT_MS = 10_000;
+
+// Every live player, so nothing can keep playing once the app is left. Callers
+// that want sound back (ambience loops) resume it themselves on foreground.
+const livePlayers = new Set<Player>();
+let backgroundGuard: { remove: () => void } | null = null;
+
+function ensureBackgroundGuard(): void {
+  if (backgroundGuard) return;
+  backgroundGuard = AppState.addEventListener("change", (state) => {
+    if (state !== "background") return;
+    for (const player of livePlayers) {
+      try {
+        player.pause();
+      } catch {
+        /* already released */
+      }
+    }
+  });
+}
+
+/** expo-av resolved createAsync only once the clip was loaded; expo-audio does not. */
+function waitForLoad(player: Player, timeoutMs: number): Promise<boolean> {
+  if (player.isLoaded) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    let done = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let sub: { remove: () => void } | null = null;
+    const finish = (ok: boolean) => {
+      if (done) return;
+      done = true;
+      if (timer) clearTimeout(timer);
+      sub?.remove();
+      resolve(ok);
+    };
+    sub = player.addListener("playbackStatusUpdate", (status) => {
+      if (status.isLoaded) finish(true);
+    });
+    timer = setTimeout(() => finish(player.isLoaded), timeoutMs);
+    if (player.isLoaded) finish(true);
+  });
 }
 
 type LegacyAudioMode = {
@@ -61,11 +105,22 @@ export namespace Audio {
       source: AvSource,
       initialStatus?: StatusUpdate,
     ): Promise<{ sound: Sound }> {
-      const player = createAudioPlayer(toSource(source), {
-        downloadFirst: initialStatus?.shouldPlay !== true,
-      });
+      const startsPlaying = initialStatus?.shouldPlay === true;
+      const player = createAudioPlayer(toSource(source));
       const sound = new Sound(player);
-      if (initialStatus) await sound.setStatusAsync(initialStatus);
+      livePlayers.add(player);
+      ensureBackgroundGuard();
+      try {
+        if (initialStatus) await sound.setStatusAsync(initialStatus);
+        const loaded = await waitForLoad(player, LOAD_TIMEOUT_MS);
+        // A paused load that never finishes must not be handed back as
+        // ready: the caller would play() it later, mid-swipe, on top of
+        // whatever clip belongs to the card on screen by then.
+        if (!loaded && !startsPlaying) throw new Error("audio load timed out");
+      } catch (error) {
+        await sound.unloadAsync();
+        throw error;
+      }
       return { sound };
     }
 
@@ -132,9 +187,21 @@ export namespace Audio {
     }
 
     async unloadAsync(): Promise<void> {
+      livePlayers.delete(this.player);
       this.sub?.remove();
       this.sub = null;
-      this.player.remove();
+      // Pause first so a clip that is still buffering cannot start once the
+      // native player has been told to go away.
+      try {
+        this.player.pause();
+      } catch {
+        /* already released */
+      }
+      try {
+        this.player.remove();
+      } catch {
+        /* already released */
+      }
     }
   }
 

@@ -1,6 +1,8 @@
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Dimensions, StyleSheet, View } from "react-native";
+import { useIsFocused } from "expo-router";
 import Animated, {
+  cancelAnimation,
   Easing,
   useAnimatedProps,
   useSharedValue,
@@ -8,6 +10,8 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import Svg, { Ellipse } from "react-native-svg";
+
+const SHIMMER_START_DELAY_MS = 700;
 
 const AnimatedEllipse = Animated.createAnimatedComponent(Ellipse);
 
@@ -52,11 +56,16 @@ function Sparkle({
   drift,
   amp,
   base,
-}: Omit<SparkleSpec, "key">) {
+  active,
+}: Omit<SparkleSpec, "key"> & { active: boolean }) {
   // Continuous time in cycles. Starts at the sparkle's phase so it's
   // already partway through the twinkle when mounted.
   const t = useSharedValue(phase);
   useEffect(() => {
+    if (!active) {
+      cancelAnimation(t);
+      return undefined;
+    }
     // Linear ramp from `phase` → `phase + 1` repeatedly. Sin/cos in the
     // animated props derives the actual smooth twinkle + drift.
     t.value = withRepeat(
@@ -64,7 +73,8 @@ function Sparkle({
       -1,
       false,
     );
-  }, [dur, phase, t]);
+    return () => cancelAnimation(t);
+  }, [active, dur, phase, t]);
 
   const animatedProps = useAnimatedProps(() => {
     const TAU = Math.PI * 2;
@@ -117,6 +127,16 @@ export function OceanShimmer({
   seed = 7,
 }: Props) {
   const { width, height } = Dimensions.get("window");
+  // Tabs stay mounted after the first visit. Only the focused tab animates,
+  // and only once the first frames / taps have been handled, so ~80 SVG
+  // animations per tab never compete with navigation on a cold open.
+  const focused = useIsFocused();
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(true), SHIMMER_START_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  const animate = focused && settled;
   const sparkles = useMemo<SparkleSpec[]>(() => {
     const rnd = mulberry32(seed);
     const specs: SparkleSpec[] = [];
@@ -259,7 +279,7 @@ export function OceanShimmer({
   }, [count, width, height, tint, highlight, seed]);
 
   return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       <Svg width={width} height={height}>
         {sparkles.map((s) => (
           <Sparkle
@@ -275,6 +295,7 @@ export function OceanShimmer({
             drift={s.drift}
             amp={s.amp}
             base={s.base}
+            active={animate}
           />
         ))}
       </Svg>

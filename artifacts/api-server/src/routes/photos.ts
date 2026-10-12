@@ -242,6 +242,7 @@ router.post("/photos", async (req, res) => {
       tags?: unknown;
       subjects?: unknown;
       shapes?: unknown;
+      whisper?: unknown;
     };
     const b64 = typeof body.imageBase64 === "string" ? body.imageBase64 : "";
     if (!b64) {
@@ -365,6 +366,10 @@ router.post("/photos", async (req, res) => {
     // path can't resolve (which would crash `pickClipForSeed` on the
     // receiving side).
     const musicGenre = normalizeMusicGenre(body.musicGenre);
+    const whisper =
+      typeof body.whisper === "string" && body.whisper.trim().length > 0
+        ? body.whisper.trim().slice(0, 60)
+        : null;
 
     // Optional user-recorded vibe clip. Only persist when both fields
     // are valid and the size fits — otherwise silently drop so a
@@ -438,6 +443,7 @@ router.post("/photos", async (req, res) => {
         musicGenre,
         customAudioBase64,
         customAudioMime,
+        whisper,
         displayBytesBase64: deckEncoded?.displayB64,
         displayMime: deckEncoded?.displayMime,
         deckPreviewBase64: deckEncoded?.previewB64,
@@ -905,10 +911,29 @@ router.get("/photos/candidates", async (req, res) => {
 
     prioritizeWarmPhotoIds(
       withPreviews
-        .filter((p) => !p.uri.startsWith("https://") && !p.previewUri)
+        .filter((p) => !p.uri.startsWith("https://") && !("previewUri" in p && p.previewUri))
         .slice(0, 4)
         .map((p) => p.id),
     );
+
+    const viewIds = withPreviews
+      .map((p) => p.id)
+      .filter((id) => /^[0-9a-f-]{8,}$/i.test(id));
+    if (viewIds.length > 0) {
+      try {
+        await db.execute(sql`
+          UPDATE photos
+          SET view_count = COALESCE(view_count, 0) + 1
+          WHERE user_id <> ${user.id}
+            AND id IN (${sql.join(
+              viewIds.map((id) => sql`${id}`),
+              sql`, `,
+            )})
+        `);
+      } catch (viewErr) {
+        req.log.warn({ err: viewErr }, "view count increment skipped");
+      }
+    }
 
     res.json({ photos: withPreviews });
   } catch (err) {
@@ -2124,6 +2149,7 @@ router.post("/photos/:id/vote", async (req, res) => {
     // If a "same" vote was made while the user was representing one of
     // their own photos, also create / promote an echo offer for the pair.
     let echoState: "pending" | "mutual" | "skipped" = "skipped";
+    let echoId: string | undefined;
     if (verdict === "same" && !voterPhotoId) {
       const fallback = await db
         .select({ id: photosTable.id })
@@ -2163,12 +2189,18 @@ router.post("/photos/:id/vote", async (req, res) => {
           targetPhotoId: photoId,
         });
         echoState = result.state;
+        echoId = result.id;
       } catch (err) {
         req.log.error({ err }, "echo offer write failed");
       }
     }
 
-    res.json({ ok: true, echo: echoState, voterPhotoId: voterPhotoId ?? null });
+    res.json({
+      ok: true,
+      echo: echoState,
+      voterPhotoId: voterPhotoId ?? null,
+      ...(echoId ? { echoId } : {}),
+    });
   } catch (err) {
     req.log.error({ err }, "vote failed");
     res.status(500).json({ error: "vote failed" });
@@ -2254,6 +2286,32 @@ router.post("/photos/:id/unvote", async (req, res) => {
 //
 // Anyone can read these — they aggregate over public photo activity and
 // don't expose individual voter identities.
+router.get("/photos/:id/seen", async (req, res) => {
+  try {
+    const user = await resolveUserFromRequest(req);
+    if (!user) {
+      res.status(401).json({ error: "authentication required" });
+      return;
+    }
+    const rows = await db.execute(sql`
+      SELECT view_count AS "viewCount"
+      FROM photos
+      WHERE id = ${req.params.id}
+        AND user_id = ${user.id}
+      LIMIT 1
+    `);
+    const row = rows.rows[0] as { viewCount?: number } | undefined;
+    if (!row) {
+      res.status(404).json({ error: "not found" });
+      return;
+    }
+    res.json({ viewCount: Number(row.viewCount ?? 0) });
+  } catch (err) {
+    req.log.warn({ err }, "seen count unavailable");
+    res.status(404).json({ error: "unavailable" });
+  }
+});
+
 router.get("/photos/:id/match-stats", async (req, res) => {
   try {
     const photoId = req.params.id;

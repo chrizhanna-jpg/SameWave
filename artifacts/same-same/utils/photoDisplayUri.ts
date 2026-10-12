@@ -472,16 +472,18 @@ export function enrichMatchMyPhotoFields(
 
 export type ResolveMyPhotoDisplayOptions = {
   /**
-   * On Ripple, keep the in-app camera `file://` capture visible while
-   * upload sync runs — switching straight to the authed server URL
-   * flashes a loading spinner and makes the user's photo appear to vanish.
+   * On Ripple, keep the in-app camera capture on screen after the upload
+   * ack. Switching to the authed server URL mid-swipe clears the decoded
+   * bitmap and the top pane stays black.
    */
   preferLocalCapture?: boolean;
 };
 
 /**
- * Prefer the durable server image when we have a backend id — local
- * `file://` captures can be purged after the app sits in background.
+ * Display URI for the viewer's photo. Without `preferLocalCapture`, a
+ * backend id wins so Waves and later launches survive a purged `file://`.
+ * Ripple passes `preferLocalCapture` so the capture stays on screen after
+ * the upload ack; the server stream is only the error fallback.
  */
 export function resolveMyPhotoDisplayUri(
   photo: Pick<MyPhoto, "uri" | "backendId" | "uploadState">,
@@ -490,19 +492,13 @@ export function resolveMyPhotoDisplayUri(
   const local = photo.uri?.trim() ?? "";
   const bid =
     photo.backendId?.trim() || extractPhotoStreamId(local) || undefined;
-  // Keep the in-app capture only while upload is still running. Once we
-  // have a backend id the OS may purge file:// when leaving Ripple — use
-  // the authed server stream so the photo survives tab switches.
-  const stillUploading =
-    !bid &&
-    (photo.uploadState === "pending" ||
-      (photo.uploadState !== "ok" && !photo.backendId?.trim()));
-
-  if (
-    options?.preferLocalCapture &&
-    stillUploading &&
-    (local.startsWith("file:") || local.startsWith("content:"))
-  ) {
+  const localCapture =
+    local.startsWith("file:") || local.startsWith("content:");
+  // Keep the in-app capture for the whole Ripple session, including after
+  // the upload ack. Swapping to the authed server URL mid-swipe hides the
+  // decoded bitmap; if that reload does not fire onLoad the pane stays black.
+  // The server stream is the fallback when the local file is actually gone.
+  if (options?.preferLocalCapture && localCapture) {
     return local;
   }
   if (bid) return serverPhotoImageUrl(bid);
@@ -548,16 +544,40 @@ export function repairMyPhotos(photos: MyPhoto[], matches: Match[]): MyPhoto[] {
   });
 }
 
-/** Backfill persisted rows that stripped `file://` but kept backendId. */
+/**
+ * Backfill an empty persisted uri from `backendId`.
+ * Leave `file://` and `content://` captures alone — replacing them when the
+ * upload ack arrives is what blanks the Ripple "yours" pane mid-swipe.
+ */
 export function hydrateMyPhotoUri(photo: MyPhoto): MyPhoto {
   const bid = photo.backendId?.trim();
   if (!bid) return photo;
-  const server = serverPhotoImageUrl(bid);
   const local = photo.uri?.trim() ?? "";
-  if (!local || local.startsWith("file:")) {
-    return { ...photo, uri: server };
+  if (local.startsWith("file:") || local.startsWith("content:")) {
+    return photo;
+  }
+  if (!local) {
+    return { ...photo, uri: serverPhotoImageUrl(bid) };
   }
   return photo;
+}
+
+/**
+ * Hide a photo that is already on screen only when its own URI changed or
+ * the user asked to retry. A newly available fallback (upload ack) must not
+ * count — that reset drops opacity to 0 and expo-image often does not fire
+ * onLoad again for an unchanged source, so the pane stays black.
+ */
+export function shouldResetDisplayedPhoto(input: {
+  previousUri: string;
+  nextUri: string;
+  previousManualRetry: number;
+  nextManualRetry: number;
+}): boolean {
+  return (
+    input.previousUri !== input.nextUri ||
+    input.previousManualRetry !== input.nextManualRetry
+  );
 }
 
 /** Match a row by stored uri or authenticated display uri. */

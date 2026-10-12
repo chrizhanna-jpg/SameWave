@@ -653,7 +653,7 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   previewPlaceholder: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(17,17,17,0.72)",

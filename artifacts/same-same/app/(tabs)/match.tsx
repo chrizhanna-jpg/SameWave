@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import "@/utils/perfTraceStart";
+import React, { Profiler, useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
@@ -12,6 +13,7 @@ import {
   View,
 } from "react-native";
 import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Reanimated, {
   Easing,
@@ -20,17 +22,24 @@ import Reanimated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  withRepeat,
+  withSequence,
   withTiming,
+  cancelAnimation,
   type SharedValue,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
+import { perfMark, reportSlowRender } from "@/utils/perfTrace";
 import { markTabVisited } from "@/utils/tabVisits";
 import { runAfterTabFocus } from "@/utils/deferTabFocus";
-import { tabBarTotalHeight } from "@/utils/tabBarSafeArea";
+import { tabBarBottomInset, tabBarTotalHeight } from "@/utils/tabBarSafeArea";
+import { setTabBarHidden } from "@/utils/tabBarVisibility";
 import { Icon } from "@/components/Icon";
 import { MicBadge } from "@/components/MicBadge";
 import { MatchFlash } from "@/components/MatchFlash";
+import { RippleTravellingMap, useReduceMotion } from "@/components/RippleTravellingMap";
+import { playRippleSoundIfEnabled } from "@/utils/rippleSound";
 import { EchoLogo } from "@/components/EchoLogo";
 import { OceanShimmer } from "@/components/OceanShimmer";
 import { PressableScale } from "@/components/PressableScale";
@@ -67,6 +76,7 @@ import { ENABLE_STOCK_PHOTO_POOL } from "@/lib/stockPhotos";
 import {
   fetchCandidates,
   votePhoto,
+  fetchOwnPhotoViewCount,
   fetchMatchStats,
   markPhotosSeen,
   matchByObject,
@@ -87,9 +97,11 @@ import {
 } from "@/data/matchTuning";
 import { mergeCandidatePools } from "@/utils/candidatePool";
 import {
+  hasUserInteracted,
   isMuted as audioIsMuted,
   markUserInteracted,
   onMuteChange,
+  onUserInteracted,
   pause as pauseAudio,
   pauseIfLease,
   pausePreview,
@@ -110,11 +122,15 @@ import {
   serverPhotoImageUrl,
   withDisplayPhotoWidth,
 } from "@/utils/photoDisplayUri";
-import { IMAGE_LOAD_V2, PREFETCH_AHEAD_COUNT } from "@/constants/imageLoading";
+import { prioritizeHeroPrefetch } from "@/utils/imageLoadCache";
+import { shouldRefetchDeckPool } from "@/utils/deckPoolRefresh";
+import { takeReadyFirst } from "@/utils/deckQueue";
 import {
-  prioritizeHeroPrefetch,
-  prefetchPhotoUris,
-} from "@/utils/imageLoadCache";
+  hasDeckImageFailed,
+  isDeckImageReady,
+  subscribeDeckImages,
+  warmDeckImages,
+} from "@/utils/deckImageWarmer";
 import { getActiveCaptureRequestId } from "@/utils/captureTransition";
 import {
   commitDisplayedCandidate,
@@ -123,6 +139,7 @@ import {
 import { applyTabFocusSoundtrack } from "@/utils/tabSoundtrack";
 import { timeAgo } from "@/utils/timeAgo";
 import type { Match } from "@/context/AppContext";
+import { scoreCandidates } from "@/utils/deckScoring";
 import { photoKey } from "@/utils/photoKey";
 import { stashMatchPhotoUris } from "@/utils/matchPhotoSnapshot";
 import { rememberVoterPhotoForTarget } from "@/utils/voterPhotoByTarget";
@@ -139,6 +156,17 @@ const SWIPE_DISTANCE_THRESHOLD = width * 0.136;
 const SWIPE_VELOCITY_THRESHOLD = 336;
 const SWIPE_MIN_FLICK_DX = 22;
 const SWIPE_OUT_MS = 300;
+const SHOW_DEDUP_DEBUG =
+  __DEV__ && process.env.EXPO_PUBLIC_SHOW_DEDUP_DEBUG === "1";
+/** The next card eases in from slightly smaller and transparent instead of appearing at once. */
+const CARD_ARRIVE_MS = 220;
+const CARD_ARRIVE_FROM_SCALE = 0.95;
+/** The new card waits this long at most for its suggested photo before showing anyway. */
+const CARD_ARRIVE_MAX_WAIT_MS = 700;
+/** A swipe still unfinished after this long is abandoned and the card returns. */
+const SWIPE_STUCK_RECOVERY_MS = 3000;
+/** Longest a card's clip waits for its photo before it starts anyway. */
+const MUSIC_WAIT_FOR_PHOTO_MS = 6000;
 const SNAP_BACK_SPRING = { damping: 20, stiffness: 220, mass: 0.75 };
 
 function shouldCommitHorizontalSwipe(dx: number, vx: number): boolean {
@@ -183,139 +211,6 @@ function resetCardMotion(
   translateY.value = 0;
   scale.value = 1;
   sameLabelOpacity.value = 0;
-}
-
-// Candidate scoring: shared tags weigh most, then same theme, then adjacent
-// theme, then recency. Returns scored unseen candidates sorted high → low.
-type Scored = {
-  photo: typeof SAMPLE_PHOTOS[number];
-  score: number;
-  sharedTags: string[];
-  /**
-   * Visual-form / shape tags the candidate shares with the requester's
-   * photo. Filled from `photo.shapes ∩ myShapes`. Empty when either
-   * side has no shapes recorded — those candidates simply earn 0
-   * shape points instead of being excluded.
-   */
-  sharedShapes: string[];
-  /**
-   * Free-form concrete subjects the candidate shares with the
-   * requester's photo. Filled from `photo.subjects ∩ mySubjects` —
-   * empty when either side has no subjects recorded (legacy rows or
-   * sample data). Drives the heaviest single-axis bonus, mirrored on
-   * the server in the /candidates SQL.
-   */
-  sharedSubjects: string[];
-  inChain: boolean;
-};
-
-function scoreCandidates(
-  preferredTheme: string,
-  myTags: string[],
-  excludeKeys: Set<string>,
-  extraPool: SamplePhoto[] = [],
-  // `relaxFloor` is kept as an arg for source-compat with existing
-  // callers but is no longer consulted. The previous strict floor
-  // (same-theme OR ≥2 shared tags) hid almost every candidate when the
-  // pool was thin (95 sample photos spread across ~100 themes). The
-  // rebalanced score already promotes related photos to the top of the
-  // ranking, so we always return the full ranked list and let the
-  // caller's top-tier window do the curation.
-  _relaxFloor: boolean = false,
-  myShapes: string[] = [],
-  // Free-form concrete subjects (apple, sculpture, latte art…) from
-  // the requester's photo. Defaults to empty so legacy callers get the
-  // old 0-pt subject term and behaviour stays unchanged for them.
-  // Mirrors the server's `subjects=` query param exactly so live and
-  // dev/synthetic candidates rank in the same order.
-  mySubjects: string[] = [],
-): Scored[] {
-  const chain = getThemeChain(preferredTheme);
-  const chainIndex = (candidateTheme: string) => {
-    const id = resolveChallengeThemeId(candidateTheme) || candidateTheme;
-    const i = chain.indexOf(id);
-    return i;
-  };
-  const myTagSet = new Set(myTags);
-  const myShapeSet = new Set(myShapes);
-
-  // Production launch: curated stock (Unsplash) + live API candidates.
-  // Dev/Expo Go: stock + synthetic generator + API. Synthetic stays dev-only.
-  const synthetic = generateSyntheticCandidates(preferredTheme, myTags, 24, excludeKeys);
-  const stock = ENABLE_STOCK_PHOTO_POOL ? SAMPLE_PHOTOS : [];
-  const pool: SamplePhoto[] = ENABLE_SYNTHETIC_MATCHES
-    ? [...stock, ...synthetic, ...extraPool]
-    : [...stock, ...extraPool];
-
-  // Excluded keys + per-call key dedupe. We compare on the stable
-  // photoKey (not the raw URI) so two URIs pointing at the same image
-  // — different ?w= params, trailing slashes, etc. — never both pass.
-  const seenInPool = new Set<string>();
-  const candidates: Scored[] = pool
-    .filter((p) => {
-      const k = photoKey(p.uri);
-      if (!k) return false;
-      if (isBannedStockPhotoUri(p.uri)) return false;
-      if (excludeKeys.has(k)) return false;
-      if (seenInPool.has(k)) return false;
-      seenInPool.add(k);
-      return true;
-    })
-    .map((p) => {
-      const sharedTags = p.tags.filter((t) => myTagSet.has(t));
-      const sharedShapes = (p.shapes ?? []).filter((s) => myShapeSet.has(s));
-      const subjectMatch = scoreSubjectMatch(mySubjects, p.subjects ?? []);
-      const sharedSubjects = sharedSubjectLabels(
-        mySubjects,
-        p.subjects ?? [],
-      );
-      const idx = chainIndex(p.theme);
-      const inChain = idx >= 0;
-      const themeScore = themeMatchPoints(preferredTheme, p.theme);
-      const sameTheme = themeScore >= 10;
-      // SCORING — mirrors the server's /candidates SQL so live and stock
-      // candidates rank consistently. Subject overlap is heaviest; theme
-      // uses interpretive matching (titles, ids, adjacency, fuzzy text).
-      const subjectScore = subjectMatch.points;
-      const vibeScore = Math.min(sharedTags.length, 5) * 2;
-      const shapeScore = Math.min(sharedShapes.length, 5) * 2;
-      const chainBonus =
-        inChain && !sameTheme && themeScore < 10
-          ? Math.max(0, 3 - Math.max(idx, 0))
-          : 0;
-      const offTopic = shouldSinkOffTopic(
-        preferredTheme,
-        p.theme,
-        sharedTags.length,
-        subjectMatch.points > 0 ? 1 : 0,
-      );
-      const score =
-        subjectScore +
-        themeScore +
-        vibeScore +
-        shapeScore +
-        chainBonus +
-        Math.max(0, 0.6 - p.minutesAgo / 4320) -
-        (offTopic ? 14 : 0);
-      return {
-        photo: p,
-        score,
-        sharedTags,
-        sharedShapes,
-        sharedSubjects,
-        inChain,
-      };
-    })
-    // No hard floor — the rebalanced score (theme=10, vibe up to 10,
-    // shapes up to 10) already pushes related photos to the top. With
-    // only ~95 sample photos spread across ~100 themes the previous
-    // strict gate (same-theme OR ≥2 shared tags) silently dropped most
-    // of the pool, so the user saw "all caught up" while real
-    // candidates were sitting unseen. Trusting the score lets every
-    // sample/stock photo surface and the top-tier window in
-    // getTheirPhoto curates the actual pick.
-    .sort((a, b) => b.score - a.score);
-  return candidates;
 }
 
 function countThemeRelevantCandidates(
@@ -548,7 +443,63 @@ function getTheirPhoto(
   };
 }
 
-export default function SwipeScreen() {
+function withExtraKeys(keys: Set<string>, extra?: string[]): Set<string> {
+  if (!extra || extra.length === 0) return keys;
+  for (const k of extra) if (k) keys.add(k);
+  return keys;
+}
+
+/** Title and buttons rest on screen this long before fading back out. */
+const CHROME_AUTO_HIDE_MS = 5000;
+
+/** Small chevron at the bottom edge that brings the title and buttons back. */
+function ChromeHandle({
+  onPress,
+  reduceMotion,
+}: {
+  onPress: () => void;
+  reduceMotion: boolean;
+}) {
+  const bob = useSharedValue(0);
+  useEffect(() => {
+    if (reduceMotion) return;
+    bob.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 900 }),
+        withTiming(0, { duration: 900 }),
+      ),
+      -1,
+      false,
+    );
+    return () => cancelAnimation(bob);
+  }, [bob, reduceMotion]);
+  const bobStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: -4 * bob.value }],
+  }));
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={{ top: 24, bottom: 24, left: 40, right: 40 }}
+      accessibilityRole="button"
+      accessibilityLabel="Show title and buttons"
+    >
+      <Reanimated.View style={[styles.chromeHandle, bobStyle]}>
+        <Icon name="chevron-up" size={22} color="rgba(255,255,255,0.6)" />
+      </Reanimated.View>
+    </Pressable>
+  );
+}
+
+type DeckPick = NonNullable<ReturnType<typeof getTheirPhoto>>;
+
+/**
+ * Cards chosen ahead of time so their photo and clip can be warmed. Deeper than
+ * the swipe pace: when the card after next is already downloaded, a slow
+ * connection never makes a swipe wait.
+ */
+const DECK_LOOKAHEAD = 4;
+
+function SwipeScreenInner() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
 
@@ -561,6 +512,7 @@ export default function SwipeScreen() {
   useFocusEffect(
     useCallback(() => {
       isScreenFocusedRef.current = true;
+      perfMark("match focused");
       markTabVisited("match");
       warmAuthedImageHeaders();
       // Kill BOTH Atlas ambience players before the card vibe starts. The
@@ -839,7 +791,20 @@ export default function SwipeScreen() {
     }
   }, [todaysPhoto?.backendId, runEchoVoteRetry]);
 
+  const poolQueryRef = useRef({ key: "", at: 0 });
   useEffect(() => {
+    const queryKey = `${activeTheme}|${myTagsKey}|${mySubjectsKey}`;
+    const last = poolQueryRef.current;
+    if (
+      !shouldRefetchDeckPool({
+        sameQuery: last.key === queryKey,
+        poolKeys: realPoolRef.current.map((p) => photoKey(p.uri)),
+        seenKeys: seenSetRef.current,
+        ageMs: Date.now() - last.at,
+      })
+    ) {
+      return;
+    }
     let cancelled = false;
     fetchCandidates({
       theme: activeTheme,
@@ -864,6 +829,7 @@ export default function SwipeScreen() {
     })
       .then((cands) => {
         if (cancelled) return;
+        poolQueryRef.current = { key: queryKey, at: Date.now() };
         const { mapped, ids } = mapFetchedCandidates(cands, activeTheme);
         realPhotoIdsRef.current = ids;
         // Prime the local seen ledger with any candidates whose backend
@@ -874,11 +840,12 @@ export default function SwipeScreen() {
           cands.map((c) => ({ id: c.id, uri: c.uri })),
         );
         setRealPool(mapped);
-        // Warm only the opening card — the server priority-warms the first few
-        // IDs from this response; fanning more here queues concurrent cold
-        // resizes and was the main cause of 60s+ photo stalls.
-        const first = mapped[0];
-        if (first?.uri) void prefetchPhotoUri(first.uri);
+        // The warm effect below queues the cards the deck will actually show;
+        // the server's own top picks follow them as a cheap second line.
+        warmDeckImages(
+          mapped.slice(0, 2).map((p) => p.uri),
+          8,
+        );
       })
       .catch(() => {
         // Keep the last-good deck on a transient fetch failure (API restart /
@@ -920,8 +887,10 @@ export default function SwipeScreen() {
           cands.map((c) => ({ id: c.id, uri: c.uri })),
         );
         setSuggestedPool(mapped);
-        const first = mapped[0];
-        if (first?.uri) void prefetchPhotoUri(first.uri);
+        warmDeckImages(
+          mapped.slice(0, 2).map((p) => p.uri),
+          8,
+        );
       })
       .catch(() => {
         // Preserve the last-good suggested pool on a transient failure rather
@@ -1016,6 +985,24 @@ export default function SwipeScreen() {
   // stay in flow. The full /reveal screen remains accessible via the
   // overlay's "Open" pill (and from My Journey).
   const [flashMatch, setFlashMatch] = useState<Match | null>(null);
+  const [travelOn, setTravelOn] = useState(false);
+  const [ownViews, setOwnViews] = useState<number | null>(null);
+  const reduceMotion = useReduceMotion();
+  const ownPhotoId = todaysPhoto?.backendId;
+
+  useEffect(() => {
+    if (!ownPhotoId) {
+      setOwnViews(null);
+      return;
+    }
+    let alive = true;
+    void fetchOwnPhotoViewCount(ownPhotoId).then((count) => {
+      if (alive) setOwnViews(count);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [ownPhotoId]);
 
   // Refs mirror state so callbacks stay stable and read latest values
   // without triggering re-creation (which previously caused stale closures
@@ -1044,7 +1031,7 @@ export default function SwipeScreen() {
   );
 
   const pickDeckCandidate = useCallback(
-    (currentKey?: string, excludeExtra?: string) => {
+    (currentKey?: string, excludeExtra?: string, alsoExclude?: string[]) => {
       const theme =
         usingSuggestedThemeFallbackRef.current && suggestedThemeIdRef.current
           ? suggestedThemeIdRef.current
@@ -1055,12 +1042,64 @@ export default function SwipeScreen() {
       return getTheirPhoto(
         theme,
         myTagsRef.current,
-        buildExcludeKeys(excludeExtra ?? currentKey),
+        withExtraKeys(buildExcludeKeys(excludeExtra ?? currentKey), alsoExclude),
         currentKey,
         pool,
         [],
         mySubjectsRef.current,
       );
+    },
+    [buildExcludeKeys],
+  );
+
+  // The card that follows the current one is chosen ahead of time and kept
+  // here. Picks are randomised, so choosing again at swipe time would land on
+  // a different photo than the one that was warmed — cold photo, cold clip.
+  const upcomingRef = useRef<DeckPick[]>([]);
+  // Dev timing: how long a committed card took to paint (Metro log).
+  const deckCommitRef = useRef<{ key: string; at: number; warm: boolean } | null>(
+    null,
+  );
+
+  const refillUpcoming = useCallback(
+    (currentKey: string, depth: number): DeckPick[] => {
+      const exclude = buildExcludeKeys(currentKey);
+      const kept: DeckPick[] = [];
+      for (const pick of upcomingRef.current) {
+        const k = photoKey(pick.photo.uri);
+        if (!k || exclude.has(k)) continue;
+        if (kept.some((q) => photoKey(q.photo.uri) === k)) continue;
+        kept.push(pick);
+        if (kept.length >= depth) break;
+      }
+      const unusable: string[] = [];
+      for (let tries = 0; kept.length < depth && tries < depth + 8; tries++) {
+        const pick = pickDeckCandidate(currentKey, currentKey, [
+          ...kept.map((q) => photoKey(q.photo.uri)),
+          ...unusable,
+        ]);
+        if (!pick?.photo.uri) break;
+        if (hasDeckImageFailed(pick.photo.uri)) {
+          unusable.push(photoKey(pick.photo.uri));
+          continue;
+        }
+        kept.push(pick);
+      }
+      upcomingRef.current = kept;
+      return kept;
+    },
+    [buildExcludeKeys, pickDeckCandidate],
+  );
+
+  const takeUpcoming = useCallback(
+    (currentKey: string): DeckPick | null => {
+      const exclude = buildExcludeKeys(currentKey);
+      return takeReadyFirst(upcomingRef.current, {
+        keyOf: photoKey,
+        isExcluded: (k) => exclude.has(k),
+        isReady: isDeckImageReady,
+        hasFailed: hasDeckImageFailed,
+      });
     },
     [buildExcludeKeys],
   );
@@ -1073,6 +1112,14 @@ export default function SwipeScreen() {
       if (!next) {
         setNoMore(true);
         return;
+      }
+      if (reason !== "user_swipe") upcomingRef.current = [];
+      if (__DEV__) {
+        deckCommitRef.current = {
+          key: photoKey(next.photo.uri),
+          at: Date.now(),
+          warm: isDeckImageReady(next.photo.uri),
+        };
       }
       const { requestId } = commitDisplayedCandidate(
         sessionDisplayedRef.current,
@@ -1129,7 +1176,11 @@ export default function SwipeScreen() {
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const cardScale = useSharedValue(1);
+  const cardOpacity = useSharedValue(1);
   const sameLabelOpacity = useSharedValue(0);
+  // 1 = title and buttons showing, 0 = photos only.
+  const chrome = useSharedValue(1);
+  const chromeShift = useSharedValue(0);
   const panStartX = useSharedValue(0);
   const [deckGestureEnabled, setDeckGestureEnabled] = useState(true);
   // Bumped when a swipe commits the next card. The recenter effect runs
@@ -1137,10 +1188,39 @@ export default function SwipeScreen() {
   // card slides back to center. Resetting in the animation callback put
   // the previous photo back in the middle for a frame.
   const [deckSettleToken, setDeckSettleToken] = useState(0);
+  const reduceMotionRef = useRef(reduceMotion);
+  reduceMotionRef.current = reduceMotion;
 
-  const setAnimatingOut = useCallback((v: boolean) => {
-    isAnimatingOutRef.current = v;
-    setDeckGestureEnabled(!v && flashMatchRef.current == null);
+  const swipeOutCompleteRef = useRef<(() => void) | null>(null);
+  const swipeTokenRef = useRef(0);
+  const animatingOutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const setAnimatingOut = useCallback(
+    (v: boolean) => {
+      isAnimatingOutRef.current = v;
+      if (animatingOutTimerRef.current) {
+        clearTimeout(animatingOutTimerRef.current);
+        animatingOutTimerRef.current = null;
+      }
+      if (v) {
+        // A swipe that never finishes would leave the card off-screen and the
+        // deck refusing new swipes. Hand control back if that ever happens.
+        animatingOutTimerRef.current = setTimeout(() => {
+          animatingOutTimerRef.current = null;
+          if (!isAnimatingOutRef.current || flashMatchRef.current != null) return;
+          isAnimatingOutRef.current = false;
+          swipeOutCompleteRef.current = null;
+          setDeckGestureEnabled(true);
+          resetCardMotion(translateX, translateY, cardScale, sameLabelOpacity);
+        }, SWIPE_STUCK_RECOVERY_MS);
+      }
+      setDeckGestureEnabled(!v && flashMatchRef.current == null);
+    },
+    [translateX, translateY, cardScale, sameLabelOpacity],
+  );
+  useEffect(() => {
+    return () => {
+      if (animatingOutTimerRef.current) clearTimeout(animatingOutTimerRef.current);
+    };
   }, []);
 
   // When the user uploads a new photo (which may carry a new theme/tags),
@@ -1148,13 +1228,32 @@ export default function SwipeScreen() {
   // context. The persistent ledger still applies — only the per-session
   // bypass flag is reset.
   const prevMyPhotoSessionKeyRef = useRef<string | undefined>(undefined);
+  const prevMyPhotoIdentityRef = useRef<{
+    uploadedAt?: string;
+    backendId?: string;
+  }>({});
   useEffect(() => {
+    const identity = {
+      uploadedAt: todaysPhoto?.uploadedAt,
+      backendId: todaysPhoto?.backendId?.trim() || undefined,
+    };
+    const prevIdentity = prevMyPhotoIdentityRef.current;
+    prevMyPhotoIdentityRef.current = identity;
     if (prevMyPhotoSessionKeyRef.current === undefined) {
       prevMyPhotoSessionKeyRef.current = myPhotoSessionKey;
       return;
     }
     if (prevMyPhotoSessionKeyRef.current === myPhotoSessionKey) return;
     prevMyPhotoSessionKeyRef.current = myPhotoSessionKey;
+    // The upload ack gives the same photo a backend id, which changes the key
+    // but not the photo. Re-rolling the deck then swapped the card the user was
+    // already swiping and reset the card mid-flight.
+    const sameUpload =
+      (identity.backendId != null &&
+        prevIdentity.backendId === identity.backendId) ||
+      (identity.uploadedAt != null &&
+        prevIdentity.uploadedAt === identity.uploadedAt);
+    if (sameUpload) return;
     bypassSeenRef.current = false;
     sessionDisplayedRef.current = new Set();
     // A new photo means the user's frame has changed — the previously
@@ -1220,6 +1319,21 @@ export default function SwipeScreen() {
   useEffect(() => {
     return onMuteChange(setMutedState);
   }, []);
+  // playClip() is a no-op until the first gesture. A card that is already on
+  // screen at that moment would stay silent, so re-run the music effect once
+  // the gate opens.
+  const [audioArmed, setAudioArmed] = useState<boolean>(hasUserInteracted());
+  useEffect(() => {
+    if (audioArmed) return;
+    return onUserInteracted(() => setAudioArmed(true));
+  }, [audioArmed]);
+  // Key of the card whose photo has actually painted. A card is committed
+  // as soon as its candidate is picked, but its image can take seconds to
+  // arrive; the clip waits for the picture so the music always belongs to
+  // the photo the user is looking at.
+  const [shownPhotoKey, setShownPhotoKey] = useState("");
+  const shownPhotoKeyRef = useRef("");
+  shownPhotoKeyRef.current = shownPhotoKey;
   // Play the new card's clip as soon as that card is the one on screen.
   // Waiting for the image's onLoad (or a multi-second fallback) left the
   // previous clip running through fast swipes: each swipe reset the wait,
@@ -1255,7 +1369,21 @@ export default function SwipeScreen() {
       tags: theirPhoto.tags,
       seed: theirPhoto.uri,
     });
-    if (url) playLeaseRef.current = playClip(url);
+    if (!url) return;
+    const cardKey = photoKey(theirPhoto.uri);
+    if (shownPhotoKey !== cardKey) {
+      // The new photo is not on screen yet. Silence the previous card's clip
+      // now, decode this one in the background, and start it when the photo
+      // paints. The timer keeps a photo that never loads from muting the deck.
+      void pauseAudio();
+      prewarmClip(url);
+      const t = setTimeout(
+        () => setShownPhotoKey(cardKey),
+        MUSIC_WAIT_FOR_PHOTO_MS,
+      );
+      return () => clearTimeout(t);
+    }
+    playLeaseRef.current = playClip(url);
   }, [
     theirPhoto.uri,
     theirPhoto.id,
@@ -1266,6 +1394,8 @@ export default function SwipeScreen() {
     noMore,
     fullscreenUri,
     flashMatch,
+    audioArmed,
+    shownPhotoKey,
   ]);
 
   // Stop audio when the screen unmounts (tab switch, navigation
@@ -1318,9 +1448,10 @@ export default function SwipeScreen() {
       // Fullscreen is a look-closer surface. Coming back to the tab while it
       // is still open should stay quiet; closing it restarts the clip.
       if (fullscreenUriRef.current != null) return;
-      // Restart the visible card immediately. Tab focus is the cue — do not
-      // wait for the photo decode, or returning to Ripple stays silent (or
-      // on the previous tab's loop) until the image catches up.
+      // Restart the visible card immediately. Tab focus is the cue, so a photo
+      // that already painted does not wait for anything else. A photo still on
+      // its way starts its own clip from the music effect when it paints.
+      if (shownPhotoKeyRef.current !== photoKey(photo.uri)) return;
       const url = resolveMusicUrl({
         customAudioUrl: photo.customAudioUrl,
         musicGenre: photo.musicGenre,
@@ -1338,24 +1469,8 @@ export default function SwipeScreen() {
     Haptics.selectionAsync().catch(() => {});
   }, []);
 
-  const prefetchInflightRef = useRef(new Set<string>());
   const prefetchPhotoUri = useCallback((uri: string) => {
-    const normalized = withDisplayPhotoWidth(normalizeUnsplashUri(uri));
-    if (!normalized) return Promise.resolve();
-    if (prefetchInflightRef.current.has(normalized)) {
-      return Promise.resolve();
-    }
-    prefetchInflightRef.current.add(normalized);
-    const release = () => {
-      prefetchInflightRef.current.delete(normalized);
-    };
-    if (explorePhotoUriNeedsAuth(normalized)) {
-      return authedImageHeaders()
-        .then((headers) => Image.prefetch(normalized, { headers }))
-        .catch(() => {})
-        .finally(release);
-    }
-    return Image.prefetch(normalized).catch(() => {}).finally(release);
+    warmDeckImages([uri], -1);
   }, []);
 
   // Audio analogue of prefetchPhotoUri: preload an upcoming card's vibe
@@ -1384,26 +1499,43 @@ export default function SwipeScreen() {
     [],
   );
 
+  // Warms the queued upcoming cards: every queued photo downloads in the order
+  // it will be shown (the warmer paces the authenticated server stream), and
+  // the next card's clip is decoded ahead of time.
   const prefetchDeckAhead = useCallback(
-    (count: number, afterUri?: string) => {
-      let skipKey = afterUri
+    (afterUri?: string) => {
+      const currentKey = afterUri
         ? photoKey(afterUri)
         : photoKey(theirPhotoRef.current.uri);
-      const uris: string[] = [];
-      for (let i = 0; i < count; i++) {
-        const pick = pickDeckCandidate(skipKey, skipKey);
-        if (!pick?.photo.uri) break;
-        uris.push(pick.photo.uri);
-        skipKey = photoKey(pick.photo.uri);
-      }
-      const ahead = IMAGE_LOAD_V2 ? PREFETCH_AHEAD_COUNT : count;
-      if (IMAGE_LOAD_V2) {
-        prefetchPhotoUris(uris, { max: ahead, priority: "prefetch" });
-      } else {
-        uris.slice(0, count).forEach((u) => void prefetchPhotoUri(u));
+      if (!currentKey) return;
+      const picks = refillUpcoming(currentKey, DECK_LOOKAHEAD);
+      warmDeckImages(
+        picks.map((p) => p.photo.uri),
+        0,
+      );
+      // The deck swipes to the first downloaded card, which is not always the
+      // head of the queue, so its clip is decoded ahead of time too.
+      const head = picks[0];
+      const firstReady = picks.find((p) => isDeckImageReady(p.photo.uri));
+      if (head) prewarmAudioForPhoto(head.photo);
+      if (firstReady && firstReady !== head) {
+        prewarmAudioForPhoto(firstReady.photo);
       }
     },
-    [prefetchPhotoUri, pickDeckCandidate],
+    [refillUpcoming, prewarmAudioForPhoto],
+  );
+
+  // A queued photo that finishes downloading becomes the likely next card, so
+  // its clip is decoded as soon as it is.
+  useEffect(
+    () =>
+      subscribeDeckImages(() => {
+        const ready = upcomingRef.current.find((p) =>
+          isDeckImageReady(p.photo.uri),
+        );
+        if (ready) prewarmAudioForPhoto(ready.photo);
+      }),
+    [prewarmAudioForPhoto],
   );
 
   const loadNextCandidate = useCallback(() => {
@@ -1411,66 +1543,100 @@ export default function SwipeScreen() {
     const currentKey = photoKey(currentUri);
     sessionSwipeCountRef.current += 1;
     tryActivateSuggestedThemeFallback();
-    const next = pickDeckCandidate(currentKey, currentKey);
-    // Warm only the card that's about to land. Fanning more out here (this
-    // ran twice before) floods the single-CPU image endpoint with concurrent
-    // sharp jobs, which is what made every photo crawl in. The deck ahead is
-    // warmed once, after the swap, below.
-    if (next?.photo.uri) {
-      void prefetchPhotoUri(next.photo.uri);
-    }
+    const next =
+      takeUpcoming(currentKey) ?? pickDeckCandidate(currentKey, currentKey);
     // The swipe-out animation has already finished and the card is off-screen.
     // Commit the next photo first. Recenter only after that render so the
     // previous picture cannot snap back to the middle.
     if (next) {
+      // The queue refill for the new card runs in the effect below, after the
+      // card has been committed and painted.
       applyDeckCandidate(next, "user_swipe");
-      prefetchDeckAhead(1, next.photo.uri);
     } else {
       setNoMore(true);
     }
     setDeckSettleToken((n) => n + 1);
   }, [
     buildExcludeKeys,
-    prefetchPhotoUri,
-    prefetchDeckAhead,
     pickDeckCandidate,
+    takeUpcoming,
     tryActivateSuggestedThemeFallback,
     applyDeckCandidate,
   ]);
 
+  // After a swipe the next card is held back until its suggested photo has
+  // painted, then both halves ease in together. A photo that never reports in
+  // cannot keep the deck hidden: the wait is capped.
+  const arrivePendingKeyRef = useRef<string | null>(null);
+  const arriveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const arriveCard = useCallback(() => {
+    if (arriveTimerRef.current) {
+      clearTimeout(arriveTimerRef.current);
+      arriveTimerRef.current = null;
+    }
+    arrivePendingKeyRef.current = null;
+    const duration = reduceMotionRef.current ? 0 : CARD_ARRIVE_MS;
+    cardOpacity.value = withTiming(1, { duration });
+    cardScale.value = withTiming(1, {
+      duration,
+      easing: Easing.out(Easing.cubic),
+    });
+    setAnimatingOut(false);
+  }, [cardOpacity, cardScale, setAnimatingOut]);
+  useEffect(
+    () => () => {
+      if (arriveTimerRef.current) clearTimeout(arriveTimerRef.current);
+    },
+    [],
+  );
+
   useEffect(() => {
     if (deckSettleToken === 0) return;
-    resetCardMotion(translateX, translateY, cardScale, sameLabelOpacity);
-    setAnimatingOut(false);
+    translateX.value = 0;
+    translateY.value = 0;
+    sameLabelOpacity.value = 0;
+    cardScale.value = CARD_ARRIVE_FROM_SCALE;
+    cardOpacity.value = 0;
+    const current = theirPhotoRef.current;
+    const key = current.id === "placeholder" ? "" : photoKey(current.uri);
+    if (!key) {
+      arriveCard();
+      return;
+    }
+    arrivePendingKeyRef.current = key;
+    if (arriveTimerRef.current) clearTimeout(arriveTimerRef.current);
+    arriveTimerRef.current = setTimeout(arriveCard, CARD_ARRIVE_MAX_WAIT_MS);
   }, [
     deckSettleToken,
     translateX,
     translateY,
     cardScale,
+    cardOpacity,
     sameLabelOpacity,
-    setAnimatingOut,
+    arriveCard,
   ]);
+
+  // The first live pool replaces the stock cards the deck opened with. Keep the
+  // card that is next in line, but let the live ones follow it.
+  const prevPoolLenRef = useRef(0);
+  useEffect(() => {
+    const before = prevPoolLenRef.current;
+    prevPoolLenRef.current = realPool.length;
+    if (before === 0 && realPool.length > 0) {
+      upcomingRef.current = upcomingRef.current.slice(0, 1);
+    }
+  }, [realPool.length]);
 
   // Warm the next card in the deck so the swap does not flash a blank pane.
   useEffect(() => {
     if (noMore || theirPhoto.id === "placeholder") return;
-    let skipKey = photoKey(theirPhoto.uri);
-    for (let i = 0; i < 2; i++) {
-      const next = pickDeckCandidate(skipKey, skipKey);
-      if (!next?.photo.uri) break;
-      // Images: only the immediate next card. Audio: the next two clips,
-      // so a quick second swipe is already decoded.
-      if (i === 0) void prefetchPhotoUri(next.photo.uri);
-      prewarmAudioForPhoto(next.photo);
-      skipKey = photoKey(next.photo.uri);
-    }
+    prefetchDeckAhead();
   }, [
     theirPhoto.uri,
     theirPhoto.id,
     noMore,
-    pickDeckCandidate,
-    prefetchPhotoUri,
-    prewarmAudioForPhoto,
+    realPool.length,
+    prefetchDeckAhead,
   ]);
 
   // Warm-on-focus: when the Ripple tab regains focus the per-card prefetch
@@ -1489,25 +1655,9 @@ export default function SwipeScreen() {
         warmAudioSession();
         const current = theirPhotoRef.current;
         if (current?.uri && current.id !== "placeholder") {
-          if (IMAGE_LOAD_V2) {
-            prioritizeHeroPrefetch(
-              withDisplayPhotoWidth(
-                normalizeUnsplashUri(current.uri),
-                HERO_DISPLAY_WIDTH,
-              ),
-            );
-          } else {
-            void prefetchPhotoUri(current.uri);
-          }
-          // Preload the upcoming card's vibe too so the first swipe after
-          // returning to Ripple starts its music instantly.
-          const next = pickDeckCandidate(
-            photoKey(current.uri),
-            photoKey(current.uri),
-          );
-          if (next?.photo.uri) prewarmAudioForPhoto(next.photo);
+          prefetchPhotoUri(current.uri);
         }
-        prefetchDeckAhead(1);
+        prefetchDeckAhead();
         const myUri = myPhotoUriRef.current;
         if (myUri) {
           prioritizeHeroPrefetch(
@@ -1517,18 +1667,12 @@ export default function SwipeScreen() {
         void flushImageTelemetryIfDue(getPublicApiOrigin());
       });
       return () => deferred.cancel();
-    }, [
-      prefetchPhotoUri,
-      prefetchDeckAhead,
-      pickDeckCandidate,
-      prewarmAudioForPhoto,
-    ]),
+    }, [prefetchPhotoUri, prefetchDeckAhead]),
   );
 
   const handleSwipeRef = useRef<
     (dir: "left" | "right", animateOut?: boolean) => void
   >(() => {});
-  const swipeOutCompleteRef = useRef<(() => void) | null>(null);
   const runSwipeOutComplete = useCallback(() => {
     swipeOutCompleteRef.current?.();
     swipeOutCompleteRef.current = null;
@@ -1537,12 +1681,27 @@ export default function SwipeScreen() {
     handleSwipeRef.current(dir, false);
   }, []);
 
+  const [chromeShown, setChromeShown] = useState(true);
+  const setChrome = useCallback(
+    (show: boolean) => {
+      setChromeShown(show);
+      chrome.value = withTiming(show ? 1 : 0, {
+        duration: reduceMotion ? 0 : 260,
+      });
+    },
+    [chrome, reduceMotion],
+  );
+  const hideChromeForSwipe = useCallback(() => {
+    setChrome(false);
+  }, [setChrome]);
+
   const handleSwipe = useCallback(
     (dir: "left" | "right", animateOut = true) => {
       if (isAnimatingOutRef.current) return;
       // Don't record a swipe when there's nothing to swipe on.
       if (noMore) return;
       setAnimatingOut(true);
+      setChrome(false);
 
       // A swipe is an explicit user gesture — open the audio gate so
       // the reveal effect's playClip() actually plays.
@@ -1571,8 +1730,6 @@ export default function SwipeScreen() {
       const snapshotTheirSharedAt =
         snapshotPhoto.createdAt ??
         new Date(Date.now() - snapshotPhoto.minutesAgo * 60000).toISOString();
-
-      prefetchDeckAhead(1, snapshotPhoto.uri);
 
       const onSwipeOutComplete = () => {
         const voterPhotoId = pickVoterPhotoBackendId(myPhotos, {
@@ -1697,6 +1854,9 @@ export default function SwipeScreen() {
         }
         if (dir === "right") {
           // Celebration overlay — leave card off-screen; advance deck on dismiss.
+          void playRippleSoundIfEnabled();
+          setTravelOn(true);
+          setTimeout(() => setTravelOn(false), reduceMotion ? 600 : 2000);
           setFlashMatch(matchWithStats);
           deckAdvancedForFlashRef.current = false;
           sameLabelOpacity.value = 0;
@@ -1719,6 +1879,14 @@ export default function SwipeScreen() {
       };
 
       swipeOutCompleteRef.current = onSwipeOutComplete;
+      // The animation's completion callback crosses from the UI thread and is
+      // dropped if the animation is interrupted. This timer guarantees the
+      // swipe still commits; whichever runs second finds nothing to do.
+      swipeTokenRef.current += 1;
+      const swipeToken = swipeTokenRef.current;
+      setTimeout(() => {
+        if (swipeTokenRef.current === swipeToken) runSwipeOutComplete();
+      }, SWIPE_OUT_MS + 250);
 
       if (animateOut) {
         playSwipeOutAnimation(
@@ -1732,6 +1900,9 @@ export default function SwipeScreen() {
           },
         );
       }
+      // Queue refill and image warming run after the swipe animation has been
+      // handed to the UI thread, never in front of it.
+      setTimeout(() => prefetchDeckAhead(snapshotPhoto.uri), 0);
     },
     [
       sharedTags,
@@ -1747,9 +1918,11 @@ export default function SwipeScreen() {
       todaysPhoto?.backendId,
       todaysPhoto?.captureCountryCode,
       runEchoVoteRetry,
+      reduceMotion,
       prefetchDeckAhead,
       runSwipeOutComplete,
       setAnimatingOut,
+      setChrome,
       noMore,
       refreshEchoes,
     ]
@@ -1769,6 +1942,9 @@ export default function SwipeScreen() {
     .failOffsetY([-100, 100])
     .onBegin(() => {
       panStartX.value = translateX.value;
+    })
+    .onStart(() => {
+      runOnJS(hideChromeForSwipe)();
     })
     .onUpdate((e) => {
       translateX.value = panStartX.value + e.translationX;
@@ -1803,6 +1979,7 @@ export default function SwipeScreen() {
     });
 
   const cardAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: cardOpacity.value,
     transform: [
       { translateX: translateX.value },
       { translateY: translateY.value },
@@ -1820,6 +1997,17 @@ export default function SwipeScreen() {
   const sameLabelAnimatedStyle = useAnimatedStyle(() => ({
     opacity: sameLabelOpacity.value,
   }));
+  const chromeAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: chrome.value,
+  }));
+  const chromeHandleAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: 1 - chrome.value,
+  }));
+  // Corner badges on the top photo sit below the title while it shows and
+  // slide up to the corner when it fades.
+  const topBadgeAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: chrome.value * chromeShift.value }],
+  }));
 
   useEffect(() => {
     setDeckGestureEnabled(!isAnimatingOutRef.current && flashMatch == null);
@@ -1829,11 +2017,59 @@ export default function SwipeScreen() {
   const bottomPadding = Platform.OS === "web" ? 34 : insets.bottom;
   const tabBarClearance =
     Platform.OS === "web" ? 90 : tabBarTotalHeight(insets);
+  // Android's tab bar sits below the deck; elsewhere it floats over the photos.
+  const barOverlap = Platform.OS === "android" ? 0 : tabBarClearance;
+  const [headerHeight, setHeaderHeight] = useState(topPadding + 76);
+  useEffect(() => {
+    chromeShift.value = headerHeight;
+  }, [chromeShift, headerHeight]);
   // Treat the user as "no photo for today" if their last upload is from a
   // previous UTC day — this makes Start Matching prompt for a fresh photo
   // each new daily-challenge cycle instead of recycling yesterday's.
   const hasUploadedPhoto =
     todaysPhoto !== undefined && sanitizeUserOwnPhotoUri(myPhotoUri) !== "";
+  // Photos fill the screen while a deck is showing; the title and buttons
+  // fade away during swiping. Every other state keeps them visible.
+  const chromeActive = hasUploadedPhoto && !noMore;
+  const chromeVisible = !chromeActive || chromeShown;
+  useEffect(() => {
+    if (!chromeActive) setChrome(true);
+  }, [chromeActive, setChrome]);
+  // The main menu goes with them. Leaving Ripple always brings it back. Once a
+  // deck is showing, the title, buttons and menu start hidden and only the
+  // handle brings them back (for a few seconds). Ripple stays mounted while
+  // other tabs are open, so everything here is tied to this tab having focus:
+  // the menu must never hide anywhere else.
+  const [tabFocused, setTabFocused] = useState(false);
+  const menuHidden = tabFocused && chromeActive && !chromeShown;
+  useEffect(() => {
+    setTabBarHidden(menuHidden);
+  }, [menuHidden]);
+  const chromeActiveRef = useRef(chromeActive);
+  chromeActiveRef.current = chromeActive;
+  useFocusEffect(
+    useCallback(() => {
+      setTabFocused(true);
+      setChrome(!chromeActiveRef.current);
+      return () => {
+        setTabFocused(false);
+        setTabBarHidden(false);
+      };
+    }, [setChrome]),
+  );
+  useEffect(() => {
+    return () => setTabBarHidden(false);
+  }, []);
+  // The deck appearing (after sign-in, upload or a refill) starts hidden too.
+  useEffect(() => {
+    if (tabFocused && chromeActive) setChrome(false);
+  }, [tabFocused, chromeActive, setChrome]);
+  // After the handle brings them back, they step aside again a few seconds on.
+  useEffect(() => {
+    if (!tabFocused || !chromeActive || !chromeShown) return;
+    const t = setTimeout(() => setChrome(false), CHROME_AUTO_HIDE_MS);
+    return () => clearTimeout(t);
+  }, [tabFocused, chromeActive, chromeShown, setChrome]);
 
   // Production builds used to mount with realPool=[] and stock off, so
   // `initial` was null → permanent "all caught up" even after /candidates
@@ -1870,17 +2106,38 @@ export default function SwipeScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <OceanShimmer />
-      <View style={[styles.header, { paddingTop: topPadding + 8 }]}>
+      <Reanimated.View
+        pointerEvents={chromeVisible ? "box-none" : "none"}
+        onLayout={(e) => setHeaderHeight(Math.round(e.nativeEvent.layout.height))}
+        style={[
+          styles.header,
+          styles.headerOverlay,
+          { paddingTop: topPadding + 8 },
+          chromeActive ? chromeAnimatedStyle : null,
+        ]}
+      >
+        {chromeActive ? (
+          <LinearGradient
+            colors={["rgba(0,0,0,0.6)", "rgba(0,0,0,0)"]}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+        ) : null}
         <View style={{ flex: 1, marginRight: 12, minWidth: 0 }}>
           <EchoLogo
             size="sm"
-            color={colors.foreground}
-            taglineColor={colors.mutedForeground}
+            color={chromeActive ? "#FFFFFF" : colors.foreground}
+            taglineColor={
+              chromeActive ? "rgba(255,255,255,0.8)" : colors.mutedForeground
+            }
           />
           <Text
             style={[
               styles.subtitle,
-              { color: colors.mutedForeground, marginTop: 4 },
+              {
+                color: chromeActive ? "rgba(255,255,255,0.8)" : colors.mutedForeground,
+                marginTop: 4,
+              },
             ]}
           >
             {streakCount > 0 ? `${streakCount} matches` : "Find your similar"}
@@ -1920,10 +2177,15 @@ export default function SwipeScreen() {
             <Icon name="camera" size={20} color="#fff" />
           </PressableScale>
         </View>
-      </View>
+      </Reanimated.View>
 
       {!hasUploadedPhoto ? (
-        <View style={[styles.challengeBar, { borderColor: colors.border }]}>
+        <View
+          style={[
+            styles.challengeBar,
+            { borderColor: colors.border, marginTop: headerHeight },
+          ]}
+        >
           <Text style={styles.challengeEmoji}>{todaysChallenge.emoji}</Text>
           <Text style={[styles.challengeText, { color: colors.mutedForeground }]}>
             {"Today's prompt: "}
@@ -1934,7 +2196,17 @@ export default function SwipeScreen() {
         </View>
       ) : null}
 
-      <View style={[styles.cardArea, { paddingBottom: tabBarClearance }]}>
+      <View
+        style={[
+          styles.cardArea,
+          chromeActive
+            ? styles.cardAreaFull
+            : {
+                paddingBottom: tabBarClearance,
+                paddingTop: hasUploadedPhoto ? headerHeight : 0,
+              },
+        ]}
+      >
         {!hasUploadedPhoto && (
           <View
             style={[
@@ -2242,7 +2514,11 @@ export default function SwipeScreen() {
             </View>
           </View>
         )}
-        {hasUploadedPhoto && !noMore && usingSuggestedThemeFallback && suggestedThemeId && (
+        <Reanimated.View
+          pointerEvents="none"
+          style={[styles.topChips, { top: headerHeight }, chromeAnimatedStyle]}
+        >
+        {chromeActive && usingSuggestedThemeFallback && suggestedThemeId && (
           <View
             style={{
               alignSelf: "center",
@@ -2262,7 +2538,7 @@ export default function SwipeScreen() {
             </Text>
           </View>
         )}
-        {hasUploadedPhoto && !noMore && objectMatchTags && objectMatchTags.length > 0 && (
+        {chromeActive && objectMatchTags && objectMatchTags.length > 0 && (
           <View
             style={{
               alignSelf: "center",
@@ -2283,6 +2559,7 @@ export default function SwipeScreen() {
             </Text>
           </View>
         )}
+        </Reanimated.View>
         {hasUploadedPhoto && !noMore && (
         <GestureDetector gesture={panGesture}>
         <Reanimated.View
@@ -2323,21 +2600,38 @@ export default function SwipeScreen() {
               />
               {isAiPhoto(myPhotoUri) ? <AiGeneratedBadge size="sm" /> : null}
               {myPhotoDisplay.code ? (
-                <View
-                  style={[styles.photoCountryBadge, { backgroundColor: "rgba(0,0,0,0.55)" }]}
+                <Reanimated.View
+                  style={[
+                    styles.photoCountryBadge,
+                    { backgroundColor: "rgba(0,0,0,0.55)" },
+                    topBadgeAnimatedStyle,
+                  ]}
                   accessibilityLabel={`Posted from ${myPhotoDisplay.name}`}
                 >
                   <Text style={styles.photoCountryBadgeText}>
                     {myPhotoDisplay.flag}
                   </Text>
-                </View>
+                </Reanimated.View>
               ) : null}
-              <View style={[styles.expandHint, { backgroundColor: "rgba(0,0,0,0.45)" }]}>
+              <Reanimated.View
+                style={[
+                  styles.expandHint,
+                  { backgroundColor: "rgba(0,0,0,0.45)" },
+                  topBadgeAnimatedStyle,
+                ]}
+              >
                 <Icon name="maximize" size={12} color="#fff" />
-              </View>
+              </Reanimated.View>
+              {ownViews != null ? (
+                <Text style={styles.ownViewsLine} pointerEvents="none">
+                  {ownViews === 1
+                    ? "1 person has seen your moment"
+                    : `${ownViews.toLocaleString("en-US")} people have seen your moment`}
+                </Text>
+              ) : null}
             </Pressable>
 
-            <View style={[styles.divider, { backgroundColor: colors.card }]}>
+            <View style={styles.divider} pointerEvents="none">
               <View style={[styles.vsChip, { backgroundColor: colors.secondary }]}>
                 <Text style={[styles.vsText, { color: colors.mutedForeground }]}>
                   vs
@@ -2366,6 +2660,25 @@ export default function SwipeScreen() {
                 recyclingKey={`match-their:${candidateDisplayToken}:${photoKey(theirPhoto.uri)}`}
                 displayWidth={HERO_DISPLAY_WIDTH}
                 priority="hero"
+                onResolved={(loadedRealImage) => {
+                  if (
+                    arrivePendingKeyRef.current ===
+                    photoKey(theirPhotoRef.current.uri)
+                  ) {
+                    arriveCard();
+                  }
+                  if (loadedRealImage) {
+                    const key = photoKey(theirPhotoRef.current.uri);
+                    setShownPhotoKey(key);
+                    const commit = deckCommitRef.current;
+                    if (__DEV__ && commit && commit.key === key) {
+                      deckCommitRef.current = null;
+                      console.log(
+                        `[deck] card painted ${Date.now() - commit.at}ms after commit (warm=${commit.warm})`,
+                      );
+                    }
+                  }
+                }}
               />
               )}
               {theirPhoto.uri ? (
@@ -2435,12 +2748,13 @@ export default function SwipeScreen() {
             </Pressable>
 
             {/* Floating action buttons overlaid on the bottom of the card */}
-            <View
+            <Reanimated.View
               style={[
                 styles.actionOverlay,
-                { paddingBottom: 14 },
+                { paddingBottom: 14 + barOverlap },
+                chromeAnimatedStyle,
               ]}
-              pointerEvents="box-none"
+              pointerEvents={chromeVisible ? "box-none" : "none"}
             >
               <TouchableOpacity
                 style={[styles.actionBtn, styles.skipBtn]}
@@ -2464,12 +2778,38 @@ export default function SwipeScreen() {
               >
                 <Icon name="ripple" size={30} color="#001018" />
               </TouchableOpacity>
-            </View>
+            </Reanimated.View>
+
+            {chromeActive ? (
+              <Reanimated.View
+                style={[
+                  styles.chromeHandleWrap,
+                  { bottom: 2 + (menuHidden ? tabBarBottomInset(insets) : barOverlap) },
+                  chromeHandleAnimatedStyle,
+                ]}
+                pointerEvents={chromeShown ? "none" : "box-none"}
+              >
+                <ChromeHandle
+                  onPress={() => setChrome(true)}
+                  reduceMotion={reduceMotion}
+                />
+              </Reanimated.View>
+            ) : null}
           </View>
         </Reanimated.View>
         </GestureDetector>
         )}
       </View>
+
+      {travelOn ? (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <RippleTravellingMap
+            width={Dimensions.get("window").width}
+            height={Dimensions.get("window").height}
+            reduceMotion={reduceMotion}
+          />
+        </View>
+      ) : null}
 
       {/* Celebration overlay — deck advances under it on Ripple swipe. */}
       {flashMatch && (() => {
@@ -2587,10 +2927,10 @@ export default function SwipeScreen() {
 
       <View style={{ paddingBottom: bottomPadding }} />
 
-      {/* DEV-only dedup ledger debug pill. Anonymity-safe — shows only
-          opaque photo keys, never country, name, or any identity. Hidden
-          in release builds via the __DEV__ gate. */}
-      {__DEV__ && (
+      {/* Dedup ledger debug pill. Anonymity-safe — shows only opaque photo
+          keys, never country, name, or any identity. Off unless a dev build
+          sets EXPO_PUBLIC_SHOW_DEDUP_DEBUG=1. */}
+      {SHOW_DEDUP_DEBUG && (
         <>
           <TouchableOpacity
             onPress={() => setDebugOpen(true)}
@@ -2657,7 +2997,7 @@ export default function SwipeScreen() {
   );
 }
 
-const CARD_WIDTH = RIPPLE_CARD_WIDTH;
+const EMPTY_CARD_WIDTH = RIPPLE_CARD_WIDTH - 24;
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -2773,12 +3113,62 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: Platform.OS === "web" ? 90 : 70,
   },
+  cardAreaFull: {
+    alignItems: "stretch",
+    justifyContent: "flex-start",
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: 0,
+  },
+  headerOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 20,
+  },
+  topChips: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    zIndex: 15,
+  },
+  ownViewsLine: {
+    position: "absolute",
+    bottom: 22,
+    left: 0,
+    right: 0,
+    textAlign: "center",
+    color: "#A8D8EA",
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    textShadowColor: "rgba(0,0,0,0.75)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  chromeHandleWrap: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 12,
+  },
+  chromeHandle: {
+    width: 64,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+  },
   cardWrapper: {
-    width: CARD_WIDTH,
+    width: "100%",
     flex: 1,
   },
   emptyCard: {
-    width: CARD_WIDTH,
+    width: EMPTY_CARD_WIDTH,
     borderRadius: 24,
     borderWidth: 1,
     paddingVertical: 36,
@@ -2834,6 +3224,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 14,
     borderWidth: 1,
+    borderRadius: 24,
   },
   emptyStateEmoji: {
     fontSize: 56,
@@ -2878,11 +3269,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   card: {
-    width: CARD_WIDTH,
+    width: "100%",
     flex: 1,
-    borderRadius: 24,
     overflow: "hidden",
-    borderWidth: 1,
     position: "relative",
   },
   photoSection: {
@@ -3084,3 +3473,14 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
+
+perfMark("match module evaluated");
+
+export default function SwipeScreen() {
+  if (__DEV__) perfMark("SwipeScreen render start");
+  return (
+    <Profiler id="match" onRender={reportSlowRender}>
+      <SwipeScreenInner />
+    </Profiler>
+  );
+}

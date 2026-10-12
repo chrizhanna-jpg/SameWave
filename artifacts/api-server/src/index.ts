@@ -7,6 +7,7 @@ import { getAndroidLatestDebugInfo } from "./androidLatest";
 import { warmStockDisplayCache } from "./lib/warmStockDisplayCache";
 import { startDeckEncodeBackfill } from "./lib/deckEncodeBackfill";
 import { ensureDeckPreviewSchema } from "./lib/ensureDeckPreviewSchema";
+import { ensureUxWaveSchema } from "./lib/ensureUxWaveSchema";
 
 const rawPort = process.env["PORT"];
 
@@ -28,6 +29,7 @@ const listenHost = process.env["LISTEN_HOST"]?.trim() || "0.0.0.0";
 void (async () => {
   try {
     await ensureDeckPreviewSchema();
+    await ensureUxWaveSchema();
   } catch (err) {
     logger.error({ err }, "startup aborted — deck preview schema");
     process.exit(1);

@@ -3,6 +3,7 @@ import {
   pgTable,
   varchar,
   timestamp,
+  boolean,
   uniqueIndex,
   index,
   check,
@@ -53,6 +54,12 @@ export const echoesTable = pgTable(
     ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     mutualAt: timestamp("mutual_at"),
+    // Generated when the pair becomes mutual. "The Quiet Morning Wave".
+    waveName: varchar("wave_name", { length: 80 }),
+    keptLow: boolean("kept_low").notNull().default(false),
+    keptHigh: boolean("kept_high").notNull().default(false),
+    shareLow: boolean("share_low").notNull().default(false),
+    shareHigh: boolean("share_high").notNull().default(false),
   },
   (t) => ({
     pairUniq: uniqueIndex("echoes_pair_uniq").on(t.photoLowId, t.photoHighId),

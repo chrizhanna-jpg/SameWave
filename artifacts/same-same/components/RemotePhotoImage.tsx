@@ -22,16 +22,18 @@ import {
   getStagedProductionApiOrigin,
 } from "@/utils/publicEnv";
 import {
-  canonicalizePhotoStreamUri,
   sanitizeUserOwnPhotoUri,
-  shouldCanonicalizePhotoStreamUri,
-  withDisplayPhotoWidth,
+  shouldResetDisplayedPhoto,
 } from "@/utils/photoDisplayUri";
+import { normalizeRemotePhotoUri } from "@/utils/remotePhotoSource";
+import { isDeckImageReady } from "@/utils/deckImageWarmer";
+import { UNSPLASH_FALLBACK_URI } from "@/utils/unsplashUri";
 import {
-  normalizeUnsplashUri,
-  UNSPLASH_FALLBACK_URI,
-} from "@/utils/unsplashUri";
-import { BLANK_FRAME_THRESHOLD_MS, CACHE_HIT_LATENCY_MS, IMAGE_LOAD_V2 } from "@/constants/imageLoading";
+  BLANK_FRAME_THRESHOLD_MS,
+  CACHE_HIT_LATENCY_MS,
+  HERO_DISPLAY_WIDTH,
+  IMAGE_LOAD_V2,
+} from "@/constants/imageLoading";
 import {
   prioritizeHeroPrefetch,
   recordImageLoadComplete,
@@ -78,19 +80,6 @@ type Props = {
 
 const MAX_RETRIES_PER_SOURCE = 2;
 const RETRY_BACKOFF_MS = [500, 1300];
-
-function normalizeRemotePhotoUri(
-  uri: string | null | undefined,
-  displayWidth?: number,
-): string {
-  const trimmed = typeof uri === "string" ? uri.trim() : "";
-  if (!trimmed) return "";
-  const stream = shouldCanonicalizePhotoStreamUri(trimmed)
-    ? canonicalizePhotoStreamUri(trimmed)
-    : trimmed;
-  const w = displayWidth && displayWidth > 0 ? displayWidth : undefined;
-  return withDisplayPhotoWidth(normalizeUnsplashUri(stream), w ?? undefined);
-}
 
 function rewriteApiOrigin(uri: string, origin: string): string | null {
   try {
@@ -186,12 +175,16 @@ export function RemotePhotoImage({
   const [useHosted, setUseHosted] = useState(false);
   const [exhausted, setExhausted] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  const [loaded, setLoaded] = useState(false);
+  // The source that finished loading. Tracking it (instead of a boolean that an
+  // effect clears on every photo change) means a cached image that loads before
+  // that effect runs is still treated as loaded.
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
   const [manualRetry, setManualRetry] = useState(0);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadStartedAt = useRef<number | null>(null);
   const blankTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadGeneration = useRef(0);
+  const loadResetRef = useRef({ uri: "", retry: -1 });
 
   const clearRetryTimer = () => {
     if (retryTimer.current) {
@@ -208,19 +201,27 @@ export function RemotePhotoImage({
   };
 
   useEffect(() => {
+    const prev = loadResetRef.current;
+    const reset = shouldResetDisplayedPhoto({
+      previousUri: prev.uri,
+      nextUri: normalized,
+      previousManualRetry: prev.retry,
+      nextManualRetry: manualRetry,
+    });
+    loadResetRef.current = { uri: normalized, retry: manualRetry };
+    if (!reset) return;
     loadGeneration.current += 1;
     setUsedFallback(false);
     setUseHosted(false);
     setExhausted(false);
     setAttempt(0);
-    setLoaded(false);
     clearRetryTimer();
     clearBlankTimer();
     return () => {
       clearRetryTimer();
       clearBlankTimer();
     };
-  }, [normalized, normalizedFallback, manualRetry]);
+  }, [normalized, manualRetry]);
 
   useEffect(() => {
     if (!IMAGE_LOAD_V2 || !normalized) return;
@@ -293,6 +294,7 @@ export function RemotePhotoImage({
     exhausted && !viewerOwnPhoto
       ? UNSPLASH_FALLBACK_URI
       : withRetryNonce(drawableBase, attempt);
+  const loaded = loadedSrc !== null && loadedSrc === src;
   const stableKey =
     recyclingKey ??
     (usedFallback ? `fb:${drawableBase || "empty"}` : drawableBase || "empty");
@@ -314,7 +316,12 @@ export function RemotePhotoImage({
   };
 
   const handleError = () => {
+    const gen = loadGeneration.current;
     if (exhausted) return;
+    // Once the viewer's own photo is on screen, ignore later errors. Swiping
+    // the deck re-renders this image; a stale onError used to spend the retry
+    // budget, hide the frame, and leave the black pane under the flag badge.
+    if (viewerOwnPhoto && loaded) return;
     clearRetryTimer();
     const onLocalCapture =
       !usedFallback &&
@@ -328,12 +335,12 @@ export function RemotePhotoImage({
       const delay =
         RETRY_BACKOFF_MS[Math.min(attempt, RETRY_BACKOFF_MS.length - 1)] ?? 800;
       retryTimer.current = setTimeout(() => {
+        if (gen !== loadGeneration.current) return;
         if (needsAuth) {
           void refreshAuthedImageHeaders()
             .then((h) => setAuthHeaders(h))
             .catch(() => {});
         }
-        setLoaded(false);
         setAttempt((a) => a + 1);
       }, delay);
       return;
@@ -345,7 +352,19 @@ export function RemotePhotoImage({
   const hasDrawableSource =
     (typeof src === "string" ? src : "").trim().length > 0 &&
     !(viewerOwnPhoto && exhausted);
-  const showSkeleton = waitingForAuth || !loaded || !hasDrawableSource;
+  // A deck photo that already downloaded paints within a frame or two; the
+  // pulsing placeholder would only flash in between. A failed load (attempt or
+  // fallback change) brings the placeholder back.
+  const paintsImmediately =
+    displayWidth === HERO_DISPLAY_WIDTH &&
+    attempt === 0 &&
+    !usedFallback &&
+    !exhausted &&
+    isDeckImageReady(safeUri);
+  const showSkeleton =
+    waitingForAuth ||
+    (!loaded && !paintsImmediately) ||
+    !hasDrawableSource;
 
   useEffect(() => {
     if (!showSkeleton || exhausted) {
@@ -370,7 +389,7 @@ export function RemotePhotoImage({
     clearRetryTimer();
     clearBlankTimer();
     if (gen !== loadGeneration.current) return;
-    setLoaded(true);
+    setLoadedSrc(src);
     const started = loadStartedAt.current;
     const elapsed = started != null ? Date.now() - started : undefined;
     if (started != null) {
@@ -392,7 +411,7 @@ export function RemotePhotoImage({
     setUsedFallback(false);
     setUseHosted(false);
     setAttempt(0);
-    setLoaded(false);
+    setLoadedSrc(null);
     setManualRetry((n) => n + 1);
   };
 
@@ -409,6 +428,7 @@ export function RemotePhotoImage({
           style={[StyleSheet.absoluteFill, { opacity: loaded ? 1 : 0 }]}
           contentFit={resizeMode}
           cachePolicy="memory-disk"
+          priority={priority === "hero" ? "high" : "normal"}
           recyclingKey={stableKey}
           transition={transitionMs > 0 ? transitionMs : undefined}
           accessibilityLabel={accessibilityLabel}
@@ -416,7 +436,7 @@ export function RemotePhotoImage({
           onError={handleError}
         />
       ) : null}
-      {exhausted && !viewerOwnPhoto ? (
+      {exhausted ? (
         <Pressable
           style={styles.retryOverlay}
           onPress={handleManualRetry}
@@ -442,7 +462,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#1b2027",
   },
   retryOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(15,17,21,0.55)",

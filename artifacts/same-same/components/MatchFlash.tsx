@@ -381,7 +381,7 @@ export function MatchFlash({
 
 const styles = StyleSheet.create({
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   center: {
     flex: 1,

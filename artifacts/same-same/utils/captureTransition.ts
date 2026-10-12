@@ -14,6 +14,7 @@ import {
 import type { MusicGenre } from "@/data/musicLibrary";
 import { prepareUploadImages } from "@/utils/uploadImageProcessing";
 import { uploadPhoto } from "@/utils/api";
+import { saveWhisper } from "@/utils/keptWaves";
 import { postDebugSessionLog } from "@/utils/debugSessionLog";
 import {
   prioritizeHeroPrefetch,
@@ -158,6 +159,7 @@ export type BackgroundPhotoUploadInput = {
   subjects?: string[];
   customAudioBase64?: string;
   customAudioMime?: string;
+  whisper?: string;
 };
 
 export function startBackgroundPhotoUpload(
@@ -205,12 +207,17 @@ export function startBackgroundPhotoUpload(
         theme: input.theme,
         tags: input.tags,
         subjects: input.subjects?.length ? input.subjects : undefined,
+        whisper: input.whisper,
       });
       if (!isCaptureRequestCurrent(requestId)) {
         recordCaptureTransitionEvent("request.cancelled", { phase: "upload-ack", requestId });
         return;
       }
       if (res?.id) {
+        if (input.whisper?.trim()) {
+          void saveWhisper(res.id, input.whisper);
+          void saveWhisper(localUri, input.whisper);
+        }
         handlers.setMyPhotoBackendId(localUri, {
           backendId: res.id,
           subjects: res.subjects,

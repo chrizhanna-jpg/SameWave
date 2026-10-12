@@ -14,6 +14,7 @@ import { useColors } from "@/hooks/useColors";
 import { SHOW_DISCOVER_TAB } from "@/constants/featureFlags";
 import { useApp } from "@/context/AppContext";
 import { onAllTabsVisited } from "@/utils/tabVisits";
+import { useTabBarHidden } from "@/utils/tabBarVisibility";
 import {
   TAB_BAR_PADDING_TOP,
   tabBarBottomInset,
@@ -120,6 +121,7 @@ export default function TabLayout() {
   const isWeb = Platform.OS === "web";
   const isAndroid = Platform.OS === "android";
   const insets = useSafeAreaInsets();
+  const menuHidden = useTabBarHidden();
   const tabBottomInset = tabBarBottomInset(insets);
   const tabBarHeight = isWeb ? 84 : tabBarTotalHeight(insets);
   const {
@@ -199,6 +201,7 @@ export default function TabLayout() {
           height: tabBarHeight,
           paddingTop: TAB_BAR_PADDING_TOP,
           paddingBottom: tabBottomInset,
+          ...(menuHidden ? { display: "none" as const } : null),
         },
         tabBarBackground: () =>
           isIOS ? (
@@ -286,10 +289,10 @@ export default function TabLayout() {
       <Tabs.Screen
         name="atlas"
         options={{
-          title: "Atlas",
+          title: "World",
           tabBarIcon: ({ color, focused }) => (
             <TabIcon
-              name="spiral"
+              name="globe"
               color={color}
               focused={focused}
               activeColor={colors.primary}

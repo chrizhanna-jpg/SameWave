@@ -1,3 +1,4 @@
+import { AppState as AppLifecycle } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, {
   createContext,
@@ -167,6 +168,13 @@ export interface MyPhotoUploadAck {
   suggestedTheme?: string;
 }
 
+/** Header sync spinner never runs longer than this, whatever the network does. */
+const CLOUD_SYNC_MAX_MS = 25_000;
+/** State writes are batched this long so they never sit in front of a repaint. */
+const PERSIST_DEBOUNCE_MS = 400;
+/** First background sync waits so launch taps and tab switches stay responsive. */
+const CLOUD_SYNC_FIRST_DELAY_MS = 1200;
+
 // Module-scoped registry of URIs flagged as AI. Kept in sync with the
 // `myPhotos` slice so any PhotoCard rendering one of these URIs can show
 // the AI badge without prop drilling. Sample photos use the same pattern.
@@ -306,6 +314,7 @@ export interface PhotoSide {
   country: string;
   countryFlag: string;
   theme?: string;
+  whisper?: string | null;
 }
 
 export interface EchoCard {
@@ -316,6 +325,11 @@ export interface EchoCard {
   mutualAt: string | null;
   /** True when this user sent the first Ripple on the pair. */
   youSentFirst?: boolean;
+  waveName?: string;
+  mineWaveCount?: number;
+  theirsWaveCount?: number;
+  keptForMe?: boolean;
+  shareForMe?: boolean;
   mine: PhotoSide;
   theirs: PhotoSide;
 }
@@ -748,7 +762,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [serializeMyPhotosForStorage],
   );
 
+  const pendingPersistRef = useRef<AppState | null>(null);
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const persistState = useCallback(async (newState: AppState) => {
+    // A direct write is the freshest state; drop any queued older snapshot.
+    pendingPersistRef.current = null;
+    if (persistTimerRef.current) {
+      clearTimeout(persistTimerRef.current);
+      persistTimerRef.current = null;
+    }
     persistChainRef.current = persistChainRef.current.then(async () => {
       try {
         const { pendingEchoes: _p, mutualEchoes: _m, ...rest } = newState;
@@ -770,16 +793,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await persistChainRef.current;
   }, [serializeMyPhotosForStorage]);
 
+  const flushPendingPersist = useCallback(() => {
+    const pending = pendingPersistRef.current;
+    if (pending) void persistState(pending);
+  }, [persistState]);
+
+  // Serialising the whole state is synchronous JS work. Writes are batched so a
+  // swipe's state change paints before the save runs, and flushed straight away
+  // when the app leaves the foreground.
   const saveState = useCallback(
     (newState: AppState) => {
       if (!hasHydratedRef.current) {
         void persistMyPhotosEarly(newState.myPhotos);
         return;
       }
-      void persistState(newState);
+      pendingPersistRef.current = newState;
+      if (!persistTimerRef.current) {
+        persistTimerRef.current = setTimeout(
+          flushPendingPersist,
+          PERSIST_DEBOUNCE_MS,
+        );
+      }
     },
-    [persistMyPhotosEarly, persistState],
+    [persistMyPhotosEarly, flushPendingPersist],
   );
+
+  useEffect(() => {
+    const sub = AppLifecycle.addEventListener("change", (status) => {
+      if (status !== "active") flushPendingPersist();
+    });
+    return () => sub.remove();
+  }, [flushPendingPersist]);
 
   const reconcileMatchPhotos = useCallback(() => {
     if (!hasHydratedRef.current) return;
@@ -1123,13 +1167,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       };
       saveState(newState);
       if (enriched.verdict === "same") {
-        void saveRipplefireLocalCache(
-          buildLocalRippleConnections(
-            allMatches,
-            prev.myCountryCode,
-            prev.myPhotos,
-          ),
-        );
+        setTimeout(() => {
+          void saveRipplefireLocalCache(
+            buildLocalRippleConnections(
+              allMatches,
+              prev.myCountryCode,
+              prev.myPhotos,
+            ),
+          );
+        }, 0);
       }
       return newState;
     });
@@ -2011,10 +2057,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!hasHydratedRef.current) return;
     cloudSyncInflightRef.current += 1;
     setCloudSyncInProgress(true);
+    let giveUp: ReturnType<typeof setTimeout> | undefined;
     try {
-      await Promise.all([refreshEchoes(), refreshJourney()]);
+      // Backstop for hangs outside fetch (e.g. auth token lookup): the header
+      // spinner must always stop.
+      await Promise.race([
+        Promise.all([refreshEchoes(), refreshJourney()]),
+        new Promise<void>((resolve) => {
+          giveUp = setTimeout(resolve, CLOUD_SYNC_MAX_MS);
+        }),
+      ]);
       reconcileMatchPhotos();
     } finally {
+      if (giveUp) clearTimeout(giveUp);
       cloudSyncInflightRef.current -= 1;
       if (cloudSyncInflightRef.current <= 0) {
         cloudSyncInflightRef.current = 0;
@@ -2027,11 +2082,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     if (!hasHydrated || !clerkLoaded || !isSignedIn) return;
     warmAuthedImageHeaders();
-    void syncCloudData();
+    const first = setTimeout(() => {
+      void syncCloudData();
+    }, CLOUD_SYNC_FIRST_DELAY_MS);
     const id = setInterval(() => {
       void syncCloudData();
     }, 30_000);
-    return () => clearInterval(id);
+    return () => {
+      clearTimeout(first);
+      clearInterval(id);
+    };
   }, [hasHydrated, clerkLoaded, isSignedIn, syncCloudData]);
 
   // Keep the forward-declared ref in sync so removeMatch / changeVerdict

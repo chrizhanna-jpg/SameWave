@@ -1,6 +1,8 @@
 // Wavefire ambience: single beach + campfire loop (separate from global vibe
 // clip singleton in utils/audio.ts so Atlas does not steal Match playback).
 
+import { AppState } from "react-native";
+
 import { Audio } from "@/utils/expoAvCompat";
 
 import { isMuted, onMuteChange } from "@/utils/audio";
@@ -28,6 +30,13 @@ function ensureMuteHook(): void {
   muteHooked = true;
   onMuteChange(() => {
     void ambienceCommands.enqueue(() => syncAmbiencePlayback());
+  });
+  // The player layer pauses everything when the app is left; pick the loop
+  // back up if Wavefire still wants it once the app returns.
+  AppState.addEventListener("change", (state) => {
+    if (state === "active") {
+      void ambienceCommands.enqueue(() => syncAmbiencePlayback());
+    }
   });
 }
 
