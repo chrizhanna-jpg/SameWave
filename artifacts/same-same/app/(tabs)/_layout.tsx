@@ -286,14 +286,13 @@ export default function TabLayout() {
       <Tabs.Screen
         name="atlas"
         options={{
-          title: "Atlas",
+          title: "Map",
           tabBarIcon: ({ color, focused }) => (
             <TabIcon
-              name="spiral"
+              name="globe"
               color={color}
               focused={focused}
               activeColor={colors.primary}
-              iconScale={1.1}
             />
           ),
         }}

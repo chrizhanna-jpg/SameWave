@@ -28,6 +28,22 @@ assert(
   "tabs do NOT enable lazy: true (known Expo 54 blank/crash)",
   !layout.includes("lazy: true"),
 );
+assert(
+  "map tab keeps the atlas route and is labelled Map",
+  layout.includes('name="atlas"') && layout.includes('title: "Map"'),
+);
+
+const rootLayout = read("app/_layout.tsx");
+assert(
+  "splash hide stays on font readiness, not the wave reveal",
+  rootLayout.includes("if (fontsReady)") &&
+    rootLayout.includes("SplashScreen.hideAsync()") &&
+    rootLayout.includes("<EchoFlash"),
+);
+assert(
+  "tabs route is unchanged",
+  rootLayout.includes('name="(tabs)"') && rootLayout.includes('name="reveal"'),
+);
 
 const match = read("app/(tabs)/match.tsx");
 assert(
