@@ -25,7 +25,7 @@ import Reanimated, {
   type SharedValue,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { markTabVisited } from "@/utils/tabVisits";
 import { runAfterTabFocus } from "@/utils/deferTabFocus";
 import { tabBarTotalHeight } from "@/utils/tabBarSafeArea";
@@ -36,7 +36,15 @@ import { EchoLogo } from "@/components/EchoLogo";
 import { OceanShimmer } from "@/components/OceanShimmer";
 import { PressableScale } from "@/components/PressableScale";
 import { GradientCard } from "@/components/GradientCard";
-import { expandToVibe } from "@/utils/interests";
+import { expandToVibe, tagEmoji, tagLabel } from "@/utils/interests";
+import {
+  getRipplePlayFocus,
+  parseRipplePlayKind,
+  resolveRipplePlayPresentation,
+  setRipplePlayFocus,
+  subscribeRipplePlayFocus,
+  type RipplePlayFocus,
+} from "@/utils/ripplePlayFocus";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { isAiPhoto, useApp } from "@/context/AppContext";
@@ -586,6 +594,7 @@ export default function SwipeScreen() {
   );
   const {
     streakCount,
+    myVibe,
     myPhotos,
     addMatch,
     patchMatchVoterPhoto,
@@ -613,6 +622,34 @@ export default function SwipeScreen() {
   const seenSetRef = useRef(seenSet);
   seenSetRef.current = seenSet;
   const todaysChallenge = getTodaysChallenge();
+  const { play: playParam } = useLocalSearchParams<{ play?: string | string[] }>();
+  const [playFocus, setPlayFocus] = useState<RipplePlayFocus | null>(() =>
+    getRipplePlayFocus(),
+  );
+  useEffect(() => subscribeRipplePlayFocus(setPlayFocus), []);
+  useEffect(() => {
+    const kind = parseRipplePlayKind(playParam);
+    if (!kind) return;
+    const existing = getRipplePlayFocus();
+    if (kind === "challenge") {
+      if (existing?.kind === "challenge" && existing.title) return;
+      setRipplePlayFocus({
+        kind,
+        title: todaysChallenge.title,
+        emoji: todaysChallenge.emoji,
+      });
+      return;
+    }
+    if (existing?.kind === "interests" && (existing.tags?.length ?? 0) > 0) return;
+    if (myVibe.length === 0 && existing?.kind === "interests") return;
+    setRipplePlayFocus({ kind: "interests", tags: myVibe });
+  }, [playParam, myVibe, todaysChallenge.title, todaysChallenge.emoji]);
+  useEffect(() => {
+    if (playFocus?.kind !== "interests") return;
+    if ((playFocus.tags?.length ?? 0) > 0) return;
+    if (myVibe.length === 0) return;
+    setRipplePlayFocus({ kind: "interests", tags: myVibe.slice(0, 8) });
+  }, [playFocus, myVibe]);
 
   // Today's photo only — if the user's most recent upload is from a
   // previous UTC day (yesterday's challenge or older), we don't pre-load
@@ -635,6 +672,12 @@ export default function SwipeScreen() {
     );
     return uploadedUtcDay === todayUtcDay ? p : undefined;
   }, [myPhotos]);
+  const playPresentation = resolveRipplePlayPresentation({
+    focus: playFocus,
+    myVibe,
+    photoTheme: todaysPhoto?.theme,
+    photoTags: todaysPhoto?.tags,
+  });
 
   /** Latest today's-photo backend id for async vote callbacks (echo retry). */
   const todayBackendIdRef = useRef<string | undefined>(undefined);
@@ -1913,14 +1956,16 @@ export default function SwipeScreen() {
             color={colors.foreground}
             taglineColor={colors.mutedForeground}
           />
-          <Text
-            style={[
-              styles.subtitle,
-              { color: colors.mutedForeground, marginTop: 4 },
-            ]}
-          >
-            {streakCount > 0 ? `${streakCount} matches` : "Find your similar"}
-          </Text>
+          {playPresentation == null && streakCount > 0 ? (
+            <Text
+              style={[
+                styles.subtitle,
+                { color: colors.mutedForeground, marginTop: 4 },
+              ]}
+            >
+              {`${streakCount} matches`}
+            </Text>
+          ) : null}
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           <PressableScale
@@ -1958,15 +2003,44 @@ export default function SwipeScreen() {
         </View>
       </View>
 
-      {!hasUploadedPhoto ? (
-        <View style={[styles.challengeBar, { borderColor: colors.border }]}>
-          <Text style={styles.challengeEmoji}>{todaysChallenge.emoji}</Text>
-          <Text style={[styles.challengeText, { color: colors.mutedForeground }]}>
-            {"Today's prompt: "}
-            <Text style={{ color: colors.foreground, fontFamily: "Inter_600SemiBold" }}>
-              {todaysChallenge.title}
-            </Text>
+      {playPresentation?.kind === "challenge" ? (
+        <View
+          style={styles.playBanner}
+          accessibilityRole="text"
+          accessibilityLabel={`Theme: ${playPresentation.title}`}
+        >
+          <Text style={styles.playEmoji}>{playPresentation.emoji}</Text>
+          <Text
+            style={[styles.playTitle, { color: colors.foreground }]}
+            numberOfLines={2}
+          >
+            {playPresentation.title}
           </Text>
+        </View>
+      ) : null}
+      {playPresentation?.kind === "interests" ? (
+        <View
+          style={styles.playBanner}
+          accessibilityRole="text"
+          accessibilityLabel={`Your interests: ${playPresentation.tags.map(tagLabel).join(", ")}`}
+        >
+          {playPresentation.tags.map((tag) => (
+            <View
+              key={tag}
+              style={[
+                styles.playChip,
+                {
+                  backgroundColor: colors.teal + "1f",
+                  borderColor: colors.teal + "44",
+                },
+              ]}
+            >
+              <Text style={styles.playChipEmoji}>{tagEmoji(tag)}</Text>
+              <Text style={[styles.playChipText, { color: colors.teal }]}>
+                {tagLabel(tag)}
+              </Text>
+            </View>
+          ))}
         </View>
       ) : null}
 
@@ -2786,19 +2860,33 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  challengeBar: {
+  playBanner: {
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
     paddingHorizontal: 20,
     paddingBottom: 12,
     gap: 8,
-    borderBottomWidth: 0,
   },
-  challengeEmoji: { fontSize: 15 },
-  challengeText: {
-    fontSize: 13,
-    fontFamily: "Inter_400Regular",
-    flex: 1,
+  playEmoji: { fontSize: 16 },
+  playTitle: {
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
+    flexShrink: 1,
+  },
+  playChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  playChipEmoji: { fontSize: 13 },
+  playChipText: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
   },
   nearbyBar: {
     flexDirection: "row",

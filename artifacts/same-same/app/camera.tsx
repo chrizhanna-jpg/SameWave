@@ -35,11 +35,18 @@ import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useApp, type MyPhoto } from "@/context/AppContext";
 import {
+  DAILY_CHALLENGES,
   getTodaysChallenge,
   resolveChallengeThemeId,
   SUGGESTED_TAGS_BY_THEME,
   TAG_LIBRARY,
 } from "@/data/samplePhotos";
+import { tagEmoji, tagLabel } from "@/utils/interests";
+import {
+  parseRipplePlayKind,
+  setRipplePlayFocus,
+  type RipplePlayKind,
+} from "@/utils/ripplePlayFocus";
 import { analyzePhoto, reactivateMyPhoto, warmAuthedImageHeaders } from "@/utils/api";
 import { detectCountryFromGPS } from "@/utils/gpsCountry";
 import {
@@ -177,21 +184,21 @@ function themeSuggestionTerms(s: ThemeSuggestion): string[] {
   return [s.label, s.tagId ?? "", s.emoji];
 }
 
-type PostIntent = "challenge" | "interests";
+type PostIntent = RipplePlayKind;
 
 function parsePostIntent(raw: string | string[] | undefined): PostIntent | null {
-  const v = Array.isArray(raw) ? raw[0] : raw;
-  if (v === "challenge" || v === "interests") return v;
-  return null;
+  return parseRipplePlayKind(raw);
 }
 
 function PostIntentPrompt({
   intent,
   challenge,
+  interests,
   colors,
 }: {
   intent: PostIntent;
   challenge: ReturnType<typeof getTodaysChallenge>;
+  interests: string[];
   colors: ReturnType<typeof useColors>;
 }) {
   if (intent === "challenge") {
@@ -226,7 +233,11 @@ function PostIntentPrompt({
         { backgroundColor: colors.card, borderColor: colors.border },
       ]}
       accessibilityRole="text"
-      accessibilityLabel="Your interests. Share your passion."
+      accessibilityLabel={
+        interests.length > 0
+          ? `Your interests: ${interests.map(tagLabel).join(", ")}`
+          : "Your interests. Share your passion."
+      }
     >
       <Text style={[styles.intentPromptLabel, { color: colors.mutedForeground }]}>
         Your interests
@@ -234,6 +245,27 @@ function PostIntentPrompt({
       <Text style={[styles.intentPromptTitle, { color: colors.foreground }]}>
         Share your passion.
       </Text>
+      {interests.length > 0 ? (
+        <View style={styles.intentInterestRow}>
+          {interests.map((tag) => (
+            <View
+              key={tag}
+              style={[
+                styles.intentInterestChip,
+                {
+                  backgroundColor: colors.teal + "1f",
+                  borderColor: colors.teal + "44",
+                },
+              ]}
+            >
+              <Text style={styles.intentInterestEmoji}>{tagEmoji(tag)}</Text>
+              <Text style={[styles.intentInterestText, { color: colors.teal }]}>
+                {tagLabel(tag)}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -287,6 +319,7 @@ export default function CameraScreen() {
   const [submitted, setSubmitted] = useState(false);
   const challenge = getTodaysChallenge();
   const intentSeedAppliedRef = useRef(false);
+  const interestsSeededRef = useRef(false);
   const [themeText, setThemeText] = useState<string>("");
   const [themeEdited, setThemeEdited] = useState(false);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -747,6 +780,17 @@ export default function CameraScreen() {
     captureAtRef.current = photo.capturedAt;
   };
 
+  const seedInterestTags = useCallback((tags: string[]) => {
+    const next = tags.slice(0, MAX_TAGS).filter((tag) => tag.trim().length > 0);
+    if (next.length === 0) return;
+    interestsSeededRef.current = true;
+    setSelectedTags((prev) => {
+      if (prev.length === 0) return next;
+      return Array.from(new Set([...next, ...prev])).slice(0, MAX_TAGS);
+    });
+    setRipplePlayFocus({ kind: "interests", tags: next });
+  }, []);
+
   const applyPostIntentSeed = useCallback(() => {
     if (!postIntent) return;
     if (postIntent === "challenge") {
@@ -761,15 +805,14 @@ export default function CameraScreen() {
       setThemeText("passions");
       setThemeEdited(true);
       themeEditedRef.current = true;
-      if (myVibe.length > 0) {
-        setSelectedTags(myVibe.slice(0, MAX_TAGS));
-      }
+      if (myVibe.length > 0) seedInterestTags(myVibe);
     }
-  }, [postIntent, challenge.id, challenge.title, myVibe]);
+  }, [postIntent, challenge.id, challenge.title, myVibe, seedInterestTags]);
 
   const resetForNewPhoto = () => {
     pickedAssetRef.current = null;
     captureAtRef.current = undefined;
+    interestsSeededRef.current = false;
     setSelectedTags([]);
     setAiTags([]);
     aiThemeRef.current = "";
@@ -889,6 +932,15 @@ export default function CameraScreen() {
     intentSeedAppliedRef.current = true;
     applyPostIntentSeed();
   }, [postIntent, applyPostIntentSeed]);
+
+  // myVibe is derived and often empty on the first paint (hydration). The
+  // one-shot seed above must not be the only chance to attach interests.
+  useEffect(() => {
+    if (postIntent !== "interests") return;
+    if (interestsSeededRef.current) return;
+    if (myVibe.length === 0) return;
+    seedInterestTags(myVibe);
+  }, [postIntent, myVibe, seedInterestTags]);
 
   const takePhoto = async () => {
     if (Platform.OS === "web") {
@@ -1181,7 +1233,28 @@ export default function CameraScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     recordCaptureTransitionEvent("navigate.to.match.start");
     const goMatch = () => {
-      router.replace("/(tabs)/match");
+      if (postIntent === "challenge") {
+        const themeMeta = DAILY_CHALLENGES.find(
+          (c) =>
+            c.id === finalTheme ||
+            c.title.toLowerCase() === finalTheme.toLowerCase(),
+        );
+        setRipplePlayFocus({
+          kind: "challenge",
+          title: themeMeta?.title ?? finalTheme,
+          emoji: themeMeta?.emoji ?? "✨",
+        });
+      } else if (postIntent === "interests") {
+        const tags =
+          myVibe.length > 0 ? myVibe.slice(0, 8) : merged.slice(0, MAX_TAGS);
+        setRipplePlayFocus({ kind: "interests", tags });
+      } else {
+        setRipplePlayFocus(null);
+      }
+      router.replace({
+        pathname: "/(tabs)/match",
+        params: postIntent ? { play: postIntent } : {},
+      });
       recordCaptureTransitionEvent("navigate.to.match.complete");
       endCaptureTransition();
     };
@@ -1270,6 +1343,7 @@ export default function CameraScreen() {
           <PostIntentPrompt
             intent={postIntent}
             challenge={challenge}
+            interests={myVibe.slice(0, MAX_TAGS)}
             colors={colors}
           />
         </View>
@@ -1876,6 +1950,26 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     lineHeight: 20,
     marginTop: 2,
+  },
+  intentInterestRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 8,
+  },
+  intentInterestChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  intentInterestEmoji: { fontSize: 13 },
+  intentInterestText: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
   },
   header: {
     flexDirection: "row",
