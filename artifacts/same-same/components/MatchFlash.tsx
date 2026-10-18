@@ -1,8 +1,7 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
+  AccessibilityInfo,
   Animated,
-  Dimensions,
-  Easing,
   PanResponder,
   Pressable,
   StyleSheet,
@@ -10,26 +9,22 @@ import {
   View,
 } from "react-native";
 import * as Haptics from "expo-haptics";
-import { CelebrationMatchChips } from "@/components/CelebrationMatchChips";
 import { RemotePhotoImage } from "@/components/RemotePhotoImage";
+import { MomentRings } from "@/components/MomentRings";
 import { HERO_DISPLAY_WIDTH } from "@/utils/photoDisplayUri";
 import {
   CelebrationSwipeDismissHint,
   CelebrationSwipeHandle,
   celebrationDragScale,
 } from "@/components/CelebrationSwipeDismiss";
-import { ConnectionMapPreview } from "@/components/ConnectionMapPreview";
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
-import { getGeoTierForPhotos, getTimeTier } from "@/utils/celebrations";
+import { startMomentSound } from "@/utils/momentSound";
 import { photoCountryDisplay, resolveCaptureCountryCode } from "@/utils/photoCountry";
+import { RIPPLE_BURST_MS } from "@/utils/waveReveal";
 
-const FLASH_MAP_WIDTH = Dimensions.get("window").width - 48;
+const RIPPLE_SOUND = require("@/assets/sounds/ripple-drop.wav");
 
-// Action a tap on one of the secondary pills should trigger on the
-// receiving /reveal screen. `undefined` means "just open it".
-// "paywall" lives on the /reveal share flow now — the flash is
-// intentionally minimal and never hosts the watermark upsell.
 export type MatchFlashAction = "share" | undefined;
 
 interface Props {
@@ -42,42 +37,25 @@ interface Props {
   theirCaptureCountryCode?: string;
   themeTitle: string;
   themeEmoji: string;
-  /** Thumbnail of the user's photo and the matched photo. */
   myPhotoUri?: string;
   theirPhotoUri?: string;
-  /**
-   * Durable server image (`/api/photos/:id/image`) for the user's own photo.
-   * A `file://` capture can be purged while the app is backgrounded, so we
-   * hand `RemotePhotoImage` this authed fallback rather than letting the
-   * thumbnail collapse to a blank square.
-   */
   myPhotoFallbackUri?: string;
-  // Absolute timestamps for the calendar time tier (Same Hour / Day / Week /
-  // Month). Each side prefers its real capture time, falling back to its
-  // upload/share time. Snapshotted at swipe time so the tier never drifts.
   myPhotoCapturedAt?: string;
   myPhotoSharedAt?: string;
   theirPhotoCapturedAt?: string;
   theirPhotoSharedAt?: string;
   onDone: () => void;
-  /** Called with the requested action (or undefined for plain open). */
   onOpenFull: (action?: MatchFlashAction) => void;
 }
 
-// Per-swipe celebration that overlays the swipe card. Designed to feel
-// like a beat in the rhythm — not a full stop. Shows the country reveal,
-// the two photos that matched, and small "Same Day / Same Country"
-// badges so the user gets the texture of WHY this match is rare.
-//
-// Dismissal:
-// - Swipe down (or up) → dismiss back into the swipe deck.
-// - Tap the × button → dismiss.
-// - Tap "Open" → navigate to the full /reveal screen.
-// - Tap "Share" → navigate to /reveal pre-firing the share dialog.
-//
-// We deliberately do NOT auto-dismiss anymore — users said the timer
-// felt rushed, especially with the new badges to read. The flash sticks
-// until the user explicitly chooses what to do with it.
+type Phase = "burst" | "pulse" | "static";
+
+/**
+ * Ripple splash. Tap plays the ripple burst (sound + rings), then the
+ * card settles into an anticipation pulse — waiting for a Wave.
+ * Dismiss and Open behave as before: the deck does not advance until
+ * the user leaves this card.
+ */
 export function MatchFlash({
   theirCountry,
   theirCountryFlag,
@@ -91,34 +69,20 @@ export function MatchFlash({
   myPhotoUri,
   theirPhotoUri,
   myPhotoFallbackUri,
-  myPhotoCapturedAt,
-  myPhotoSharedAt,
-  theirPhotoCapturedAt,
-  theirPhotoSharedAt,
   onDone,
   onOpenFull,
 }: Props) {
   const colors = useColors();
   const fade = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(0.94)).current;
-  const flagPop = useRef(new Animated.Value(0)).current;
-  // Tracks the in-progress swipe so the card translates with the
-  // user's finger before settling back or dismissing.
   const dragY = useRef(new Animated.Value(0)).current;
-  // Guard so a swipe + button tap landing in the same frame still
-  // results in exactly one transition.
   const finishedRef = useRef(false);
+  const [phase, setPhase] = useState<Phase>("burst");
 
-  // `mode` is intentionally non-optional. Using a default parameter
-  // here previously caused `finish(undefined)` (from the Open/Share
-  // button handlers) to be coerced back to the default "dismiss"
-  // branch, so both buttons appeared to do nothing.
   const finish = (mode: "dismiss" | "open" | "share") => {
     if (finishedRef.current) return;
     finishedRef.current = true;
     if (mode !== "dismiss") {
-      // Navigate immediately — deferring until the fade-out completes
-      // could race with overlay unmount and land on an unmatched route.
       onOpenFull(mode === "share" ? "share" : undefined);
       return;
     }
@@ -128,11 +92,9 @@ export function MatchFlash({
       useNativeDriver: true,
     }).start(() => onDone());
   };
+  const finishRef = useRef(finish);
+  finishRef.current = finish;
 
-  // Swipe-to-dismiss: vertical drag of more than ~80px (or a fast
-  // flick at >0.7 vy) commits to dismissing. Anything less snaps the
-  // card back into place. We also bail out of the gesture if the user
-  // is dragging horizontally — that's not our gesture to handle.
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
@@ -144,14 +106,11 @@ export function MatchFlash({
       onPanResponderRelease: (_, g) => {
         if (Math.abs(g.dy) > 80 || Math.abs(g.vy) > 0.7) {
           void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          // Animate the card off in the swipe direction for a moment
-          // before kicking off the fade — feels less abrupt than just
-          // cutting the card during dismissal.
           Animated.timing(dragY, {
             toValue: g.dy > 0 ? 360 : -360,
             duration: 180,
             useNativeDriver: true,
-          }).start(() => finish("dismiss"));
+          }).start(() => finishRef.current("dismiss"));
         } else {
           Animated.spring(dragY, {
             toValue: 0,
@@ -173,7 +132,17 @@ export function MatchFlash({
   ).current;
 
   useEffect(() => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    const sound = startMomentSound(RIPPLE_SOUND, { maxMs: RIPPLE_BURST_MS + 200 });
+    let alive = true;
+    void AccessibilityInfo.isReduceMotionEnabled()
+      .then((reduce) => {
+        if (alive && reduce) setPhase("static");
+      })
+      .catch(() => {});
+    const backup = setTimeout(() => {
+      setPhase((current) => (current === "burst" ? "pulse" : current));
+    }, RIPPLE_BURST_MS + 400);
     Animated.parallel([
       Animated.timing(fade, {
         toValue: 1,
@@ -186,32 +155,15 @@ export function MatchFlash({
         friction: 9,
         useNativeDriver: true,
       }),
-      Animated.timing(flagPop, {
-        toValue: 1,
-        duration: 520,
-        delay: 80,
-        easing: Easing.out(Easing.back(1.6)),
-        useNativeDriver: true,
-      }),
     ]).start();
-    // No auto-dismiss timer — see component docstring.
+    return () => {
+      alive = false;
+      clearTimeout(backup);
+      sound.stop();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const flagScale = flagPop.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.5, 1],
-  });
-  const flagOpacity = flagPop;
-
-  // Tier badges: "Same Hour / Day / Week / Month" (time) and
-  // "Same Country / Continent / Planet" (geography). The flash always
-  // renders both — even the "Same Planet" baseline is part of the
-  // story we're telling here.
-  const timeTier = getTimeTier(
-    { capturedAt: myPhotoCapturedAt, sharedAt: myPhotoSharedAt },
-    { capturedAt: theirPhotoCapturedAt, sharedAt: theirPhotoSharedAt },
-  );
   const myCap = resolveCaptureCountryCode(myCaptureCountryCode, myPhotoUri);
   const theirCap = resolveCaptureCountryCode(
     theirCaptureCountryCode,
@@ -219,13 +171,14 @@ export function MatchFlash({
   );
   const myDisplay = photoCountryDisplay(myCap);
   const theirDisplay = photoCountryDisplay(theirCap);
-  const geoTier = getGeoTierForPhotos(myCap, theirCap);
+  const theirName = theirDisplay.name || theirCountry;
   const dragScale = celebrationDragScale(dragY);
   const backdropDragOpacity = dragY.interpolate({
     inputRange: [-140, 0, 140],
     outputRange: [0.55, 1, 0.55],
     extrapolate: "clamp",
   });
+  const waiting = phase !== "burst";
 
   return (
     <View style={StyleSheet.absoluteFill} {...panResponder.panHandlers}>
@@ -251,112 +204,51 @@ export function MatchFlash({
         ]}
         pointerEvents="box-none"
       >
+        <MomentRings
+          color="#073B34"
+          mode={phase}
+          durationMs={RIPPLE_BURST_MS}
+          onBurstEnd={() => setPhase((current) => (current === "burst" ? "pulse" : current))}
+        />
         <CelebrationSwipeHandle style={styles.topHandle} />
-
-        {/* Explicit dismiss affordance for users who don't discover the
-            swipe gesture. Sits in the top-right of the celebration card
-            so it's visible without dominating the layout. */}
         <Pressable
           onPress={() => finish("dismiss")}
           style={styles.dismissBtn}
           hitSlop={12}
-          accessibilityLabel="Dismiss match"
+          accessibilityLabel="Dismiss ripple"
         >
           <Icon name="x" size={20} color="rgba(0,16,24,0.7)" />
         </Pressable>
 
-        <Text style={styles.tagline}>a ripple</Text>
+        <Text style={styles.kicker}>{waiting ? "Ripple sent" : "Ripple"}</Text>
+        <Text style={styles.headline}>
+          {waiting ? "Waiting for a Wave" : "Sent"}
+        </Text>
 
-        {(myDisplay.code || theirDisplay.code) && (
-          <ConnectionMapPreview
-            kind="ripple"
-            fromCode={myDisplay.code}
-            toCode={theirDisplay.code}
-            width={FLASH_MAP_WIDTH}
-            height={Math.round(FLASH_MAP_WIDTH * 0.34)}
-            style={styles.atlasPreview}
-          />
-        )}
-
-        {/* Two photo thumbnails — one from each country — with the
-            corresponding flag badged into the bottom-right corner.
-            Falls back to a flag-only layout if URIs aren't available
-            (shouldn't happen in production but keeps the screen
-            from collapsing in unusual states). */}
         <View style={styles.thumbsRow}>
-          <Animated.View
-            style={[
-              styles.thumbWrap,
-              {
-                opacity: flagOpacity,
-                transform: [{ scale: flagScale }],
-              },
-            ]}
-          >
-            {myPhotoUri ? (
-              <RemotePhotoImage
-                uri={myPhotoUri}
-                fallbackUri={myPhotoFallbackUri}
-                style={styles.thumb}
-                resizeMode="cover"
-                transitionMs={0}
-                recyclingKey={`flash-my:${myPhotoFallbackUri ?? myPhotoUri}`}
-                displayWidth={HERO_DISPLAY_WIDTH}
-                priority="hero"
-              />
-            ) : (
-              <View style={[styles.thumb, styles.thumbFallback]}>
-                <Text style={styles.thumbFallbackFlag}>
-                  {myDisplay.flag}
-                </Text>
-              </View>
-            )}
-            <Text style={styles.thumbFlag}>{myDisplay.flag}</Text>
-          </Animated.View>
-          <View style={styles.connector}>
-            <View style={styles.dot} />
-            <View style={styles.dot} />
-            <View style={styles.dot} />
-          </View>
-          <Animated.View
-            style={[
-              styles.thumbWrap,
-              {
-                opacity: flagOpacity,
-                transform: [{ scale: flagScale }],
-              },
-            ]}
-          >
-            {theirPhotoUri ? (
-              <RemotePhotoImage
-                uri={theirPhotoUri}
-                style={styles.thumb}
-                resizeMode="cover"
-                transitionMs={0}
-                recyclingKey={`flash-their:${theirPhotoUri}`}
-                displayWidth={HERO_DISPLAY_WIDTH}
-                priority="hero"
-              />
-            ) : (
-              <View style={[styles.thumb, styles.thumbFallback]}>
-                <Text style={styles.thumbFallbackFlag}>
-                  {theirDisplay.flag}
-                </Text>
-              </View>
-            )}
-            <Text style={styles.thumbFlag}>{theirDisplay.flag}</Text>
-          </Animated.View>
+          <PhotoThumb
+            uri={myPhotoUri}
+            fallbackUri={myPhotoFallbackUri}
+            flag={myDisplay.flag || myCountryFlag || ""}
+            label="Yours"
+          />
+          <Icon name="ripple" size={22} color="rgba(0,16,24,0.55)" />
+          <PhotoThumb
+            uri={theirPhotoUri}
+            flag={theirDisplay.flag || theirCountryFlag}
+            label={theirName}
+          />
         </View>
 
-        <CelebrationMatchChips
-          countryName={theirDisplay.name}
-          countryFlag={theirDisplay.flag}
-          themeTitle={themeTitle}
-          themeEmoji={themeEmoji}
-          timeTier={timeTier}
-          geoTier={geoTier}
-          accentColor={colors.teal}
-        />
+        <Text style={styles.meta}>
+          {themeEmoji} {themeTitle}
+          {theirCountryCode || myCountryCode ? `  ·  ${theirName}` : ""}
+        </Text>
+        <Text style={styles.waiting}>
+          {waiting
+            ? "If they ripple back, it becomes a Wave."
+            : "Sending your ripple…"}
+        </Text>
 
         <View style={styles.ctaWrap}>
           <Pressable
@@ -372,9 +264,45 @@ export function MatchFlash({
             <Icon name="arrow-right" size={18} color="#FFFFFF" />
           </Pressable>
         </View>
-
         <CelebrationSwipeDismissHint dragY={dragY} />
       </Animated.View>
+    </View>
+  );
+}
+
+function PhotoThumb({
+  uri,
+  fallbackUri,
+  flag,
+  label,
+}: {
+  uri?: string;
+  fallbackUri?: string;
+  flag: string;
+  label: string;
+}) {
+  return (
+    <View style={styles.thumbWrap}>
+      {uri ? (
+        <RemotePhotoImage
+          uri={uri}
+          fallbackUri={fallbackUri}
+          style={styles.thumb}
+          resizeMode="cover"
+          transitionMs={0}
+          recyclingKey={`flash:${fallbackUri ?? uri}`}
+          displayWidth={HERO_DISPLAY_WIDTH}
+          priority="hero"
+          viewerOwnPhoto={label === "Yours"}
+        />
+      ) : (
+        <View style={[styles.thumb, styles.thumbFallback]}>
+          <Text style={styles.thumbFallbackFlag}>{flag}</Text>
+        </View>
+      )}
+      <Text style={styles.thumbLabel} numberOfLines={1}>
+        {flag} {label}
+      </Text>
     </View>
   );
 }
@@ -406,17 +334,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.55)",
   },
-  tagline: {
+  kicker: {
     fontSize: 13,
     fontWeight: "700",
-    letterSpacing: 4,
+    letterSpacing: 3,
     color: "rgba(0,16,24,0.55)",
     textTransform: "uppercase",
-    marginBottom: 12,
+    marginBottom: 4,
   },
-  atlasPreview: {
-    marginBottom: 14,
-    borderColor: "rgba(0,16,24,0.12)",
+  headline: {
+    fontSize: 28,
+    fontWeight: "900",
+    color: "#001018",
+    letterSpacing: -0.4,
+    marginBottom: 18,
+    textAlign: "center",
   },
   thumbsRow: {
     flexDirection: "row",
@@ -425,16 +357,13 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   thumbWrap: {
-    width: 100,
-    height: 100,
-    borderRadius: 18,
-    overflow: "visible",
-    position: "relative",
+    width: 112,
+    alignItems: "center",
   },
   thumb: {
-    width: 100,
-    height: 100,
-    borderRadius: 18,
+    width: 112,
+    height: 112,
+    borderRadius: 20,
     backgroundColor: "rgba(0,16,24,0.18)",
   },
   thumbFallback: {
@@ -442,27 +371,28 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   thumbFallbackFlag: {
-    fontSize: 44,
+    fontSize: 40,
   },
-  thumbFlag: {
-    position: "absolute",
-    bottom: -8,
-    right: -8,
-    fontSize: 34,
-    // White circle behind the emoji so it pops against any photo.
-    textShadowColor: "rgba(0,0,0,0.45)",
-    textShadowRadius: 4,
+  thumbLabel: {
+    marginTop: 8,
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#001018",
+    maxWidth: 112,
   },
-  connector: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
+  meta: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "rgba(0,16,24,0.72)",
+    marginBottom: 4,
+    textAlign: "center",
   },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "rgba(0,16,24,0.55)",
+  waiting: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "rgba(0,16,24,0.62)",
+    textAlign: "center",
+    marginBottom: 8,
   },
   ctaWrap: {
     width: "100%",

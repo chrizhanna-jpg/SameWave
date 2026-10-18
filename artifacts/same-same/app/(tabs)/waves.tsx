@@ -29,6 +29,8 @@ import {
   WAVE_MUTUAL_TAGLINE,
 } from "@/data/waveRippleGlossary";
 import { fetchRecentWavesFeed, type RecentWaveFeedItem } from "@/utils/api";
+import { SAMPLE_PHOTOS } from "@/data/samplePhotos";
+import { fillWorldWaveFeed, isLaunchWaveId } from "@/utils/mapWaves";
 import {
   enrichMatchesForStorage,
   resolveEchoPhotoUri,
@@ -236,7 +238,7 @@ export default function WavesScreen() {
     setWorldLoading(true);
     try {
       const rows = await fetchRecentWavesFeed(30);
-      setWorldWaves(rows);
+      setWorldWaves(fillWorldWaveFeed(rows, SAMPLE_PHOTOS));
     } finally {
       setWorldLoading(false);
     }
@@ -828,9 +830,11 @@ function WaveCaughtCard({ echo }: { echo: EchoCard }) {
 function WorldWaveCard({ wave }: { wave: RecentWaveFeedItem }) {
   const colors = useColors();
   const ago = wave.mutualAt ? timeAgo(new Date(wave.mutualAt)) : null;
+  const preview = isLaunchWaveId(wave.echoId);
   return (
     <TouchableOpacity
-      activeOpacity={0.85}
+      activeOpacity={preview ? 1 : 0.85}
+      disabled={preview}
       onPress={() =>
         router.push({
           pathname: "/echo-pair",
@@ -854,11 +858,9 @@ function WorldWaveCard({ wave }: { wave: RecentWaveFeedItem }) {
           >
             {wave.a.country} · {wave.b.country}
           </Text>
-          {ago ? (
-            <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>
-              Wave · {ago}
-            </Text>
-          ) : null}
+          <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>
+            {preview ? "Preview wave" : ago ? `Wave · ${ago}` : "Wave"}
+          </Text>
         </View>
       </View>
       <View style={styles.photosRow}>

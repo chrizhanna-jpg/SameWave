@@ -110,8 +110,9 @@ export function atlasArcPathD(
   projection: GeoProjection,
   fromLonLat: readonly [number, number],
   toLonLat: readonly [number, number],
+  options?: { straight?: boolean },
 ): string {
-  const seg = atlasArcSegment(projection, fromLonLat, toLonLat);
+  const seg = atlasArcSegment(projection, fromLonLat, toLonLat, options);
   if (!seg) return "";
   return arcPathFromSegment(seg);
 }
@@ -192,6 +193,7 @@ export function atlasArcSegment(
   projection: GeoProjection,
   fromLonLat: readonly [number, number],
   toLonLat: readonly [number, number],
+  options?: { straight?: boolean },
 ): AtlasArcSegment | null {
   const a = projection(fromLonLat as [number, number]);
   const b = projection(toLonLat as [number, number]);
@@ -201,7 +203,9 @@ export function atlasArcSegment(
   const dx = x2 - x1;
   const dy = y2 - y1;
   const len = Math.sqrt(dx * dx + dy * dy);
-  if (len <= CLUSTER_INSET * 2) {
+  // Map lines run straight from country to country. Short spans were
+  // already a line so the endpoints would not collapse into a bow.
+  if (options?.straight || len <= CLUSTER_INSET * 2) {
     return { mode: "line", x1, y1, x2, y2 };
   }
   const ux = dx / len;
