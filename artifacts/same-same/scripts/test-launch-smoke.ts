@@ -29,8 +29,16 @@ assert(
   !layout.includes("lazy: true"),
 );
 assert(
-  "map tab keeps the atlas route and is labelled Map",
-  layout.includes('name="atlas"') && layout.includes('title: "Map"'),
+  "map keeps the atlas route and is labelled Waves",
+  layout.includes('name="atlas"') &&
+    layout.includes('title: "Waves"') &&
+    layout.includes('name="wave-glyph"') &&
+    !layout.includes('title: "Map"'),
+);
+assert(
+  "waves inbox tab stays in the layout but is hidden",
+  layout.includes('name="waves"') &&
+    layout.includes("SHOW_WAVES_TAB ? undefined : null"),
 );
 
 const rootLayout = read("app/_layout.tsx");

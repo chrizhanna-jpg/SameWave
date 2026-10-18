@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
-import { SHOW_DISCOVER_TAB } from "@/constants/featureFlags";
+import { SHOW_DISCOVER_TAB, SHOW_WAVES_TAB } from "@/constants/featureFlags";
 import { useApp } from "@/context/AppContext";
 import { onAllTabsVisited } from "@/utils/tabVisits";
 import {
@@ -258,6 +258,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="waves"
         options={{
+          href: SHOW_WAVES_TAB ? undefined : null,
           title: "Waves",
           tabBarBadge: echoBadge,
           tabBarBadgeStyle: {
@@ -286,13 +287,16 @@ export default function TabLayout() {
       <Tabs.Screen
         name="atlas"
         options={{
-          title: "Map",
+          title: "Waves",
           tabBarIcon: ({ color, focused }) => (
             <TabIcon
-              name="globe"
+              name="wave-glyph"
               color={color}
               focused={focused}
               activeColor={colors.primary}
+              glyphFit="square"
+              iconScale={2}
+              dotSize={5}
             />
           ),
         }}

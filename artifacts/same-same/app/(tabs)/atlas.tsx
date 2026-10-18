@@ -274,13 +274,13 @@ export default function AtlasScreen() {
       return "Syncing with server…";
     }
     if (loadError === "unauthorized" && totalCountries === 0 && connections.length === 0) {
-      return "Sign in to load the map";
+      return "Sign in to load Waves";
     }
     if (
       (loadError === "network" || loadError === "server") &&
       mapConnections.length === 0
     ) {
-      return "Map unavailable — tap refresh to retry";
+      return "Waves unavailable — tap refresh to retry";
     }
     if (previewWavesOnly) {
       return "Preview waves, until more people connect";
@@ -322,7 +322,7 @@ export default function AtlasScreen() {
       <View style={[styles.headerRow, { paddingTop: topPadding + 2 }]}>
         <View style={styles.headerTextCol}>
           <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-            Map
+            Waves
           </Text>
           {headerSub ? (
             <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
@@ -335,7 +335,7 @@ export default function AtlasScreen() {
             <SyncRefreshButton
               syncing={atlasSyncing}
               onPress={() => void load(true)}
-              accessibilityLabel="Refresh Map"
+              accessibilityLabel="Refresh Waves"
               style={styles.refreshBtn}
             />
           ) : null}
@@ -346,7 +346,7 @@ export default function AtlasScreen() {
         <View style={styles.flexCentre}>
           <Icon name="globe" size={48} color={colors.mutedForeground} />
           <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-            Sign in to open the Map
+            Sign in to open Waves
           </Text>
           <Text style={[styles.centreText, { color: colors.mutedForeground }]}>
             The map loads after sign-in so we can show your waves with
@@ -405,7 +405,7 @@ export default function AtlasScreen() {
         >
           <View style={[styles.centreBlock, { paddingTop: 8 }]}>
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-              Could not reach the Map
+              Could not reach Waves
             </Text>
             <Text style={[styles.centreText, { color: colors.mutedForeground }]}>
               {loadFailure?.category === "network"
