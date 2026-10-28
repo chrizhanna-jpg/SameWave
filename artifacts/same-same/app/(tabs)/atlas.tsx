@@ -478,7 +478,7 @@ export default function AtlasScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   shimmerClip: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     top: "12%",
     overflow: "hidden",
   },

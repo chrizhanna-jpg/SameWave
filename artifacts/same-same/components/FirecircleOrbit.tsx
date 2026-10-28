@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
     borderRadius: IMG / 2,
   },
   grade: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: TILE / 2,
   },
 });

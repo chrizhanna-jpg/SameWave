@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
-  InteractionManager,
   Modal,
   Platform,
   Pressable,
@@ -1515,7 +1514,7 @@ export default function SwipeScreen() {
       resetCardMotion(translateX, translateY, cardScale, sameLabelOpacity);
       setAnimatingOut(false);
     };
-    InteractionManager.runAfterInteractions(applyNext);
+    runAfterTabFocus(applyNext);
   }, [
     translateX,
     translateY,
@@ -2660,7 +2659,7 @@ export default function SwipeScreen() {
         statusBarTranslucent
         onRequestClose={() => setFullscreenUri(null)}
       >
-        <StatusBar barStyle="light-content" backgroundColor="#000" />
+        <StatusBar barStyle="light-content" />
         <Pressable
           style={styles.fullscreenBackdrop}
           onPress={() => setFullscreenUri(null)}

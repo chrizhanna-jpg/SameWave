@@ -88,7 +88,17 @@ import { AiGeneratedBadge } from "@/components/AiGeneratedBadge";
 import { MicBadge } from "@/components/MicBadge";
 import { useProAccess } from "@/hooks/useProAccess";
 import { gateProFeature } from "@/lib/proFeatures";
-import { Audio } from "expo-av";
+import {
+  AudioModule,
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  type AudioRecorder,
+} from "expo-audio";
+import {
+  configureRecordingAudio,
+  createClipPlayer,
+  type ClipPlayer,
+} from "@/utils/clipPlayer";
 import * as FileSystem from "expo-file-system/legacy";
 
 // Hard cap on recordings: 10s of audio at the AAC preset below lands well
@@ -405,9 +415,9 @@ export default function CameraScreen() {
   const [isPreviewingRecording, setIsPreviewingRecording] = useState(false);
   // Live recording handle. We keep it in a ref so the auto-stop timer can
   // reach it without having to thread it through dependency arrays.
-  const recordingRef = useRef<Audio.Recording | null>(null);
+  const recordingRef = useRef<AudioRecorder | null>(null);
   const recordingStopGuardRef = useRef(false);
-  const previewSoundRef = useRef<Audio.Sound | null>(null);
+  const previewSoundRef = useRef<ClipPlayer | null>(null);
   const recordTickIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
@@ -460,20 +470,19 @@ export default function CameraScreen() {
       recordingStopGuardRef.current = false;
       return null;
     }
+    let durationMs = 0;
     try {
-      await rec.stopAndUnloadAsync();
+      durationMs = Math.round((rec.currentTime || 0) * 1000);
+      await rec.stop();
     } catch {
       /* already stopped */
     }
     let uri: string | null = null;
-    let durationMs = 0;
     try {
-      uri = rec.getURI();
-      const status = await rec.getStatusAsync();
-      durationMs =
-        status && "durationMillis" in status && status.durationMillis
-          ? status.durationMillis
-          : 0;
+      uri = rec.uri;
+      if (!durationMs) {
+        durationMs = Math.round((rec.currentTime || 0) * 1000);
+      }
     } catch {
       /* ignore */
     }
@@ -518,7 +527,7 @@ export default function CameraScreen() {
     void stopAudio();
 
     try {
-      const perm = await Audio.requestPermissionsAsync();
+      const perm = await requestRecordingPermissionsAsync();
       if (!perm.granted) {
         Alert.alert(
           "Microphone needed",
@@ -526,15 +535,10 @@ export default function CameraScreen() {
         );
         return;
       }
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
-      const rec = new Audio.Recording();
-      await rec.prepareToRecordAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY,
-      );
-      await rec.startAsync();
+      await configureRecordingAudio();
+      const rec = new AudioModule.AudioRecorder(RecordingPresets.HIGH_QUALITY);
+      await rec.prepareToRecordAsync();
+      rec.record();
       recordingRef.current = rec;
       recordingStopGuardRef.current = false;
       setIsRecording(true);
@@ -596,7 +600,7 @@ export default function CameraScreen() {
     void stopAudio();
     try {
       await resetPlaybackMode();
-      const { sound } = await Audio.Sound.createAsync(
+      const sound = createClipPlayer(
         { uri: customAudioUrl },
         { shouldPlay: true },
       );
@@ -894,7 +898,7 @@ export default function CameraScreen() {
       const rec = recordingRef.current;
       recordingRef.current = null;
       if (rec) {
-        void rec.stopAndUnloadAsync().catch(() => {});
+        void rec.stop().catch(() => {});
       }
       const s = previewSoundRef.current;
       previewSoundRef.current = null;

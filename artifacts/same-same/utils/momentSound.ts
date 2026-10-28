@@ -1,6 +1,5 @@
-import { Audio } from "expo-av";
-
 import { warmAudioSession } from "@/utils/audio";
+import { createClipPlayer, type ClipPlayer } from "@/utils/clipPlayer";
 
 export type MomentPlayback = "played" | "fallback";
 
@@ -20,7 +19,7 @@ export function startMomentSound(
   opts: { maxMs: number; volume?: number },
 ): MomentSoundHandle {
   let stopped = false;
-  let sound: Audio.Sound | null = null;
+  let sound: ClipPlayer | null = null;
   let cap: ReturnType<typeof setTimeout> | null = null;
 
   const release = () => {
@@ -38,12 +37,11 @@ export function startMomentSound(
   const ready = (async (): Promise<MomentPlayback> => {
     try {
       warmAudioSession();
-      const created = await Audio.Sound.createAsync(source, {
+      sound = createClipPlayer(source, {
         shouldPlay: !stopped,
         volume: opts.volume ?? 0.8,
         isLooping: false,
       });
-      sound = created.sound;
       if (stopped) {
         release();
         return "fallback";

@@ -1098,7 +1098,7 @@ function PhotoPair({
 const styles = StyleSheet.create({
   container: { flex: 1 },
   shimmerClip: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     overflow: "hidden",
   },
   headerRow: {

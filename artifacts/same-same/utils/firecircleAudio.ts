@@ -1,6 +1,9 @@
-import { Audio } from "expo-av";
-
 import { isMuted, markUserInteracted, onMuteChange } from "@/utils/audio";
+import {
+  configurePlaybackAudio,
+  createClipPlayer,
+  type ClipPlayer,
+} from "@/utils/clipPlayer";
 import { setFirecircleFocusSlot as publishFirecircleFocusSlot } from "@/utils/firecircleFocus";
 import { dbToLinear } from "@/utils/dbLinear";
 
@@ -20,8 +23,8 @@ const DUCK_MS = 1200;
 const ZOOM_OUT_BREAK = 0.92;
 const ZOOM_OUT_GAIN = 0.55;
 
-let oceanSound: Audio.Sound | null = null;
-let fireSound: Audio.Sound | null = null;
+let oceanSound: ClipPlayer | null = null;
+let fireSound: ClipPlayer | null = null;
 
 let started = false;
 let duckUntil = 0;
@@ -45,7 +48,7 @@ async function syncFirecirclePlayback(): Promise<void> {
       return;
     }
     await applyVolumes();
-    const playIfPaused = async (s: Audio.Sound) => {
+    const playIfPaused = async (s: ClipPlayer) => {
       const status = await s.getStatusAsync();
       if (status.isLoaded && !status.isPlaying) {
         await s.playAsync();
@@ -70,18 +73,16 @@ function effectiveLinear(baseDb: number, duckDb: number): number {
 
 async function ensureLoaded() {
   if (oceanSound && fireSound) return;
-  const o = await Audio.Sound.createAsync(OCEAN_LOOP, {
+  oceanSound = createClipPlayer(OCEAN_LOOP, {
     isLooping: true,
     volume: 0,
     shouldPlay: false,
   });
-  const f = await Audio.Sound.createAsync(FIRE_LOOP, {
+  fireSound = createClipPlayer(FIRE_LOOP, {
     isLooping: true,
     volume: 0,
     shouldPlay: false,
   });
-  oceanSound = o.sound;
-  fireSound = f.sound;
 }
 
 async function applyVolumes() {
@@ -136,19 +137,13 @@ export async function startFirecircleAmbience(): Promise<void> {
   }
   started = true;
   try {
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: false,
-      shouldDuckAndroid: true,
-      playThroughEarpieceAndroid: false,
-    });
+    await configurePlaybackAudio();
   } catch {
     /* non-fatal */
   }
   await ensureLoaded();
   await applyVolumes();
-  const play = async (s: Audio.Sound | null) => {
+  const play = async (s: ClipPlayer | null) => {
     if (!s) return;
     try {
       await s.setPositionAsync(0);
@@ -167,7 +162,7 @@ export async function startFirecircleAmbience(): Promise<void> {
 export async function stopFirecircleAmbience(): Promise<void> {
   started = false;
   stopVolumePump();
-  const unload = async (s: Audio.Sound | null) => {
+  const unload = async (s: ClipPlayer | null) => {
     if (!s) return;
     try {
       await s.stopAsync();

@@ -127,7 +127,7 @@ export function MomentRings({ color, mode, durationMs, onBurstEnd }: Props) {
 
 const styles = StyleSheet.create({
   wrap: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
   },
