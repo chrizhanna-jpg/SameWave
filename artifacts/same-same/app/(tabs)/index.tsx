@@ -21,6 +21,7 @@ import { GradientCard } from "@/components/GradientCard";
 import { PressableScale } from "@/components/PressableScale";
 import { useCountUp } from "@/hooks/useCountUp";
 import { getTodaysChallenge } from "@/data/samplePhotos";
+import { setRipplePlayFocus } from "@/utils/ripplePlayFocus";
 import { RIPPLE_ONE_LINER, WAVE_ONE_LINER } from "@/data/waveRippleGlossary";
 import { scrollPaddingAboveTabBar } from "@/utils/tabBarSafeArea";
 
@@ -28,7 +29,7 @@ export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { width: screenW, height: screenH } = useWindowDimensions();
-  const { matches, matchedCountries, mutualEchoes, resetOnboarding, cloudSyncInProgress, syncCloudData } =
+  const { matches, matchedCountries, mutualEchoes, myVibe, resetOnboarding, cloudSyncInProgress, syncCloudData } =
     useApp();
   const challenge = getTodaysChallenge();
 
@@ -165,7 +166,14 @@ export default function HomeScreen() {
 
         {/* Daily challenge — gradient depth, springs on press */}
         <PressableScale
-          onPress={() => router.push("/camera?intent=challenge")}
+          onPress={() => {
+            setRipplePlayFocus({
+              kind: "challenge",
+              title: challenge.title,
+              emoji: challenge.emoji,
+            });
+            router.push("/camera?intent=challenge");
+          }}
           haptic="light"
           style={styles.fullWidth}
         >
@@ -191,7 +199,10 @@ export default function HomeScreen() {
         </PressableScale>
 
         <PressableScale
-          onPress={() => router.push("/camera?intent=interests")}
+          onPress={() => {
+            setRipplePlayFocus({ kind: "interests", tags: myVibe });
+            router.push("/camera?intent=interests");
+          }}
           haptic="light"
           style={styles.fullWidth}
         >

@@ -46,7 +46,8 @@
       ]
     },
     "web": {
-      "favicon": "./assets/images/icon.png"
+      "favicon": "./assets/images/icon.png",
+      "output": "static"
     },
     "plugins": [
       [
@@ -55,6 +56,13 @@
       ],
       "@clerk/expo",
       "expo-font",
+      "expo-secure-store",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "SameWave uses your microphone so you can record a short voice note with today's photo."
+        }
+      ],
       "expo-web-browser",
       [
         "expo-image-picker",

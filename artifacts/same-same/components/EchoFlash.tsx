@@ -1,8 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
+  AccessibilityInfo,
   Animated,
-  Dimensions,
-  Easing,
   Image,
   PanResponder,
   Pressable,
@@ -12,26 +11,28 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
-import { CelebrationMatchChips } from "@/components/CelebrationMatchChips";
+import { MomentRings } from "@/components/MomentRings";
 import {
   CelebrationSwipeDismissHint,
   CelebrationSwipeHandle,
   celebrationDragScale,
 } from "@/components/CelebrationSwipeDismiss";
-import { ConnectionMapPreview } from "@/components/ConnectionMapPreview";
 import { Icon } from "@/components/Icon";
 import { useColors } from "@/hooks/useColors";
-import { getGeoTierForPhotos, getTimeTier } from "@/utils/celebrations";
+import { startMomentSound, type MomentSoundHandle } from "@/utils/momentSound";
 import { photoCountryDisplay } from "@/utils/photoCountry";
+import {
+  WAVE_REVEAL_HOLD_MS,
+  WAVE_REVEAL_MAX_MS,
+  WAVE_REVEAL_MS,
+  waveRevealLifetimeMs,
+} from "@/utils/waveReveal";
 
-const FLASH_MAP_WIDTH = Dimensions.get("window").width - 48;
+const WAVE_SOUND = require("@/assets/sounds/beach-waves.mp3");
 
-// Action a tap on one of the action pills should trigger after the
-// flash dismisses. `undefined` means "just open the echo pair view".
 export type EchoFlashAction = "share" | undefined;
 
 interface Props {
-  /** Country/flag/photo metadata for the two sides of the echo. */
   myCountryFlag?: string;
   myCountryCode?: string;
   myCaptureCountryCode?: string;
@@ -41,59 +42,32 @@ interface Props {
   theirCaptureCountryCode?: string;
   myPhotoUri: string;
   theirPhotoUri: string;
-  /** Theme that produced the echo (e.g. "Coffee", "Sunset"). */
   themeTitle?: string;
   themeEmoji?: string;
-  // Absolute timestamps for the calendar time tier. Each side prefers its
-  // real capture time, falling back to its upload/share time.
   myPhotoCapturedAt?: string;
   myPhotoSharedAt?: string;
   theirPhotoCapturedAt?: string;
   theirPhotoSharedAt?: string;
-  /** Called when the flash is dismissed without opening / sharing. */
   onDone: () => void;
-  /** Called when the user wants to open the full echo-pair view. */
   onOpen: () => void;
 }
 
-// Echo celebration overlay. Fires the moment a "same-same" turns into a
-// mutual echo for either side of the pair (the responder via
-// respondToEcho, the original offerer via the polling refresh that
-// detects the new mutual). Twin sister of MatchFlash, but tuned for
-// echoes: globe spinning between the two photos, big "ECHO" word
-// across the top, share posts a system message instead of going
-// through the watermark flow.
-//
-// Dismissal:
-// - Swipe up or down → dismiss (snaps back if you don't pull far).
-// - × button → dismiss.
-// - Open → calls onOpen (parent navigates to /echo-pair).
-// - Share → also navigates to /echo-pair (the "It's an Echo!" reveal),
-//   where the actual system share sheet lives. We deliberately do NOT
-//   pop the share sheet from the banner itself: the user expects a
-//   match-style reveal moment first, where they can see both photos and
-//   then choose to share. Going straight to the share sheet from the
-//   banner felt jarring.
-//
-// We deliberately do NOT auto-dismiss. The user just got the rarest,
-// best moment in the app — the flash sticks until they choose what
-// to do with it.
+/**
+ * Full-screen Wave reveal. Plays the wave rings and sound to the end,
+ * then dismisses so it never blocks the app. Skip works immediately.
+ * If motion can't run, the static card is the fallback and leaves sooner.
+ * Launch routing and the Open action are unchanged.
+ */
 export function EchoFlash({
   myCountryFlag,
-  myCountryCode,
   myCaptureCountryCode,
   theirCountry,
   theirCountryFlag,
-  theirCountryCode,
   theirCaptureCountryCode,
   myPhotoUri,
   theirPhotoUri,
   themeTitle,
   themeEmoji = "✨",
-  myPhotoCapturedAt,
-  myPhotoSharedAt,
-  theirPhotoCapturedAt,
-  theirPhotoSharedAt,
   onDone,
   onOpen,
 }: Props) {
@@ -101,18 +75,17 @@ export function EchoFlash({
   const insets = useSafeAreaInsets();
   const fade = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(0.94)).current;
-  const popIn = useRef(new Animated.Value(0)).current;
   const dragY = useRef(new Animated.Value(0)).current;
   const finishedRef = useRef(false);
-  // Photo URIs may 404 (deleted by the other user, expired CDN, etc).
-  // Track per-side load failure so we can render the flag fallback
-  // instead of a blank gray square.
+  const soundRef = useRef<MomentSoundHandle | null>(null);
+  const [staticFallback, setStaticFallback] = useState(false);
   const [myImgErr, setMyImgErr] = useState(false);
   const [theirImgErr, setTheirImgErr] = useState(false);
 
   const finish = (action: "auto" | "open" = "auto") => {
     if (finishedRef.current) return;
     finishedRef.current = true;
+    soundRef.current?.stop();
     if (action === "open") {
       onOpen();
       return;
@@ -123,6 +96,9 @@ export function EchoFlash({
       useNativeDriver: true,
     }).start(() => onDone());
   };
+
+  const finishRef = useRef(finish);
+  finishRef.current = finish;
 
   const panResponder = useRef(
     PanResponder.create({
@@ -139,7 +115,7 @@ export function EchoFlash({
             toValue: g.dy > 0 ? 360 : -360,
             duration: 180,
             useNativeDriver: true,
-          }).start(() => finish("auto"));
+          }).start(() => finishRef.current("auto"));
         } else {
           Animated.spring(dragY, {
             toValue: 0,
@@ -161,9 +137,41 @@ export function EchoFlash({
   ).current;
 
   useEffect(() => {
-    // Echoes are the rarest moment in the app — give them the
-    // celebration haptic, not just success.
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    const sound = startMomentSound(WAVE_SOUND, {
+      maxMs: WAVE_REVEAL_MS + WAVE_REVEAL_HOLD_MS,
+      volume: 0.7,
+    });
+    soundRef.current = sound;
+
+    const started = Date.now();
+    let dismissed = false;
+    let lifeTimer = setTimeout(() => {
+      if (!dismissed) finishRef.current("auto");
+    }, waveRevealLifetimeMs({ animationPlays: true }));
+    const capTimer = setTimeout(() => {
+      if (!dismissed) finishRef.current("auto");
+    }, WAVE_REVEAL_MAX_MS);
+
+    const useStatic = () => {
+      setStaticFallback(true);
+      const remaining = Math.max(
+        0,
+        waveRevealLifetimeMs({ animationPlays: false }) - (Date.now() - started),
+      );
+      clearTimeout(lifeTimer);
+      lifeTimer = setTimeout(() => {
+        if (!dismissed) finishRef.current("auto");
+      }, remaining);
+    };
+
+    let alive = true;
+    void AccessibilityInfo.isReduceMotionEnabled()
+      .then((reduce) => {
+        if (alive && reduce) useStatic();
+      })
+      .catch(() => useStatic());
+
     Animated.parallel([
       Animated.timing(fade, {
         toValue: 1,
@@ -176,32 +184,20 @@ export function EchoFlash({
         friction: 9,
         useNativeDriver: true,
       }),
-      Animated.timing(popIn, {
-        toValue: 1,
-        duration: 520,
-        delay: 80,
-        easing: Easing.out(Easing.back(1.6)),
-        useNativeDriver: true,
-      }),
     ]).start();
+
+    return () => {
+      alive = false;
+      dismissed = true;
+      clearTimeout(lifeTimer);
+      clearTimeout(capTimer);
+      sound.stop();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const popScale = popIn.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.5, 1],
-  });
-
-  const timeTier = getTimeTier(
-    { capturedAt: myPhotoCapturedAt, sharedAt: myPhotoSharedAt },
-    { capturedAt: theirPhotoCapturedAt, sharedAt: theirPhotoSharedAt },
-  );
   const myDisplay = photoCountryDisplay(myCaptureCountryCode);
   const theirDisplay = photoCountryDisplay(theirCaptureCountryCode);
-  const geoTier = getGeoTierForPhotos(
-    myCaptureCountryCode,
-    theirCaptureCountryCode,
-  );
   const dragScale = celebrationDragScale(dragY);
   const backdropDragOpacity = dragY.interpolate({
     inputRange: [-140, 0, 140],
@@ -233,10 +229,14 @@ export function EchoFlash({
         ]}
         pointerEvents="box-none"
       >
+        <MomentRings
+          color="#6B4E12"
+          mode={staticFallback ? "static" : "burst"}
+          durationMs={WAVE_REVEAL_MS}
+        />
         <CelebrationSwipeHandle
           style={[styles.topHandle, { top: insets.top + 4 }]}
         />
-
         <Pressable
           onPress={() => finish("auto")}
           style={[
@@ -244,89 +244,36 @@ export function EchoFlash({
             { top: insets.top + 12, right: insets.right + 16 },
           ]}
           hitSlop={12}
-          accessibilityLabel="Dismiss wave"
+          accessibilityLabel="Skip wave reveal"
         >
           <Icon name="x" size={20} color="rgba(0,16,24,0.7)" />
         </Pressable>
 
-        <View style={styles.headlineRow}>
-          <Icon name="wave-glyph" size={28} color={colors.gold} />
-          <Text style={styles.headline}>Wave!</Text>
-          <Icon name="wave-glyph" size={28} color={colors.gold} />
-        </View>
-        <Text style={styles.tagline}>They rippled back!</Text>
-
-        {(myDisplay.code || theirDisplay.code) && (
-          <ConnectionMapPreview
-            kind="wave"
-            fromCode={myDisplay.code}
-            toCode={theirDisplay.code}
-            width={FLASH_MAP_WIDTH}
-            height={Math.round(FLASH_MAP_WIDTH * 0.34)}
-            style={styles.atlasPreview}
-          />
-        )}
+        <Text style={styles.kicker}>They rippled back</Text>
+        <Text style={styles.headline}>Wave</Text>
 
         <View style={styles.thumbsRow}>
-          <Animated.View
-            style={[
-              styles.thumbWrap,
-              { opacity: popIn, transform: [{ scale: popScale }] },
-            ]}
-          >
-            {myPhotoUri && !myImgErr ? (
-              <Image
-                source={{ uri: myPhotoUri }}
-                style={styles.thumb}
-                onError={() => setMyImgErr(true)}
-              />
-            ) : (
-              <View style={[styles.thumb, styles.thumbFallback]}>
-                <Text style={styles.thumbFallbackFlag}>{myDisplay.flag}</Text>
-              </View>
-            )}
-            <Text style={styles.thumbFlag}>{myDisplay.flag}</Text>
-          </Animated.View>
-
-          <View style={styles.connector}>
-            <View style={styles.dot} />
-            <View style={styles.dot} />
-            <View style={styles.dot} />
-          </View>
-
-          <Animated.View
-            style={[
-              styles.thumbWrap,
-              { opacity: popIn, transform: [{ scale: popScale }] },
-            ]}
-          >
-            {theirPhotoUri && !theirImgErr ? (
-              <Image
-                source={{ uri: theirPhotoUri }}
-                style={styles.thumb}
-                onError={() => setTheirImgErr(true)}
-              />
-            ) : (
-              <View style={[styles.thumb, styles.thumbFallback]}>
-                <Text style={styles.thumbFallbackFlag}>
-                  {theirDisplay.flag}
-                </Text>
-              </View>
-            )}
-            <Text style={styles.thumbFlag}>{theirDisplay.flag}</Text>
-          </Animated.View>
+          <PhotoThumb
+            uri={myPhotoUri}
+            failed={myImgErr}
+            onError={() => setMyImgErr(true)}
+            flag={myDisplay.flag || myCountryFlag || ""}
+            label="Yours"
+          />
+          <Icon name="wave-glyph" size={28} color="#6B4E12" />
+          <PhotoThumb
+            uri={theirPhotoUri}
+            failed={theirImgErr}
+            onError={() => setTheirImgErr(true)}
+            flag={theirDisplay.flag || theirCountryFlag}
+            label={theirDisplay.name || theirCountry}
+          />
         </View>
 
         {themeTitle ? (
-          <CelebrationMatchChips
-            countryName={theirDisplay.name}
-            countryFlag={theirDisplay.flag}
-            themeTitle={themeTitle}
-            themeEmoji={themeEmoji}
-            timeTier={timeTier}
-            geoTier={geoTier}
-            accentColor={colors.gold}
-          />
+          <Text style={styles.meta}>
+            {themeEmoji} {themeTitle}
+          </Text>
         ) : null}
 
         <View style={styles.ctaWrap}>
@@ -340,21 +287,49 @@ export function EchoFlash({
           >
             <Icon name="wave-glyph" size={18} color="#001018" />
             <Text style={[styles.openShareText, { color: "#001018" }]}>
-              Open Wave reveal
+              Open Wave
             </Text>
             <Icon name="arrow-right" size={18} color="#001018" />
           </Pressable>
         </View>
-
         <CelebrationSwipeDismissHint dragY={dragY} />
       </Animated.View>
     </View>
   );
 }
 
+function PhotoThumb({
+  uri,
+  failed,
+  onError,
+  flag,
+  label,
+}: {
+  uri: string;
+  failed: boolean;
+  onError: () => void;
+  flag: string;
+  label: string;
+}) {
+  return (
+    <View style={styles.thumbWrap}>
+      {uri && !failed ? (
+        <Image source={{ uri }} style={styles.thumb} onError={onError} />
+      ) : (
+        <View style={[styles.thumb, styles.thumbFallback]}>
+          <Text style={styles.thumbFallbackFlag}>{flag}</Text>
+        </View>
+      )}
+      <Text style={styles.thumbLabel} numberOfLines={1}>
+        {flag} {label}
+      </Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   center: {
     flex: 1,
@@ -378,45 +353,35 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.55)",
   },
-  tagline: {
-    fontSize: 14,
+  kicker: {
+    fontSize: 13,
     fontWeight: "800",
-    letterSpacing: 6,
-    color: "rgba(0,16,24,0.65)",
+    letterSpacing: 2,
+    color: "rgba(0,16,24,0.62)",
     textTransform: "uppercase",
     marginBottom: 4,
   },
-  // Headline kept readable but no longer dwarfing the photos. The
-  // celebration's two thumbnails were bumped to a tall portrait
-  // 5:7 so the imagery is the visual anchor of the moment, with
-  // the globe between them and a slim text/button stack around.
   headline: {
-    fontSize: 22,
+    fontSize: 40,
     fontWeight: "900",
     color: "#001018",
-    letterSpacing: 1,
-    marginBottom: 8,
+    letterSpacing: -0.6,
+    marginBottom: 18,
     textAlign: "center",
-  },
-  atlasPreview: {
-    marginBottom: 12,
-    borderColor: "rgba(0,16,24,0.12)",
   },
   thumbsRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    marginBottom: 12,
+    gap: 12,
+    marginBottom: 14,
   },
   thumbWrap: {
-    width: 100,
-    height: 140,
-    borderRadius: 18,
-    position: "relative",
+    width: 120,
+    alignItems: "center",
   },
   thumb: {
-    width: 100,
-    height: 140,
+    width: 120,
+    height: 156,
     borderRadius: 18,
     backgroundColor: "rgba(0,16,24,0.18)",
   },
@@ -427,36 +392,30 @@ const styles = StyleSheet.create({
   thumbFallbackFlag: {
     fontSize: 44,
   },
-  thumbFlag: {
-    position: "absolute",
-    bottom: -6,
-    right: -6,
-    fontSize: 24,
-    textShadowColor: "rgba(0,0,0,0.45)",
-    textShadowRadius: 4,
+  thumbLabel: {
+    marginTop: 8,
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#001018",
+    maxWidth: 120,
   },
-  connector: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "rgba(0,16,24,0.55)",
+  meta: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "rgba(0,16,24,0.72)",
+    textAlign: "center",
   },
   ctaWrap: {
     width: "100%",
     alignItems: "center",
-    marginTop: 8,
+    marginTop: 16,
   },
   openSharePill: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
-    minWidth: 240,
+    minWidth: 220,
     paddingHorizontal: 28,
     paddingVertical: 12,
     borderRadius: 12,

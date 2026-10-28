@@ -139,6 +139,10 @@ import {
   startWavefireAmbience,
   stopWavefireAmbience,
 } from "@/utils/wavefireAmbience";
+import {
+  MAP_MINE_WAVE_COLOR,
+  MAP_OTHER_WAVE_COLOR,
+} from "@/utils/mapWaves";
 
 export type AtlasFilterMode =
   | "all"
@@ -487,6 +491,12 @@ interface Props {
   localWaveEchoes?: LocalWaveExploreEcho[];
   viewerCountryCode?: string;
   viewerMyPhotos?: ViewerExplorePhoto[];
+  /**
+   * Map tab: waves only, straight country-to-country lines, gold for
+   * the viewer's waves and blue for everyone else. Hides ripples,
+   * filters, travelling dots, and fire circles.
+   */
+  simpleWaves?: boolean;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -502,6 +512,7 @@ export function AtlasGlobeExperience({
   localWaveEchoes,
   viewerCountryCode,
   viewerMyPhotos,
+  simpleWaves = false,
   style,
 }: Props) {
   const colors = useColors();
@@ -673,6 +684,7 @@ export function AtlasGlobeExperience({
   // idle the moment you leave.
   useFocusEffect(
     useCallback(() => {
+      if (simpleWaves) return;
       let id = 0;
       const loop = () => {
         timeRef.current = Date.now();
@@ -681,7 +693,7 @@ export function AtlasGlobeExperience({
       };
       id = requestAnimationFrame(loop);
       return () => cancelAnimationFrame(id);
-    }, []),
+    }, [simpleWaves]),
   );
 
   const normalized = useMemo(
@@ -758,6 +770,14 @@ export function AtlasGlobeExperience({
   );
 
   const displayConnections = useMemo(() => {
+    if (simpleWaves) {
+      return normalized
+        .filter((c) => c.kind === "wave")
+        .map((c) => ({
+          ...c,
+          color: c.mine ? MAP_MINE_WAVE_COLOR : MAP_OTHER_WAVE_COLOR,
+        }));
+    }
     if (filter === "ripplefire") {
       if (fireCluster?.connections.length) return fireCluster.connections;
       if (fireWindowRipples.length) return fireWindowRipples;
@@ -773,7 +793,15 @@ export function AtlasGlobeExperience({
       return [];
     }
     return baseFiltered;
-  }, [filter, baseFiltered, fireCluster, fireWindowRipples, fireWindowWaves, normalized]);
+  }, [
+    simpleWaves,
+    filter,
+    baseFiltered,
+    fireCluster,
+    fireWindowRipples,
+    fireWindowWaves,
+    normalized,
+  ]);
 
   /** Device/server ripples without a themed cluster still activate Ripplefire UI. */
   const effectiveFireCluster = useMemo((): AtlasThemeCluster | null => {
@@ -806,9 +834,11 @@ export function AtlasGlobeExperience({
       const a = centroidLonLatForAtlas(c.from);
       const b = centroidLonLatForAtlas(c.to);
       if (!a || !b) continue;
-      const seg = atlasArcSegment(projection, a, b);
+      const seg = atlasArcSegment(projection, a, b, {
+        straight: simpleWaves,
+      });
       if (!seg) continue;
-      const d = atlasArcPathD(projection, a, b);
+      const d = atlasArcPathD(projection, a, b, { straight: simpleWaves });
       if (!d) continue;
       items.push({
         id: c.id,
@@ -818,7 +848,7 @@ export function AtlasGlobeExperience({
       });
     }
     return items.sort((u, v) => parseCreatedMs(v.c) - parseCreatedMs(u.c));
-  }, [displayConnections, projection]);
+  }, [displayConnections, projection, simpleWaves]);
 
   /** Dots only: prefer ripples so a busy wave feed does not evict ripple dots. */
   const animatedSlice = useMemo(() => {
@@ -852,11 +882,12 @@ export function AtlasGlobeExperience({
   }, [countries, displayConnections, filter]);
 
   const mapCountryCodes = useMemo(() => {
+    if (simpleWaves) return countryCodesOnMap;
     if (isFireFilter(filter)) {
       return effectiveFireCluster?.countryCodes ?? [];
     }
     return countryCodesOnMap;
-  }, [filter, effectiveFireCluster, countryCodesOnMap]);
+  }, [simpleWaves, filter, effectiveFireCluster, countryCodesOnMap]);
 
   const centroidHits = useMemo(() => {
     return mapCountryCodes
@@ -871,7 +902,7 @@ export function AtlasGlobeExperience({
   }, [mapCountryCodes, projection]);
 
   const now = timeRef.current;
-  const fireNight = isFireFilter(filter);
+  const fireNight = !simpleWaves && isFireFilter(filter);
   const fireActive = fireNight && effectiveFireCluster != null;
   const wavefireActive = filter === "wavefire" && effectiveFireCluster != null;
   const ripplefireActive = filter === "ripplefire" && effectiveFireCluster != null;
@@ -960,6 +991,7 @@ export function AtlasGlobeExperience({
 
   /** Wavefire = ring + ember camps — never show raw pair arcs when eligible. */
   const showConnectionArcs = useMemo(() => {
+    if (simpleWaves) return true;
     if (filter === "wavefire") {
       return !wavefireRingEligible || wavefireDisplayRingD == null;
     }
@@ -969,6 +1001,7 @@ export function AtlasGlobeExperience({
     if (isFireFilter(filter)) return fireActive;
     return true;
   }, [
+    simpleWaves,
     filter,
     wavefireRingEligible,
     wavefireDisplayRingD,
@@ -1046,7 +1079,10 @@ export function AtlasGlobeExperience({
 
   /** Pause beach + campfire when Explore opens; resume when it closes. */
   useEffect(() => {
-    if (!isTabFocused) return;
+    if (simpleWaves || !isTabFocused) {
+      void stopWavefireAmbience();
+      return;
+    }
 
     if (fireExploreOpen) {
       void stopWavefireAmbience();
@@ -1064,7 +1100,7 @@ export function AtlasGlobeExperience({
       }
     });
     return () => sub.remove();
-  }, [isTabFocused, fireExploreOpen]);
+  }, [simpleWaves, isTabFocused, fireExploreOpen]);
 
   useEffect(() => {
     if (!wfPhotoTile) {
@@ -1215,18 +1251,23 @@ export function AtlasGlobeExperience({
 
   return (
     <View style={[styles.card, { borderColor: colors.border }, style]}>
-      <AtlasFilterBar
-        filter={filter}
-        isSignedIn={isSignedIn}
-        onChange={setFilter}
-        colors={colors}
-      />
-
-      <Text style={[styles.filterHint, { color: colors.mutedForeground }]}>
-        {filter === "mine" && !isSignedIn
-          ? ATLAS_FILTER_HINT_MINE_SIGNIN
-          : ATLAS_FILTER_HINT[filter]}
-      </Text>
+      {simpleWaves ? (
+        <MapWaveLegend />
+      ) : (
+        <>
+          <AtlasFilterBar
+            filter={filter}
+            isSignedIn={isSignedIn}
+            onChange={setFilter}
+            colors={colors}
+          />
+          <Text style={[styles.filterHint, { color: colors.mutedForeground }]}>
+            {filter === "mine" && !isSignedIn
+              ? ATLAS_FILTER_HINT_MINE_SIGNIN
+              : ATLAS_FILTER_HINT[filter]}
+          </Text>
+        </>
+      )}
 
       <View
         style={styles.mapArea}
@@ -1324,9 +1365,19 @@ export function AtlasGlobeExperience({
                       d={p.d}
                       fill="none"
                       stroke={p.c.color}
-                      strokeWidth={p.c.kind === "wave" ? 1 : 0.625}
+                      strokeWidth={
+                        simpleWaves
+                          ? p.c.mine
+                            ? 2.4
+                            : 1.45
+                          : p.c.kind === "wave"
+                            ? 1
+                            : 0.625
+                      }
                       strokeLinecap="round"
-                      strokeDasharray={p.c.kind === "ripple" ? "2.5 3" : undefined}
+                      strokeDasharray={
+                        simpleWaves || p.c.kind !== "ripple" ? undefined : "2.5 3"
+                      }
                       opacity={0.15 + lineOp * 0.78}
                     />
                   );
@@ -1525,8 +1576,23 @@ export function AtlasGlobeExperience({
                   })
                 : null}
 
+              {simpleWaves && showConnectionArcs ? (
+                <G pointerEvents="none">
+                  {prepared.map((p) => {
+                    if (p.seg.mode !== "line") return null;
+                    const r = p.c.mine ? 3.5 : 2.6;
+                    return (
+                      <G key={`end-${p.id}`}>
+                        <Circle cx={p.seg.x1} cy={p.seg.y1} r={r} fill={p.c.color} />
+                        <Circle cx={p.seg.x2} cy={p.seg.y2} r={r} fill={p.c.color} />
+                      </G>
+                    );
+                  })}
+                </G>
+              ) : null}
+
               <G>
-                {showConnectionArcs
+                {showConnectionArcs && !simpleWaves
                   ? animatedSlice.map((p) => {
                   const age = now - parseCreatedMs(p.c);
                   if (age < 0) return null;
@@ -1614,13 +1680,15 @@ export function AtlasGlobeExperience({
             icon="globe"
             iconColor={colors.primary}
           />
-          <StatPill
-            accessibilityLabel={ATLAS_FILTER_A11Y.ripples}
-            value={stats.ripples}
-            fg={colors.foreground}
-            icon="ripple"
-            iconColor="#4FD89C"
-          />
+          {simpleWaves ? null : (
+            <StatPill
+              accessibilityLabel={ATLAS_FILTER_A11Y.ripples}
+              value={stats.ripples}
+              fg={colors.foreground}
+              icon="ripple"
+              iconColor="#4FD89C"
+            />
+          )}
           <StatPill
             accessibilityLabel={ATLAS_FILTER_A11Y.waves}
             value={stats.waves}
@@ -1695,13 +1763,17 @@ export function AtlasGlobeExperience({
                 </Text>
                 {modalStats ? (
                   <>
-                    <Text style={[styles.modalLine, { color: colors.mutedForeground }]}>
-                      {ATLAS_COUNTRY_MODAL.ripplesSent}: {modalStats.ripplesSent}
-                    </Text>
-                    <Text style={[styles.modalLine, { color: colors.mutedForeground }]}>
-                      {ATLAS_COUNTRY_MODAL.ripplesReceived}:{" "}
-                      {modalStats.ripplesReceived}
-                    </Text>
+                    {simpleWaves ? null : (
+                      <>
+                        <Text style={[styles.modalLine, { color: colors.mutedForeground }]}>
+                          {ATLAS_COUNTRY_MODAL.ripplesSent}: {modalStats.ripplesSent}
+                        </Text>
+                        <Text style={[styles.modalLine, { color: colors.mutedForeground }]}>
+                          {ATLAS_COUNTRY_MODAL.ripplesReceived}:{" "}
+                          {modalStats.ripplesReceived}
+                        </Text>
+                      </>
+                    )}
                     <Text style={[styles.modalLine, { color: colors.mutedForeground }]}>
                       {ATLAS_COUNTRY_MODAL.wavesMutual}: {modalStats.waves}
                     </Text>
@@ -1960,6 +2032,26 @@ function StatPill(props: {
   );
 }
 
+function MapWaveLegend() {
+  const colors = useColors();
+  return (
+    <View style={styles.legendRow} accessibilityRole="text">
+      <View style={styles.legendItem}>
+        <View style={[styles.legendSwatch, { backgroundColor: MAP_MINE_WAVE_COLOR }]} />
+        <Text style={[styles.legendLabel, { color: colors.mutedForeground }]}>
+          Your waves
+        </Text>
+      </View>
+      <View style={styles.legendItem}>
+        <View style={[styles.legendSwatch, { backgroundColor: MAP_OTHER_WAVE_COLOR }]} />
+        <Text style={[styles.legendLabel, { color: colors.mutedForeground }]}>
+          Other waves
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 function AtlasFilterBar(props: {
   filter: AtlasFilterMode;
   isSignedIn: boolean;
@@ -2152,6 +2244,27 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 12,
     marginBottom: 4,
+  },
+  legendRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+    paddingHorizontal: 14,
+    paddingBottom: 6,
+  },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  legendSwatch: {
+    width: 18,
+    height: 3,
+    borderRadius: 2,
+  },
+  legendLabel: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
   },
   filterChipsRow: {
     flex: 1,

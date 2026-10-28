@@ -1,9 +1,12 @@
 // Wavefire ambience: single beach + campfire loop (separate from global vibe
 // clip singleton in utils/audio.ts so Atlas does not steal Match playback).
 
-import { Audio } from "expo-av";
-
 import { isMuted, onMuteChange } from "@/utils/audio";
+import {
+  configurePlaybackAudio,
+  createClipPlayer,
+  type ClipPlayer,
+} from "@/utils/clipPlayer";
 import { dbToLinear } from "@/utils/dbLinear";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -14,7 +17,7 @@ const DB = -11;
 const ZOOM_OUT_BREAK = 0.92;
 const ZOOM_OUT_GAIN = 0.55;
 
-let ambienceSound: Audio.Sound | null = null;
+let ambienceSound: ClipPlayer | null = null;
 /** Bumped on every stop so in-flight start() cannot play after leaving the screen. */
 let playSession = 0;
 let mapScale = 1;
@@ -73,12 +76,11 @@ export function setWavefireMapScale(s: number): void {
 async function ensureLoaded(): Promise<boolean> {
   if (ambienceSound) return true;
   try {
-    const { sound } = await Audio.Sound.createAsync(WAVEFIRE_AMBIENCE, {
+    ambienceSound = createClipPlayer(WAVEFIRE_AMBIENCE, {
       isLooping: true,
       volume: 0,
       shouldPlay: false,
     });
-    ambienceSound = sound;
     return true;
   } catch {
     return false;
@@ -94,13 +96,7 @@ export async function startWavefireAmbience(): Promise<void> {
   wantPlaying = true;
   const session = playSession;
   try {
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: false,
-      shouldDuckAndroid: true,
-      playThroughEarpieceAndroid: false,
-    });
+    await configurePlaybackAudio();
   } catch {
     /* non-fatal */
   }

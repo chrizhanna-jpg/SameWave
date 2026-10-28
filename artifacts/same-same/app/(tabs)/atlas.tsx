@@ -15,10 +15,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@clerk/expo";
 
 import { AtlasGlobeExperience } from "@/components/AtlasGlobeExperience";
-import { AudioMuteButton } from "@/components/AudioMuteButton";
 import { Icon } from "@/components/Icon";
 import { SyncRefreshButton } from "@/components/SyncRefreshButton";
 import { OceanShimmer } from "@/components/OceanShimmer";
+import { SAMPLE_PHOTOS } from "@/data/samplePhotos";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import {
@@ -28,27 +28,25 @@ import {
   warmAuthedImageHeaders,
   type AtlasConnection,
   type AtlasCountry,
-  type AtlasFireExploreOptions,
   type AtlasSummaryLoadError,
   type AtlasSummaryLoadFailure,
-  type LocalRippleExploreMatch,
-  type LocalWaveExploreEcho,
 } from "@/utils/api";
 import { registerAtlasRefreshListener } from "@/utils/atlasHub";
 import {
-  buildLocalRippleConnections,
   mergeAtlasConnectionsById,
-  reconcileServerAndLocalRipples,
 } from "@/utils/atlasLocalRipples";
 import { isServerHeldAtlasConnection } from "@/utils/atlasWavefire";
+import {
+  isLaunchWaveId,
+  prepareMapWaves,
+  type ViewerWaveEndpoint,
+} from "@/utils/mapWaves";
 import {
   loadAtlasCache,
   saveAtlasCache,
 } from "@/utils/syncCache";
 import { markTabVisited } from "@/utils/tabVisits";
 import { runAfterTabFocus } from "@/utils/deferTabFocus";
-import { stopWavefireAmbience, startWavefireAmbience } from "@/utils/wavefireAmbience";
-import type { MyPhoto } from "@/context/AppContext";
 
 /** Never replace a non-empty map with an empty/partial API payload (degraded refresh, races). */
 function mergeAtlasPayload(
@@ -91,78 +89,31 @@ export default function AtlasScreen() {
   const [diagBusy, setDiagBusy] = useState(false);
   const [diagJson, setDiagJson] = useState<string | null>(null);
 
-  const { matches, myCountryCode, mutualEchoes, myPhotos, hasHydrated } = useApp();
+  const { myCountryCode, mutualEchoes, hasHydrated } = useApp();
 
-  const fireExploreOptions = useMemo((): AtlasFireExploreOptions => {
-    const localMatches: LocalRippleExploreMatch[] = matches
-      .filter((m) => m.verdict === "same")
-      .map((m) => ({
-        id: m.id,
-        verdict: m.verdict,
-        myPhoto: m.myPhoto,
-        theirPhoto: m.theirPhoto,
-        theirPhotoId: m.theirPhotoId,
-        theirCountryCode: m.theirCountryCode,
-        myCountry: m.myCountry,
-        myCountryCode: m.myCountryCode,
-        myCaptureCountryCode: m.myCaptureCountryCode,
-        theirCaptureCountryCode: m.theirCaptureCountryCode,
-        theme: m.theme,
-        theirActualTheme: m.theirActualTheme,
-        theirTags: m.theirTags,
-        sharedTags: m.sharedTags,
-        theirMusicGenre: m.theirMusicGenre,
-        theirCustomAudioUrl: m.theirCustomAudioUrl,
-        timestamp: m.timestamp,
-      }));
-    const localWaves: LocalWaveExploreEcho[] = mutualEchoes.map((e) => ({
-      id: e.id,
-      theme: e.theme,
-      myPhoto: e.mine.uri,
-      myPhotoId: e.mine.id,
-      theirPhoto: e.theirs.uri,
-      theirPhotoId: e.theirs.id,
-      theirCountryCode: e.theirs.countryCode ?? "",
-      myCountryCode: e.mine.countryCode ?? myCountryCode,
-      mutualAt: e.mutualAt,
+  const mapConnections = useMemo(() => {
+    const viewerWaves: ViewerWaveEndpoint[] = mutualEchoes.map((echo) => ({
+      id: echo.id,
+      from: (
+        echo.mine.captureCountryCode ||
+        echo.mine.countryCode ||
+        myCountryCode ||
+        ""
+      ).trim(),
+      to: (
+        echo.theirs.captureCountryCode ||
+        echo.theirs.countryCode ||
+        ""
+      ).trim(),
+      createdAt: echo.mutualAt || echo.createdAt,
+      theme: echo.theme,
     }));
-    return {
-      localMatches,
-      localWaves,
-      viewerCountryCode: myCountryCode,
-      viewerMyPhotos: myPhotos.map((p, i) => ({
-        uri: p.uri,
-        backendId: p.backendId,
-        theme: p.theme,
-        tags: p.tags,
-        subjects: p.subjects,
-        musicGenre: p.musicGenre,
-        customAudioUrl: p.customAudioUrl,
-        captureCountryCode: p.captureCountryCode,
-        uploadedAt: p.uploadedAt,
-      })),
-    };
-  }, [matches, mutualEchoes, myCountryCode, myPhotos]);
+    return prepareMapWaves(connections, viewerWaves, SAMPLE_PHOTOS);
+  }, [connections, mutualEchoes, myCountryCode]);
 
-  const liveLocalRipples = useMemo(
-    () =>
-      isSignedIn
-        ? buildLocalRippleConnections(matches, myCountryCode, myPhotos)
-        : [],
-    [isSignedIn, matches, myCountryCode, myPhotos],
-  );
-
-  const globeConnections = useMemo(
-    () =>
-      reconcileServerAndLocalRipples(connections, liveLocalRipples),
-    [connections, liveLocalRipples],
-  );
-
-  /** Server arcs + this device's ripples — rings must include all of the viewer's Same votes. */
-  const ripplefireClusterConnections = useMemo(
-    () => reconcileServerAndLocalRipples(connections, liveLocalRipples),
-    [connections, liveLocalRipples],
-  );
+  const previewWavesOnly =
+    mapConnections.length > 0 &&
+    mapConnections.every((connection) => isLaunchWaveId(connection.id));
 
   const runConnectivityDiagnostics = useCallback(async () => {
     setDiagBusy(true);
@@ -272,12 +223,10 @@ export default function AtlasScreen() {
         // Cache-first refresh — avoid invalidating atlas data on every tab tap.
         void load(false);
       });
-      void startWavefireAmbience();
       return () => {
         deferred.cancel();
         setAtlasTabFocused(false);
         atlasFocusedRef.current = false;
-        void stopWavefireAmbience();
       };
     }, [load, hasHydrated]),
   );
@@ -290,10 +239,6 @@ export default function AtlasScreen() {
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (s) => {
-      if (s === "background") {
-        void stopWavefireAmbience();
-        return;
-      }
       if (s === "active" && atlasFocusedRef.current) void load(true);
     });
     return () => sub.remove();
@@ -314,7 +259,7 @@ export default function AtlasScreen() {
   const bottomPad = Platform.OS === "web" ? 28 : insets.bottom;
 
   const hasDisplayableGlobe =
-    summary.length > 0 || globeConnections.length > 0;
+    summary.length > 0 || mapConnections.length > 0;
 
   const showSignInGate =
     !loading &&
@@ -329,16 +274,22 @@ export default function AtlasScreen() {
       return "Syncing with server…";
     }
     if (loadError === "unauthorized" && totalCountries === 0 && connections.length === 0) {
-      return "Sign in to load the map";
+      return "Sign in to load Waves";
     }
-    if (loadError === "network" || loadError === "server") {
-      return "Atlas unavailable — tap refresh to retry";
+    if (
+      (loadError === "network" || loadError === "server") &&
+      mapConnections.length === 0
+    ) {
+      return "Waves unavailable — tap refresh to retry";
     }
-    if (totalCountries === 0 && globeConnections.length === 0) {
-      return "No live connections yet";
+    if (previewWavesOnly) {
+      return "Preview waves, until more people connect";
+    }
+    if (totalCountries === 0 && mapConnections.length === 0) {
+      return "No Waves yet";
     }
     if (totalCountries === 0) {
-      return `${globeConnections.length} live ${globeConnections.length === 1 ? "connection" : "connections"}`;
+      return `${mapConnections.length} ${mapConnections.length === 1 ? "Wave" : "Waves"}`;
     }
     return `${totalCountries} ${totalCountries === 1 ? "country" : "countries"} · ${totalPhotos} ${totalPhotos === 1 ? "photo" : "photos"}`;
   }, [
@@ -348,7 +299,8 @@ export default function AtlasScreen() {
     loadError,
     totalCountries,
     connections.length,
-    globeConnections.length,
+    mapConnections.length,
+    previewWavesOnly,
     totalPhotos,
   ]);
 
@@ -370,7 +322,7 @@ export default function AtlasScreen() {
       <View style={[styles.headerRow, { paddingTop: topPadding + 2 }]}>
         <View style={styles.headerTextCol}>
           <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-            Atlas
+            Waves
           </Text>
           {headerSub ? (
             <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
@@ -379,12 +331,11 @@ export default function AtlasScreen() {
           ) : null}
         </View>
         <View style={styles.headerActions}>
-          <AudioMuteButton style={styles.muteBtn} />
           {showRefresh ? (
             <SyncRefreshButton
               syncing={atlasSyncing}
               onPress={() => void load(true)}
-              accessibilityLabel="Refresh Atlas"
+              accessibilityLabel="Refresh Waves"
               style={styles.refreshBtn}
             />
           ) : null}
@@ -395,11 +346,11 @@ export default function AtlasScreen() {
         <View style={styles.flexCentre}>
           <Icon name="globe" size={48} color={colors.mutedForeground} />
           <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-            Sign in to open the Atlas
+            Sign in to open Waves
           </Text>
           <Text style={[styles.centreText, { color: colors.mutedForeground }]}>
-            The map loads after sign-in so we can show your ripples and waves
-            with everyone else’s.
+            The map loads after sign-in so we can show your waves with
+            everyone else’s.
           </Text>
           <TouchableOpacity
             accessibilityRole="button"
@@ -428,15 +379,11 @@ export default function AtlasScreen() {
           <AtlasGlobeExperience
             style={styles.globeFlex}
             width={width - outerPad * 2}
-            connections={globeConnections}
-            fireClusterConnections={ripplefireClusterConnections}
+            connections={mapConnections}
             countries={summary}
             isSignedIn={!!isSignedIn}
             isTabFocused={atlasTabFocused}
-            localRippleMatches={fireExploreOptions.localMatches}
-            localWaveEchoes={fireExploreOptions.localWaves}
-            viewerCountryCode={fireExploreOptions.viewerCountryCode}
-            viewerMyPhotos={fireExploreOptions.viewerMyPhotos}
+            simpleWaves
           />
         </View>
       ) : null}
@@ -458,7 +405,7 @@ export default function AtlasScreen() {
         >
           <View style={[styles.centreBlock, { paddingTop: 8 }]}>
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-              Could not reach the Atlas API
+              Could not reach Waves
             </Text>
             <Text style={[styles.centreText, { color: colors.mutedForeground }]}>
               {loadFailure?.category === "network"
@@ -531,7 +478,7 @@ export default function AtlasScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   shimmerClip: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     top: "12%",
     overflow: "hidden",
   },
@@ -550,11 +497,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     marginTop: 2,
-  },
-  muteBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
   },
   refreshBtn: {
     padding: 4,

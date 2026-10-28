@@ -8,10 +8,14 @@
 // flow. The whole feature is "nice to have" — never block matching on
 // audio.
 
-import { Audio } from "expo-av";
 import { AppState, type AppStateStatus } from "react-native";
+import {
+  configurePlaybackAudio,
+  createClipPlayer,
+  type ClipPlayer,
+} from "@/utils/clipPlayer";
 
-let activeSound: Audio.Sound | null = null;
+let activeSound: ClipPlayer | null = null;
 let activeUrl: string | null = null;
 // Tracks whether the active clip is currently playing (vs. paused but
 // still loaded). Surfaced via `isPlayingUrl()` so UI surfaces (e.g. the
@@ -76,13 +80,7 @@ async function ensureAudioMode() {
   // playback through the earpiece and on Android can outright
   // suppress music here).
   try {
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: false,
-      shouldDuckAndroid: true,
-      playThroughEarpieceAndroid: false,
-    });
+    await configurePlaybackAudio();
   } catch {
     // Older Expo runtimes may reject one of the keys — non-fatal.
   }
@@ -170,7 +168,7 @@ async function unloadActive() {
 // it can never leak. Insertion order of a Map IS LRU-by-creation here,
 // which is all we need given the bounded size.
 const MAX_PREWARM = 3;
-const prewarmed = new Map<string, Audio.Sound>();
+const prewarmed = new Map<string, ClipPlayer>();
 // In-flight prewarm loads keyed by URL, so a `playClip()` that races a
 // prewarm of the same clip can await (and adopt) it instead of kicking
 // off a duplicate fetch.
@@ -213,7 +211,7 @@ export function prewarmClip(url: string | undefined | null): void {
     // prewarmed by a racing call while the session warmed up.
     if (activeUrl === url || prewarmed.has(url)) return;
     try {
-      const { sound } = await Audio.Sound.createAsync(
+      const sound = createClipPlayer(
         { uri: url },
         { shouldPlay: false, isLooping: true, volume: 0.55 },
       );
@@ -327,7 +325,7 @@ async function _doPlay(url: string, lease: number): Promise<void> {
   }
 
   try {
-    const { sound } = await Audio.Sound.createAsync(
+    const sound = createClipPlayer(
       { uri: url },
       { shouldPlay: !muted, isLooping: true, volume: 0.55 },
     );

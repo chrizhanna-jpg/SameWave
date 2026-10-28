@@ -1,0 +1,11 @@
+---
+description: Expo Go previews must target the SDK installed on the phone
+alwaysApply: true
+---
+
+The phone used to preview SameWave has App Store / Play Store Expo Go for **SDK 58**.
+
+- Keep `artifacts/same-same` on Expo SDK 58. Do not downgrade it, and do not ask for an older Expo Go.
+- Confirm the dev-server manifest reports SDK 58 before sharing a preview link.
+- Use `expo-audio` for playback and recording. `expo-av` is not bundled in SDK 58 Expo Go.
+- Serve Expo Go previews on an `*.exp.direct` hostname. Expo Go opens `exp://` as plain HTTP, so a trycloudflare link will not load.

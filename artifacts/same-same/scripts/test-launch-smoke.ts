@@ -28,6 +28,30 @@ assert(
   "tabs do NOT enable lazy: true (known Expo 54 blank/crash)",
   !layout.includes("lazy: true"),
 );
+assert(
+  "map keeps the atlas route and is labelled Waves",
+  layout.includes('name="atlas"') &&
+    layout.includes('title: "Waves"') &&
+    layout.includes('name="wave-glyph"') &&
+    !layout.includes('title: "Map"'),
+);
+assert(
+  "waves inbox tab stays in the layout but is hidden",
+  layout.includes('name="waves"') &&
+    layout.includes("SHOW_WAVES_TAB ? undefined : null"),
+);
+
+const rootLayout = read("app/_layout.tsx");
+assert(
+  "splash hide stays on font readiness, not the wave reveal",
+  rootLayout.includes("if (fontsReady)") &&
+    rootLayout.includes("SplashScreen.hideAsync()") &&
+    rootLayout.includes("<EchoFlash"),
+);
+assert(
+  "tabs route is unchanged",
+  rootLayout.includes('name="(tabs)"') && rootLayout.includes('name="reveal"'),
+);
 
 const match = read("app/(tabs)/match.tsx");
 assert(
@@ -49,6 +73,29 @@ assert(
 assert(
   "match refuses to start audio while blurred",
   match.includes("isScreenFocusedRef"),
+);
+assert(
+  "ripple tab drops the generic similar and prompt lines",
+  !match.includes("Find your similar") && !match.includes("Today's prompt"),
+);
+assert(
+  "ripple tab shows the home play focus",
+  match.includes("resolveRipplePlayPresentation") &&
+    match.includes("subscribeRipplePlayFocus"),
+);
+
+const home = read("app/(tabs)/index.tsx");
+assert(
+  "home play buttons record the theme and the interests",
+  home.includes('kind: "challenge"') &&
+    home.includes('kind: "interests"') &&
+    home.includes("setRipplePlayFocus"),
+);
+
+const camera = read("app/camera.tsx");
+assert(
+  "interests play still attaches tags after vibe hydration",
+  camera.includes("interestsSeededRef") && camera.includes("seedInterestTags"),
 );
 
 const waves = read("app/(tabs)/waves.tsx");
