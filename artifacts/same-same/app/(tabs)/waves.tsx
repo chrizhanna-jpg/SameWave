@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, usePathname } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
 import { OceanShimmer } from "@/components/OceanShimmer";
@@ -119,6 +119,8 @@ const WAVE_SECTIONS: {
 export default function WavesScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const pathname = usePathname();
+  const showBack = pathname === "/waves-inbox";
   const {
     pendingEchoes,
     mutualEchoes,
@@ -455,6 +457,19 @@ export default function WavesScreen() {
       </View>
 
       <View style={[styles.headerRow, { paddingTop: topPadding + 2 }]}>
+        {showBack ? (
+          <Pressable
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={8}
+            style={styles.backBtn}
+          >
+            <Text style={[styles.backText, { color: colors.mutedForeground }]}>
+              Back
+            </Text>
+          </Pressable>
+        ) : null}
         <View style={styles.headerTextCol}>
           <Text style={[styles.headerTitle, { color: colors.foreground }]}>
             {WAVES_TAB.title}
@@ -1108,6 +1123,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 8,
     gap: 12,
+  },
+  backBtn: {
+    paddingTop: 6,
+    paddingRight: 4,
+  },
+  backText: {
+    fontSize: 15,
+    fontFamily: "Inter_400Regular",
   },
   headerTextCol: { flex: 1, minWidth: 0 },
   headerTitle: {

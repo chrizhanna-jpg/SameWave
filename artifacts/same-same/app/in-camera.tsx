@@ -321,7 +321,7 @@ export default function InCameraScreen() {
           capturedAt,
         );
         recordCaptureTransitionEvent("navigate.to.match.start", { requestId });
-        router.replace("/(tabs)/match");
+        router.replace("/(tabs)/ripple");
         recordCaptureTransitionEvent("navigate.to.match.complete", {
           requestId,
           ms: Date.now() - captureStarted,

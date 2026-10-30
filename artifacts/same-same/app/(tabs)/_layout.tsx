@@ -11,7 +11,17 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
-import { SHOW_DISCOVER_TAB, SHOW_WAVES_TAB } from "@/constants/featureFlags";
+import {
+  SHOW_DISCOVER_TAB,
+  SHOW_HOME_TAB,
+  SHOW_PROFILE_TAB,
+  SHOW_RIPPLE_DECK_TAB,
+  SHOW_WAVES_TAB,
+} from "@/constants/featureFlags";
+
+export const unstable_settings = {
+  anchor: "ripple",
+};
 import { useApp } from "@/context/AppContext";
 import { onAllTabsVisited } from "@/utils/tabVisits";
 import {
@@ -228,8 +238,23 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen
+        name="ripple"
+        options={{
+          title: "Ripple",
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon
+              name="ripple"
+              color={color}
+              focused={focused}
+              activeColor={colors.primary}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="index"
         options={{
+          href: SHOW_HOME_TAB ? undefined : null,
           title: "Home",
           tabBarIcon: ({ color, focused }) => (
             <TabIcon
@@ -244,6 +269,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="match"
         options={{
+          href: SHOW_RIPPLE_DECK_TAB ? undefined : null,
           title: "Ripple",
           tabBarIcon: ({ color, focused }) => (
             <TabIcon
@@ -319,6 +345,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="profile"
         options={{
+          href: SHOW_PROFILE_TAB ? undefined : null,
           title: "My Path",
           tabBarIcon: ({ color, focused }) => (
             <TabIcon

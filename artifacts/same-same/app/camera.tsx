@@ -33,7 +33,7 @@ import { Icon } from "@/components/Icon";
 import { LoadingGlobe } from "@/components/LoadingGlobe";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
-import { useApp, type MyPhoto } from "@/context/AppContext";
+import { useApp } from "@/context/AppContext";
 import {
   DAILY_CHALLENGES,
   getTodaysChallenge,
@@ -55,13 +55,8 @@ import {
   type PhotoSource,
 } from "@/utils/photoOrigin";
 import { detectCountryFromPhotoExif } from "@/utils/gpsCountry";
-import { photoCountryDisplay } from "@/utils/photoCountry";
 import {
   findMyPhotoByUri,
-  myPhotoRowKey,
-  photoStreamFallbackUri,
-  resolveMyPhotoDisplayUri,
-  resolveMyPhotoThumbnailUri,
 } from "@/utils/photoDisplayUri";
 import {
   MUSIC_LIBRARY,
@@ -82,10 +77,8 @@ import {
   resetPlaybackMode,
   stop as stopAudio,
   stopIfLease,
-  togglePreview,
 } from "@/utils/audio";
 import { AiGeneratedBadge } from "@/components/AiGeneratedBadge";
-import { MicBadge } from "@/components/MicBadge";
 import { useProAccess } from "@/hooks/useProAccess";
 import { gateProFeature } from "@/lib/proFeatures";
 import {
@@ -754,36 +747,6 @@ export default function CameraScreen() {
     }
   };
 
-  const selectRecentPhoto = (photo: MyPhoto) => {
-    const displayUri = resolveMyPhotoDisplayUri(photo);
-    const canonicalUri = photo.uri?.trim() || displayUri;
-    setSelectedPhoto(canonicalUri);
-    pickedAssetRef.current = null;
-    selectedAssetRef.current = null;
-    const theme = normalizeTheme(photo.theme);
-    if (theme) {
-      setThemeText(theme);
-      setThemeEdited(true);
-      themeEditedRef.current = true;
-    }
-    if (photo.tags && photo.tags.length > 0) {
-      setSelectedTags(photo.tags);
-    }
-    if (photo.musicGenre) {
-      setMusicGenre(photo.musicGenre as MusicGenre);
-      setGenreEdited(true);
-      genreEditedRef.current = true;
-      const meta = MUSIC_LIBRARY.find((g) => g.id === photo.musicGenre);
-      if (meta) setVibeSearchText(meta.label);
-    }
-    if (photo.customAudioUrl) {
-      setCustomAudioUrl(photo.customAudioUrl);
-    }
-    setIsAi(photo.isAI === true);
-    captureCountryRef.current = photo.captureCountryCode;
-    captureAtRef.current = photo.capturedAt;
-  };
-
   const seedInterestTags = useCallback((tags: string[]) => {
     const next = tags.slice(0, MAX_TAGS).filter((tag) => tag.trim().length > 0);
     if (next.length === 0) return;
@@ -1255,10 +1218,7 @@ export default function CameraScreen() {
       } else {
         setRipplePlayFocus(null);
       }
-      router.replace({
-        pathname: "/(tabs)/match",
-        params: postIntent ? { play: postIntent } : {},
-      });
+      router.replace("/(tabs)/ripple");
       recordCaptureTransitionEvent("navigate.to.match.complete");
       endCaptureTransition();
     };
@@ -1794,68 +1754,6 @@ export default function CameraScreen() {
             },
           ]}
         >
-          {myPhotos.length > 0 && (
-            <View style={styles.prevSection}>
-              <Text style={[styles.prevTitle, { color: colors.mutedForeground }]}>
-                Your recent photos
-              </Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.prevScroll}
-              >
-                {myPhotos.slice(0, 8).map((photo, i) => {
-                  const rowKey = myPhotoRowKey(photo, i);
-                  const displayUri = resolveMyPhotoThumbnailUri(photo);
-                  const loc = photoCountryDisplay(photo.captureCountryCode);
-                  return (
-                  <View key={rowKey} style={styles.prevItem}>
-                    <TouchableOpacity
-                      onPress={() => {
-                        selectRecentPhoto(photo);
-                        if (photo.customAudioUrl) {
-                          togglePreview(photo.customAudioUrl);
-                        }
-                      }}
-                      activeOpacity={0.85}
-                    >
-                      {displayUri ? (
-                        <RemotePhotoImage
-                          uri={displayUri}
-                          fallbackUri={photoStreamFallbackUri(photo.backendId)}
-                          style={[styles.prevPhoto, { borderColor: colors.border }]}
-                          resizeMode="cover"
-                          transitionMs={0}
-                          recyclingKey={`recent-${rowKey}`}
-                        />
-                      ) : (
-                        <View
-                          style={[
-                            styles.prevPhoto,
-                            { borderColor: colors.border, backgroundColor: colors.card },
-                          ]}
-                        />
-                      )}
-                      {loc.code ? (
-                        <View style={styles.prevCountryBadge}>
-                          <Text style={styles.prevCountryFlag}>{loc.flag}</Text>
-                        </View>
-                      ) : null}
-                    </TouchableOpacity>
-                    {photo.customAudioUrl ? (
-                      <MicBadge
-                        audioUrl={photo.customAudioUrl}
-                        size="xs"
-                        style={styles.prevMicBadge}
-                      />
-                    ) : null}
-                  </View>
-                  );
-                })}
-              </ScrollView>
-            </View>
-          )}
-
           <View style={styles.pickSpacer} />
 
           <View style={styles.pickOptions}>
@@ -2157,50 +2055,6 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     textAlign: "center",
     lineHeight: 22,
-  },
-  prevSection: {
-    gap: 10,
-    marginBottom: 4,
-  },
-  prevTitle: {
-    fontSize: 12,
-    fontFamily: "Inter_500Medium",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  prevScroll: {
-    marginHorizontal: -20,
-    paddingHorizontal: 20,
-  },
-  prevItem: {
-    position: "relative",
-    marginRight: 8,
-  },
-  prevPhoto: {
-    width: 80,
-    height: 80,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  prevMicBadge: {
-    position: "absolute",
-    left: 4,
-    bottom: 4,
-  },
-  prevCountryBadge: {
-    position: "absolute",
-    top: 4,
-    right: 4,
-    backgroundColor: "rgba(0,0,0,0.55)",
-    borderRadius: 10,
-    minWidth: 24,
-    height: 24,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 4,
-  },
-  prevCountryFlag: {
-    fontSize: 13,
   },
   themeSection: {
     gap: 8,

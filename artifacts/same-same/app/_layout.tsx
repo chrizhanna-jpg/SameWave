@@ -13,6 +13,9 @@ import {
 import { tokenCache } from "@clerk/expo/token-cache";
 import { Redirect, router, Stack, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
+import { StatusBar } from "expo-status-bar";
+import * as SystemUI from "expo-system-ui";
+import colors from "@/constants/colors";
 import React, { useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -54,6 +57,8 @@ import {
   useSubscription,
 } from "@/lib/revenuecat";
 import { getPublicApiOrigin } from "@/utils/publicEnv";
+import { EXPO_GO_PREVIEW_SKIP_SIGN_IN } from "@/utils/expoGoPreview";
+import { ExpoGoPreviewBadge } from "@/components/ExpoGoPreviewBadge";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -316,7 +321,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   // cycle and stays in lock-step with whatever screen is mounting.
   const needsRedirect =
     isLoaded &&
-    ((isSignedIn && onSignIn) || (!isSignedIn && !onPreAuthScreen));
+    ((isSignedIn && onSignIn) ||
+      (!isSignedIn && !onPreAuthScreen && !EXPO_GO_PREVIEW_SKIP_SIGN_IN));
 
   if (!hasHydrated) return null;
   if (needsRedirect) return <Redirect href="/" />;
@@ -336,7 +342,15 @@ function RootLayoutNav() {
   return (
     <>
       <UpdateAvailableBanner />
-      <Stack screenOptions={{ headerBackTitle: "Back", headerShown: false }}>
+      <ExpoGoPreviewBadge />
+      <StatusBar style="light" />
+      <Stack
+        screenOptions={{
+          headerBackTitle: "Back",
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.light.background },
+        }}
+      >
         <Stack.Screen name="sign-in" options={{ headerShown: false, gestureEnabled: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -413,6 +427,12 @@ export default function RootLayout() {
       SplashScreen.hideAsync().catch(() => {});
     }
   }, [fontsReady]);
+
+  // Paint the native window behind the system bars in the app background so
+  // no white shows above or below the app (Android edge-to-edge).
+  useEffect(() => {
+    SystemUI.setBackgroundColorAsync(colors.light.background).catch(() => {});
+  }, []);
 
   // Defence in depth: a *second* hard cap (4 s) on hideAsync that fires
   // regardless of where the rest of the bootstrap is. If anything above
@@ -554,7 +574,9 @@ function RootLayoutWithClerk() {
                   {/* Keeps AppContext.proUnlocked in sync with the
                       RevenueCat "pro" entitlement. Renders nothing. */}
                   <RevenueCatProBridge />
-                  <GestureHandlerRootView style={{ flex: 1 }}>
+                  <GestureHandlerRootView
+                    style={{ flex: 1, backgroundColor: colors.light.background }}
+                  >
                     <KeyboardProvider>
                       <ToastHost>
                         <AuthGate>

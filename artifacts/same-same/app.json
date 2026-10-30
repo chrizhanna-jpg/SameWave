@@ -10,6 +10,7 @@
       "echo.samewaveripple.app"
     ],
     "userInterfaceStyle": "dark",
+    "backgroundColor": "#0A2552",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/icon.png",

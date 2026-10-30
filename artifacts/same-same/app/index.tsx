@@ -1,6 +1,7 @@
 import { Redirect } from "expo-router";
 import { useAuth } from "@clerk/expo";
 import { useApp } from "@/context/AppContext";
+import { EXPO_GO_PREVIEW_SKIP_SIGN_IN } from "@/utils/expoGoPreview";
 
 // Single decision point for "where should the user land right now?"
 // First-time flow (production AAB):
@@ -39,9 +40,9 @@ export default function Index() {
     return <Redirect href="/onboarding" />;
   }
 
-  if (isLoaded && !isSignedIn) {
+  if (isLoaded && !isSignedIn && !EXPO_GO_PREVIEW_SKIP_SIGN_IN) {
     return <Redirect href="/sign-in" />;
   }
 
-  return <Redirect href="/(tabs)" />;
+  return <Redirect href="/(tabs)/ripple" />;
 }

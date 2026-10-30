@@ -12,7 +12,7 @@ import {
 import Constants from "expo-constants";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { scrollPaddingAboveTabBar } from "@/utils/tabBarSafeArea";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, usePathname } from "expo-router";
 import { useAuth } from "@clerk/expo";
 import { markTabVisited } from "@/utils/tabVisits";
 import { Icon } from "@/components/Icon";
@@ -221,6 +221,8 @@ function SignedInRow() {
 export default function ProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const pathname = usePathname();
+  const showBack = pathname === "/account";
 
   useFocusEffect(
     useCallback(() => {
@@ -325,6 +327,19 @@ export default function ProfileScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <OceanShimmer />
       <View style={[styles.header, { paddingTop: topPadding + 8 }]}>
+        {showBack ? (
+          <TouchableOpacity
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={8}
+            style={styles.backBtn}
+          >
+            <Text style={[styles.backText, { color: colors.mutedForeground }]}>
+              Back
+            </Text>
+          </TouchableOpacity>
+        ) : null}
         <View style={styles.headerTitleCol}>
           <Text style={[styles.headerTitle, { color: colors.foreground }]}>
             My Path
@@ -335,7 +350,7 @@ export default function ProfileScreen() {
           <HeaderSignedInBadge />
         </View>
         <TouchableOpacity
-          onPress={() => router.push("/(tabs)/waves")}
+          onPress={() => router.push("/waves-inbox")}
           activeOpacity={0.8}
           style={[
             styles.bellBtn,
@@ -996,6 +1011,14 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
     opacity: 0.6,
+  },
+  backBtn: {
+    paddingVertical: 6,
+    paddingRight: 10,
+  },
+  backText: {
+    fontSize: 15,
+    fontFamily: "Inter_400Regular",
   },
   headerTitleCol: {
     flexDirection: "column",

@@ -6,7 +6,7 @@
 // request so the server can link any pre-sign-in photos onto this account.
 import * as WebBrowser from "expo-web-browser";
 import { useSSO } from "@clerk/expo";
-import { router } from "expo-router";
+import { Redirect, router } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -22,6 +22,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApp } from "@/context/AppContext";
 import { updateMyCountryCode } from "@/utils/api";
 import { parseOAuthSessionFailure } from "@/utils/googleOAuthErrors";
+import { EXPO_GO_PREVIEW_SKIP_SIGN_IN } from "@/utils/expoGoPreview";
 import { getGoogleSsoRedirectUrl } from "@/utils/googleSsoRedirect";
 import { postDebugSessionLog } from "@/utils/debugSessionLog";
 import {
@@ -184,6 +185,8 @@ export default function SignInScreen() {
       setBusy(false);
     }
   }, [busy, clerkProbe, diagnostics, myCountryCode, startSSOFlow]);
+
+  if (EXPO_GO_PREVIEW_SKIP_SIGN_IN) return <Redirect href="/(tabs)/ripple" />;
 
   return (
     <View
