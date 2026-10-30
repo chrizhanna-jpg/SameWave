@@ -9,14 +9,23 @@
 // every JS reload (cold start), which is the right cadence for a
 // "first run after install" check.
 
-import { SHOW_DISCOVER_TAB, SHOW_WAVES_TAB } from "@/constants/featureFlags";
+import {
+  SHOW_DISCOVER_TAB,
+  SHOW_HOME_TAB,
+  SHOW_PROFILE_TAB,
+  SHOW_RIPPLE_DECK_TAB,
+  SHOW_WAVES_TAB,
+} from "@/constants/featureFlags";
 
-const ALL_TABS = ["home", "match", "discover", "atlas", "waves", "profile"] as const;
+const ALL_TABS = ["home", "ripple", "match", "discover", "atlas", "waves", "profile"] as const;
 export type TabName = (typeof ALL_TABS)[number];
 
 const REQUIRED: readonly TabName[] = ALL_TABS.filter((name) => {
   if (name === "discover") return SHOW_DISCOVER_TAB;
   if (name === "waves") return SHOW_WAVES_TAB;
+  if (name === "home") return SHOW_HOME_TAB;
+  if (name === "match") return SHOW_RIPPLE_DECK_TAB;
+  if (name === "profile") return SHOW_PROFILE_TAB;
   return true;
 });
 

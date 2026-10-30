@@ -5,7 +5,7 @@ import { router } from "expo-router";
 /** Legacy route — Ripples & Waves inbox now lives on the Waves tab. */
 export default function EchoesScreen() {
   useEffect(() => {
-    router.replace("/(tabs)/waves");
+    router.replace("/waves-inbox");
   }, []);
   return <View />;
 }

@@ -40,6 +40,15 @@ assert(
   layout.includes('name="waves"') &&
     layout.includes("SHOW_WAVES_TAB ? undefined : null"),
 );
+assert(
+  "tab bar is send and the map",
+  layout.includes('anchor: "ripple"') &&
+    layout.includes('name="ripple"') &&
+    layout.includes('title: "Ripple"') &&
+    layout.includes("SHOW_HOME_TAB ? undefined : null") &&
+    layout.includes("SHOW_RIPPLE_DECK_TAB ? undefined : null") &&
+    layout.includes("SHOW_PROFILE_TAB ? undefined : null"),
+);
 
 const rootLayout = read("app/_layout.tsx");
 assert(
@@ -96,6 +105,19 @@ const camera = read("app/camera.tsx");
 assert(
   "interests play still attaches tags after vibe hydration",
   camera.includes("interestsSeededRef") && camera.includes("seedInterestTags"),
+);
+assert(
+  "sending a photo returns to the send screen",
+  camera.includes('router.replace("/(tabs)/ripple")') &&
+    read("app/in-camera.tsx").includes('router.replace("/(tabs)/ripple")') &&
+    read("app/index.tsx").includes('href="/(tabs)/ripple"'),
+);
+assert(
+  "send screen is one action plus Account",
+  read("app/(tabs)/ripple.tsx").includes("Send a Ripple") &&
+    read("app/(tabs)/ripple.tsx").includes("Account") &&
+    read("app/(tabs)/ripple.tsx").includes('router.push("/camera")') &&
+    read("app/(tabs)/ripple.tsx").includes('router.push("/account")'),
 );
 
 const waves = read("app/(tabs)/waves.tsx");

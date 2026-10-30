@@ -1255,10 +1255,7 @@ export default function CameraScreen() {
       } else {
         setRipplePlayFocus(null);
       }
-      router.replace({
-        pathname: "/(tabs)/match",
-        params: postIntent ? { play: postIntent } : {},
-      });
+      router.replace("/(tabs)/ripple");
       recordCaptureTransitionEvent("navigate.to.match.complete");
       endCaptureTransition();
     };
