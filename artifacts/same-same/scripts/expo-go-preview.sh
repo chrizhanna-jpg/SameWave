@@ -56,15 +56,28 @@ if [ -n "$STALE_PIDS" ]; then
 fi
 
 # 5. Tunnel: keep it if running, otherwise start it.
-if pgrep -f "ngrok http $PORT --url https://$HOST" >/dev/null; then
+#    A running ngrok process is not enough: it can stay alive after its
+#    session to the public edge drops (e.g. after the VM idles), which makes
+#    the public host answer "endpoint is offline" (ERR_NGROK_3200). Restart
+#    it whenever the public host reports that.
+tunnel_offline() {
+  curl -s -m 20 -i "https://$HOST" 2>/dev/null | grep -q "ERR_NGROK_3200"
+}
+if pgrep -f "ngrok http $PORT --url https://$HOST" >/dev/null && ! tunnel_offline; then
   ok "ngrok tunnel already running for $HOST"
 else
+  NGROK_PIDS="$(pgrep -f "ngrok http $PORT --url https://$HOST" || true)"
   "${TMUX[@]}" kill-session -t "$NGROK_SESSION" 2>/dev/null || true
+  if [ -n "$NGROK_PIDS" ]; then
+    # shellcheck disable=SC2086
+    kill $NGROK_PIDS 2>/dev/null || true
+    sleep 2
+  fi
   "${TMUX[@]}" new-session -d -s "$NGROK_SESSION" -c /tmp \
     "$NGROK_BIN http $PORT --url https://$HOST --config $NGROK_CFG --log stdout"
-  sleep 4
+  sleep 5
   pgrep -f "ngrok http $PORT --url https://$HOST" >/dev/null || fail "ngrok did not start; see tmux session $NGROK_SESSION"
-  ok "started ngrok tunnel for $HOST"
+  ok "restarted ngrok tunnel for $HOST"
 fi
 
 # 6. Metro, with the preview-only flags. The skip-sign-in flag is required:
@@ -116,7 +129,9 @@ rm -f "$BUNDLE_FILE"
 # 9. The public tunnel must serve the same manifest.
 PUB="$(curl -fsS -m 20 -H 'expo-platform: android' -H 'Accept: application/expo+json' "https://$HOST" 2>/dev/null || true)"
 [ -n "$PUB" ] || fail "https://$HOST did not answer; tunnel is down"
-ok "public tunnel answers"
+printf '%s' "$PUB" | python3 -c "import sys,json;json.load(sys.stdin)['launchAsset']['url']" 2>/dev/null \
+  || fail "https://$HOST answered but not with an Expo manifest"
+ok "public tunnel serves the Expo manifest"
 
 cat <<EOF
 
