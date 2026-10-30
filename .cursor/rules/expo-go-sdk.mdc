@@ -1,12 +1,15 @@
 ---
-description: Expo Go previews must target the SDK installed on the phone
+description: How to serve SameWave to the user's phone with Expo Go. Read before any preview, Expo, Metro, or "let me see it on my phone" request.
 alwaysApply: true
 ---
 
-The phone used to preview SameWave has App Store / Play Store Expo Go for **SDK 58**.
+# Expo Go previews
 
-- Keep `artifacts/same-same` on Expo SDK 58. Do not downgrade it, and do not ask for an older Expo Go.
-- Confirm the dev-server manifest reports SDK 58 before sharing a preview link.
-- Use `expo-audio` for playback and recording. `expo-av` is not bundled in SDK 58 Expo Go.
-- Serve Expo Go previews on an `*.exp.direct` hostname. Expo Go opens `exp://` as plain HTTP, so a trycloudflare link will not load.
-- Google sign-in cannot finish in Expo Go (Clerk redirects to `echo.samewaveripple.app://callback`, which Expo Go does not own), so the phone stays on the sign-in screen and looks like the old app. Start Metro with `EXPO_PUBLIC_EXPO_GO_PREVIEW_SKIP_SIGN_IN=1` for previews; it only works in a dev bundle inside Expo Go.
+Follow the "Expo Go previews" section of `/workspace/AGENTS.md`. In short:
+
+1. Run `artifacts/same-same/scripts/expo-go-preview.sh` on the right branch. Only share the link if it prints `READY`.
+2. Link: `exp://sw6cd7preview.exp.direct`, entered in the **Expo Go** app via "Enter URL manually". Never the SameWave app icon.
+3. Tell the user to look for the gold `Preview: <branch>` pill. No pill means they are in the installed Play app, not the preview.
+4. Verify the render in a browser (web Metro on 8082 with the same preview flags) before claiming it works.
+5. Keep the project on Expo SDK 58 (the phone's Expo Go). Use `expo-audio`, not `expo-av`. Serve on `*.exp.direct`, not trycloudflare.
+6. Google sign-in cannot finish in Expo Go (the installed SameWave app steals the OAuth redirect), so the script sets `EXPO_PUBLIC_EXPO_GO_PREVIEW_SKIP_SIGN_IN=1`.

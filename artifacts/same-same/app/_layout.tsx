@@ -55,6 +55,7 @@ import {
 } from "@/lib/revenuecat";
 import { getPublicApiOrigin } from "@/utils/publicEnv";
 import { EXPO_GO_PREVIEW_SKIP_SIGN_IN } from "@/utils/expoGoPreview";
+import { ExpoGoPreviewBadge } from "@/components/ExpoGoPreviewBadge";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -338,6 +339,7 @@ function RootLayoutNav() {
   return (
     <>
       <UpdateAvailableBanner />
+      <ExpoGoPreviewBadge />
       <Stack screenOptions={{ headerBackTitle: "Back", headerShown: false }}>
         <Stack.Screen name="sign-in" options={{ headerShown: false, gestureEnabled: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
