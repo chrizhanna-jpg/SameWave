@@ -54,6 +54,7 @@ import {
   useSubscription,
 } from "@/lib/revenuecat";
 import { getPublicApiOrigin } from "@/utils/publicEnv";
+import { EXPO_GO_PREVIEW_SKIP_SIGN_IN } from "@/utils/expoGoPreview";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -316,7 +317,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   // cycle and stays in lock-step with whatever screen is mounting.
   const needsRedirect =
     isLoaded &&
-    ((isSignedIn && onSignIn) || (!isSignedIn && !onPreAuthScreen));
+    ((isSignedIn && onSignIn) ||
+      (!isSignedIn && !onPreAuthScreen && !EXPO_GO_PREVIEW_SKIP_SIGN_IN));
 
   if (!hasHydrated) return null;
   if (needsRedirect) return <Redirect href="/" />;
