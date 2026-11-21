@@ -15,7 +15,7 @@
     "splash": {
       "image": "./assets/images/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#166FFC"
+      "backgroundColor": "#0B1F33"
     },
     "ios": {
       "supportsTablet": false,
@@ -33,7 +33,7 @@
       "versionCode": 51,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
-        "backgroundColor": "#166FFC"
+        "backgroundColor": "#0B1F33"
       },
       "permissions": [
         "android.permission.CAMERA",
@@ -61,7 +61,7 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "SameWave uses your microphone so you can record a short sound to travel with today’s photo."
+          "microphonePermission": "SameWave uses your microphone so you can record a short sound to travel with today\u2019s photo."
         }
       ],
       "expo-web-browser",
