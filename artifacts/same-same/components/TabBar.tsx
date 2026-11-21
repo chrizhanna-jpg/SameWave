@@ -37,6 +37,8 @@ export function TabBar({ state, descriptors, navigateToTab }: TabBarProps) {
           contentStyle={styles.row}
         >
           {state.routes.map((route, index) => {
+            // Hidden redirect route (`index`) must not appear in the bar.
+            if (route.name === "index") return null;
             const focused = state.index === index;
             const title = descriptors[route.key]?.options.title ?? route.name;
             return (
