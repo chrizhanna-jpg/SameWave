@@ -20,7 +20,10 @@ interface Props {
    * quiet: a line of text.
    */
   kind?: "main" | "soft" | "quiet";
-  /** Optional second line under the label (e.g. today's topic name). */
+  /**
+   * Shown on the same line after the label as " · {detail}".
+   * Never wraps — long names ellipsize at the tail (360dp Android).
+   */
   detail?: string;
   tone?: "secondary" | "primary" | "ember" | "haze" | "mist" | "white";
   disabled?: boolean;
@@ -41,7 +44,7 @@ export function Button({
   accessibilityHint,
 }: Props) {
   const inactive = disabled || busy;
-  const a11y = detail ? `${label}. ${detail}` : label;
+  const a11y = detail ? `${label} · ${detail}` : label;
   if (kind === "quiet") {
     return (
       <Pressable
@@ -53,14 +56,9 @@ export function Button({
         accessibilityHint={accessibilityHint}
         style={({ pressed }) => [styles.quiet, (pressed || inactive) && styles.dim, style]}
       >
-        <Txt variant="quiet" tone={tone ?? "secondary"} center>
-          {label}
+        <Txt variant="quiet" tone={tone ?? "secondary"} center numberOfLines={1} ellipsizeMode="tail">
+          {detail ? `${label} · ${detail}` : label}
         </Txt>
-        {detail ? (
-          <Txt variant="caption" tone="quiet" center style={styles.detail}>
-            {detail}
-          </Txt>
-        ) : null}
       </Pressable>
     );
   }
@@ -76,7 +74,6 @@ export function Button({
       style={({ pressed }) => [
         styles.base,
         main ? styles.main : styles.soft,
-        detail ? styles.withDetail : null,
         pressed && styles.pressed,
         disabled && styles.dim,
         style,
@@ -84,17 +81,28 @@ export function Button({
     >
       {busy ? (
         <ActivityIndicator color={colors.textPrimary} />
-      ) : (
-        <View style={styles.copy}>
-          <Txt variant="button" tone="primary" center>
+      ) : detail ? (
+        <View style={styles.row}>
+          <Txt variant="button" tone="primary" numberOfLines={1}>
             {label}
           </Txt>
-          {detail ? (
-            <Txt variant="caption" tone="secondary" center style={styles.detail}>
-              {detail}
-            </Txt>
-          ) : null}
+          <Txt variant="button" tone="secondary" style={styles.sep} numberOfLines={1}>
+            {" · "}
+          </Txt>
+          <Txt
+            variant="quiet"
+            tone="secondary"
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            style={styles.detail}
+          >
+            {detail}
+          </Txt>
         </View>
+      ) : (
+        <Txt variant="button" tone="primary" center>
+          {label}
+        </Txt>
       )}
     </Pressable>
   );
@@ -106,7 +114,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: space.lg,
+    paddingHorizontal: space.md,
     alignSelf: "stretch",
   },
   main: { backgroundColor: colors.waterMid },
@@ -116,9 +124,15 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
   },
   quiet: { paddingVertical: space.sm, paddingHorizontal: space.md, alignSelf: "center" },
-  withDetail: { minHeight: layout.buttonHeight + 12, paddingVertical: space.sm },
-  copy: { alignItems: "center", gap: 2 },
-  detail: { marginTop: 0 },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    maxWidth: "100%",
+    paddingHorizontal: space.xs,
+  },
+  sep: { flexShrink: 0 },
+  detail: { flexShrink: 1, fontSize: 14, lineHeight: 20 },
   pressed: { opacity: 0.85 },
   dim: { opacity: 0.5 },
 });
