@@ -14,7 +14,7 @@ interface Props {
   label: string;
   onPress: (event: GestureResponderEvent) => void;
   /**
-   * main: richer baby-blue fill — the one clear action a screen may have.
+   * main: logo-blue fill — the one clear action a screen may have.
    * soft: a second, calmer choice on surface.
    * quiet: a line of text.
    */

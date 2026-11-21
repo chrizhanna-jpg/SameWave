@@ -107,7 +107,7 @@ export default function RippleScreen() {
           </>
         ) : (
           <>
-            <BrandMark size={96} withName />
+            <BrandMark size={144} withName />
             <Txt tone="secondary" center style={styles.line}>
               {travelling ? "Your last Ripple is still travelling." : "One photo of your day."}
             </Txt>

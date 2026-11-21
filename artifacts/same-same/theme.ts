@@ -3,24 +3,30 @@
  * colours, spacing, corner radius, type and motion timings from here and
  * nowhere else, so the whole app can be retuned in this file.
  *
- * Mood: soft baby blue — calm water, never clinical white. Photographs and
- * the Wave divider keep their own treatment; chrome stays light and readable.
+ * Mood: soft baby blue sampled from the SameWave app icon — light tints of
+ * the logo blue for chrome, the logo blue itself for accents. Photographs
+ * and the Wave divider keep their own treatment; chrome stays calm and readable.
+ *
+ * Sampled from assets/images/icon.png (also splash / adaptive icon):
+ *   #45B4FC top background blue, #28A0F8 dominant mid, #39B6FE top-mid point,
+ *   #1068E9 bottom gradient blue, #30B8F8 cyan wave accent, #C1D9FF soft glow.
  */
 
 export const colors = {
-  /** App canvas — gentle baby blue, not off-white. */
-  background: "#E7F1F8",
-  /** Sheets, inputs, quiet pills — a touch deeper baby blue. */
-  surface: "#D7EAF4",
-  /** Soft translucent baby blue for sheets over photographs. */
-  surfaceTranslucent: "rgba(215, 234, 244, 0.92)",
+  /** App canvas — light tint of logo top blue (#45B4FC). */
+  background: "#E9F6FF",
+  /** Sheets, inputs, quiet pills — a touch deeper tint of the same blue. */
+  surface: "#DEF2FE",
+  /** Soft translucent tint for sheets over photographs. */
+  surfaceTranslucent: "rgba(222, 242, 254, 0.92)",
 
-  /** Selected rows, soft fills, map glow — clearer baby blue. */
-  waterPale: "#BFDFF0",
-  waterSoft: "#9ECFE6",
-  /** Primary actions and active marks — richer baby blue, still calm. */
-  waterMid: "#6EB4D6",
-  waterMuted: "#7A9AAB",
+  /** Selected rows, soft fills, map glow — clearer tint of the logo blue. */
+  waterPale: "#C7E8FE",
+  waterSoft: "#9ED4FC",
+  /** Primary actions and active marks — the icon's top logo blue. */
+  waterMid: "#45B4FC",
+  /** Quiet secondary marks — desaturated from the icon's deep blue (#1068E9). */
+  waterMuted: "#6E8099",
 
   /** Text. Never pure black — dark slate for contrast on blue. */
   slate: "#3F4A4B",
@@ -46,14 +52,14 @@ export const colors = {
    * Aliases used by older call sites in this rebuild. Prefer the names above
    * in new code; these keep the screens compiling while the look is mist.
    */
-  pond: "#E7F1F8",
-  pondDeep: "#D7EAF4",
-  pondLift: "#D7EAF4",
+  pond: "#E9F6FF",
+  pondDeep: "#DEF2FE",
+  pondLift: "#DEF2FE",
   pondEdge: "rgba(63, 74, 75, 0.14)",
   mist: "#3F4A4B",
   haze: "#5E6E74",
-  water: "#6EB4D6",
-  moon: "#BFDFF0",
+  water: "#45B4FC",
+  moon: "#C7E8FE",
   moonInk: "#3F4A4B",
   scrim: "rgba(25, 34, 36, 0.28)",
 } as const;
