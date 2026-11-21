@@ -82,10 +82,30 @@ export function Icon({ name, size = 24, color = colors.textPrimary }: Props) {
         </>
       )}
       {name === "wave" && (
-        <Path
-          d="M3 14c1.5-2.5 3-3.5 4.5-3.5S10.5 13 12 13s3-2.5 4.5-2.5S19.5 12 21 14"
-          {...stroke}
-        />
+        /**
+         * Overlapping logo ribbons — same control points as `logoWaveCurve`
+         * in core/waveJoin.ts (taller crest left, trough, lower crest right),
+         * mapped into 24×24. Two strokes read as the glyph’s layered waves.
+         */
+        <>
+          <Path
+            d="M2 15.38 C3.6 14.62 5.2 7.78 8.4 6.64 C10.4 6.64 11.6 13.1 13.6 16.9 C15.2 19.56 16.4 11.58 17.6 10.06 C19.2 8.54 20.8 13.86 22 15.76"
+            stroke={color}
+            strokeWidth={2.1}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+            opacity={0.7}
+          />
+          <Path
+            d="M2 13.18 C3.6 12.42 5.2 5.58 8.4 4.44 C10.4 4.44 11.6 10.9 13.6 14.7 C15.2 17.36 16.4 9.38 17.6 7.86 C19.2 6.34 20.8 11.66 22 13.56"
+            stroke={color}
+            strokeWidth={2.45}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+        </>
       )}
     </Svg>
   );

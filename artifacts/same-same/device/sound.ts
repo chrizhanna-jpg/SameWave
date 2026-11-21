@@ -1,9 +1,10 @@
 /**
- * The app's two sounds (a water drop when a Ripple is sent, a chime when a
- * Wave arrives) and the feeling clips that play on tap in a Wave.
+ * The app's sounds: a water drop when a Ripple is sent, a chime when a Wave
+ * arrives, the feeling clips on a Wave, and a short ocean-wave swoosh for
+ * launch / Wave-received reveal.
  *
- * Sound is never essential here: every function fails silently so a phone
- * with no audio output behaves the same as one on silent.
+ * Sound is never essential: every function fails silently so a phone with
+ * no audio output behaves the same as one on silent.
  */
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from "expo-audio";
 
@@ -15,15 +16,22 @@ export type Effect = keyof typeof EFFECTS;
 
 const EFFECT_VOLUME: Record<Effect, number> = { drop: 0.7, chime: 0.8 };
 
+/**
+ * Real ocean field recording (CC0). See assets/sounds/wave-swoosh.LICENSE.txt.
+ * Trimmed ~2.2s with baked-in fade-in (0.25s) and fade-out (last 0.9s).
+ */
+const WAVE_SWOOSH = require("../assets/sounds/wave-swoosh.mp3") as number;
+const WAVE_SWOOSH_VOLUME = 0.5;
+
 let modeReady: Promise<void> | null = null;
 
-/** Follows the phone's silent switch and lets other audio keep playing quietly. */
+/** Follows the phone's silent switch and mixes with other audio (no ducking). */
 function setPlaybackMode(): Promise<void> {
   modeReady ??= setAudioModeAsync({
     allowsRecording: false,
     playsInSilentMode: false,
     shouldPlayInBackground: false,
-    interruptionMode: "duckOthers",
+    interruptionMode: "mixWithOthers",
     shouldRouteThroughEarpiece: false,
   }).catch(() => undefined);
   return modeReady;
@@ -46,7 +54,7 @@ function effectPlayer(effect: Effect): AudioPlayer {
   return player;
 }
 
-/** Loads both sounds so the first one plays without a delay. */
+/** Loads both cue sounds so the first one plays without a delay. */
 export function prepareEffects(): void {
   try {
     void setPlaybackMode();
@@ -65,6 +73,75 @@ export async function playEffect(effect: Effect): Promise<void> {
     player.play();
   } catch {
     // Silent is an acceptable outcome.
+  }
+}
+
+let swooshPlayer: AudioPlayer | null = null;
+
+/**
+ * Plays the launch / Wave-received ocean swoosh once, then unloads.
+ * Volume ~0.5; respects the iOS silent switch; mixes with other audio.
+ * Safe to call again — a previous player is released first.
+ */
+export async function playWaveSwoosh(): Promise<void> {
+  try {
+    if (swooshPlayer) {
+      try {
+        swooshPlayer.pause();
+      } catch {
+        /* already stopped */
+      }
+      try {
+        swooshPlayer.remove();
+      } catch {
+        /* already released */
+      }
+      swooshPlayer = null;
+    }
+    await setPlaybackMode();
+    const player = createAudioPlayer(WAVE_SWOOSH);
+    player.volume = WAVE_SWOOSH_VOLUME;
+    swooshPlayer = player;
+    const finish = () => {
+      if (swooshPlayer !== player) return;
+      swooshPlayer = null;
+      try {
+        player.pause();
+      } catch {
+        /* */
+      }
+      try {
+        player.remove();
+      } catch {
+        /* */
+      }
+    };
+    player.addListener("playbackStatusUpdate", (status) => {
+      if (status.didJustFinish) finish();
+    });
+    player.play();
+  } catch {
+    // Fail silently — splash / reveal continue without audio.
+  }
+}
+
+/** Stops the swoosh early (e.g. splash skipped) and unloads. */
+export function stopWaveSwoosh(): void {
+  const player = swooshPlayer;
+  if (!player) return;
+  swooshPlayer = null;
+  try {
+    // Soft volume ramp isn't available on all platforms; pause + unload is enough
+    // because the file itself already has a baked-in fade-out for normal play.
+    player.volume = 0;
+    player.pause();
+  } catch {
+    /* */
+  }
+  try {
+    player.remove();
+  } catch {
+    /* */
   }
 }
 

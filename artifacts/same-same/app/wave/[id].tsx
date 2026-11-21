@@ -15,6 +15,7 @@ import { Button } from "@/components/Button";
 import { Frost } from "@/components/Frost";
 import { Header } from "@/components/Header";
 import { Icon } from "@/components/Icon";
+import { RippleRings } from "@/components/RippleRings";
 import { Scrim } from "@/components/Scrim";
 import { Txt } from "@/components/Txt";
 import { WaveJoin } from "@/components/WaveJoin";
@@ -23,11 +24,18 @@ import { describeGap, matchBonuses } from "@/core/bonuses";
 import { clipUrlFor, vibeFor } from "@/core/vibes";
 import { flagFor, nameFor } from "@/data/countries";
 import { NATIVE_DRIVER, useReducedMotion } from "@/device/motion";
-import { playClip, playEffect, stopClip } from "@/device/sound";
+import { playClip, playEffect, playWaveSwoosh, stopClip, stopWaveSwoosh } from "@/device/sound";
 import { useAppState } from "@/state/AppState";
-import { colors, motion, radius, space } from "@/theme";
+import { colors, motion, space } from "@/theme";
 
-type Phase = "build" | "splash" | "reveal" | "done";
+type Phase = "pulse" | "build" | "splash" | "reveal" | "done";
+
+/** Waves that already played the circles + swoosh reveal this session. */
+const pulsedWaveIds = new Set<string>();
+
+/** Matches the baked swoosh length (~2.2s) plus a short breath before photos. */
+const PULSE_MS = 2300;
+const PULSE_RINGS = 340;
 
 /**
  * The Wave ceremony, photography first.
@@ -38,14 +46,15 @@ type Phase = "build" | "splash" | "reveal" | "done";
  */
 export default function WaveScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, reveal } = useLocalSearchParams<{ id: string; reveal?: string }>();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { waves, markWaveSeen, reportWave, backend } = useAppState();
   const wave = waves.find((w) => w.id === id) ?? null;
   const reduced = useReducedMotion();
+  const wantsPulse = reveal === "1" && Boolean(id) && !pulsedWaveIds.has(id ?? "");
 
-  const [phase, setPhase] = useState<Phase>("build");
+  const [phase, setPhase] = useState<Phase>(wantsPulse ? "pulse" : "build");
   const [details, setDetails] = useState(false);
   const [chrome, setChrome] = useState(true);
   const [detail, setDetail] = useState<WaveDetail | null>(null);
@@ -62,6 +71,7 @@ export default function WaveScreen() {
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const chromeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const seen = useRef(false);
+  const ceremonyFor = useRef<string | null>(null);
 
   const bonuses = useMemo(
     () =>
@@ -124,8 +134,29 @@ export default function WaveScreen() {
     };
   }, [wave, backend]);
 
+  // Circles + ocean swoosh before the photo ceremony (push / first arrival only).
   useEffect(() => {
-    if (!wave) return;
+    if (!wave || phase !== "pulse") return;
+    if (reduced) {
+      pulsedWaveIds.add(wave.id);
+      setPhase("build");
+      return;
+    }
+    pulsedWaveIds.add(wave.id);
+    void playWaveSwoosh();
+    const done = setTimeout(() => setPhase("build"), PULSE_MS);
+    return () => {
+      clearTimeout(done);
+      stopWaveSwoosh();
+    };
+  }, [wave, phase, reduced]);
+
+  const ceremonyReady = phase !== "pulse";
+
+  useEffect(() => {
+    if (!wave || !ceremonyReady) return;
+    if (ceremonyFor.current === wave.id) return;
+    ceremonyFor.current = wave.id;
     fade.setValue(0);
     Animated.timing(fade, {
       toValue: 1,
@@ -185,9 +216,9 @@ export default function WaveScreen() {
       if (chromeTimer.current) clearTimeout(chromeTimer.current);
       stopClip();
     };
-    // Ceremony runs once for this Wave.
+    // Ceremony runs once for this Wave after any pulse phase.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wave?.id, reduced]);
+  }, [wave?.id, ceremonyReady, reduced]);
 
   useEffect(() => {
     Animated.timing(panel, {
@@ -214,6 +245,16 @@ export default function WaveScreen() {
           This Wave isn't here
         </Txt>
         <Button kind="soft" label="Back" onPress={() => router.back()} style={styles.back} />
+      </View>
+    );
+  }
+
+  if (phase === "pulse") {
+    return (
+      <View style={[styles.root, styles.pulse]} accessibilityLabel="Wave arriving">
+        <View style={styles.pulseStage}>
+          <RippleRings size={PULSE_RINGS} rings={4} color={colors.waterMid} />
+        </View>
       </View>
     );
   }
@@ -443,6 +484,13 @@ function Side({
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   fill: { flex: 1 },
+  pulse: { alignItems: "center", justifyContent: "center" },
+  pulseStage: {
+    width: PULSE_RINGS,
+    height: PULSE_RINGS,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   missing: { alignItems: "center", justifyContent: "center", padding: space.xl },
   splash: {
     position: "absolute", left: 0, right: 0, top: 0, bottom: 0,
