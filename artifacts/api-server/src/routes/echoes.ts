@@ -345,6 +345,33 @@ type EchoCard = {
   };
 };
 
+/**
+ * Echo JSON still exposes `uri` as a data URI built from lowBytes/highBytes
+ * and lowMime/highMime. Prefer the stored display image. CASE only evaluates
+ * the chosen branch, so the multi-MB original is detoasted only when
+ * display_bytes_base64 is NULL or empty.
+ */
+function displayOrOriginalSql(
+  alias: "pl" | "ph",
+  bytesAlias: "lowBytes" | "highBytes",
+  mimeAlias: "lowMime" | "highMime",
+) {
+  const table = sql.raw(alias);
+  return sql`
+    CASE
+      WHEN ${table}.display_bytes_base64 IS NOT NULL
+       AND ${table}.display_bytes_base64 <> ''
+      THEN ${table}.display_bytes_base64
+      ELSE ${table}.bytes_base64
+    END AS ${sql.raw(`"${bytesAlias}"`)},
+    CASE
+      WHEN ${table}.display_bytes_base64 IS NOT NULL
+       AND ${table}.display_bytes_base64 <> ''
+      THEN COALESCE(NULLIF(${table}.display_mime, ''), ${table}.mime_type)
+      ELSE ${table}.mime_type
+    END AS ${sql.raw(`"${mimeAlias}"`)}`;
+}
+
 /** Normalise a DB timestamp to an ISO string (or null) for JSON transport. */
 function isoOrNull(v: unknown): string | null {
   if (v == null) return null;
@@ -434,15 +461,13 @@ router.get("/echoes/inbox", async (req, res) => {
         e.photo_high_id AS "photoHighId",
         e.user_low_id AS "userLowId",
         e.user_high_id AS "userHighId",
-        pl.bytes_base64 AS "lowBytes",
-        pl.mime_type AS "lowMime",
+        ${displayOrOriginalSql("pl", "lowBytes", "lowMime")},
         pl.country_code AS "lowCountry",
         pl.capture_country_code AS "lowCaptureCountry",
         pl.captured_at AS "lowCapturedAt",
         pl.created_at AS "lowCreatedAt",
         pl.theme AS "lowTheme",
-        ph.bytes_base64 AS "highBytes",
-        ph.mime_type AS "highMime",
+        ${displayOrOriginalSql("ph", "highBytes", "highMime")},
         ph.country_code AS "highCountry",
         ph.capture_country_code AS "highCaptureCountry",
         ph.captured_at AS "highCapturedAt",
@@ -487,15 +512,13 @@ router.get("/echoes/mine", async (req, res) => {
         e.photo_high_id AS "photoHighId",
         e.user_low_id AS "userLowId",
         e.user_high_id AS "userHighId",
-        pl.bytes_base64 AS "lowBytes",
-        pl.mime_type AS "lowMime",
+        ${displayOrOriginalSql("pl", "lowBytes", "lowMime")},
         pl.country_code AS "lowCountry",
         pl.capture_country_code AS "lowCaptureCountry",
         pl.captured_at AS "lowCapturedAt",
         pl.created_at AS "lowCreatedAt",
         pl.theme AS "lowTheme",
-        ph.bytes_base64 AS "highBytes",
-        ph.mime_type AS "highMime",
+        ${displayOrOriginalSql("ph", "highBytes", "highMime")},
         ph.country_code AS "highCountry",
         ph.capture_country_code AS "highCaptureCountry",
         ph.captured_at AS "highCapturedAt",
@@ -671,14 +694,12 @@ router.get("/echoes/theme/:theme", async (req, res) => {
         pr.mutual_at AS "mutualAt",
         pr.photo_low_id AS "photoLowId",
         pr.photo_high_id AS "photoHighId",
-        pl.bytes_base64 AS "lowBytes",
-        pl.mime_type AS "lowMime",
+        ${displayOrOriginalSql("pl", "lowBytes", "lowMime")},
         pl.country_code AS "lowCountry",
         pl.capture_country_code AS "lowCaptureCountry",
         pl.custom_audio_base64 AS "lowAudioB64",
         pl.custom_audio_mime AS "lowAudioMime",
-        ph.bytes_base64 AS "highBytes",
-        ph.mime_type AS "highMime",
+        ${displayOrOriginalSql("ph", "highBytes", "highMime")},
         ph.country_code AS "highCountry",
         ph.capture_country_code AS "highCaptureCountry",
         ph.custom_audio_base64 AS "highAudioB64",
@@ -913,8 +934,18 @@ router.get("/echoes/pair", async (req, res) => {
       .select({
         id: photosTable.id,
         userId: photosTable.userId,
-        bytesBase64: photosTable.bytesBase64,
-        mimeType: photosTable.mimeType,
+        bytesBase64: sql<string>`CASE
+          WHEN ${photosTable.displayBytesBase64} IS NOT NULL
+           AND ${photosTable.displayBytesBase64} <> ''
+          THEN ${photosTable.displayBytesBase64}
+          ELSE ${photosTable.bytesBase64}
+        END`,
+        mimeType: sql<string>`CASE
+          WHEN ${photosTable.displayBytesBase64} IS NOT NULL
+           AND ${photosTable.displayBytesBase64} <> ''
+          THEN COALESCE(NULLIF(${photosTable.displayMime}, ''), ${photosTable.mimeType})
+          ELSE ${photosTable.mimeType}
+        END`,
         countryCode: photosTable.countryCode,
         captureCountryCode: photosTable.captureCountryCode,
         capturedAt: photosTable.capturedAt,
