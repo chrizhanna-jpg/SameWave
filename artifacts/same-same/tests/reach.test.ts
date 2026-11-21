@@ -20,12 +20,16 @@ const real = (id: string, score: number, createdAt = "2026-10-30T00:00:00Z"): Ca
   score,
   uri: `/api/photos/${id}/image`,
   createdAt,
+  theme: null,
+  emotion: null,
 });
 const stock = (id: string, score: number): Candidate => ({
   id,
   score,
   uri: `https://images.unsplash.com/photo-${id}?w=960`,
   createdAt: null,
+  theme: null,
+  emotion: null,
 });
 
 const ripple = (overrides: Partial<Ripple> = {}): Ripple => ({
@@ -33,6 +37,8 @@ const ripple = (overrides: Partial<Ripple> = {}): Ripple => ({
   sentAt: new Date(NOW - HOUR).toISOString(),
   localUri: null,
   countryCode: "GB",
+  emotion: null,
+  topic: null,
   vibe: null,
   hasRecording: false,
   theme: "coffee",

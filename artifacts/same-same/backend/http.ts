@@ -104,6 +104,9 @@ export function candidateFromRow(raw: unknown): Candidate | null {
     uri: row.uri,
     score: Number.isFinite(score) ? score : 0,
     createdAt: isoOrNull(row.createdAt),
+    theme: typeof row.theme === "string" && row.theme ? row.theme : null,
+    emotion:
+      typeof row.musicGenre === "string" && row.musicGenre ? row.musicGenre : null,
   };
 }
 
@@ -217,7 +220,8 @@ export function createHttpBackend(options: HttpBackendOptions): Backend {
           ...(upload.countryCode ? { countryCode: upload.countryCode } : {}),
           ...(upload.captureCountryCode ? { captureCountryCode: upload.captureCountryCode } : {}),
           ...(upload.capturedAt ? { capturedAt: upload.capturedAt } : {}),
-          ...(upload.vibe ? { musicGenre: upload.vibe } : {}),
+          ...(upload.emotion ? { musicGenre: upload.emotion } : {}),
+          ...(upload.topic ? { theme: upload.topic } : {}),
           ...(upload.recording
             ? {
                 customAudioBase64: upload.recording.base64,
@@ -250,6 +254,7 @@ export function createHttpBackend(options: HttpBackendOptions): Backend {
       if (query.theme) params.set("theme", query.theme);
       if (query.tags.length) params.set("tags", query.tags.join(","));
       if (query.subjects.length) params.set("subjects", query.subjects.join(","));
+      if (query.emotion) params.set("musicGenre", query.emotion);
       params.set("limit", String(query.limit));
       if (query.excludeIds.length) params.set("excludeIds", query.excludeIds.slice(-200).join(","));
       const body = await call("GET", `/photos/candidates?${params.toString()}`, {

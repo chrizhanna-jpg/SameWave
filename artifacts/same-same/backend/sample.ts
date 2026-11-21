@@ -121,6 +121,7 @@ interface SampleRipple {
   uri: string;
   country: string;
   vibe: string | null;
+  topic: string | null;
   recording: string | null;
   takenAt: string;
   answer: number;
@@ -222,7 +223,8 @@ export function createSampleBackend(
         photoId,
         uri: upload.localUri,
         country: upload.captureCountryCode ?? upload.countryCode ?? current.country ?? "GB",
-        vibe: upload.vibe,
+        vibe: upload.emotion,
+        topic: upload.topic,
         recording: upload.recording
           ? `data:${upload.recording.mime};base64,${upload.recording.base64}`
           : null,
@@ -231,7 +233,12 @@ export function createSampleBackend(
         dueAt: now + SAMPLE_TRAVEL_MS,
       });
       await save();
-      return { photoId, theme: "sample", tags: [], subjects: [] };
+      return {
+        photoId,
+        theme: upload.topic ?? "sample",
+        tags: upload.topic ? [upload.topic] : [],
+        subjects: [],
+      };
     },
 
     async deletePhoto(photoId) {

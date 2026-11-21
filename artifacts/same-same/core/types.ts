@@ -29,9 +29,14 @@ export interface Ripple {
   /** Local copy of the photo, when one exists on this device. */
   localUri: string | null;
   countryCode: string | null;
+  /** Chosen emotion id (also sent as musicGenre). */
+  emotion: string | null;
+  /** Chosen Topic id (also sent as theme). */
+  topic: string | null;
+  /** @deprecated use emotion — kept for older local ledgers. */
   vibe: string | null;
   hasRecording: boolean;
-  /** What the server saw in the photo. Used to look for matches. */
+  /** Server / chosen Topic id used when looking for matches. */
   theme: string;
   tags: string[];
   subjects: string[];
@@ -53,6 +58,8 @@ export interface Candidate {
   score: number;
   uri: string;
   createdAt: string | null;
+  theme: string | null;
+  emotion: string | null;
 }
 
 /** Someone else's Ripple reached one of the user's photos. */

@@ -94,6 +94,8 @@ test("history has each photo once, newest first, with the best picture known", (
     sentAt,
     localUri,
     countryCode: null,
+    emotion: null,
+    topic: null,
     vibe: null,
     hasRecording: false,
     theme: "",

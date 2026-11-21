@@ -47,8 +47,10 @@ export interface RippleUpload {
   captureCountryCode: string | null;
   /** When the photo was taken. ISO string. */
   capturedAt: string | null;
-  /** A feeling id from data/vibes.ts. */
-  vibe: string | null;
+  /** Emotion id from data/emotions.ts → musicGenre on the server. */
+  emotion: string | null;
+  /** Topic id from data/topics.ts → theme on the server. */
+  topic: string | null;
   recording: { base64: string; mime: string } | null;
   /** The photo on this device. Only sample mode reads it. */
   localUri: string;
@@ -65,6 +67,8 @@ export interface CandidateQuery {
   theme: string;
   tags: string[];
   subjects: string[];
+  /** Emotion id → musicGenre query on the server. */
+  emotion: string | null;
   limit: number;
   /** Photos already looked at in this search. */
   excludeIds: string[];

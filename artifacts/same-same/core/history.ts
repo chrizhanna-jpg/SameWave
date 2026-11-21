@@ -58,6 +58,8 @@ export function ripplesFromLegacyState(raw: string | null): Ripple[] {
       countryCode: normalizeCountryCode(
         text(photo.captureCountryCode) ?? text(photo.declaredCountryCode),
       ),
+      emotion: text(photo.musicGenre),
+      topic: text(photo.theme),
       vibe: text(photo.musicGenre),
       hasRecording: text(photo.customAudioUrl) !== null,
       theme: text(photo.theme) ?? "",
@@ -119,11 +121,16 @@ export function newRipple(input: {
   sentAt: string;
   localUri: string | null;
   countryCode: string | null;
-  vibe: string | null;
+  emotion: string | null;
+  topic: string | null;
   hasRecording: boolean;
   theme: string;
   tags: string[];
   subjects: string[];
 }): Ripple {
-  return { ...input, reach: emptyReach() };
+  return {
+    ...input,
+    vibe: input.emotion,
+    reach: emptyReach(),
+  };
 }

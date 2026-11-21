@@ -71,8 +71,10 @@ export type CountryStatus = "checking" | "known" | "needed";
 
 export interface RippleDraft {
   photo: ChosenPhoto;
-  /** A feeling id from data/vibes.ts. */
-  vibe: string | null;
+  /** Emotion id from data/emotions.ts. */
+  emotion: string | null;
+  /** Topic id from data/topics.ts. */
+  topic: string | null;
   /** A short sound recorded for this Ripple. */
   recording: { uri: string; mime: string } | null;
 }
@@ -267,10 +269,13 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       const looked: string[] = [];
       let targets: Candidate[] = [];
       for (let page = 0; page < MATCH.maxPages && targets.length === 0; page++) {
+        const topic = ripple.topic ?? ripple.theme ?? null;
+        const emotion = ripple.emotion ?? ripple.vibe ?? null;
         const candidates = await backend.findCandidates({
-          theme: ripple.theme,
+          theme: topic ?? ripple.theme,
           tags: ripple.tags,
           subjects: ripple.subjects,
+          emotion,
           limit: MATCH.pageSize,
           excludeIds: [...ripple.reach.offeredIds, ...looked].slice(-MAX_EXCLUDE_IDS),
         });
@@ -278,6 +283,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           minScore: decision.minScore,
           limit: MATCH.offersPerPass,
           alreadyOffered: ripple.reach.offeredIds,
+          emotion,
+          topic,
         });
         if (candidates.length < MATCH.pageSize) break;
         looked.push(...candidates.map((c) => c.id));
@@ -557,7 +564,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           countryCode,
           captureCountryCode,
           capturedAt: draft.photo.takenAt,
-          vibe: draft.vibe,
+          emotion: draft.emotion,
+          topic: draft.topic,
           recording,
           localUri: localUri ?? draft.photo.uri,
         });
@@ -570,9 +578,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         sentAt: new Date().toISOString(),
         localUri,
         countryCode: captureCountryCode ?? countryCode,
-        vibe: draft.vibe,
+        emotion: draft.emotion,
+        topic: draft.topic,
         hasRecording: recording !== null,
-        theme: sent.theme,
+        theme: draft.topic ?? sent.theme,
         tags: sent.tags,
         subjects: sent.subjects,
       });

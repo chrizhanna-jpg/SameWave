@@ -11,6 +11,7 @@
  * Similarity is the server's score for the two photos. The feeling or sound
  * sent with a Ripple is never part of it.
  */
+import { combinedMatchScore } from "./matchScore";
 import type { Candidate, Offer, Ripple, Wave } from "./types";
 
 const HOUR = 60 * 60 * 1000;
@@ -49,21 +50,41 @@ export function minScoreForPass(pass: number, rules: MatchRules = MATCH): number
   return pass <= 0 ? rules.minScore : rules.relaxedMinScore;
 }
 
-/** The photos to offer a Ripple to, closest first. */
+/** The photos to offer a Ripple to, closest first after emotion/Topic re-rank. */
 export function selectReachTargets(
   candidates: readonly Candidate[],
-  options: { minScore: number; limit: number; alreadyOffered: readonly string[] },
+  options: {
+    minScore: number;
+    limit: number;
+    alreadyOffered: readonly string[];
+    emotion?: string | null;
+    topic?: string | null;
+  },
 ): Candidate[] {
   const offered = new Set(options.alreadyOffered);
   const seen = new Set<string>();
+  const mine = { emotion: options.emotion ?? null, topic: options.topic ?? null };
   return candidates
     .filter((c) => {
       if (seen.has(c.id) || offered.has(c.id)) return false;
       seen.add(c.id);
       return isRealUpload(c) && c.score >= options.minScore;
     })
-    .sort((a, b) => b.score - a.score || newestFirst(a.createdAt, b.createdAt))
-    .slice(0, Math.max(0, options.limit));
+    .map((c) => ({
+      candidate: c,
+      rank: combinedMatchScore(c.score, mine, {
+        emotion: c.emotion,
+        topic: c.theme,
+      }),
+    }))
+    .sort(
+      (a, b) =>
+        b.rank - a.rank ||
+        b.candidate.score - a.candidate.score ||
+        newestFirst(a.candidate.createdAt, b.candidate.createdAt),
+    )
+    .slice(0, Math.max(0, options.limit))
+    .map((row) => row.candidate);
 }
 
 function newestFirst(a: string | null, b: string | null): number {

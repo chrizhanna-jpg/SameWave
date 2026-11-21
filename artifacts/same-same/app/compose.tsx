@@ -15,26 +15,26 @@ import { Photo } from "@/components/Photo";
 import { RippleRings } from "@/components/RippleRings";
 import { Screen } from "@/components/Screen";
 import { SoundRecorder, type Recording } from "@/components/SoundRecorder";
+import { TopicPicker } from "@/components/TopicPicker";
 import { Txt } from "@/components/Txt";
 import { errorKind } from "@/backend/types";
-import { PICKER_VIBE_IDS } from "@/data/vibes";
-import { vibeFor } from "@/core/vibes";
+import { EMOTIONS } from "@/data/emotions";
 import { playEffect } from "@/device/sound";
 import { useAppState } from "@/state/AppState";
 import { getDraftPhoto, setDraftPhoto } from "@/state/draft";
 import { colors, motion, radius, space } from "@/theme";
 
 /**
- * The send screen: the photo, an optional feeling, an optional sound, and
- * one gold button. Tapping it starts the rings from the finger and plays the
- * water drop; the person stays here until the Ripple has reached the server.
+ * Send a Ripple. After the photo: emotion first, then Topic, then an optional
+ * song. Matching uses emotion + Topic on top of the server's photo score.
  */
 export default function ComposeScreen() {
   const router = useRouter();
   const { sendRipple } = useAppState();
   const photo = getDraftPhoto();
 
-  const [vibe, setVibe] = useState<string | null>(null);
+  const [emotion, setEmotion] = useState<string | null>(null);
+  const [topic, setTopic] = useState<string | null>(null);
   const [recording, setRecording] = useState<Recording | null>(null);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -48,6 +48,8 @@ export default function ComposeScreen() {
 
   if (!photo) return null;
 
+  const canSend = !!emotion && !!topic && !sending && !sent;
+
   const onLayout = (event: LayoutChangeEvent) => {
     box.current = {
       width: event.nativeEvent.layout.width,
@@ -56,7 +58,7 @@ export default function ComposeScreen() {
   };
 
   const send = async (event: GestureResponderEvent) => {
-    if (sending || sent) return;
+    if (!canSend || !emotion || !topic) return;
     const { locationX, locationY } = event.nativeEvent;
     setTap({
       x: Number.isFinite(locationX) ? locationX : box.current.width / 2,
@@ -68,10 +70,9 @@ export default function ComposeScreen() {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
 
     try {
-      await sendRipple({ photo, vibe, recording });
+      await sendRipple({ photo, emotion, topic, recording });
       setSent(true);
       setDraftPhoto(null);
-      // Brief pause so the rings can finish their one-off spread, then home.
       setTimeout(() => router.replace("/"), motion.rippleSend);
     } catch (error) {
       setSending(false);
@@ -89,59 +90,77 @@ export default function ComposeScreen() {
 
   return (
     <Screen scroll>
-      <Header icon="close" onPress={() => { setDraftPhoto(null); router.replace("/"); }} />
+      <Header
+        icon="close"
+        onPress={() => {
+          setDraftPhoto(null);
+          router.replace("/");
+        }}
+      />
 
       <View style={styles.photoWrap}>
         <Photo uri={photo.uri} style={styles.photo} accessibilityLabel="Today's photo" />
       </View>
 
-      <Txt tone="secondary" style={styles.section}>
-        A feeling (optional)
+      <Txt variant="heading" style={styles.section}>
+        How does it feel?
       </Txt>
-      <View style={styles.vibes}>
-        {PICKER_VIBE_IDS.map((id) => {
-          const label = vibeFor(id)?.label ?? id;
-          const on = vibe === id;
+      <Txt tone="secondary" style={styles.hint}>
+        Pick one emotion first.
+      </Txt>
+      <View style={styles.emotions}>
+        {EMOTIONS.map((item) => {
+          const on = emotion === item.id;
           return (
             <Pressable
-              key={id}
-              onPress={() => setVibe(on ? null : id)}
+              key={item.id}
+              onPress={() => setEmotion(on ? null : item.id)}
               accessibilityRole="button"
               accessibilityState={{ selected: on }}
-              accessibilityLabel={label}
+              accessibilityLabel={item.label}
               style={[styles.chip, on && styles.chipOn]}
             >
-              <Txt variant="quiet" tone={on ? "mist" : "haze"}>
-                {label}
+              <Txt variant="quiet" tone={on ? "primary" : "secondary"}>
+                {item.label}
               </Txt>
             </Pressable>
           );
         })}
       </View>
 
-      <Txt tone="secondary" style={styles.section}>
-        A sound (optional)
-      </Txt>
-      <SoundRecorder value={recording} onChange={setRecording} />
+      {emotion ? (
+        <>
+          <Txt variant="heading" style={styles.section}>
+            Topic
+          </Txt>
+          <Txt tone="secondary" style={styles.hint}>
+            What is the photo of? Type to find a Topic.
+          </Txt>
+          <TopicPicker value={topic} onChange={setTopic} />
+        </>
+      ) : null}
+
+      {emotion && topic ? (
+        <>
+          <Txt variant="heading" style={styles.section}>
+            A song (optional)
+          </Txt>
+          <Txt tone="secondary" style={styles.hint}>
+            Record a short sound to travel with the photo.
+          </Txt>
+          <SoundRecorder value={recording} onChange={setRecording} />
+        </>
+      ) : null}
 
       <View style={styles.send} onLayout={onLayout}>
         <Button
           label={sending || sent ? "Sending…" : "Send Ripple"}
           onPress={send}
           busy={sending && !sent}
-          disabled={sending || sent}
+          disabled={!canSend}
         />
         {tap ? (
-          <View
-            pointerEvents="none"
-            style={[
-              styles.rings,
-              {
-                left: tap.x - 140,
-                top: tap.y - 140,
-              },
-            ]}
-          >
+          <View pointerEvents="none" style={[styles.rings, { left: tap.x - 140, top: tap.y - 140 }]}>
             <RippleRings size={280} loop={false} duration={motion.rippleSend} rings={4} />
           </View>
         ) : null}
@@ -153,7 +172,7 @@ export default function ComposeScreen() {
         </Txt>
       ) : (
         <Txt variant="quiet" tone="secondary" center style={styles.problem}>
-          Matching is on the photo only. The feeling and sound travel with it.
+          Matching leans on the emotion and Topic you pick, together with the photo.
         </Txt>
       )}
     </Screen>
@@ -171,15 +190,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   photo: { width: "100%", height: "100%" },
-  section: { marginTop: space.xl, marginBottom: space.sm },
-  vibes: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
+  section: { marginTop: space.xl },
+  hint: { marginTop: space.xs, marginBottom: space.sm },
+  emotions: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
   chip: {
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
     borderRadius: radius.pill,
     backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.line,
   },
-  chipOn: { backgroundColor: colors.line },
+  chipOn: { backgroundColor: colors.waterPale, borderColor: colors.waterSoft },
   send: { marginTop: space.xl, position: "relative", overflow: "visible" },
   rings: { position: "absolute", width: 280, height: 280 },
   problem: { marginTop: space.md, marginBottom: space.lg },

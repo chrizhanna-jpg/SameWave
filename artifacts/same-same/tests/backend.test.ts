@@ -54,7 +54,8 @@ const upload: RippleUpload = {
   countryCode: "GB",
   captureCountryCode: null,
   capturedAt: "2026-11-01T10:00:00.000Z",
-  vibe: "calm",
+  emotion: "calm",
+  topic: "nature",
   recording: null,
   localUri: "file:///photo.jpg",
 };
@@ -79,6 +80,7 @@ test("sending a Ripple posts the photo in the shape the server stores", async ()
     countryCode: "GB",
     capturedAt: "2026-11-01T10:00:00.000Z",
     musicGenre: "calm",
+    theme: "nature",
   });
 });
 
@@ -193,6 +195,7 @@ test("looking for matches sends the photo's labels and never its feeling", async
     theme: "coffee",
     tags: ["morning", "cozy"],
     subjects: ["cup"],
+    emotion: "calm",
     limit: 50,
     excludeIds: ["x1", "x2"],
   });
@@ -203,7 +206,7 @@ test("looking for matches sends the photo's labels and never its feeling", async
   assert.equal(url.searchParams.get("tags"), "morning,cozy");
   assert.equal(url.searchParams.get("subjects"), "cup");
   assert.equal(url.searchParams.get("excludeIds"), "x1,x2");
-  assert.equal(url.searchParams.has("musicGenre"), false);
+  assert.equal(url.searchParams.get("musicGenre"), "calm");
 });
 
 test("an offer is a 'same' vote made on behalf of my photo", async () => {

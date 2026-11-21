@@ -11,7 +11,7 @@ import { space } from "@/theme";
 const STEPS = [
   {
     title: "Send a Ripple",
-    body: "One photo of your day. You can add a feeling or a short sound. They travel with the photo, but matching is on the photo only.",
+    body: "One photo of your day, an emotion, and a Topic. You can add a short sound. Matching leans on the emotion and Topic together with the photo.",
   },
   {
     title: "Wait",
