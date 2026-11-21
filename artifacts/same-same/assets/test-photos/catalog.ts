@@ -3,15 +3,14 @@
  * `EXPO_PUBLIC_TEST_PHOTOS === "1"` so Metro dead-code-eliminates JPEGs +
  * fixtures from production / preview-APK exports.
  */
-import { Asset } from "expo-asset";
-import { Image } from "react-native";
+import { Image, Platform } from "react-native";
 
 import type { Candidate } from "@/core/types";
 import type { Wave } from "@/core/types";
 
 import { FIXTURE_PAIRS, TEST_PHOTO_META, sampleWavesForMap } from "./fixtures";
 
-const MODULES: Record<string, number> = {
+const MODULES: Record<string, number | string | { uri?: string }> = {
   "01-mountain-lake.jpg": require("./01-mountain-lake.jpg"),
   "02-coffee-hands.jpg": require("./02-coffee-hands.jpg"),
   "03-forest-path.jpg": require("./03-forest-path.jpg"),
@@ -23,30 +22,30 @@ const MODULES: Record<string, number> = {
 };
 
 /**
- * Resolve a bundled JPEG to a URI. Prefer expo-asset (works on web + native);
- * fall back to Image.resolveAssetSource when available.
+ * Resolve a bundled JPEG to a URI.
+ * On web, RN's Image.resolveAssetSource is often missing — never throw.
  */
 function uriForFile(file: string): string {
   const mod = MODULES[file];
   if (mod == null) return "";
-  try {
-    const asset = Asset.fromModule(mod);
-    if (asset.uri) return asset.uri;
-  } catch {
-    /* fall through */
-  }
-  const resolve =
-    typeof Image.resolveAssetSource === "function"
-      ? Image.resolveAssetSource.bind(Image)
-      : null;
-  if (resolve) {
+  if (typeof mod === "string") return mod;
+  if (typeof mod === "object" && typeof mod.uri === "string" && mod.uri) return mod.uri;
+
+  // Native (and some web builds): numeric asset id → resolveAssetSource.
+  if (typeof Image.resolveAssetSource === "function") {
     try {
-      return resolve(mod)?.uri ?? "";
+      const resolved = Image.resolveAssetSource(mod as number);
+      if (resolved?.uri) return resolved.uri;
     } catch {
-      return "";
+      /* web stubs can throw */
     }
   }
-  return typeof mod === "string" ? mod : "";
+
+  // Last resort on web: ask Metro for the static asset by path.
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    return new URL(`/assets/assets/test-photos/${file}`, window.location.origin).href;
+  }
+  return "";
 }
 
 /** Ids use a `test_sample_` prefix so stock filters never treat them as CDN stock. */
