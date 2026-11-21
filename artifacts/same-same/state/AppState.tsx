@@ -34,7 +34,7 @@ import {
   withReachPass,
 } from "@/core/reach";
 import type { Candidate, Ripple, Wave } from "@/core/types";
-import { sortWaves, unseenWaves } from "@/core/waves";
+import { sortWaves, unseenWaves, unrevealedWaves, withRevealedWaveId } from "@/core/waves";
 import { normalizeCountryCode } from "@/data/countries";
 import { countryAt, countryHere } from "@/device/location";
 import {
@@ -108,6 +108,8 @@ interface Data {
   /** True once Waves have been read from the device or the server. */
   wavesKnown: boolean;
   seenWaveIds: string[];
+  /** Wave ids that already played the rings+swoosh reveal (persisted). */
+  revealedWaveIds: string[];
   hidden: Hidden;
   sync: SyncStatus;
 }
@@ -127,6 +129,15 @@ export interface AppStateValue {
   wavesKnown: boolean;
   /** Waves that have arrived and not been opened, oldest first. */
   newWaves: Wave[];
+  /**
+   * Mutual Waves that still need the full-screen reveal (rings + swoosh),
+   * oldest first. Used by auto-reveal on launch/foreground and by push routing.
+   */
+  unrevealedWaves: Wave[];
+  /** Persist that the reveal ceremony has run (or been skipped) for this Wave. */
+  markWaveRevealed(waveId: string): void;
+  /** True when this Wave should still play the reveal ceremony. */
+  shouldRevealWave(waveId: string): boolean;
   /** The latest Ripple, while it is still waiting for a Wave. */
   travelling: Ripple | null;
   history: HistoryPhoto[];
@@ -193,6 +204,7 @@ function emptyData(): Data {
     waves: [],
     wavesKnown: false,
     seenWaveIds: [],
+    revealedWaveIds: [],
     hidden: { photoIds: [], waveIds: [] },
     sync: "idle",
   };
@@ -260,16 +272,20 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     return next;
   }, []);
 
-  const save = useCallback((name: "profile" | "ripples" | "seen" | "hidden" | "waves") => {
-    const current = dataRef.current;
-    if (!current.accountId) return;
-    const key = accountKey(current.accountId, name);
-    if (name === "profile") void writeJson(key, current.profile);
-    else if (name === "ripples") void writeJson(key, current.ripples);
-    else if (name === "seen") void writeJson(key, current.seenWaveIds);
-    else if (name === "hidden") void writeJson(key, current.hidden);
-    else void writeJson(key, wavesForStorage(current.waves));
-  }, []);
+  const save = useCallback(
+    (name: "profile" | "ripples" | "seen" | "revealed" | "hidden" | "waves") => {
+      const current = dataRef.current;
+      if (!current.accountId) return;
+      const key = accountKey(current.accountId, name);
+      if (name === "profile") void writeJson(key, current.profile);
+      else if (name === "ripples") void writeJson(key, current.ripples);
+      else if (name === "seen") void writeJson(key, current.seenWaveIds);
+      else if (name === "revealed") void writeJson(key, current.revealedWaveIds);
+      else if (name === "hidden") void writeJson(key, current.hidden);
+      else void writeJson(key, wavesForStorage(current.waves));
+    },
+    [],
+  );
 
   const syncing = useRef<Promise<void> | null>(null);
   const lastSyncAt = useRef(0);
@@ -449,13 +465,15 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
     void (async () => {
       try {
-        const [savedProfile, savedRipples, seenWaveIds, hidden, savedWaves] = await Promise.all([
-          readJson<Profile | null>(accountKey(accountId, "profile"), null),
-          readJson<Ripple[]>(accountKey(accountId, "ripples"), []),
-          readJson<string[]>(accountKey(accountId, "seen"), []),
-          readJson<Hidden>(accountKey(accountId, "hidden"), { photoIds: [], waveIds: [] }),
-          readJson<Wave[] | null>(accountKey(accountId, "waves"), null),
-        ]);
+        const [savedProfile, savedRipples, seenWaveIds, revealedWaveIds, hidden, savedWaves] =
+          await Promise.all([
+            readJson<Profile | null>(accountKey(accountId, "profile"), null),
+            readJson<Ripple[]>(accountKey(accountId, "ripples"), []),
+            readJson<string[]>(accountKey(accountId, "seen"), []),
+            readJson<string[]>(accountKey(accountId, "revealed"), []),
+            readJson<Hidden>(accountKey(accountId, "hidden"), { photoIds: [], waveIds: [] }),
+            readJson<Wave[] | null>(accountKey(accountId, "waves"), null),
+          ]);
         let profile: Profile = { ...freshProfile(), ...(savedProfile ?? {}) };
         let ripples = Array.isArray(savedRipples) ? savedRipples : [];
         if (!profile.migrated) {
@@ -475,6 +493,13 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           country: profile.countryCode ? "known" : "checking",
           ripples,
           seenWaveIds: Array.isArray(seenWaveIds) ? seenWaveIds : [],
+          // Seed from seen so Waves opened before this field existed skip auto-reveal.
+          revealedWaveIds: [
+            ...new Set([
+              ...(Array.isArray(revealedWaveIds) ? revealedWaveIds : []),
+              ...(Array.isArray(seenWaveIds) ? seenWaveIds : []),
+            ]),
+          ],
           hidden: {
             photoIds: Array.isArray(hidden?.photoIds) ? hidden.photoIds : [],
             waveIds: Array.isArray(hidden?.waveIds) ? hidden.waveIds : [],
@@ -484,6 +509,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         }));
         save("profile");
         save("ripples");
+        save("revealed");
 
         if (profile.countryCode) {
           if (!cancelled) {
@@ -603,6 +629,11 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const newWaves = useMemo(
     () => unseenWaves(visibleWaves, data.seenWaveIds, data.profile.baselineAt),
     [visibleWaves, data.seenWaveIds, data.profile.baselineAt],
+  );
+
+  const pendingReveal = useMemo(
+    () => unrevealedWaves(visibleWaves, data.revealedWaveIds, data.profile.baselineAt),
+    [visibleWaves, data.revealedWaveIds, data.profile.baselineAt],
   );
 
   const travelling = useMemo(
@@ -755,6 +786,30 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     [commit, save],
   );
 
+  const markWaveRevealed = useCallback(
+    (waveId: string) => {
+      if (!waveId) return;
+      if (dataRef.current.revealedWaveIds.includes(waveId)) return;
+      commit((current) => ({
+        ...current,
+        revealedWaveIds: withRevealedWaveId(current.revealedWaveIds, waveId),
+        // Opening the reveal also counts as seen for the map badge.
+        seenWaveIds: current.seenWaveIds.includes(waveId)
+          ? current.seenWaveIds
+          : [...current.seenWaveIds, waveId],
+      }));
+      save("revealed");
+      save("seen");
+    },
+    [commit, save],
+  );
+
+  const shouldRevealWaveId = useCallback(
+    (waveId: string) =>
+      Boolean(waveId) && !dataRef.current.revealedWaveIds.includes(waveId),
+    [],
+  );
+
   const deletePhoto = useCallback(
     async (photoId: string) => {
       await backend.deletePhoto(photoId);
@@ -811,6 +866,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       waves: visibleWaves,
       wavesKnown: data.wavesKnown,
       newWaves,
+      unrevealedWaves: pendingReveal,
+      markWaveRevealed,
+      shouldRevealWave: shouldRevealWaveId,
       travelling,
       ripples: data.ripples,
       history,
@@ -843,6 +901,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       data.sync,
       visibleWaves,
       newWaves,
+      pendingReveal,
+      markWaveRevealed,
+      shouldRevealWaveId,
       travelling,
       history,
       backend,

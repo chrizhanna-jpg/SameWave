@@ -30,9 +30,6 @@ import { colors, motion, space } from "@/theme";
 
 type Phase = "pulse" | "build" | "splash" | "reveal" | "done";
 
-/** Waves that already played the circles + swoosh reveal this session. */
-const pulsedWaveIds = new Set<string>();
-
 /** Matches the baked swoosh length (~2.2s) plus a short breath before photos. */
 const PULSE_MS = 2300;
 const PULSE_RINGS = 340;
@@ -49,10 +46,12 @@ export default function WaveScreen() {
   const { id, reveal } = useLocalSearchParams<{ id: string; reveal?: string }>();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const { waves, markWaveSeen, reportWave, backend } = useAppState();
+  const { waves, markWaveSeen, markWaveRevealed, shouldRevealWave, reportWave, backend } =
+    useAppState();
   const wave = waves.find((w) => w.id === id) ?? null;
   const reduced = useReducedMotion();
-  const wantsPulse = reveal === "1" && Boolean(id) && !pulsedWaveIds.has(id ?? "");
+  // Persist across push-tap + auto-reveal so the ceremony never double-plays.
+  const wantsPulse = reveal === "1" && Boolean(id) && shouldRevealWave(id ?? "");
 
   const [phase, setPhase] = useState<Phase>(wantsPulse ? "pulse" : "build");
   const [details, setDetails] = useState(false);
@@ -118,7 +117,10 @@ export default function WaveScreen() {
     if (!wave || seen.current) return;
     seen.current = true;
     markWaveSeen(wave.id);
-  }, [wave, markWaveSeen]);
+    // Browsing from the map without a reveal still counts as revealed so
+    // foreground auto-reveal / a later push-tap will not surprise-replay.
+    if (reveal !== "1") markWaveRevealed(wave.id);
+  }, [wave, markWaveSeen, markWaveRevealed, reveal]);
 
   useEffect(() => {
     if (!wave) return;
@@ -137,19 +139,18 @@ export default function WaveScreen() {
   // Circles + ocean swoosh before the photo ceremony (push / first arrival only).
   useEffect(() => {
     if (!wave || phase !== "pulse") return;
+    markWaveRevealed(wave.id);
     if (reduced) {
-      pulsedWaveIds.add(wave.id);
       setPhase("build");
       return;
     }
-    pulsedWaveIds.add(wave.id);
     void playWaveSwoosh();
     const done = setTimeout(() => setPhase("build"), PULSE_MS);
     return () => {
       clearTimeout(done);
       stopWaveSwoosh();
     };
-  }, [wave, phase, reduced]);
+  }, [wave, phase, reduced, markWaveRevealed]);
 
   const ceremonyReady = phase !== "pulse";
 

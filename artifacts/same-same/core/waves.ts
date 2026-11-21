@@ -52,3 +52,45 @@ export function findWaveByPhotos(
     ) ?? null
   );
 }
+
+/**
+ * True when this Wave has not yet played the full-screen reveal (rings + swoosh).
+ * Persisted `revealedIds` must stay in sync across push-tap and auto-reveal so
+ * the ceremony never double-plays for the same id.
+ */
+export function shouldRevealWave(
+  waveId: string,
+  revealedIds: readonly string[],
+): boolean {
+  return Boolean(waveId) && !revealedIds.includes(waveId);
+}
+
+/**
+ * Mutual Waves that still need the reveal ceremony, oldest first.
+ * Same baseline rule as `unseenWaves`: pre-baseline Waves skip auto-reveal.
+ */
+export function unrevealedWaves(
+  waves: readonly Wave[],
+  revealedIds: readonly string[],
+  baselineAt: string | null,
+): Wave[] {
+  const revealed = new Set(revealedIds);
+  const baseline = time(baselineAt);
+  return waves
+    .filter((wave) => {
+      if (revealed.has(wave.id)) return false;
+      if (baseline === null) return true;
+      const formed = time(wave.formedAt);
+      return formed !== null && formed >= baseline;
+    })
+    .sort((a, b) => (time(a.formedAt) ?? 0) - (time(b.formedAt) ?? 0));
+}
+
+/** Idempotent append for a revealed Wave id. */
+export function withRevealedWaveId(
+  revealedIds: readonly string[],
+  waveId: string,
+): string[] {
+  if (!waveId || revealedIds.includes(waveId)) return [...revealedIds];
+  return [...revealedIds, waveId];
+}

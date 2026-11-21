@@ -162,7 +162,6 @@ export async function recordEchoOffer(input: {
   // Re-voting the same direction (or re-voting after the pair is
   // already mutual) hits neither edge and silently no-ops, so the
   // recipient isn't spammed.
-  const wasNew = !before;
   const becameMutual =
     !!before && before.state === "pending" && row.state === "mutual";
   const recipientUserId =
@@ -207,14 +206,8 @@ export async function recordEchoOffer(input: {
         data: mutualData,
       }),
     ]).catch((err) => logger.error({ err }, "echo push (mutual) failed"));
-  } else if (wasNew) {
-    void sendPushToUser(recipientUserId, {
-      title: PUSH_COPY.pending.title,
-      body: PUSH_COPY.pending.body,
-      categoryId: PUSH_COPY.pending.categoryId,
-      data: { deepLink: "/echoes", echoId, waveId: echoId, state: "pending" },
-    }).catch((err) => logger.error({ err }, "echo push (pending) failed"));
   }
+  // Pending offers do not send push — only real mutual Waves (Chris).
 
   return { state: row.state === "mutual" ? "mutual" : "pending", id: row.id };
 }

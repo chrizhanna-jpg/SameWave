@@ -9,8 +9,8 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
-import React, { useEffect, useRef, useState } from "react";
-import { View } from "react-native";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
+import { AppState, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -26,25 +26,32 @@ import { colors, motion } from "@/theme";
 const SPLASH_LIMIT_MS = 4000;
 /** Let the launch swoosh settle a little before dismissing when fonts are ready. */
 const SPLASH_MIN_MS = 1600;
+/** Extra beat after splash so launch swoosh and reveal swoosh do not overlap. */
+const REVEAL_AFTER_SPLASH_MS = 400;
 const FONT_WAIT_MS = 3000;
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
+/** True once the launch splash overlay has finished (fonts ready or forced off). */
+const SplashReadyContext = createContext(false);
+
 /** Opens the Wave a tapped / foreground notification was about. */
 function OpenWaveFromPush() {
   const router = useRouter();
-  const { pushTarget, clearPushTarget, waves, sync } = useAppState();
+  const { pushTarget, clearPushTarget, waves, sync, shouldRevealWave } = useAppState();
 
   useEffect(() => {
     if (!pushTarget) return;
 
     if (pushTarget.waveId) {
+      const id = pushTarget.waveId;
+      const reveal = Boolean(pushTarget.reveal) && shouldRevealWave(id);
       clearPushTarget();
       router.push({
         pathname: "/wave/[id]",
         params: {
-          id: pushTarget.waveId,
-          ...(pushTarget.reveal ? { reveal: "1" } : {}),
+          id,
+          ...(reveal ? { reveal: "1" } : {}),
         },
       });
       return;
@@ -55,53 +62,62 @@ function OpenWaveFromPush() {
         ? findWaveByPhotos(waves, pushTarget.photoA, pushTarget.photoB)
         : null;
     if (wave) {
+      const reveal = Boolean(pushTarget.reveal) && shouldRevealWave(wave.id);
       clearPushTarget();
       router.push({
         pathname: "/wave/[id]",
         params: {
           id: wave.id,
-          ...(pushTarget.reveal ? { reveal: "1" } : {}),
+          ...(reveal ? { reveal: "1" } : {}),
         },
       });
     } else if (sync !== "syncing") {
-      // Not a Wave notification, or the Wave is not here yet.
       clearPushTarget();
     }
-  }, [pushTarget, waves, sync, clearPushTarget, router]);
+  }, [pushTarget, waves, sync, clearPushTarget, router, shouldRevealWave]);
 
   return null;
 }
 
 /**
- * When a Wave has arrived since the last visit, open the full-screen reveal
- * (circles + sound + photo ceremony). Skips capture/compose/match/wave so it
- * does not interrupt sending or replaying.
+ * Backup for missing push: on launch / foreground, if a mutual Wave has not
+ * been revealed yet, open the full-screen ceremony once (after splash).
  */
 function WaveArrivalHost() {
   const router = useRouter();
   const segments = useSegments();
-  const { newWaves, markWaveSeen } = useAppState();
-  const wave = newWaves[0] ?? null;
+  const splashReady = useContext(SplashReadyContext);
+  const { unrevealedWaves, syncNow } = useAppState();
+  const wave = unrevealedWaves[0] ?? null;
   const opened = useRef<string | null>(null);
   const root = segments[0];
   const busy =
-    // echo-pair: legacy deep-link path from server push payloads (Wave pair).
     root === "wave" ||
     root === "capture" ||
     root === "compose" ||
     root === "match" ||
     root === "echo-pair";
 
+  // Refresh Waves when returning to the foreground (backup if push was missed).
   useEffect(() => {
-    if (!wave || busy) return;
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") void syncNow({ force: true });
+    });
+    return () => sub.remove();
+  }, [syncNow]);
+
+  useEffect(() => {
+    if (!splashReady || !wave || busy) return;
     if (opened.current === wave.id) return;
     opened.current = wave.id;
-    markWaveSeen(wave.id);
-    router.push({
-      pathname: "/wave/[id]",
-      params: { id: wave.id, reveal: "1" },
-    });
-  }, [wave, busy, markWaveSeen, router]);
+    const timer = setTimeout(() => {
+      router.push({
+        pathname: "/wave/[id]",
+        params: { id: wave.id, reveal: "1" },
+      });
+    }, REVEAL_AFTER_SPLASH_MS);
+    return () => clearTimeout(timer);
+  }, [splashReady, wave, busy, router]);
 
   return null;
 }
@@ -131,7 +147,6 @@ function Routes() {
     );
   }
 
-  // Exactly one of these four is true, so there is always one place to be.
   const signedIn = session.status === "signedIn";
   const starting = signedIn && (!app.ready || app.country === "checking");
   const inApp = signedIn && !starting && app.country === "known";
@@ -205,8 +220,6 @@ export default function RootLayout() {
     };
   }, []);
 
-  // Hide the native splash only after the JS overlay has painted, so the
-  // icon + rings hand off without a blank flash.
   useEffect(() => {
     if (!overlayReady) return;
     SplashScreen.hideAsync().catch(() => undefined);
@@ -220,21 +233,20 @@ export default function RootLayout() {
     <SafeAreaProvider style={{ backgroundColor: colors.background }}>
       <StatusBar style="dark" />
       <ErrorBoundary>
-        {fontsReady ? (
-          <SessionProvider>
-            <AppStateProvider>
-              <Routes />
-            </AppStateProvider>
-          </SessionProvider>
-        ) : (
-          <View style={{ flex: 1, backgroundColor: colors.background }} />
-        )}
-        {!splashDone ? (
-          <LaunchSplash
-            playSound
-            onLayoutReady={() => setOverlayReady(true)}
-          />
-        ) : null}
+        <SplashReadyContext.Provider value={splashDone}>
+          {fontsReady ? (
+            <SessionProvider>
+              <AppStateProvider>
+                <Routes />
+              </AppStateProvider>
+            </SessionProvider>
+          ) : (
+            <View style={{ flex: 1, backgroundColor: colors.background }} />
+          )}
+          {!splashDone ? (
+            <LaunchSplash playSound onLayoutReady={() => setOverlayReady(true)} />
+          ) : null}
+        </SplashReadyContext.Provider>
       </ErrorBoundary>
     </SafeAreaProvider>
   );
