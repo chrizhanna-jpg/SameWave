@@ -73,7 +73,7 @@ export default function SignInScreen() {
       <View style={styles.top}>
         <BrandMark size={104} withName />
         <Txt tone="secondary" center style={styles.line}>
-          Send a photo of your day. Somewhere, someone has the same moment.
+          Someone, somewhere is having a similar moment.
         </Txt>
       </View>
 

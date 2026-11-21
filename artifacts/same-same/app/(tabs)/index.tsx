@@ -119,7 +119,9 @@ export default function RippleScreen() {
           <>
             <BrandMark size={144} withName />
             <Txt tone="secondary" center style={styles.line}>
-              {travelling ? "Your last Ripple is still travelling." : "One photo of your day."}
+              {travelling
+                ? "Your last Ripple is still travelling."
+                : "Someone, somewhere is having a similar moment."}
             </Txt>
             <Button label="Send a Ripple" onPress={() => void beginCompose(null)} style={styles.main} />
             <Button

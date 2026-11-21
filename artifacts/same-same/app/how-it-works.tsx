@@ -19,7 +19,7 @@ const STEPS = [
   },
   {
     title: "A Wave arrives",
-    body: "Somewhere, someone had the same moment. The two photos meet. You can open the Wave again any time from your map.",
+    body: "Someone, somewhere is having a similar moment. The two photos meet. You can open the Wave again any time from your map.",
   },
 ] as const;
 
