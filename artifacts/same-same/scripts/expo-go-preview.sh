@@ -146,7 +146,7 @@ READY: $BRANCH @ $COMMIT
 
 Open the Expo Go app itself (not the installed SameWave icon).
 This preview uses the real API — history and Waves come from your account.
-Google sign-in may not finish inside Expo Go (the installed app can steal
-the OAuth redirect); use a development build or the installed app to sign in.
+Prefer email code on the sign-in screen in Expo Go. Google OAuth needs an
+allowlisted exps:// (or exp://) …/--/callback in Clerk; without it, use email.
 =====================================================================
 EOF

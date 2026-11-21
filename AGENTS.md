@@ -8,7 +8,7 @@ When the user asks to see, preview, or try the app on their phone, do this and n
 2. Run `artifacts/same-same/scripts/expo-go-preview.sh`. It restarts Metro and the ngrok tunnel and verifies the SDK, the bundle contents, and the public tunnel. Do not share a link unless it prints `READY`.
 3. Give the user exactly the link it prints (`exp://sw6cd7preview.exp.direct`) and tell them to open the **Expo Go** app, choose **Enter URL manually**, and paste it. Never tell them to tap the SameWave app icon.
 4. Tell them the preview uses the **real API** — history and Waves come only from the signed-in account. There is no sample/seed data and no preview pill.
-5. Google sign-in often cannot finish inside Expo Go (Clerk redirects to `echo.samewaveripple.app://`, and the installed SameWave app steals that redirect). If they land on Google sign-in and cannot complete it, they need a development build or the installed app to authenticate; do not re-enable sample mode.
+5. **Sign-in in Expo Go:** prefer **email code** on the sign-in screen (already enabled in Clerk). Google OAuth in Expo Go uses an `exp://` / `exps://…/--/callback` redirect so the installed Play app does not steal `echo.samewaveripple.app://`; that Expo redirect must be allowlisted in Clerk (Native applications → Redirect URLs). Uninstalling the old Play app alone is **not** enough for Google OAuth — Expo Go still will not claim the production package scheme.
 6. Before saying it works, load the same code in a browser (a second Metro with `--web --port 8082`, same API env, **no** skip-sign-in flag) and look at a screenshot. Passing curl checks is not proof of what renders.
 
 Why each rule exists:
