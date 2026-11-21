@@ -21,7 +21,6 @@ import { Txt } from "@/components/Txt";
 import { WaveJoin } from "@/components/WaveJoin";
 import type { WaveDetail } from "@/backend/types";
 import { describeGap, matchBonuses } from "@/core/bonuses";
-import { loadSampleWaves } from "@/core/testPhotos";
 import { clipUrlFor, vibeFor } from "@/core/vibes";
 import { flagFor, nameFor } from "@/data/countries";
 import { NATIVE_DRIVER, useReducedMotion } from "@/device/motion";
@@ -52,8 +51,16 @@ export default function WaveScreen() {
   const wave = useMemo(() => {
     const live = waves.find((w) => w.id === id) ?? null;
     if (live) return live;
-    // Dev/preview sample fixtures (EXPO_PUBLIC_TEST_PHOTOS=1) are not in AppState.
-    if (typeof id === "string" && id.startsWith("test_wave_")) {
+    // Dev/preview sample fixtures — only resolve when the build flag is on.
+    if (
+      typeof id === "string" &&
+      id.startsWith("test_wave_") &&
+      process.env.EXPO_PUBLIC_TEST_PHOTOS === "1"
+    ) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { loadSampleWaves } = require("@/core/testPhotos") as {
+        loadSampleWaves: () => typeof waves;
+      };
       return loadSampleWaves().find((w) => w.id === id) ?? null;
     }
     return null;

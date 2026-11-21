@@ -1,0 +1,16 @@
+/**
+ * Metro substitutes this module for the test-photo catalog / fixtures / JPEGs
+ * whenever EXPO_PUBLIC_TEST_PHOTOS is not exactly "1". Keeps production and
+ * EAS preview/production exports free of sample assets and fixture metadata.
+ *
+ * Intentionally avoids the real fixture identifiers (TEST_PHOTO_META, etc.)
+ * so those strings never appear in production bundles.
+ */
+function emptyList() {
+  return [];
+}
+
+module.exports = {
+  getTestPhotoCandidates: emptyList,
+  getSampleWaves: emptyList,
+};

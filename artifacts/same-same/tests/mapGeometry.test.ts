@@ -5,8 +5,11 @@ import {
   arcBow,
   buildMapGeometry,
   buildMapLines,
+  buildMapMarkers,
   lineAt,
   markerAt,
+  spreadCoincidentMarkers,
+  type MapMarker,
   type Point,
 } from "../core/mapGeometry";
 import { COUNTRY_CENTROID_LON_LAT } from "../data/countryCentroids";
@@ -177,4 +180,48 @@ test("precise lon/lat endpoints draw an arc and expose mine markers", () => {
   const mine = markers.find((m) => m.side === "mine");
   assert.ok(mine);
   assert.equal(markerAt(markers, mine!.point, 28)?.waveId, "gps");
+});
+
+test("coincident mine markers fan out so each stays tappable", () => {
+  const stacked: MapMarker[] = [
+    { waveId: "a", side: "mine", photoId: "p1", point: { x: 100, y: 100 } },
+    { waveId: "b", side: "mine", photoId: "p1", point: { x: 100, y: 100 } },
+    { waveId: "c", side: "mine", photoId: "p1", point: { x: 100, y: 100 } },
+  ];
+  const spread = spreadCoincidentMarkers(stacked, 12);
+  assert.equal(spread.length, 3);
+  const keys = new Set(spread.map((m) => `${m.point.x.toFixed(1)},${m.point.y.toFixed(1)}`));
+  assert.equal(keys.size, 3);
+  for (const marker of spread) {
+    assert.equal(markerAt(spread, marker.point, 6)?.waveId, marker.waveId);
+  }
+});
+
+test("buildMapMarkers spreads shared London sample endpoints", () => {
+  const projectLonLat = (lonLat: [number, number]): Point => ({
+    x: (lonLat[0] + 180) * 2,
+    y: (90 - lonLat[1]) * 2,
+  });
+  const waves = [
+    {
+      id: "w1",
+      mine: { photoId: "m", countryCode: "GB", lat: 51.5, lng: -0.12 },
+      theirs: { photoId: "t1", countryCode: "FR", lat: 48.85, lng: 2.35 },
+    },
+    {
+      id: "w2",
+      mine: { photoId: "m", countryCode: "GB", lat: 51.5, lng: -0.12 },
+      theirs: { photoId: "t2", countryCode: "DE", lat: 52.52, lng: 13.4 },
+    },
+  ];
+  const markers = buildMapMarkers(waves, project, options, projectLonLat).filter(
+    (m) => m.side === "mine",
+  );
+  assert.equal(markers.length, 2);
+  assert.notEqual(
+    `${markers[0]!.point.x},${markers[0]!.point.y}`,
+    `${markers[1]!.point.x},${markers[1]!.point.y}`,
+  );
+  assert.equal(markerAt(markers, markers[0]!.point, 10)?.waveId, "w1");
+  assert.equal(markerAt(markers, markers[1]!.point, 10)?.waveId, "w2");
 });

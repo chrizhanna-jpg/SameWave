@@ -283,12 +283,41 @@ export function buildMapMarkers(
       w.theirs.lng != null && w.theirs.lat != null ? [w.theirs.lng, w.theirs.lat] : null,
   }));
   const { markers } = buildMapGeometry(inputs, project, options, projectLonLat);
-  return markers.map((m) => {
+  const withIds = markers.map((m) => {
     const wave = waves.find((w) => w.id === m.waveId);
     if (!wave) return m;
     return {
       ...m,
       photoId: m.side === "mine" ? wave.mine.photoId : wave.theirs.photoId,
+    };
+  });
+  // Several Waves can share one capture spot (e.g. sample "mine" in London).
+  // Fan them out so each current-photo pin stays independently tappable.
+  return spreadCoincidentMarkers(withIds, options.loopSize * 0.35);
+}
+
+/**
+ * Nudge markers that sit on the same map point into a small spiral so each
+ * keeps a distinct hit target.
+ */
+export function spreadCoincidentMarkers(
+  markers: readonly MapMarker[],
+  radius: number,
+): MapMarker[] {
+  const groups = new Map<string, number>();
+  return markers.map((marker) => {
+    const key = `${marker.side}:${marker.point.x.toFixed(1)},${marker.point.y.toFixed(1)}`;
+    const index = groups.get(key) ?? 0;
+    groups.set(key, index + 1);
+    if (index === 0) return marker;
+    const angle = -Math.PI / 2 + index * GOLDEN_ANGLE;
+    const reach = radius * (0.55 + 0.2 * index);
+    return {
+      ...marker,
+      point: {
+        x: marker.point.x + reach * Math.cos(angle),
+        y: marker.point.y + reach * Math.sin(angle),
+      },
     };
   });
 }
@@ -300,10 +329,15 @@ export function markerAt(
   reach: number,
 ): MapMarker | null {
   let best: MapMarker | null = null;
-  let bestDist = reach;
+  let bestDist = Infinity;
   for (const marker of markers) {
     const d = Math.hypot(point.x - marker.point.x, point.y - marker.point.y);
-    if (d <= bestDist) {
+    if (d > reach) continue;
+    if (
+      !best ||
+      d < bestDist ||
+      (d === bestDist && marker.waveId < best.waveId)
+    ) {
       best = marker;
       bestDist = d;
     }
