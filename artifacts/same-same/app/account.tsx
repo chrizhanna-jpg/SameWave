@@ -62,6 +62,44 @@ export default function AccountScreen() {
       <Header />
       <Txt variant="title">Account</Txt>
 
+      <Txt variant="heading" style={styles.sectionFirst}>
+        Your Ripples
+      </Txt>
+      {history.length === 0 ? (
+        <Txt tone="secondary" style={styles.empty}>
+          Photos you send will live here.
+        </Txt>
+      ) : (
+        <View style={styles.grid}>
+          {history.map((photo) => (
+            <Pressable
+              key={photo.photoId}
+              onLongPress={() => onDelete(photo.photoId)}
+              accessibilityLabel="Ripple. Long press to delete."
+              style={styles.tile}
+            >
+              <Photo
+                uri={photo.uri}
+                ownPhotoId={photo.uri ? undefined : photo.photoId}
+                style={styles.tilePhoto}
+              />
+              {busyId === photo.photoId ? (
+                <View style={styles.tileBusy}>
+                  <Txt variant="quiet" tone="primary">
+                    …
+                  </Txt>
+                </View>
+              ) : null}
+            </Pressable>
+          ))}
+        </View>
+      )}
+      {history.length > 0 ? (
+        <Txt variant="quiet" tone="secondary" style={styles.hint}>
+          Long press a photo to delete it.
+        </Txt>
+      ) : null}
+
       <Pressable
         onPress={() => router.push("/change-country")}
         accessibilityRole="button"
@@ -115,44 +153,6 @@ export default function AccountScreen() {
         ) : null}
       </View>
 
-      <Txt variant="heading" style={styles.section}>
-        Your Ripples
-      </Txt>
-      {history.length === 0 ? (
-        <Txt tone="secondary" style={styles.empty}>
-          Photos you send will live here.
-        </Txt>
-      ) : (
-        <View style={styles.grid}>
-          {history.map((photo) => (
-            <Pressable
-              key={photo.photoId}
-              onLongPress={() => onDelete(photo.photoId)}
-              accessibilityLabel="Ripple. Long press to delete."
-              style={styles.tile}
-            >
-              <Photo
-                uri={photo.uri}
-                ownPhotoId={photo.uri ? undefined : photo.photoId}
-                style={styles.tilePhoto}
-              />
-              {busyId === photo.photoId ? (
-                <View style={styles.tileBusy}>
-                  <Txt variant="quiet" tone="primary">
-                    …
-                  </Txt>
-                </View>
-              ) : null}
-            </Pressable>
-          ))}
-        </View>
-      )}
-      {history.length > 0 ? (
-        <Txt variant="quiet" tone="secondary" style={styles.hint}>
-          Long press a photo to delete it.
-        </Txt>
-      ) : null}
-
       <View style={styles.legal}>
         <Button
           kind="quiet"
@@ -177,6 +177,9 @@ export default function AccountScreen() {
       <Txt variant="quiet" tone="secondary" center>
         {appVersionLabel()}
       </Txt>
+      <Txt variant="quiet" tone="secondary" center style={styles.copyright}>
+        © 2026 Samewave Studios. All rights reserved.
+      </Txt>
 
       <Button
         kind="soft"
@@ -199,7 +202,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.line,
   },
-  section: { marginTop: space.xxl },
+  sectionFirst: { marginTop: space.lg },
   empty: { marginTop: space.md },
   grid: {
     marginTop: space.md,
@@ -234,5 +237,6 @@ const styles = StyleSheet.create({
     gap: space.sm,
   },
   credit: { marginTop: space.lg },
+  copyright: { marginTop: space.sm },
   signOut: { marginTop: space.xl, marginBottom: space.xxl },
 });

@@ -5,9 +5,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Txt } from "@/components/Txt";
 import { colors, layout, space } from "@/theme";
 
+/** Shape expo-router passes to a custom `tabBar` render prop. */
 interface TabBarProps {
-  state: { index: number; routes: { key: string; name: string }[] };
+  state: {
+    index: number;
+    routes: { key: string; name: string }[];
+  };
   descriptors: Record<string, { options: { title?: string } }>;
+  /** Expo Router helper — prefer this over raw navigation. */
   navigateToTab: (routeKey: string) => void;
 }
 
@@ -49,8 +54,16 @@ const styles = StyleSheet.create({
     gap: space.xxl,
     paddingTop: space.md,
     backgroundColor: colors.background,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.line,
   },
-  item: { alignItems: "center", paddingHorizontal: space.md, paddingVertical: space.xs },
+  item: {
+    minWidth: layout.iconButtonSize,
+    minHeight: layout.iconButtonSize,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: space.md,
+  },
   rest: { opacity: 0.8 },
   mark: { marginTop: space.sm, width: 4, height: 4, borderRadius: 2, backgroundColor: "transparent" },
   markOn: { backgroundColor: colors.waterMid },

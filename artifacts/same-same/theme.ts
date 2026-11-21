@@ -144,7 +144,15 @@ export const layout = {
   /** Keeps text lines and buttons readable on tablets and the web. */
   maxContentWidth: 440,
   buttonHeight: 52,
-  iconButtonSize: 44,
+  /** Minimum comfortable tap target (Material 48dp). */
+  iconButtonSize: 48,
+  /**
+   * How far the home toolbar sits below the safe-area padding — about 3×
+   * an icon button, so ? / history / account clear the status chrome.
+   */
+  homeToolbarOffset: 48 * 3,
+  /** Approximate custom tab bar content height (excluding safe-area inset). */
+  tabBarContentHeight: 56,
   hitSlop: { top: 12, bottom: 12, left: 12, right: 12 },
 } as const;
 

@@ -6,7 +6,9 @@
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
-import { Platform } from "react-native";
+import { Dimensions, Platform } from "react-native";
+
+import { wavePhotoSlot } from "@/core/wavePhotoSlot";
 
 export interface ChosenPhoto {
   uri: string;
@@ -48,6 +50,49 @@ export async function encodeForUpload(uri: string): Promise<EncodedPhoto> {
     resize(uri, PREVIEW.width, PREVIEW.quality),
   ]);
   return { displayBase64, previewBase64 };
+}
+
+/**
+ * Centre-crop (with a slight upward bias) to the Wave photo-slot aspect so the
+ * match screen can show the frame without further surprise cropping. The bias
+ * keeps faces/subjects above the wave seam that clips the bottom of the top photo.
+ */
+export async function cropToWaveSlot(uri: string, aspectRatio?: number): Promise<string> {
+  const { width: sw, height: sh } = Dimensions.get("window");
+  const target = aspectRatio ?? wavePhotoSlot(sw, sh).aspectRatio;
+  if (!Number.isFinite(target) || target <= 0) return uri;
+
+  const probe = await ImageManipulator.manipulateAsync(uri, [], {
+    format: ImageManipulator.SaveFormat.JPEG,
+  });
+  const width = probe.width;
+  const height = probe.height;
+  if (!width || !height) return uri;
+
+  const current = width / height;
+  let originX = 0;
+  let originY = 0;
+  let cropW = width;
+  let cropH = height;
+
+  if (current > target) {
+    // Too wide — trim the sides.
+    cropW = Math.max(1, Math.round(height * target));
+    originX = Math.round((width - cropW) / 2);
+  } else if (current < target) {
+    // Too tall — trim height, bias toward the top so the seam edge is emptier.
+    cropH = Math.max(1, Math.round(width / target));
+    originY = Math.round((height - cropH) * 0.32);
+  } else {
+    return uri;
+  }
+
+  const cropped = await ImageManipulator.manipulateAsync(
+    uri,
+    [{ crop: { originX, originY, width: cropW, height: cropH } }],
+    { compress: 1, format: ImageManipulator.SaveFormat.JPEG },
+  );
+  return cropped.uri;
 }
 
 const canUseFiles = Platform.OS !== "web";
@@ -212,18 +257,24 @@ export function coordsFromExif(
 
 /** Opens the system photo picker. Returns null when the user backs out. */
 export async function chooseFromLibrary(): Promise<ChosenPhoto | null> {
+  const { width: sw, height: sh } = Dimensions.get("window");
+  const slot = wavePhotoSlot(sw, sh);
   const result = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ["images"],
     allowsMultipleSelection: false,
     quality: 1,
     exif: true,
+    // Best-effort in-picker crop; we still crop with ImageManipulator below.
+    aspect: [Math.round(slot.aspectRatio * 1000), 1000],
+    allowsEditing: Platform.OS === "ios",
   });
   if (result.canceled) return null;
   const asset = result.assets[0];
   if (!asset?.uri) return null;
   const exif = (asset.exif ?? null) as Exif | null;
+  const uri = await cropToWaveSlot(asset.uri, slot.aspectRatio).catch(() => asset.uri);
   return {
-    uri: asset.uri,
+    uri,
     takenAt: takenAtFromExif(exif),
     coords: coordsFromExif(exif),
     source: "library",

@@ -87,6 +87,10 @@ export interface HistoryPhoto {
   sentAt: string | null;
   /** A local file, the photo from a Wave, or null when only the server has it. */
   uri: string | null;
+  /** Emotion id from the sent Ripple, when this device still knows it. */
+  emotion: string | null;
+  /** Topic id from the sent Ripple, when this device still knows it. */
+  topic: string | null;
 }
 
 /** Everything the user has sent that this device knows about, newest first. */
@@ -97,6 +101,8 @@ export function photoHistory(ripples: readonly Ripple[], waves: readonly Wave[])
       photoId: ripple.photoId,
       sentAt: ripple.sentAt,
       uri: ripple.localUri,
+      emotion: ripple.emotion,
+      topic: ripple.topic ?? ripple.theme ?? null,
     });
   }
   for (const wave of waves) {
@@ -108,6 +114,8 @@ export function photoHistory(ripples: readonly Ripple[], waves: readonly Wave[])
         photoId: wave.mine.photoId,
         sentAt: wave.mine.takenAt,
         uri: wave.mine.uri,
+        emotion: null,
+        topic: null,
       });
     }
   }

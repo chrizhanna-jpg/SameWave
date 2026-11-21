@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   StyleSheet,
+  useWindowDimensions,
   View,
   type GestureResponderEvent,
   type LayoutChangeEvent,
@@ -19,6 +20,7 @@ import { SoundRecorder, type Recording } from "@/components/SoundRecorder";
 import { TopicPicker } from "@/components/TopicPicker";
 import { Txt } from "@/components/Txt";
 import { errorKind } from "@/backend/types";
+import { wavePhotoSlot } from "@/core/wavePhotoSlot";
 import { defaultMusicForEmotion } from "@/data/emotionMusic";
 import { playEffect } from "@/device/sound";
 import { useAppState } from "@/state/AppState";
@@ -37,6 +39,8 @@ type SearchField = "emotion" | "topic" | "song" | null;
  */
 export default function ComposeScreen() {
   const router = useRouter();
+  const { width, height } = useWindowDimensions();
+  const slotAspect = wavePhotoSlot(width, height).aspectRatio;
   const { sendRipple } = useAppState();
   const photo = getDraftPhoto();
 
@@ -145,7 +149,13 @@ export default function ComposeScreen() {
         }}
       />
 
-      <View style={[styles.photoWrap, searching && styles.photoWrapCompact]}>
+      <View
+        style={[
+          styles.photoWrap,
+          { aspectRatio: slotAspect },
+          searching && styles.photoWrapCompact,
+        ]}
+      >
         <Photo uri={photo.uri} style={styles.photo} accessibilityLabel="Today's photo" />
       </View>
 
@@ -246,7 +256,6 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     width: "100%",
     maxWidth: 320,
-    aspectRatio: 3 / 4,
     borderRadius: radius.lg,
     overflow: "hidden",
     backgroundColor: colors.surface,

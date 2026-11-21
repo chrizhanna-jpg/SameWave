@@ -7,7 +7,7 @@ import { Screen } from "@/components/Screen";
 import { Txt } from "@/components/Txt";
 import { WorldMap } from "@/components/WorldMap";
 import { useAppState } from "@/state/AppState";
-import { space } from "@/theme";
+import { layout, space } from "@/theme";
 
 /**
  * The quiet keepsake of past Waves. Threads on the map are the only list;
@@ -55,9 +55,15 @@ export default function WavesScreen() {
     [empty, unreachable],
   );
 
+  /**
+   * Tabs scene can still sit flush with the custom tab bar on some Android
+   * nav modes — keep the caption clear of the bar + gesture/3-button inset.
+   */
+  const bottomPad = layout.tabBarContentHeight + Math.max(insets.bottom, space.md);
+
   return (
     <Screen bare>
-      <View style={[styles.fill, { paddingTop: insets.top + space.sm }]}>
+      <View style={[styles.fill, { paddingTop: insets.top + space.sm, paddingBottom: bottomPad }]}>
         <WorldMap
           waves={waves}
           homeCountry={countryCode}
@@ -89,6 +95,7 @@ const styles = StyleSheet.create({
     minHeight: 72,
     justifyContent: "center",
     paddingHorizontal: space.lg,
+    paddingTop: space.sm,
     paddingBottom: space.md,
   },
   body: { marginTop: space.xs },

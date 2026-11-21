@@ -2,6 +2,7 @@ import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 
+import { AccountAvatar } from "@/components/AccountAvatar";
 import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/Button";
 import { Icon } from "@/components/Icon";
@@ -15,10 +16,8 @@ import { setDraftPhoto, setDraftTopic } from "@/state/draft";
 import { colors, layout, space } from "@/theme";
 
 /**
- * The Ripple screen: a Ripple is travelling, or it is time to send one.
- * Newly arrived Waves open as a full-screen "Wave received" moment (see
- * WaveArrivalHost) — they are not listed here. Waiting Ripples stay here only.
- * How it works and Account float in the top corners so the logo stays centred.
+ * Home: quiet brand group above, one primary send action in the thumb zone,
+ * and a lowered toolbar (? left, account avatar right).
  */
 export default function RippleScreen() {
   const router = useRouter();
@@ -74,7 +73,7 @@ export default function RippleScreen() {
 
   return (
     <Screen style={styles.screen}>
-      <View style={styles.corners} pointerEvents="box-none">
+      <View style={styles.toolbar}>
         <Pressable
           onPress={() => router.push("/how-it-works")}
           hitSlop={layout.hitSlop}
@@ -84,51 +83,51 @@ export default function RippleScreen() {
         >
           <Icon name="help" size={22} color={colors.waterMuted} />
         </Pressable>
-        <Pressable
-          onPress={() => router.push("/account")}
-          hitSlop={layout.hitSlop}
-          accessibilityRole="button"
-          accessibilityLabel="Account"
-          style={styles.iconBtn}
-        >
-          <Icon name="account" size={22} color={colors.waterMuted} />
-        </Pressable>
+        <AccountAvatar onPress={() => router.push("/account")} />
       </View>
 
-      <View style={styles.centre}>
+      {waiting ? (
+        <View style={styles.brand}>
+          <RippleRings size={200} />
+          <Txt variant="title" center style={styles.brandTitle}>
+            Your Ripple is out there
+          </Txt>
+          <Txt tone="secondary" center style={styles.tagline}>
+            We&apos;ll tell you when someone shares your moment.
+          </Txt>
+          <Txt variant="quiet" tone="quiet" center style={styles.caption}>
+            Waves usually arrive within a few days.
+          </Txt>
+        </View>
+      ) : (
+        <View style={styles.brand}>
+          <BrandMark size={120} withName />
+          <Txt tone="secondary" center style={styles.tagline}>
+            Someone, somewhere is having a similar moment.
+          </Txt>
+        </View>
+      )}
+
+      <View style={styles.actions}>
         {waiting ? (
-          <>
-            <RippleRings size={240} />
-            <Txt variant="title" center style={styles.title}>
-              Your Ripple is out there
-            </Txt>
-            <Txt tone="secondary" center style={styles.line}>
-              We'll tell you when someone shares your moment.
-            </Txt>
-            <Txt variant="quiet" tone="quiet" center style={styles.line}>
-              Waves usually arrive within a few days.
-            </Txt>
-            <Button
-              kind="quiet"
-              label="Send another"
-              onPress={() => setSendingAnother(true)}
-              style={styles.quiet}
-            />
-          </>
+          <Button
+            kind="soft"
+            label="Send another"
+            onPress={() => setSendingAnother(true)}
+            style={styles.actionGap}
+          />
         ) : (
           <>
-            <BrandMark size={144} withName />
-            <Txt tone="secondary" center style={styles.line}>
-              {travelling
-                ? "Your last Ripple is still travelling."
-                : "Someone, somewhere is having a similar moment."}
-            </Txt>
-            <Button label="Send a Ripple" onPress={() => void beginCompose(null)} style={styles.main} />
+            <Button
+              label="Send a Ripple"
+              onPress={() => void beginCompose(null)}
+              style={styles.actionGap}
+            />
             <Button
               kind="soft"
               label={`Today: ${today.label}`}
               onPress={() => void beginCompose(today.id)}
-              style={styles.daily}
+              style={styles.actionGap}
               accessibilityHint="Starts a Ripple with today's Daily topic already chosen"
             />
             {Platform.OS !== "web" ? (
@@ -139,19 +138,20 @@ export default function RippleScreen() {
                   setDraftTopic(null);
                   void pickFromLibrary();
                 }}
-                style={styles.quiet}
+                style={styles.actionGap}
               />
             ) : null}
           </>
         )}
+
         {problem ? (
-          <Txt variant="quiet" tone="ember" center style={styles.line}>
+          <Txt variant="quiet" tone="ember" center style={styles.actionGap}>
             {problem}
           </Txt>
         ) : null}
         {sync === "offline" ? (
-          <Txt variant="quiet" tone="secondary" center style={styles.line}>
-            Can't reach SameWave right now. It will keep trying.
+          <Txt variant="quiet" tone="secondary" center style={styles.actionGap}>
+            Can&apos;t reach SameWave right now. It will keep trying.
           </Txt>
         ) : null}
       </View>
@@ -161,16 +161,13 @@ export default function RippleScreen() {
 
 const styles = StyleSheet.create({
   screen: { justifyContent: "flex-start" },
-  /** Outside the logo's flow — top corners only. */
-  corners: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 2,
+  toolbar: {
+    marginTop: layout.homeToolbarOffset,
+    marginBottom: space.md,
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    justifyContent: "space-between",
+    minHeight: layout.iconButtonSize,
   },
   iconBtn: {
     width: layout.iconButtonSize,
@@ -178,11 +175,25 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: layout.iconButtonSize / 2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.line,
+    backgroundColor: colors.surface,
   },
-  centre: { flex: 1, alignItems: "center", justifyContent: "center", width: "100%" },
-  title: { marginTop: space.lg },
-  line: { marginTop: space.md, maxWidth: 300 },
-  main: { marginTop: space.xl, alignSelf: "stretch" },
-  daily: { marginTop: space.md, alignSelf: "stretch" },
-  quiet: { marginTop: space.md },
+  brand: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+    paddingVertical: space.lg,
+    gap: space.md,
+  },
+  brandTitle: { marginTop: space.sm },
+  tagline: { maxWidth: 300 },
+  caption: { maxWidth: 280 },
+  actions: {
+    width: "100%",
+    paddingBottom: space.md,
+    gap: space.sm,
+  },
+  actionGap: { alignSelf: "stretch" },
 });
