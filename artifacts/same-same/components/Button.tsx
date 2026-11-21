@@ -76,6 +76,7 @@ export function Button({
       style={({ pressed }) => [
         styles.base,
         main ? styles.main : styles.soft,
+        detail ? styles.withDetail : null,
         pressed && styles.pressed,
         disabled && styles.dim,
         style,
@@ -115,6 +116,7 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
   },
   quiet: { paddingVertical: space.sm, paddingHorizontal: space.md, alignSelf: "center" },
+  withDetail: { minHeight: layout.buttonHeight + 12, paddingVertical: space.sm },
   copy: { alignItems: "center", gap: 2 },
   detail: { marginTop: 0 },
   pressed: { opacity: 0.85 },
