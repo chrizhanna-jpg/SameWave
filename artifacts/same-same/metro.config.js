@@ -31,6 +31,8 @@ if (!testPhotosOn) {
       name.includes("assets/test-photos/") ||
       name.includes("test-photos/catalog") ||
       name.includes("test-photos/fixtures") ||
+      name.includes("test-photos/sampleIds") ||
+      name.includes("test-photos/SamplePhotosToggleRow") ||
       /test-photos\/\d{2}-[^/]+\.jpe?g$/i.test(name)
     ) {
       // Never stub the stub itself (avoid recursion).

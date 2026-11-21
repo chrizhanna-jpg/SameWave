@@ -10,7 +10,18 @@ function emptyList() {
   return [];
 }
 
+function SamplePhotosToggleRow() {
+  return null;
+}
+
+function isSamplePhotoId() {
+  return false;
+}
+
 module.exports = {
   getTestPhotoCandidates: emptyList,
   getSampleWaves: emptyList,
+  SamplePhotosToggleRow,
+  isSamplePhotoId,
+  SAMPLE_PHOTO_ID_PREFIX: "",
 };

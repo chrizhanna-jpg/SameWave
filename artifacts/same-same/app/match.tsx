@@ -301,7 +301,14 @@ export default function MatchScreen() {
     ],
   );
 
-  const isSample = (id: string) => id.startsWith("test_sample_");
+  const isSample = (id: string) => {
+    if (process.env.EXPO_PUBLIC_TEST_PHOTOS !== "1") return false;
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { isSamplePhotoId } = require("../assets/test-photos/sampleIds") as {
+      isSamplePhotoId: (value: string) => boolean;
+    };
+    return isSamplePhotoId(id);
+  };
 
   const onPass = async () => {
     const current = deck[index];
@@ -377,7 +384,7 @@ export default function MatchScreen() {
   // Hide match/skip when there's nothing to act on — dead buttons confuse people.
   const showActions = load === "ready" && !empty;
   const sampleCaption =
-    candidate && candidate.id.startsWith("test_sample_")
+    candidate && isSample(candidate.id)
       ? [
           candidate.countryCode ? `Sample · ${candidate.countryCode}` : "Sample",
           candidate.takenAt
