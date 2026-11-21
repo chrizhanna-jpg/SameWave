@@ -18,8 +18,7 @@ import { colors, layout, space } from "@/theme";
  * The Ripple screen is always one of three things:
  * a Wave has arrived, a Ripple is travelling, or it is time to send one.
  * The Daily topic sits quietly beside the main Ripple action.
- * How it works and Account live as calm icons in the top corners — nothing
- * sits between the content and the tab bar.
+ * How it works and Account float in the top corners so the logo stays centred.
  */
 export default function RippleScreen() {
   const router = useRouter();
@@ -77,33 +76,16 @@ export default function RippleScreen() {
 
   return (
     <Screen style={styles.screen}>
-      <View style={styles.top}>
-        <View style={styles.topLeft}>
-          {idle ? (
-            <>
-              <BrandMark size={144} withName style={styles.brand} />
-              <Pressable
-                onPress={() => router.push("/how-it-works")}
-                hitSlop={layout.hitSlop}
-                accessibilityRole="button"
-                accessibilityLabel="How it works"
-                style={[styles.iconBtn, styles.helpBesideLogo]}
-              >
-                <Icon name="help" size={22} color={colors.waterMuted} />
-              </Pressable>
-            </>
-          ) : (
-            <Pressable
-              onPress={() => router.push("/how-it-works")}
-              hitSlop={layout.hitSlop}
-              accessibilityRole="button"
-              accessibilityLabel="How it works"
-              style={styles.iconBtn}
-            >
-              <Icon name="help" size={22} color={colors.waterMuted} />
-            </Pressable>
-          )}
-        </View>
+      <View style={styles.corners} pointerEvents="box-none">
+        <Pressable
+          onPress={() => router.push("/how-it-works")}
+          hitSlop={layout.hitSlop}
+          accessibilityRole="button"
+          accessibilityLabel="How it works"
+          style={styles.iconBtn}
+        >
+          <Icon name="help" size={22} color={colors.waterMuted} />
+        </Pressable>
         <Pressable
           onPress={() => router.push("/account")}
           hitSlop={layout.hitSlop}
@@ -149,6 +131,7 @@ export default function RippleScreen() {
           </>
         ) : (
           <>
+            <BrandMark size={144} withName />
             <Txt tone="secondary" center style={styles.line}>
               {travelling ? "Your last Ripple is still travelling." : "One photo of your day."}
             </Txt>
@@ -190,22 +173,17 @@ export default function RippleScreen() {
 
 const styles = StyleSheet.create({
   screen: { justifyContent: "flex-start" },
-  top: {
+  /** Outside the logo's flow — top corners only. */
+  corners: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 2,
     flexDirection: "row",
-    alignItems: "flex-start",
     justifyContent: "space-between",
-    width: "100%",
-    marginBottom: space.md,
+    alignItems: "center",
   },
-  topLeft: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    paddingRight: space.sm,
-  },
-  brand: { alignItems: "flex-start" },
-  /** Sit the ? beside the icon face, not the wordmark. */
-  helpBesideLogo: { marginTop: (144 - layout.iconButtonSize) / 2, marginLeft: space.xs },
   iconBtn: {
     width: layout.iconButtonSize,
     height: layout.iconButtonSize,
