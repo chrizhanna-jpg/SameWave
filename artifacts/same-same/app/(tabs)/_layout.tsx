@@ -5,7 +5,7 @@ import { TabBar } from "@/components/TabBar";
 import { TabBarHeightProvider } from "@/state/TabBarHeight";
 
 /**
- * Bottom nav: Ripple → Waves → Home.
+ * Bottom nav: Home → Ripple → Waves.
  * Opens on Home by default; push / auto-reveal still take precedence via root hosts.
  */
 export const unstable_settings = {
@@ -22,11 +22,9 @@ export default function TabsLayout() {
           sceneStyle: { backgroundColor: "transparent" },
         }}
       >
+        <Tabs.Screen name="home" options={{ title: "Home" }} />
         <Tabs.Screen name="ripple" options={{ title: "Ripple" }} />
         <Tabs.Screen name="waves" options={{ title: "Waves" }} />
-        <Tabs.Screen name="home" options={{ title: "Home" }} />
-        {/* Hidden: keeps `/` resolving to Home for older replace("/") calls. */}
-        <Tabs.Screen name="index" options={{ href: null }} />
       </Tabs>
     </TabBarHeightProvider>
   );

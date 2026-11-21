@@ -18,7 +18,7 @@ export function Header({ icon = "back", onPress }: Props) {
   const leave = () => {
     if (onPress) onPress();
     else if (router.canGoBack()) router.back();
-    else router.replace("/");
+    else router.replace("/home");
   };
   return (
     <View style={styles.row}>

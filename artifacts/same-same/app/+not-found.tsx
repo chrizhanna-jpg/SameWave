@@ -20,7 +20,7 @@ export default function NotFoundScreen() {
         <Button
           kind="soft"
           label="Back to SameWave"
-          onPress={() => router.replace("/")}
+          onPress={() => router.replace("/home")}
           style={styles.btn}
         />
       </Frost>

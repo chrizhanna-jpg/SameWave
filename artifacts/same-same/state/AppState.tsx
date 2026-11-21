@@ -149,6 +149,13 @@ export interface AppStateValue {
   setCountry(countryCode: string): Promise<void>;
   /** Uploads the photo. Throws a BackendError when it does not reach the server. */
   sendRipple(draft: RippleDraft): Promise<Ripple>;
+  /**
+   * True until Home/Ripple dismiss the post-send waiting UI for the Ripple
+   * just sent. Independent of `travelling` so re-entering Home shows buttons.
+   */
+  postSendWaiting: boolean;
+  /** Leave Home waiting / tap Send another — clear until the next send. */
+  dismissPostSendWaiting(): void;
   syncNow(options?: { force?: boolean }): Promise<void>;
   /** Match screen: remember candidates already shown without counting a background look. */
   recordMatchSeen(myPhotoId: string, theirIds: readonly string[]): void;
@@ -260,6 +267,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [now, setNow] = useState(() => Date.now());
   const [pushTarget, setPushTarget] = useState<PushTarget | null>(null);
   const [sentThisSession, setSentThisSession] = useState(false);
+  const [postSendWaiting, setPostSendWaiting] = useState(false);
   const [boot, setBoot] = useState<BootStatus>("idle");
   const [bootDetail, setBootDetail] = useState<string | null>(null);
   const [bootAttempt, setBootAttempt] = useState(0);
@@ -735,12 +743,15 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         save("ripples");
         setNow(Date.now());
         setSentThisSession(true);
+        setPostSendWaiting(true);
         void syncNow({ force: true });
       }
       return ripple;
     },
     [backend, commit, save, syncNow],
   );
+
+  const dismissPostSendWaiting = useCallback(() => setPostSendWaiting(false), []);
 
   const recordMatchSeen = useCallback(
     (myPhotoId: string, theirIds: readonly string[]) => {
@@ -878,6 +889,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       clearPushTarget,
       setCountry,
       sendRipple,
+      postSendWaiting,
+      dismissPostSendWaiting,
       syncNow,
       recordMatchSeen,
       finishMatchLook,
@@ -897,6 +910,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       bootDetail,
       retryBoot,
       sentThisSession,
+      postSendWaiting,
+      dismissPostSendWaiting,
       data.wavesKnown,
       data.sync,
       visibleWaves,
