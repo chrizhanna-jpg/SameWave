@@ -9,6 +9,8 @@ import { TabBarHeightProvider } from "@/state/TabBarHeight";
  * Opens on Home by default; push / auto-reveal still take precedence via root hosts.
  */
 export const unstable_settings = {
+  // Expo Router 58: prefer `anchor` over deprecated `initialRouteName`.
+  anchor: "home",
   initialRouteName: "home",
 };
 
@@ -17,8 +19,6 @@ export default function TabsLayout() {
     <TabBarHeightProvider>
       <Tabs
         tabBar={(props) => <TabBar {...props} />}
-        // Expo Router anchors Home; without initialRoute, back skips Home.
-        backBehavior="initialRoute"
         screenOptions={{
           headerShown: false,
           sceneStyle: { backgroundColor: "transparent" },

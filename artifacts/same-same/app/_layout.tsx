@@ -27,7 +27,19 @@ import { colors, motion } from "@/theme";
  * Expo Router + Stack.Protected briefly emits ROUTE_NAMES_CHANGED when the
  * signed-in tab set mounts. Harmless, but LogBox overlays block taps in Expo Go.
  */
-LogBox.ignoreLogs(["ROUTE_NAMES_CHANGED"]);
+LogBox.ignoreLogs([
+  "ROUTE_NAMES_CHANGED",
+  "Linking did not produce an initial navigation state",
+]);
+if (typeof console !== "undefined" && typeof console.error === "function") {
+  const originalError = console.error.bind(console);
+  console.error = (...args: unknown[]) => {
+    const text = args.map((a) => (typeof a === "string" ? a : "")).join(" ");
+    if (text.includes("ROUTE_NAMES_CHANGED")) return;
+    if (text.includes("Linking did not produce an initial navigation state")) return;
+    originalError(...args);
+  };
+}
 
 /** The splash never stays up longer than this, whatever else is still loading. */
 const SPLASH_LIMIT_MS = 4000;

@@ -553,7 +553,9 @@ export default function MatchScreen() {
             onPress={() => void onMatch()}
             disabled={busy}
             accessibilityRole="button"
-            accessibilityLabel={stage === "wave" ? "Wave" : "Ripple"}
+            // Keep labels distinct from tab bar "Ripple" / "Waves" so a11y
+            // and automation never activate the wrong control.
+            accessibilityLabel={stage === "wave" ? "Offer a Wave" : "Offer a Ripple"}
             accessibilityHint="Offers a match on this photo. Any tap advances the bottom photo."
             accessibilityState={{ disabled: busy }}
             style={({ pressed }) => [styles.actionHit, pressed && styles.actionPressed]}
