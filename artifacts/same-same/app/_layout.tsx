@@ -9,7 +9,7 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
-import React, { createContext, useContext, useEffect, useRef, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import { AppState, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -19,6 +19,7 @@ import { Waiting } from "@/components/Waiting";
 import { findWaveByPhotos } from "@/core/waves";
 import { prepareEffects, stopWaveSwoosh } from "@/device/sound";
 import { AppStateProvider, useAppState } from "@/state/AppState";
+import { SplashReadyContext } from "@/state/SplashReady";
 import { SessionProvider, useSession } from "@/state/session";
 import { colors, motion } from "@/theme";
 
@@ -31,9 +32,6 @@ const REVEAL_AFTER_SPLASH_MS = 400;
 const FONT_WAIT_MS = 3000;
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
-
-/** True once the launch splash overlay has finished (fonts ready or forced off). */
-const SplashReadyContext = createContext(false);
 
 /** Opens the Wave a tapped / foreground notification was about. */
 function OpenWaveFromPush() {

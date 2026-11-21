@@ -1,7 +1,7 @@
 /**
  * The app's sounds: a water drop when a Ripple is sent, a chime when a Wave
  * arrives, the feeling clips on a Wave, and a short ocean-wave swoosh for
- * launch / Wave-received reveal.
+ * launch splash, Home focus, and photo upload.
  *
  * Sound is never essential: every function fails silently so a phone with
  * no audio output behaves the same as one on silent.
@@ -19,6 +19,7 @@ const EFFECT_VOLUME: Record<Effect, number> = { drop: 0.7, chime: 0.8 };
 /**
  * Real ocean field recording (CC0). See assets/sounds/wave-swoosh.LICENSE.txt.
  * Trimmed ~2.2s with baked-in fade-in (0.25s) and fade-out (last 0.9s).
+ * Production asset — always bundled (unlike test photos).
  */
 const WAVE_SWOOSH = require("../assets/sounds/wave-swoosh.mp3") as number;
 const WAVE_SWOOSH_VOLUME = 0.5;
@@ -29,7 +30,7 @@ let modeReady: Promise<void> | null = null;
 function setPlaybackMode(): Promise<void> {
   modeReady ??= setAudioModeAsync({
     allowsRecording: false,
-    playsInSilentMode: false,
+    playsInSilentMode: true,
     shouldPlayInBackground: false,
     interruptionMode: "mixWithOthers",
     shouldRouteThroughEarpiece: false,
@@ -54,12 +55,36 @@ function effectPlayer(effect: Effect): AudioPlayer {
   return player;
 }
 
-/** Loads both cue sounds so the first one plays without a delay. */
+let swooshPlayer: AudioPlayer | null = null;
+/** Bumps on each play/stop so a late async play cannot restart after cut. */
+let swooshGeneration = 0;
+let swooshPlaying = false;
+
+function ensureSwooshPlayer(): AudioPlayer {
+  if (!swooshPlayer) {
+    swooshPlayer = createAudioPlayer(WAVE_SWOOSH);
+    swooshPlayer.volume = WAVE_SWOOSH_VOLUME;
+  }
+  return swooshPlayer;
+}
+
+async function waitUntilLoaded(player: AudioPlayer, ms = 1500): Promise<boolean> {
+  if (player.isLoaded) return true;
+  const start = Date.now();
+  while (Date.now() - start < ms) {
+    if (player.isLoaded) return true;
+    await new Promise((r) => setTimeout(r, 40));
+  }
+  return player.isLoaded;
+}
+
+/** Loads cue sounds + ocean swoosh so the first play is not racing asset decode. */
 export function prepareEffects(): void {
   try {
     void setPlaybackMode();
     effectPlayer("drop");
     effectPlayer("chime");
+    ensureSwooshPlayer();
   } catch {
     // No audio on this device.
   }
@@ -76,73 +101,72 @@ export async function playEffect(effect: Effect): Promise<void> {
   }
 }
 
-let swooshPlayer: AudioPlayer | null = null;
-
 /**
- * Plays the launch / Wave-received ocean swoosh once, then unloads.
- * Volume ~0.5; respects the iOS silent switch; mixes with other audio.
- * Safe to call again — a previous player is released first.
+ * Plays the ocean swoosh (splash / Home / photo upload).
+ * Preloaded player; seek + play; waits for `isLoaded` so Expo Go actually hears it.
+ * Safe to call again — restarts from the start.
  */
 export async function playWaveSwoosh(): Promise<void> {
+  const generation = ++swooshGeneration;
   try {
-    if (swooshPlayer) {
-      try {
-        swooshPlayer.pause();
-      } catch {
-        /* already stopped */
-      }
-      try {
-        swooshPlayer.remove();
-      } catch {
-        /* already released */
-      }
-      swooshPlayer = null;
-    }
     await setPlaybackMode();
-    const player = createAudioPlayer(WAVE_SWOOSH);
+    if (generation !== swooshGeneration) return;
+    const player = ensureSwooshPlayer();
     player.volume = WAVE_SWOOSH_VOLUME;
-    swooshPlayer = player;
-    const finish = () => {
-      if (swooshPlayer !== player) return;
-      swooshPlayer = null;
-      try {
-        player.pause();
-      } catch {
-        /* */
-      }
+    const loaded = await waitUntilLoaded(player);
+    if (generation !== swooshGeneration) return;
+    if (!loaded) {
+      // Recreate once if the first instance never loaded (Expo Go quirk).
       try {
         player.remove();
       } catch {
         /* */
       }
-    };
-    player.addListener("playbackStatusUpdate", (status) => {
-      if (status.didJustFinish) finish();
-    });
-    player.play();
+      swooshPlayer = null;
+      const retry = ensureSwooshPlayer();
+      retry.volume = WAVE_SWOOSH_VOLUME;
+      await waitUntilLoaded(retry);
+      if (generation !== swooshGeneration) return;
+    }
+    const active = ensureSwooshPlayer();
+    await active.seekTo(0).catch(() => undefined);
+    if (generation !== swooshGeneration) return;
+    swooshPlaying = true;
+    active.play();
   } catch {
-    // Fail silently — splash / reveal continue without audio.
+    // Fail silently — splash / Home / upload continue without audio.
   }
 }
 
-/** Stops the swoosh early (e.g. splash skipped) and unloads. */
+/** Alias — same production ocean asset as splash. */
+export const playOceanSound = playWaveSwoosh;
+
+/** Stops the swoosh early (splash dismissed / Home must not overlap) and keeps the player for reuse. */
 export function stopWaveSwoosh(): void {
+  swooshGeneration += 1;
+  swooshPlaying = false;
   const player = swooshPlayer;
   if (!player) return;
-  swooshPlayer = null;
   try {
-    // Soft volume ramp isn't available on all platforms; pause + unload is enough
-    // because the file itself already has a baked-in fade-out for normal play.
     player.volume = 0;
     player.pause();
   } catch {
     /* */
   }
   try {
-    player.remove();
+    void player.seekTo(0).catch(() => undefined);
   } catch {
     /* */
   }
+  try {
+    player.volume = WAVE_SWOOSH_VOLUME;
+  } catch {
+    /* */
+  }
+}
+
+export function isWaveSwooshPlaying(): boolean {
+  return swooshPlaying;
 }
 
 let activeClip: { player: AudioPlayer; ended: () => void } | null = null;
