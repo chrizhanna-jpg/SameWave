@@ -71,8 +71,10 @@ export function Screen({
       style={styles.fill}
       contentContainerStyle={[padding, column, center && styles.centerScroll, style]}
       keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="interactive"
-      automaticallyAdjustKeyboardInsets
+      keyboardDismissMode="on-drag"
+      // Android: rely on adjustResize + this inset helper; avoid fighting a
+      // KeyboardAvoidingView padding jump on the compose field curtain.
+      automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
       showsVerticalScrollIndicator={false}
       onScroll={onScroll}
       scrollEventThrottle={16}

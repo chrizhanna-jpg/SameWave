@@ -102,6 +102,7 @@ export const font = {
   light: "Inter_300Light",
   regular: "Inter_400Regular",
   medium: "Inter_500Medium",
+  bold: "Inter_700Bold",
 } as const;
 
 export const type = {

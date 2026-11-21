@@ -1,5 +1,7 @@
 import { CameraView, useCameraPermissions, type CameraType } from "expo-camera";
 import { useFocusEffect, useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import * as SystemUI from "expo-system-ui";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Linking,
@@ -27,6 +29,8 @@ const MAX_RESTARTS = 2;
 /** expo-camera zoom is 0–1 of device max; 2× is treated as halfway. */
 const ZOOM_1X = 0;
 const ZOOM_2X = 0.5;
+/** Matches the camera chrome — keeps Android edge-to-edge nav from flashing light. */
+const CAMERA_CHROME = "#1A2425";
 
 function pinchDistance(event: GestureResponderEvent): number | null {
   const touches = event.nativeEvent.touches;
@@ -62,9 +66,13 @@ export default function CaptureScreen() {
       setRestarts(0);
       setProblem(null);
       setZoom(ZOOM_1X);
+      // Root layout paints the system background baby-blue; while the camera is
+      // open keep Android's edge-to-edge nav/status chrome dark so no light bar shows.
+      void SystemUI.setBackgroundColorAsync(CAMERA_CHROME).catch(() => undefined);
       return () => {
         setLive(false);
         setReady(false);
+        void SystemUI.setBackgroundColorAsync(colors.background).catch(() => undefined);
       };
     }, []),
   );
@@ -189,58 +197,60 @@ export default function CaptureScreen() {
 
   return (
     <View style={styles.root}>
+      <StatusBar style="light" />
       <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
         <Header icon="close" onPress={abandon} />
       </View>
 
       <View style={styles.middle} onLayout={(event) => setRoom(event.nativeEvent.layout.height)}>
-        <View
-          style={[styles.frame, { width: frameWidth, height: frameHeight }]}
-          onStartShouldSetResponder={() => true}
-          onMoveShouldSetResponder={() => true}
-          onResponderGrant={onPinchStart}
-          onResponderMove={onPinchMove}
-          onResponderRelease={onPinchEnd}
-          onResponderTerminate={onPinchEnd}
-        >
-          {live ? (
-            <CameraView
-              key={`${facing}-${restarts}`}
-              ref={camera}
-              style={StyleSheet.absoluteFill}
-              facing={facing}
-              zoom={zoom}
-              onCameraReady={() => setReady(true)}
-              onMountError={() => {
-                if (restarts < MAX_RESTARTS) setRestarts((n) => n + 1);
-                else setProblem("The camera wouldn't start. You can choose a photo instead.");
-              }}
-            />
-          ) : null}
-          {/* Soft guide: bottom of this frame sits under the wave seam on the match screen. */}
-          <View pointerEvents="none" style={[styles.seamGuide, { height: Math.max(12, slot.seamBand / 2) }]} />
-          <View style={styles.zoomChips} pointerEvents="box-none">
-            {(
-              [
-                { label: "1×", value: ZOOM_1X },
-                { label: "2×", value: ZOOM_2X },
-              ] as const
-            ).map((chip) => {
-              const active = Math.abs(zoom - chip.value) < 0.08;
-              return (
-                <Pressable
-                  key={chip.label}
-                  onPress={() => setZoom(chip.value)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Zoom ${chip.label}`}
-                  style={[styles.chip, active && styles.chipOn]}
-                >
-                  <Txt variant="quiet" tone={active ? "primary" : "secondary"}>
-                    {chip.label}
-                  </Txt>
-                </Pressable>
-              );
-            })}
+        {/* Dark letterbox around the Wave-slot frame — never light/baby-blue. */}
+        <View style={styles.dim}>
+          <View
+            style={[styles.frame, { width: frameWidth, height: frameHeight }]}
+            onStartShouldSetResponder={() => true}
+            onMoveShouldSetResponder={() => true}
+            onResponderGrant={onPinchStart}
+            onResponderMove={onPinchMove}
+            onResponderRelease={onPinchEnd}
+            onResponderTerminate={onPinchEnd}
+          >
+            {live ? (
+              <CameraView
+                key={`${facing}-${restarts}`}
+                ref={camera}
+                style={StyleSheet.absoluteFill}
+                facing={facing}
+                zoom={zoom}
+                onCameraReady={() => setReady(true)}
+                onMountError={() => {
+                  if (restarts < MAX_RESTARTS) setRestarts((n) => n + 1);
+                  else setProblem("The camera wouldn't start. You can choose a photo instead.");
+                }}
+              />
+            ) : null}
+            <View style={styles.zoomChips} pointerEvents="box-none">
+              {(
+                [
+                  { label: "1×", value: ZOOM_1X },
+                  { label: "2×", value: ZOOM_2X },
+                ] as const
+              ).map((chip) => {
+                const active = Math.abs(zoom - chip.value) < 0.08;
+                return (
+                  <Pressable
+                    key={chip.label}
+                    onPress={() => setZoom(chip.value)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Zoom ${chip.label}`}
+                    style={[styles.chip, active && styles.chipOn]}
+                  >
+                    <Txt variant="quiet" tone={active ? "white" : "secondary"}>
+                      {chip.label}
+                    </Txt>
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
         </View>
         {problem ? (
@@ -288,22 +298,20 @@ export default function CaptureScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#1A2425" },
+  root: { flex: 1, backgroundColor: CAMERA_CHROME },
   header: { paddingHorizontal: space.lg },
   middle: { flex: 1, justifyContent: "center", alignItems: "center" },
+  dim: {
+    flex: 1,
+    alignSelf: "stretch",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: CAMERA_CHROME,
+  },
   frame: {
-    backgroundColor: colors.background,
+    backgroundColor: CAMERA_CHROME,
     borderRadius: radius.lg,
     overflow: "hidden",
-  },
-  seamGuide: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(233, 246, 255, 0.22)",
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(233, 246, 255, 0.55)",
   },
   zoomChips: {
     position: "absolute",
@@ -321,12 +329,12 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.surfaceTranslucent,
+    backgroundColor: "rgba(26, 36, 37, 0.72)",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.line,
+    borderColor: "rgba(255, 255, 255, 0.28)",
   },
   chipOn: {
-    backgroundColor: colors.waterPale,
+    backgroundColor: "rgba(69, 180, 252, 0.35)",
     borderColor: colors.waterMid,
   },
   problem: { position: "absolute", bottom: space.md, left: space.lg, right: space.lg },
@@ -335,6 +343,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-around",
     paddingTop: space.md,
+    backgroundColor: CAMERA_CHROME,
   },
   side: { width: 56, height: 56, alignItems: "center", justifyContent: "center" },
   shutter: {

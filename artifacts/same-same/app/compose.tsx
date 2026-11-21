@@ -20,22 +20,31 @@ import { SoundRecorder, type Recording } from "@/components/SoundRecorder";
 import { TopicPicker } from "@/components/TopicPicker";
 import { Txt } from "@/components/Txt";
 import { errorKind } from "@/backend/types";
+import { dailyTopicFor } from "@/core/dailyTopic";
 import { wavePhotoSlot } from "@/core/wavePhotoSlot";
 import { defaultMusicForEmotion } from "@/data/emotionMusic";
+import { topicFor } from "@/data/topics";
 import { playEffect } from "@/device/sound";
 import { useAppState } from "@/state/AppState";
-import { clearDraft, getDraftPhoto, getDraftTopic } from "@/state/draft";
-import { colors, motion, radius, space } from "@/theme";
+import {
+  clearDraft,
+  getDraftPhoto,
+  getDraftTopic,
+  isDraftTopicLocked,
+} from "@/state/draft";
+import { colors, font, motion, radius, space } from "@/theme";
 
 type SearchField = "emotion" | "topic" | "song" | null;
 
 /**
  * Send a Ripple. After the photo: emotion, Topic, then a library song
  * (pre-selected from the emotion; changeable) and an optional recording.
- * A Daily topic from home arrives already filled on the Topic step.
  *
- * While a search field is focused the photo shrinks and the screen scrolls
- * so the field and its filtered list stay above the keyboard.
+ * Daily flow: topic is locked in draft memory (not URL params) for the whole
+ * capture → compose → send path; the picker is replaced by a chip.
+ *
+ * While editing fields, the form sits at the top and the photo moves below so
+ * the keyboard never jumps the page past the moment/song “curtain”.
  */
 export default function ComposeScreen() {
   const router = useRouter();
@@ -44,9 +53,14 @@ export default function ComposeScreen() {
   const { sendRipple } = useAppState();
   const photo = getDraftPhoto();
 
-  const prefilledTopic = useRef(getDraftTopic()).current;
+  // Snapshot lock at mount so URL/deep-link params cannot override a Daily start.
+  const topicLocked = useRef(isDraftTopicLocked()).current;
+  const lockedTopicId = useRef(
+    topicLocked ? dailyTopicFor().id : getDraftTopic(),
+  ).current;
+
   const [emotion, setEmotion] = useState<string | null>(null);
-  const [topic, setTopic] = useState<string | null>(() => prefilledTopic);
+  const [topic, setTopic] = useState<string | null>(() => lockedTopicId);
   const [song, setSong] = useState<string | null>(null);
   const [songTouched, setSongTouched] = useState(false);
   const [recording, setRecording] = useState<Recording | null>(null);
@@ -57,33 +71,29 @@ export default function ComposeScreen() {
   const [searchField, setSearchField] = useState<SearchField>(null);
   const box = useRef({ width: 0, height: 0 });
   const scrollRef = useRef<ScreenScroll | null>(null);
-  const sectionY = useRef<Record<"emotion" | "topic" | "song", number>>({
-    emotion: 0,
-    topic: 0,
-    song: 0,
-  });
 
   useEffect(() => {
     if (!photo) router.replace("/");
   }, [photo, router]);
 
+  // Keep a locked Daily topic pinned even if something else tries to change state.
   useEffect(() => {
-    if (!searchField) return;
-    // After the photo shrinks, scroll so the active search sits near the top.
-    const timer = setTimeout(() => {
-      const y = Math.max(0, sectionY.current[searchField] - space.md);
-      scrollRef.current?.scrollTo({ y, animated: true });
-    }, 80);
-    return () => clearTimeout(timer);
-  }, [searchField]);
+    if (!topicLocked || !lockedTopicId) return;
+    if (topic !== lockedTopicId) setTopic(lockedTopicId);
+  }, [topicLocked, lockedTopicId, topic]);
 
   if (!photo) return null;
 
   const canSend = !!emotion && !!topic && !!song && !sending && !sent;
-  const searching = searchField !== null;
+  const editingFields = searchField !== null || emotion !== null;
+  const lockedLabel = topicFor(lockedTopicId)?.label ?? "Today's topic";
 
   const bringFieldIntoView = (field: "emotion" | "topic" | "song") => {
+    // Reorder puts fields at the top — no scrollTo jump past the curtain.
     setSearchField(field);
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+    });
   };
 
   const onEmotion = (next: string | null) => {
@@ -96,6 +106,11 @@ export default function ComposeScreen() {
     setSong(next);
   };
 
+  const onTopicChange = (next: string | null) => {
+    if (topicLocked) return;
+    setTopic(next);
+  };
+
   const onLayout = (event: LayoutChangeEvent) => {
     box.current = {
       width: event.nativeEvent.layout.width,
@@ -103,13 +118,9 @@ export default function ComposeScreen() {
     };
   };
 
-  const markSection =
-    (field: "emotion" | "topic" | "song") => (event: LayoutChangeEvent) => {
-      sectionY.current[field] = event.nativeEvent.layout.y;
-    };
-
   const send = async (event: GestureResponderEvent) => {
-    if (!canSend || !emotion || !topic || !song) return;
+    const topicToSend = topicLocked ? dailyTopicFor().id : topic;
+    if (!canSend || !emotion || !topicToSend || !song) return;
     const { locationX, locationY } = event.nativeEvent;
     setTap({
       x: Number.isFinite(locationX) ? locationX : box.current.width / 2,
@@ -121,7 +132,7 @@ export default function ComposeScreen() {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
 
     try {
-      await sendRipple({ photo, emotion, topic, song, recording });
+      await sendRipple({ photo, emotion, topic: topicToSend, song, recording });
       setSent(true);
       clearDraft();
       setTimeout(() => router.replace("/"), motion.rippleSend);
@@ -139,28 +150,22 @@ export default function ComposeScreen() {
     }
   };
 
-  return (
-    <Screen scroll scrollRef={scrollRef} contentBottomPad={searching ? 280 : 48}>
-      <Header
-        icon="close"
-        onPress={() => {
-          clearDraft();
-          router.replace("/");
-        }}
-      />
+  const photoBlock = (
+    <View
+      style={[
+        styles.photoWrap,
+        { aspectRatio: slotAspect },
+        editingFields && styles.photoWrapCompact,
+      ]}
+    >
+      <Photo uri={photo.uri} style={styles.photo} accessibilityLabel="Today's photo" />
+    </View>
+  );
 
-      <View
-        style={[
-          styles.photoWrap,
-          { aspectRatio: slotAspect },
-          searching && styles.photoWrapCompact,
-        ]}
-      >
-        <Photo uri={photo.uri} style={styles.photo} accessibilityLabel="Today's photo" />
-      </View>
-
-      <View onLayout={markSection("emotion")}>
-        <Txt variant="heading" style={styles.section}>
+  const fieldsBlock = (
+    <>
+      <View>
+        <Txt variant="heading" style={[styles.section, styles.sectionBold]}>
           This feels…
         </Txt>
         <EmotionPicker
@@ -174,34 +179,38 @@ export default function ComposeScreen() {
       </View>
 
       {emotion ? (
-        <View onLayout={markSection("topic")}>
-          <Txt variant="heading" style={styles.section}>
-            What's the moment?
+        <View>
+          <Txt variant="heading" style={[styles.section, styles.sectionBold]}>
+            What&apos;s the moment?
           </Txt>
-          {prefilledTopic && topic === prefilledTopic ? (
-            <Txt tone="secondary" style={styles.hint}>
-              Today's topic — change it if you like.
-            </Txt>
-          ) : null}
-          <TopicPicker
-            value={topic}
-            onChange={setTopic}
-            onSearchFocusChange={(focused) => {
-              if (focused) bringFieldIntoView("topic");
-              else setSearchField((current) => (current === "topic" ? null : current));
-            }}
-          />
+          {topicLocked ? (
+            <View style={styles.lockedChip} accessibilityLabel={`Today's topic: ${lockedLabel}`}>
+              <Txt variant="quiet" tone="secondary">
+                Today&apos;s topic
+              </Txt>
+              <Txt>{lockedLabel}</Txt>
+            </View>
+          ) : (
+            <TopicPicker
+              value={topic}
+              onChange={onTopicChange}
+              onSearchFocusChange={(focused) => {
+                if (focused) bringFieldIntoView("topic");
+                else setSearchField((current) => (current === "topic" ? null : current));
+              }}
+            />
+          )}
         </View>
       ) : null}
 
       {emotion && topic ? (
         <>
-          <View onLayout={markSection("song")}>
-            <Txt variant="heading" style={styles.section}>
-              A song for it
+          <View>
+            <Txt variant="heading" style={[styles.section, styles.sectionBold]}>
+              A sound for it
             </Txt>
             <Txt tone="secondary" style={styles.hint}>
-              Picked from how you're feeling — change it if you like.
+              Picked from how you&apos;re feeling — change it if you like.
             </Txt>
             <SongPicker
               value={song}
@@ -247,6 +256,35 @@ export default function ComposeScreen() {
           Matching leans on the emotion and Topic you pick, together with the photo.
         </Txt>
       )}
+    </>
+  );
+
+  return (
+    <Screen scroll scrollRef={scrollRef} contentBottomPad={searchField ? 200 : 48}>
+      <Header
+        icon="close"
+        onPress={() => {
+          clearDraft();
+          router.replace("/");
+        }}
+      />
+
+      {/*
+        While filling fields: form first (top), photo below — avoids the old
+        scrollTo jump that threw the curtain past moment/song.
+        Fresh open: photo first, then fields.
+      */}
+      {editingFields ? (
+        <>
+          {fieldsBlock}
+          {photoBlock}
+        </>
+      ) : (
+        <>
+          {photoBlock}
+          {fieldsBlock}
+        </>
+      )}
     </Screen>
   );
 }
@@ -259,16 +297,29 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     overflow: "hidden",
     backgroundColor: colors.surface,
+    marginTop: space.md,
   },
-  /** While typing, free vertical space so the search stays above the keyboard. */
   photoWrapCompact: {
     maxWidth: 120,
     aspectRatio: 1,
     borderRadius: radius.md,
+    marginTop: space.xl,
+    marginBottom: space.lg,
   },
   photo: { width: "100%", height: "100%" },
   section: { marginTop: space.xl, marginBottom: space.sm },
+  sectionBold: { fontFamily: font.bold, fontWeight: "700" },
   hint: { marginTop: 0, marginBottom: space.sm },
+  lockedChip: {
+    marginTop: space.sm,
+    paddingVertical: space.md,
+    paddingHorizontal: space.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.line,
+    gap: space.xs,
+  },
   send: { marginTop: space.xl, position: "relative", overflow: "visible" },
   rings: { position: "absolute", width: 280, height: 280 },
   problem: { marginTop: space.md, marginBottom: space.lg },

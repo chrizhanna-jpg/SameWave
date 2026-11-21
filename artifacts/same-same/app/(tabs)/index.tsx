@@ -38,9 +38,10 @@ export default function RippleScreen() {
     return () => clearTimeout(timer);
   }, [waiting, shouldAskForPushes, askForPushes]);
 
-  const beginCompose = async (topicId: string | null) => {
+  const beginCompose = async (topicId: string | null, locked = false) => {
     setProblem(null);
-    setDraftTopic(topicId);
+    // Daily flow locks the topic for capture → compose → send; ordinary send stays free.
+    setDraftTopic(topicId, { locked: locked && topicId !== null });
     if (Platform.OS === "web") {
       try {
         const photo = await chooseFromLibrary();
@@ -61,6 +62,8 @@ export default function RippleScreen() {
 
   const pickFromLibrary = async () => {
     setProblem(null);
+    // Library from home is an ordinary send — never lock a Daily topic.
+    setDraftTopic(null);
     try {
       const photo = await chooseFromLibrary();
       if (!photo) return;
@@ -120,24 +123,22 @@ export default function RippleScreen() {
           <>
             <Button
               label="Send a Ripple"
-              onPress={() => void beginCompose(null)}
+              onPress={() => void beginCompose(null, false)}
               style={styles.actionGap}
             />
             <Button
               kind="soft"
-              label={`Today: ${today.label}`}
-              onPress={() => void beginCompose(today.id)}
+              label="Today's topic"
+              detail={today.label}
+              onPress={() => void beginCompose(today.id, true)}
               style={styles.actionGap}
-              accessibilityHint="Starts a Ripple with today's Daily topic already chosen"
+              accessibilityHint="Starts a Ripple locked to today's topic"
             />
             {Platform.OS !== "web" ? (
               <Button
                 kind="quiet"
                 label="Choose from your photos"
-                onPress={() => {
-                  setDraftTopic(null);
-                  void pickFromLibrary();
-                }}
+                onPress={() => void pickFromLibrary()}
                 style={styles.actionGap}
               />
             ) : null}

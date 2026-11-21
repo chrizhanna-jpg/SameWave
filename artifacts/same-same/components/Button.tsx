@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Pressable,
   StyleSheet,
+  View,
   type GestureResponderEvent,
   type ViewStyle,
 } from "react-native";
@@ -19,6 +20,8 @@ interface Props {
    * quiet: a line of text.
    */
   kind?: "main" | "soft" | "quiet";
+  /** Optional second line under the label (e.g. today's topic name). */
+  detail?: string;
   tone?: "secondary" | "primary" | "ember" | "haze" | "mist" | "white";
   disabled?: boolean;
   busy?: boolean;
@@ -30,6 +33,7 @@ export function Button({
   label,
   onPress,
   kind = "main",
+  detail,
   tone,
   disabled,
   busy,
@@ -37,6 +41,7 @@ export function Button({
   accessibilityHint,
 }: Props) {
   const inactive = disabled || busy;
+  const a11y = detail ? `${label}. ${detail}` : label;
   if (kind === "quiet") {
     return (
       <Pressable
@@ -44,13 +49,18 @@ export function Button({
         disabled={inactive}
         hitSlop={layout.hitSlop}
         accessibilityRole="button"
-        accessibilityLabel={label}
+        accessibilityLabel={a11y}
         accessibilityHint={accessibilityHint}
         style={({ pressed }) => [styles.quiet, (pressed || inactive) && styles.dim, style]}
       >
         <Txt variant="quiet" tone={tone ?? "secondary"} center>
           {label}
         </Txt>
+        {detail ? (
+          <Txt variant="caption" tone="quiet" center style={styles.detail}>
+            {detail}
+          </Txt>
+        ) : null}
       </Pressable>
     );
   }
@@ -60,7 +70,7 @@ export function Button({
       onPress={onPress}
       disabled={inactive}
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={a11y}
       accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled: !!inactive, busy: !!busy }}
       style={({ pressed }) => [
@@ -74,9 +84,16 @@ export function Button({
       {busy ? (
         <ActivityIndicator color={colors.textPrimary} />
       ) : (
-        <Txt variant="button" tone="primary">
-          {label}
-        </Txt>
+        <View style={styles.copy}>
+          <Txt variant="button" tone="primary" center>
+            {label}
+          </Txt>
+          {detail ? (
+            <Txt variant="caption" tone="secondary" center style={styles.detail}>
+              {detail}
+            </Txt>
+          ) : null}
+        </View>
       )}
     </Pressable>
   );
@@ -98,6 +115,8 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
   },
   quiet: { paddingVertical: space.sm, paddingHorizontal: space.md, alignSelf: "center" },
+  copy: { alignItems: "center", gap: 2 },
+  detail: { marginTop: 0 },
   pressed: { opacity: 0.85 },
   dim: { opacity: 0.5 },
 });

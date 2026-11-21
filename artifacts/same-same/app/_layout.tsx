@@ -2,6 +2,7 @@ import {
   Inter_300Light,
   Inter_400Regular,
   Inter_500Medium,
+  Inter_700Bold,
   useFonts,
 } from "@expo-google-fonts/inter";
 import { Stack, useRouter, useSegments } from "expo-router";
@@ -151,7 +152,12 @@ function Routes() {
 }
 
 export default function RootLayout() {
-  const [fontsLoaded, fontError] = useFonts({ Inter_300Light, Inter_400Regular, Inter_500Medium });
+  const [fontsLoaded, fontError] = useFonts({
+    Inter_300Light,
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_700Bold,
+  });
   const [fontWaitOver, setFontWaitOver] = useState(false);
   const ready = fontsLoaded || fontError !== null || fontWaitOver;
 
