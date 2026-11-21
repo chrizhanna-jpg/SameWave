@@ -46,8 +46,8 @@ export interface MapLine {
 
 export interface MapGeometryOptions {
   /**
-   * Legacy size hint (used for pin fan radius). Loops are gone — kept so
-   * callers that already pass `loopSize` keep compiling.
+   * Legacy size hint (used as a fallback fan when viewScale is unset).
+   * Loops are gone — kept so callers that already pass `loopSize` keep compiling.
    */
   loopSize: number;
   /** Used when neither photo has a country. Usually the user's home country. */
@@ -63,6 +63,14 @@ export interface MapGeometryOptions {
    * Below this chord (map units): draw a straight short instead of an arc.
    */
   straightBelow?: number;
+  /**
+   * Current map view scale (screen px per map unit). When set with
+   * `fanScreenPx`, overlapping pins fan so their on-screen centres stay
+   * at least that many pixels apart — and ease back toward truth as you zoom.
+   */
+  viewScale?: number;
+  /** Minimum on-screen separation between pin centres (px). Default 16. */
+  fanScreenPx?: number;
 }
 
 /** Where a Wave is drawn when no country is known: open water in the Atlantic. */
@@ -319,14 +327,17 @@ export function buildMapGeometry(
     placedByWave.set(wave.id, { mine, theirs });
   }
 
-  // Fan coincident / near-coincident pins first so lines can run pin-to-pin.
-  // Keep the spiral tight: Europe chords are only tens of map units, so a
-  // large fan turns London into "Atlantic / Scandinavia" scribbles.
-  const markers = spreadCoincidentMarkers(
-    rawMarkers,
-    Math.max(8, Math.min(12, options.loopSize * 0.18)),
-    8,
-  );
+  // Fan overlapping pins in screen space so none hides another. Map-unit
+  // separation shrinks as you zoom in (pins ease back toward true spots).
+  const viewScale = Math.max(0.05, options.viewScale ?? 1);
+  const fanScreen = options.fanScreenPx ?? 16;
+  const minSepMap =
+    options.viewScale != null
+      ? fanScreen / viewScale
+      : Math.max(8, Math.min(12, options.loopSize * 0.18));
+  const clusterMap =
+    options.viewScale != null ? Math.max(minSepMap * 0.9, 2 / viewScale) : Math.min(8, minSepMap);
+  const markers = spreadCoincidentMarkers(rawMarkers, minSepMap, clusterMap);
 
   const arcCounts = new Map<string, number>();
   const lines: MapLine[] = [];
@@ -422,47 +433,81 @@ export function buildMapMarkers(
 }
 
 /**
- * Nudge markers that sit on the same (or nearly the same) map point into a
- * spiral so each keeps a distinct hit target. `clusterWithin` merges points
- * closer than that many map units into one spiral group.
+ * Nudge markers that sit on the same (or nearly the same) map point onto a
+ * ring so centres stay at least `minSeparation` map units apart. Groups by
+ * proximity across both sides — a London mine and London theirs fan together.
+ * `clusterWithin` merges points closer than that many map units into one ring.
  */
 export function spreadCoincidentMarkers(
   markers: readonly MapMarker[],
-  radius: number,
+  minSeparation: number,
   clusterWithin = 0,
 ): MapMarker[] {
-  const anchors: { side: string; point: Point }[] = [];
-  const groupIndex = new Map<string, number>();
-  const groupKeyFor = (marker: MapMarker): string => {
+  const anchors: Point[] = [];
+  const groupIds: number[] = [];
+  for (const marker of markers) {
+    let gid = -1;
     if (clusterWithin <= 0) {
-      return `${marker.side}:${marker.point.x.toFixed(1)},${marker.point.y.toFixed(1)}`;
-    }
-    for (let i = 0; i < anchors.length; i++) {
-      const a = anchors[i]!;
-      if (a.side !== marker.side) continue;
-      if (Math.hypot(a.point.x - marker.point.x, a.point.y - marker.point.y) <= clusterWithin) {
-        return `${marker.side}:a${i}`;
+      const exact = `${marker.point.x.toFixed(1)},${marker.point.y.toFixed(1)}`;
+      for (let i = 0; i < anchors.length; i++) {
+        const a = anchors[i]!;
+        if (`${a.x.toFixed(1)},${a.y.toFixed(1)}` === exact) {
+          gid = i;
+          break;
+        }
+      }
+    } else {
+      for (let i = 0; i < anchors.length; i++) {
+        const a = anchors[i]!;
+        if (Math.hypot(a.x - marker.point.x, a.y - marker.point.y) <= clusterWithin) {
+          gid = i;
+          break;
+        }
       }
     }
-    const id = anchors.length;
-    anchors.push({ side: marker.side, point: marker.point });
-    return `${marker.side}:a${id}`;
-  };
-  return markers.map((marker) => {
-    const key = groupKeyFor(marker);
-    const index = groupIndex.get(key) ?? 0;
-    groupIndex.set(key, index + 1);
-    if (index === 0) return marker;
-    const angle = -Math.PI / 2 + index * GOLDEN_ANGLE;
-    const reach = radius * (0.65 + 0.28 * index);
-    return {
-      ...marker,
-      point: {
-        x: marker.point.x + reach * Math.cos(angle),
-        y: marker.point.y + reach * Math.sin(angle),
-      },
-    };
-  });
+    if (gid < 0) {
+      gid = anchors.length;
+      anchors.push({ ...marker.point });
+    }
+    groupIds.push(gid);
+  }
+
+  const groups = new Map<number, number[]>();
+  for (let i = 0; i < markers.length; i++) {
+    const gid = groupIds[i]!;
+    const list = groups.get(gid) ?? [];
+    list.push(i);
+    groups.set(gid, list);
+  }
+
+  const out = markers.map((m) => ({ ...m, point: { ...m.point } }));
+  for (const indices of groups.values()) {
+    const n = indices.length;
+    if (n <= 1) continue;
+    // Ring radius so adjacent centres are ≥ minSeparation apart.
+    const ring = minSeparation / (2 * Math.sin(Math.PI / n));
+    // Anchor at the cluster centroid (stable as membership grows).
+    let cx = 0;
+    let cy = 0;
+    for (const i of indices) {
+      cx += markers[i]!.point.x;
+      cy += markers[i]!.point.y;
+    }
+    cx /= n;
+    cy /= n;
+    for (let k = 0; k < n; k++) {
+      const i = indices[k]!;
+      const angle = -Math.PI / 2 + (k * 2 * Math.PI) / n;
+      out[i] = {
+        ...out[i]!,
+        point: {
+          x: cx + ring * Math.cos(angle),
+          y: cy + ring * Math.sin(angle),
+        },
+      };
+    }
+  }
+  return out;
 }
 
 /** Axis-aligned bounds of points, or null when empty. */

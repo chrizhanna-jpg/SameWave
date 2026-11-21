@@ -233,6 +233,12 @@ test("coincident mine markers fan out so each stays tappable", () => {
   assert.equal(spread.length, 3);
   const keys = new Set(spread.map((m) => `${m.point.x.toFixed(1)},${m.point.y.toFixed(1)}`));
   assert.equal(keys.size, 3);
+  // Ring keeps adjacent centres ≥ minSeparation apart.
+  const d01 = Math.hypot(
+    spread[0]!.point.x - spread[1]!.point.x,
+    spread[0]!.point.y - spread[1]!.point.y,
+  );
+  assert.ok(d01 >= 11.5);
   for (const marker of spread) {
     assert.equal(markerAt(spread, marker.point, 6)?.waveId, marker.waveId);
   }
@@ -254,8 +260,29 @@ test("spreadCoincidentMarkers clusters near-coincident Europe pins", () => {
     Math.hypot(
       clustered[1]!.point.x - clustered[0]!.point.x,
       clustered[1]!.point.y - clustered[0]!.point.y,
-    ) >= 5,
+    ) >= 9.5,
   );
+});
+
+test("viewScale fans pins farther apart when zoomed out", () => {
+  const projectLonLat = (lonLat: [number, number]): Point => ({
+    x: (lonLat[0] + 180) * 40,
+    y: (90 - lonLat[1]) * 40,
+  });
+  const waves = [
+    { id: "a", mine: "GB", theirs: "FR", mineLonLat: [-0.12, 51.5] as [number, number], theirsLonLat: [2.35, 48.85] as [number, number] },
+    { id: "b", mine: "GB", theirs: "DE", mineLonLat: [-0.12, 51.5] as [number, number], theirsLonLat: [13.4, 52.52] as [number, number] },
+    { id: "c", mine: "GB", theirs: "IT", mineLonLat: [-0.12, 51.5] as [number, number], theirsLonLat: [12.5, 41.9] as [number, number] },
+  ];
+  const far = buildMapGeometry(waves, project, { ...options, viewScale: 1, fanScreenPx: 16 }, projectLonLat);
+  const near = buildMapGeometry(waves, project, { ...options, viewScale: 4, fanScreenPx: 16 }, projectLonLat);
+  const minesFar = far.markers.filter((m) => m.side === "mine");
+  const minesNear = near.markers.filter((m) => m.side === "mine");
+  const span = (ms: typeof minesFar) => {
+    const xs = ms.map((m) => m.point.x);
+    return Math.max(...xs) - Math.min(...xs);
+  };
+  assert.ok(span(minesFar) > span(minesNear), "zoom-out should spiderfy more in map units");
 });
 
 test("buildMapMarkers spreads shared London sample endpoints", () => {
