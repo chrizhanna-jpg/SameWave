@@ -15,6 +15,7 @@ import { Icon } from "@/components/Icon";
 import { Scrim } from "@/components/Scrim";
 import { Txt } from "@/components/Txt";
 import { WaveJoin } from "@/components/WaveJoin";
+import { WaveMark } from "@/components/WaveMark";
 import { errorKind } from "@/backend/types";
 import { MATCH } from "@/core/reach";
 import { rankMatchCandidates } from "@/core/matchDeck";
@@ -366,9 +367,10 @@ export default function MatchScreen() {
               pressed && !empty && load === "ready" && styles.actionPressed,
             ]}
           >
-            <View style={[styles.actionWell, styles.matchWell]}>
-              <Icon name="wave" size={30} color={colors.white} />
-            </View>
+            {/* Frosted well (not blue) so the logo’s coloured waves stay legible. */}
+            <FrostIconWell style={styles.actionWell}>
+              <WaveMark width={44} />
+            </FrostIconWell>
           </Pressable>
         </View>
       ) : null}
@@ -420,14 +422,6 @@ const styles = StyleSheet.create({
     width: ACTION_SIZE,
     height: ACTION_SIZE,
     borderRadius: ACTION_SIZE / 2,
-  },
-  matchWell: {
-    width: ACTION_SIZE,
-    height: ACTION_SIZE,
-    borderRadius: ACTION_SIZE / 2,
-    backgroundColor: colors.waterMid,
-    alignItems: "center",
-    justifyContent: "center",
   },
   actionDim: { opacity: 0.45 },
   actionPressed: { opacity: 0.85 },
