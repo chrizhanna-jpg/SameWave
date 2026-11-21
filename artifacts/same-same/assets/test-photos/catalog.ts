@@ -3,6 +3,7 @@
  * `EXPO_PUBLIC_TEST_PHOTOS === "1"` so Metro dead-code-eliminates JPEGs +
  * fixtures from production / preview-APK exports.
  */
+import { Asset } from "expo-asset";
 import { Image } from "react-native";
 
 import type { Candidate } from "@/core/types";
@@ -21,10 +22,31 @@ const MODULES: Record<string, number> = {
   "08-ocean-wave.jpg": require("./08-ocean-wave.jpg"),
 };
 
+/**
+ * Resolve a bundled JPEG to a URI. Prefer expo-asset (works on web + native);
+ * fall back to Image.resolveAssetSource when available.
+ */
 function uriForFile(file: string): string {
   const mod = MODULES[file];
   if (mod == null) return "";
-  return Image.resolveAssetSource(mod)?.uri ?? "";
+  try {
+    const asset = Asset.fromModule(mod);
+    if (asset.uri) return asset.uri;
+  } catch {
+    /* fall through */
+  }
+  const resolve =
+    typeof Image.resolveAssetSource === "function"
+      ? Image.resolveAssetSource.bind(Image)
+      : null;
+  if (resolve) {
+    try {
+      return resolve(mod)?.uri ?? "";
+    } catch {
+      return "";
+    }
+  }
+  return typeof mod === "string" ? mod : "";
 }
 
 /** Ids use a `test_sample_` prefix so stock filters never treat them as CDN stock. */
