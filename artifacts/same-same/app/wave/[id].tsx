@@ -14,7 +14,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button } from "@/components/Button";
 import { Header } from "@/components/Header";
 import { Icon } from "@/components/Icon";
-import { Photo } from "@/components/Photo";
 import { Scrim } from "@/components/Scrim";
 import { Txt } from "@/components/Txt";
 import { WaveJoin } from "@/components/WaveJoin";
@@ -219,7 +218,6 @@ export default function WaveScreen() {
   }
 
   const blur = phase === "build" || phase === "splash" ? 16 : 0;
-  const half = height / 2;
   const mineClip =
     detail?.mine.recordingUri ?? clipUrlFor(detail?.mine.vibe ?? null, wave.mine.photoId);
   const theirsClip =
@@ -262,24 +260,20 @@ export default function WaveScreen() {
     <View style={styles.root} {...pan.panHandlers}>
       <Animated.View style={[styles.fill, { opacity: fade }]}>
         <Pressable style={styles.fill} onPress={onTapPhotos}>
-          <View style={[styles.half, { height: half }]}>
-            <Photo
-              uri={wave.mine.uri}
-              ownPhotoId={wave.mine.photoId}
-              blurRadius={blur}
-              style={styles.photo}
-              accessibilityLabel="Your photo"
-            />
-          </View>
-          <View style={[styles.half, { height: half }]}>
-            <Photo
-              uri={wave.theirs.uri}
-              blurRadius={blur}
-              style={styles.photo}
-              accessibilityLabel="Their photo"
-            />
-          </View>
-          <WaveJoin width={width} />
+          <WaveJoin
+            width={width}
+            height={height}
+            blurRadius={blur}
+            top={{
+              uri: wave.mine.uri,
+              ownPhotoId: wave.mine.photoId,
+              accessibilityLabel: "Your photo",
+            }}
+            bottom={{
+              uri: wave.theirs.uri,
+              accessibilityLabel: "Their photo",
+            }}
+          />
         </Pressable>
 
         <Animated.View
@@ -447,8 +441,6 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   fill: { flex: 1 },
   missing: { alignItems: "center", justifyContent: "center", padding: space.xl },
-  half: { width: "100%", overflow: "hidden" },
-  photo: { width: "100%", height: "100%", borderRadius: 0 },
   splash: {
     position: "absolute", left: 0, right: 0, top: 0, bottom: 0,
     alignItems: "center",
