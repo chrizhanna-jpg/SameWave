@@ -2,7 +2,6 @@ import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Pressable,
   StyleSheet,
   View,
   type GestureResponderEvent,
@@ -10,6 +9,7 @@ import {
 } from "react-native";
 
 import { Button } from "@/components/Button";
+import { EmotionPicker } from "@/components/EmotionPicker";
 import { Header } from "@/components/Header";
 import { Photo } from "@/components/Photo";
 import { RippleRings } from "@/components/RippleRings";
@@ -18,7 +18,6 @@ import { SoundRecorder, type Recording } from "@/components/SoundRecorder";
 import { TopicPicker } from "@/components/TopicPicker";
 import { Txt } from "@/components/Txt";
 import { errorKind } from "@/backend/types";
-import { EMOTIONS } from "@/data/emotions";
 import { playEffect } from "@/device/sound";
 import { useAppState } from "@/state/AppState";
 import { getDraftPhoto, setDraftPhoto } from "@/state/draft";
@@ -103,38 +102,14 @@ export default function ComposeScreen() {
       </View>
 
       <Txt variant="heading" style={styles.section}>
-        How does it feel?
+        How are you feeling?
       </Txt>
-      <Txt tone="secondary" style={styles.hint}>
-        Pick one emotion first.
-      </Txt>
-      <View style={styles.emotions}>
-        {EMOTIONS.map((item) => {
-          const on = emotion === item.id;
-          return (
-            <Pressable
-              key={item.id}
-              onPress={() => setEmotion(on ? null : item.id)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: on }}
-              accessibilityLabel={item.label}
-              style={[styles.chip, on && styles.chipOn]}
-            >
-              <Txt variant="quiet" tone={on ? "primary" : "secondary"}>
-                {item.label}
-              </Txt>
-            </Pressable>
-          );
-        })}
-      </View>
+      <EmotionPicker value={emotion} onChange={setEmotion} />
 
       {emotion ? (
         <>
           <Txt variant="heading" style={styles.section}>
-            Topic
-          </Txt>
-          <Txt tone="secondary" style={styles.hint}>
-            What is the photo of? Type to find a Topic.
+            What's the moment?
           </Txt>
           <TopicPicker value={topic} onChange={setTopic} />
         </>
@@ -190,18 +165,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   photo: { width: "100%", height: "100%" },
-  section: { marginTop: space.xl },
+  section: { marginTop: space.xl, marginBottom: space.sm },
   hint: { marginTop: space.xs, marginBottom: space.sm },
-  emotions: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
-  chip: {
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.line,
-  },
-  chipOn: { backgroundColor: colors.waterPale, borderColor: colors.waterSoft },
   send: { marginTop: space.xl, position: "relative", overflow: "visible" },
   rings: { position: "absolute", width: 280, height: 280 },
   problem: { marginTop: space.md, marginBottom: space.lg },

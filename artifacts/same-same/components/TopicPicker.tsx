@@ -11,15 +11,15 @@ interface Props {
 }
 
 /**
- * Preset-only Topic picker. Typing filters from the first letter; by three
- * letters the list is clearly narrowed. Aliases mean "dog" finds Pets.
+ * Preset-only Topic picker. Search shortens the flat list live; with an
+ * empty search the full list stays visible and scrollable to browse.
  */
 export function TopicPicker({ value, onChange }: Props) {
   const selected = topicFor(value);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(!selected);
 
-  const matches = useMemo(() => filterTopics(query).slice(0, 12), [query]);
+  const matches = useMemo(() => filterTopics(query), [query]);
 
   if (selected && !open) {
     return (
@@ -45,7 +45,7 @@ export function TopicPicker({ value, onChange }: Props) {
       <TextInput
         value={query}
         onChangeText={setQuery}
-        placeholder="Start typing a Topic"
+        placeholder="Search or browse"
         placeholderTextColor={colors.textQuiet}
         autoCorrect={false}
         autoCapitalize="none"

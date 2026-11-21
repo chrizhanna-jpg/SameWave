@@ -1,10 +1,14 @@
 /**
- * The emotions offered when sending a Ripple.
+ * Emotions offered when sending a Ripple — one flat list.
  *
- * About ten plain words that together cover calm/positive, high-energy
- * positive, reflective, and difficult feelings — guided by Plutchik's wheel,
- * Ekman's basic emotions, and a simple valence/arousal map. Every id is one
- * the server already accepts as `musicGenre` (see allowedMusicGenres).
+ * Base list from Chris (18). Additions (flag in report / PR):
+ *   • Calm — peaceful / low-arousal feeling he asked to include
+ *   • Grateful — everyday warm thanks at the same grain as Caring / Hopeful
+ *
+ * Every `id` is a value the server already accepts as `musicGenre`
+ * (see artifacts/api-server/src/lib/allowedMusicGenres.ts).
+ *
+ * Awaiting Chris's approval — edit this file only.
  */
 
 export interface Emotion {
@@ -15,65 +19,40 @@ export interface Emotion {
 }
 
 /**
- * Joy · Love · Calm · Wonder · Hope · Pride · Nostalgia · Tired · Sad · Fear
- * (+ Anger for the remaining hard edge of Plutchik/Ekman).
+ * Happy · Overjoyed · Love · Caring · Connected · Passionate · Hopeful ·
+ * Grateful† · Strength · Surprised · Calm† · Sad · Lonely · Loss · Hurt ·
+ * Shame · Scared · Anger · Frustrated · Disgust
+ *
+ * † Additions beyond Chris's draft.
+ *
+ * Id notes where the label and server genre differ:
+ *   Happy → joy, Connected → romance, Passionate → passion,
+ *   Hopeful → hope, Grateful → gratitude, Strength → pride,
+ *   Surprised → wonder, Loss → grief, Hurt → heartbroken,
+ *   Shame → longing (closest allowed self-conscious unease),
+ *   Frustrated → stress, Disgust → fear (aversion; Scared already takes scared).
  */
 export const EMOTIONS: readonly Emotion[] = [
-  {
-    id: "joy",
-    label: "Joy",
-    related: ["pride", "hope", "love"],
-  },
-  {
-    id: "love",
-    label: "Love",
-    related: ["joy", "calm", "hope"],
-  },
-  {
-    id: "calm",
-    label: "Calm",
-    related: ["love", "nostalgia", "tired"],
-  },
-  {
-    id: "wonder",
-    label: "Wonder",
-    related: ["hope", "joy", "fear"],
-  },
-  {
-    id: "hope",
-    label: "Hope",
-    related: ["joy", "wonder", "pride"],
-  },
-  {
-    id: "pride",
-    label: "Pride",
-    related: ["joy", "hope"],
-  },
-  {
-    id: "nostalgia",
-    label: "Nostalgia",
-    related: ["calm", "sad", "tired"],
-  },
-  {
-    id: "tired",
-    label: "Tired",
-    related: ["calm", "sad", "nostalgia"],
-  },
-  {
-    id: "sad",
-    label: "Sad",
-    related: ["tired", "nostalgia", "fear"],
-  },
-  {
-    id: "fear",
-    label: "Fear",
-    related: ["sad", "anger", "wonder"],
-  },
-  {
-    id: "anger",
-    label: "Anger",
-    related: ["fear", "sad"],
-  },
+  { id: "joy", label: "Happy", related: ["overjoyed", "hope", "pride", "wonder", "gratitude"] },
+  { id: "overjoyed", label: "Overjoyed", related: ["joy", "passion", "wonder", "hope"] },
+  { id: "love", label: "Love", related: ["caring", "romance", "joy", "hope", "gratitude"] },
+  { id: "caring", label: "Caring", related: ["love", "romance", "calm", "hope", "gratitude"] },
+  { id: "romance", label: "Connected", related: ["love", "caring", "hope", "calm"] },
+  { id: "passion", label: "Passionate", related: ["overjoyed", "love", "romance", "pride"] },
+  { id: "hope", label: "Hopeful", related: ["joy", "love", "pride", "caring", "gratitude"] },
+  { id: "gratitude", label: "Grateful", related: ["love", "caring", "hope", "calm", "joy"] },
+  { id: "pride", label: "Strength", related: ["hope", "joy", "passion", "calm"] },
+  { id: "wonder", label: "Surprised", related: ["overjoyed", "joy", "fear", "scared"] },
+  { id: "calm", label: "Calm", related: ["caring", "romance", "hope", "gratitude", "lonely"] },
+  { id: "sad", label: "Sad", related: ["lonely", "grief", "heartbroken", "longing"] },
+  { id: "lonely", label: "Lonely", related: ["sad", "grief", "heartbroken", "calm"] },
+  { id: "grief", label: "Loss", related: ["sad", "lonely", "heartbroken", "longing"] },
+  { id: "heartbroken", label: "Hurt", related: ["sad", "grief", "lonely", "anger"] },
+  { id: "longing", label: "Shame", related: ["sad", "lonely", "stress", "heartbroken"] },
+  { id: "scared", label: "Scared", related: ["fear", "anger", "sad", "wonder"] },
+  { id: "anger", label: "Anger", related: ["stress", "fear", "heartbroken", "longing"] },
+  { id: "stress", label: "Frustrated", related: ["anger", "longing", "sad", "scared"] },
+  { id: "fear", label: "Disgust", related: ["anger", "scared", "stress", "sad"] },
 ];
 
 export const EMOTION_IDS: readonly string[] = EMOTIONS.map((e) => e.id);

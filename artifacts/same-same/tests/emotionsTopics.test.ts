@@ -46,27 +46,35 @@ test("every picker emotion is one the server already accepts as musicGenre", () 
   for (const id of EMOTION_IDS) {
     assert.ok(SERVER_MUSIC_GENRES.has(id), id);
   }
-  assert.ok(EMOTIONS.length >= 10 && EMOTIONS.length <= 12);
+  assert.equal(new Set(EMOTION_IDS).size, EMOTION_IDS.length);
+  // Chris's 18 + Calm + Grateful
+  assert.ok(EMOTIONS.length >= 19 && EMOTIONS.length <= 22);
+  assert.ok(EMOTIONS.some((e) => e.label === "Calm" && e.id === "calm"));
+  assert.ok(EMOTIONS.some((e) => e.label === "Grateful" && e.id === "gratitude"));
 });
 
 test("related emotions score partially, exact emotions score fully", () => {
   assert.equal(emotionAffinity("joy", "joy"), 1);
-  assert.ok(emotionAffinity("joy", "pride") > 0 && emotionAffinity("joy", "pride") < 1);
-  assert.equal(emotionAffinity("joy", "fear"), 0);
+  assert.ok(emotionAffinity("joy", "hope") > 0 && emotionAffinity("joy", "hope") < 1);
+  assert.equal(emotionAffinity("joy", "anger"), 0);
   assert.equal(emotionFor("nope"), null);
+  assert.equal(emotionFor("joy")?.label, "Happy");
 });
 
-test("Topic type-ahead finds aliases from the first letters", () => {
+test("Topics are everyday moments with type-ahead aliases", () => {
+  assert.ok(TOPICS.length >= 40 && TOPICS.length <= 80);
   assert.equal(filterTopics("").length, TOPICS.length);
-  assert.ok(filterTopics("d").some((t) => t.id === "pets"));
-  assert.deepEqual(
-    filterTopics("dog").map((t) => t.id),
-    ["pets"],
-  );
-  assert.ok(filterTopics("bea").some((t) => t.id === "water"));
+  assert.equal(filterTopics("dog")[0]?.id, "pets");
+  assert.ok(filterTopics("bea").some((t) => t.id === "beach"));
+  assert.ok(filterTopics("hol").some((t) => t.id === "holiday"));
+  assert.ok(filterTopics("road").some((t) => t.id === "roadtrip"));
+  assert.ok(filterTopics("din").some((t) => t.id === "dinner"));
+  assert.ok(filterTopics("cof").some((t) => t.id === "coffee"));
+  assert.ok(filterTopics("pic").some((t) => t.id === "picnic"));
+  assert.ok(filterTopics("camp").some((t) => t.id === "camping"));
   assert.ok(filterTopics("nat").some((t) => t.id === "nature"));
   assert.equal(topicAffinity("pets", "pets"), 1);
-  assert.equal(topicAffinity("pets", "food"), 0);
+  assert.equal(topicAffinity("pets", "dinner"), 0);
 });
 
 test("same emotion and Topic outranks emotion alone, which outranks Topic alone", () => {
@@ -76,7 +84,7 @@ test("same emotion and Topic outranks emotion alone, which outranks Topic alone"
   );
   const emotionOnly = emotionTopicScore(
     { emotion: "calm", topic: "nature" },
-    { emotion: "calm", topic: "food" },
+    { emotion: "calm", topic: "dinner" },
   );
   const topicOnly = emotionTopicScore(
     { emotion: "calm", topic: "nature" },
@@ -84,7 +92,7 @@ test("same emotion and Topic outranks emotion alone, which outranks Topic alone"
   );
   const related = emotionTopicScore(
     { emotion: "joy", topic: "city" },
-    { emotion: "pride", topic: "food" },
+    { emotion: "hope", topic: "dinner" },
   );
   assert.equal(both, MATCH_WEIGHTS.emotion + MATCH_WEIGHTS.topic);
   assert.equal(emotionOnly, MATCH_WEIGHTS.emotion);
@@ -100,7 +108,7 @@ test("reach picks the candidate strongest on emotion and Topic after the server 
       score: 12,
       uri: "/api/photos/a/image",
       createdAt: "2026-11-01T00:00:00Z",
-      theme: "food",
+      theme: "dinner",
       emotion: "sad",
     },
     {
@@ -133,6 +141,6 @@ test("reach picks the candidate strongest on emotion and Topic after the server 
   );
   assert.ok(
     combinedMatchScore(11, { emotion: "calm", topic: "nature" }, { emotion: "calm", topic: "nature" }) >
-      combinedMatchScore(12, { emotion: "calm", topic: "nature" }, { emotion: "sad", topic: "food" }),
+      combinedMatchScore(12, { emotion: "calm", topic: "nature" }, { emotion: "sad", topic: "dinner" }),
   );
 });
