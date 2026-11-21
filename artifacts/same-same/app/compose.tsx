@@ -13,7 +13,7 @@ import { EmotionPicker } from "@/components/EmotionPicker";
 import { Header } from "@/components/Header";
 import { Photo } from "@/components/Photo";
 import { RippleRings } from "@/components/RippleRings";
-import { Screen } from "@/components/Screen";
+import { Screen, type ScreenScroll } from "@/components/Screen";
 import { SongPicker } from "@/components/SongPicker";
 import { SoundRecorder, type Recording } from "@/components/SoundRecorder";
 import { TopicPicker } from "@/components/TopicPicker";
@@ -25,10 +25,15 @@ import { useAppState } from "@/state/AppState";
 import { clearDraft, getDraftPhoto, getDraftTopic } from "@/state/draft";
 import { colors, motion, radius, space } from "@/theme";
 
+type SearchField = "emotion" | "topic" | "song" | null;
+
 /**
  * Send a Ripple. After the photo: emotion, Topic, then a library song
  * (pre-selected from the emotion; changeable) and an optional recording.
  * A Daily topic from home arrives already filled on the Topic step.
+ *
+ * While a search field is focused the photo shrinks and the screen scrolls
+ * so the field and its filtered list stay above the keyboard.
  */
 export default function ComposeScreen() {
   const router = useRouter();
@@ -45,15 +50,37 @@ export default function ComposeScreen() {
   const [sent, setSent] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [tap, setTap] = useState<{ x: number; y: number } | null>(null);
+  const [searchField, setSearchField] = useState<SearchField>(null);
   const box = useRef({ width: 0, height: 0 });
+  const scrollRef = useRef<ScreenScroll | null>(null);
+  const sectionY = useRef<Record<"emotion" | "topic" | "song", number>>({
+    emotion: 0,
+    topic: 0,
+    song: 0,
+  });
 
   useEffect(() => {
     if (!photo) router.replace("/");
   }, [photo, router]);
 
+  useEffect(() => {
+    if (!searchField) return;
+    // After the photo shrinks, scroll so the active search sits near the top.
+    const timer = setTimeout(() => {
+      const y = Math.max(0, sectionY.current[searchField] - space.md);
+      scrollRef.current?.scrollTo({ y, animated: true });
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [searchField]);
+
   if (!photo) return null;
 
   const canSend = !!emotion && !!topic && !!song && !sending && !sent;
+  const searching = searchField !== null;
+
+  const bringFieldIntoView = (field: "emotion" | "topic" | "song") => {
+    setSearchField(field);
+  };
 
   const onEmotion = (next: string | null) => {
     setEmotion(next);
@@ -71,6 +98,11 @@ export default function ComposeScreen() {
       height: event.nativeEvent.layout.height,
     };
   };
+
+  const markSection =
+    (field: "emotion" | "topic" | "song") => (event: LayoutChangeEvent) => {
+      sectionY.current[field] = event.nativeEvent.layout.y;
+    };
 
   const send = async (event: GestureResponderEvent) => {
     if (!canSend || !emotion || !topic || !song) return;
@@ -104,7 +136,7 @@ export default function ComposeScreen() {
   };
 
   return (
-    <Screen scroll>
+    <Screen scroll scrollRef={scrollRef} contentBottomPad={searching ? 280 : 48}>
       <Header
         icon="close"
         onPress={() => {
@@ -113,17 +145,26 @@ export default function ComposeScreen() {
         }}
       />
 
-      <View style={styles.photoWrap}>
+      <View style={[styles.photoWrap, searching && styles.photoWrapCompact]}>
         <Photo uri={photo.uri} style={styles.photo} accessibilityLabel="Today's photo" />
       </View>
 
-      <Txt variant="heading" style={styles.section}>
-        How are you feeling?
-      </Txt>
-      <EmotionPicker value={emotion} onChange={onEmotion} />
+      <View onLayout={markSection("emotion")}>
+        <Txt variant="heading" style={styles.section}>
+          How are you feeling?
+        </Txt>
+        <EmotionPicker
+          value={emotion}
+          onChange={onEmotion}
+          onSearchFocusChange={(focused) => {
+            if (focused) bringFieldIntoView("emotion");
+            else setSearchField((current) => (current === "emotion" ? null : current));
+          }}
+        />
+      </View>
 
       {emotion ? (
-        <>
+        <View onLayout={markSection("topic")}>
           <Txt variant="heading" style={styles.section}>
             What's the moment?
           </Txt>
@@ -132,19 +173,36 @@ export default function ComposeScreen() {
               Today's topic — change it if you like.
             </Txt>
           ) : null}
-          <TopicPicker value={topic} onChange={setTopic} />
-        </>
+          <TopicPicker
+            value={topic}
+            onChange={setTopic}
+            onSearchFocusChange={(focused) => {
+              if (focused) bringFieldIntoView("topic");
+              else setSearchField((current) => (current === "topic" ? null : current));
+            }}
+          />
+        </View>
       ) : null}
 
       {emotion && topic ? (
         <>
-          <Txt variant="heading" style={styles.section}>
-            A song for it
-          </Txt>
-          <Txt tone="secondary" style={styles.hint}>
-            Picked from how you're feeling — change it if you like.
-          </Txt>
-          <SongPicker value={song} onChange={onSong} previewSeed={photo.uri} />
+          <View onLayout={markSection("song")}>
+            <Txt variant="heading" style={styles.section}>
+              A song for it
+            </Txt>
+            <Txt tone="secondary" style={styles.hint}>
+              Picked from how you're feeling — change it if you like.
+            </Txt>
+            <SongPicker
+              value={song}
+              onChange={onSong}
+              previewSeed={photo.uri}
+              onSearchFocusChange={(focused) => {
+                if (focused) bringFieldIntoView("song");
+                else setSearchField((current) => (current === "song" ? null : current));
+              }}
+            />
+          </View>
 
           <Txt variant="heading" style={styles.section}>
             Or record your own (optional)
@@ -192,6 +250,12 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     overflow: "hidden",
     backgroundColor: colors.surface,
+  },
+  /** While typing, free vertical space so the search stays above the keyboard. */
+  photoWrapCompact: {
+    maxWidth: 120,
+    aspectRatio: 1,
+    borderRadius: radius.md,
   },
   photo: { width: "100%", height: "100%" },
   section: { marginTop: space.xl, marginBottom: space.sm },

@@ -8,13 +8,15 @@ import { colors, radius, space, type } from "@/theme";
 interface Props {
   value: string | null;
   onChange: (topicId: string | null) => void;
+  /** Fired when the search field gains or loses focus (keyboard layout). */
+  onSearchFocusChange?: (focused: boolean) => void;
 }
 
 /**
  * Preset-only Topic picker. Search shortens the flat list live; with an
  * empty search the full list stays visible and scrollable to browse.
  */
-export function TopicPicker({ value, onChange }: Props) {
+export function TopicPicker({ value, onChange, onSearchFocusChange }: Props) {
   const selected = topicFor(value);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(!selected);
@@ -51,6 +53,8 @@ export function TopicPicker({ value, onChange }: Props) {
         autoCapitalize="none"
         style={styles.search}
         accessibilityLabel="Search Topics"
+        onFocus={() => onSearchFocusChange?.(true)}
+        onBlur={() => onSearchFocusChange?.(false)}
       />
       <View style={styles.list}>
         {matches.map((topic) => (

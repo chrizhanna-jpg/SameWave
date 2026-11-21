@@ -31,6 +31,7 @@
     "android": {
       "package": "echo.samewaveripple.app",
       "versionCode": 53,
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#F7F8F7"

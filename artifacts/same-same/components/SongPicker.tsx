@@ -12,6 +12,8 @@ interface Props {
   onChange: (vibeId: string) => void;
   /** Stable seed so the preview clip matches Wave playback for this photo. */
   previewSeed: string;
+  /** Fired when the search field gains or loses focus (keyboard layout). */
+  onSearchFocusChange?: (focused: boolean) => void;
 }
 
 function filterVibes(query: string): Vibe[] {
@@ -36,7 +38,7 @@ function trackTitle(vibe: Vibe, seed: string): string {
  * Library song picker. Search shortens the mood list live; empty search
  * shows the full scrollable library. The chosen mood's clip plays on tap.
  */
-export function SongPicker({ value, onChange, previewSeed }: Props) {
+export function SongPicker({ value, onChange, previewSeed, onSearchFocusChange }: Props) {
   const selected = vibeFor(value);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(!selected);
@@ -103,6 +105,8 @@ export function SongPicker({ value, onChange, previewSeed }: Props) {
         autoCapitalize="none"
         style={styles.search}
         accessibilityLabel="Search songs"
+        onFocus={() => onSearchFocusChange?.(true)}
+        onBlur={() => onSearchFocusChange?.(false)}
       />
       <View style={styles.list}>
         {matches.map((vibe) => {

@@ -8,6 +8,8 @@ import { colors, radius, space, type } from "@/theme";
 interface Props {
   value: string | null;
   onChange: (emotionId: string | null) => void;
+  /** Fired when the search field gains or loses focus (keyboard layout). */
+  onSearchFocusChange?: (focused: boolean) => void;
 }
 
 /** Filter the flat emotion list by label (and id) as the person types. */
@@ -25,7 +27,7 @@ function filterEmotions(query: string): Emotion[] {
  * Flat emotion picker. Search shortens the list live; with nothing typed
  * the full list is visible and scrollable to browse and tap.
  */
-export function EmotionPicker({ value, onChange }: Props) {
+export function EmotionPicker({ value, onChange, onSearchFocusChange }: Props) {
   const selected = emotionFor(value);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(!selected);
@@ -63,6 +65,8 @@ export function EmotionPicker({ value, onChange }: Props) {
         autoCapitalize="none"
         style={styles.search}
         accessibilityLabel="Search emotions"
+        onFocus={() => onSearchFocusChange?.(true)}
+        onBlur={() => onSearchFocusChange?.(false)}
       />
       <View style={styles.list}>
         {matches.map((emotion) => {
