@@ -37,8 +37,22 @@ export function clerkProxyUrl(publishableKey: string): string | undefined {
   return forced;
 }
 
-export const IS_EXPO_GO =
-  Constants.appOwnership === "expo" || Constants.executionEnvironment === "storeClient";
+/**
+ * True when the JS is running inside the Expo Go client (not a Play/App Store
+ * install and not a bare/dev-client binary that only shares storeClient).
+ *
+ * Prefer `expoVersion` — it is set only by Expo Go. `appOwnership` is deprecated
+ * and often null on SDK 52+. `storeClient` alone also matches expo-dev-client.
+ */
+export function isExpoGo(): boolean {
+  if (typeof Constants.expoVersion === "string" && Constants.expoVersion.length > 0) return true;
+  if (Constants.appOwnership === "expo") return true;
+  if (Constants.executionEnvironment === "storeClient" && Constants.expoGoConfig != null) return true;
+  return false;
+}
+
+/** Snapshot for call sites that need a constant; re-check with `isExpoGo()` when unsure. */
+export const IS_EXPO_GO = isExpoGo();
 
 export function appVersionLabel(): string {
   const version = Constants.nativeApplicationVersion ?? Constants.expoConfig?.version ?? "";

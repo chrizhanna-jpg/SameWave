@@ -1,17 +1,26 @@
-import { useAuth, useSignIn, useSSO } from "@clerk/expo";
+import { useSSO } from "@clerk/expo";
+/**
+ * Email code must use the *legacy* SignIn / SignUp resources.
+ * `@clerk/expo`'s default `useSignIn` returns SignInFuture, which has
+ * `emailCode.sendCode()` — not `prepareFirstFactor` / `supportedFirstFactors`.
+ * Calling the legacy methods on Future threw, and the empty catch made Send
+ * look like a silent failure in Expo Go.
+ */
+import { useSignIn, useSignUp } from "@clerk/expo/legacy";
 import * as AuthSession from "expo-auth-session";
 import Constants from "expo-constants";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Platform, StyleSheet, TextInput, View } from "react-native";
 
 import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/Button";
 import { Screen } from "@/components/Screen";
 import { Txt } from "@/components/Txt";
-import { apiOrigin, IS_EXPO_GO, LEGAL_LINKS } from "@/config/env";
+import { apiOrigin, isExpoGo, LEGAL_LINKS } from "@/config/env";
+import { clerkErrorCode, clerkErrorMessage } from "@/lib/clerkError";
 import { colors, radius, space, type } from "@/theme";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -29,7 +38,7 @@ function redirectUrl(): string {
   const forced = (process.env.EXPO_PUBLIC_CLERK_SSO_REDIRECT ?? "").trim();
   if (forced) return forced;
   if (Platform.OS === "web") return AuthSession.makeRedirectUri({ path: "callback" });
-  if (IS_EXPO_GO) {
+  if (isExpoGo()) {
     return AuthSession.makeRedirectUri({ path: "callback" });
   }
   const scheme =
@@ -39,22 +48,34 @@ function redirectUrl(): string {
   return AuthSession.makeRedirectUri({ scheme, path: "callback", preferLocalhost: false });
 }
 
+/** Satisfy Clerk's required-password rule without asking the person for one. */
+function ephemeralPassword(): string {
+  const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%";
+  let out = "Sw1!";
+  for (let i = 0; i < 24; i += 1) {
+    out += chars[Math.floor(Math.random() * chars.length)]!;
+  }
+  return out;
+}
+
 type EmailStep = "email" | "code";
+type EmailFlow = "signIn" | "signUp";
 
 export default function SignInScreen() {
   const router = useRouter();
   const { startSSOFlow } = useSSO();
-  const { isLoaded, signIn, setActive: setActiveFromSignIn } = useSignIn();
-  const { setActive: setActiveFromAuth } = useAuth();
-  const setActive = setActiveFromSignIn ?? setActiveFromAuth;
+  const { isLoaded: signInLoaded, signIn, setActive: setActiveFromSignIn } = useSignIn();
+  const { isLoaded: signUpLoaded, signUp, setActive: setActiveFromSignUp } = useSignUp();
+  const setActive = setActiveFromSignIn ?? setActiveFromSignUp;
+  const isLoaded = signInLoaded && signUpLoaded;
 
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [emailStep, setEmailStep] = useState<EmailStep>("email");
-
-  const oauthRedirect = useMemo(() => redirectUrl(), []);
+  const [emailFlow, setEmailFlow] = useState<EmailFlow>("signIn");
+  const inExpoGo = isExpoGo();
 
   // Android opens the sign-in page faster if the browser is already awake.
   useEffect(() => {
@@ -67,14 +88,26 @@ export default function SignInScreen() {
 
   useEffect(() => {
     if (__DEV__) {
-      console.log("[sign-in] OAuth redirectUrl =", oauthRedirect, "IS_EXPO_GO =", IS_EXPO_GO);
+      console.log(
+        "[sign-in] OAuth redirectUrl =",
+        redirectUrl(),
+        "isExpoGo =",
+        inExpoGo,
+        "expoVersion =",
+        Constants.expoVersion,
+        "executionEnvironment =",
+        Constants.executionEnvironment,
+        "appOwnership =",
+        Constants.appOwnership,
+      );
     }
-  }, [oauthRedirect]);
+  }, [inExpoGo]);
 
   const signInWithGoogle = async () => {
     if (busy) return;
     setBusy(true);
     setProblem(null);
+    const oauthRedirect = redirectUrl();
     try {
       const { createdSessionId, setActive: setActiveFromSso } = await startSSOFlow({
         strategy: "oauth_google",
@@ -85,20 +118,39 @@ export default function SignInScreen() {
         await activate({ session: createdSessionId });
       } else {
         setProblem(
-          IS_EXPO_GO
+          inExpoGo
             ? "Google sign-in didn't return to Expo Go. Use email code below, or ask to allowlist the Expo redirect in Clerk."
             : "Sign-in didn't finish. Please try again.",
         );
       }
-    } catch {
+    } catch (err) {
+      console.warn("[sign-in] Google SSO failed", err);
       setProblem(
-        IS_EXPO_GO
-          ? "Google sign-in couldn't finish in Expo Go. Try email code below."
-          : "We couldn't sign you in just now. Please try again.",
+        clerkErrorMessage(
+          err,
+          inExpoGo
+            ? "Google sign-in couldn't finish in Expo Go. Try email code below."
+            : "We couldn't sign you in just now. Please try again.",
+        ),
       );
     } finally {
       setBusy(false);
     }
+  };
+
+  const beginSignUpWithEmailCode = async (identifier: string) => {
+    if (!signUp) throw new Error("Sign-up is not ready yet.");
+    // This Clerk instance requires a password at sign-up. Email code is still
+    // the first factor for sign-in; we mint a one-time password the person
+    // never sees so create() succeeds without a dashboard change.
+    await signUp.create({
+      emailAddress: identifier,
+      password: ephemeralPassword(),
+    });
+    await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
+    setEmailFlow("signUp");
+    setEmailStep("code");
+    setCode("");
   };
 
   const sendEmailCode = async () => {
@@ -111,29 +163,60 @@ export default function SignInScreen() {
     setBusy(true);
     setProblem(null);
     try {
+      console.log("[sign-in] email code: create sign-in for", identifier);
       const created = await signIn.create({ identifier });
       const factor = created.supportedFirstFactors?.find(
         (item) => item.strategy === "email_code" && "emailAddressId" in item,
       ) as { strategy: "email_code"; emailAddressId: string } | undefined;
       if (!factor?.emailAddressId) {
-        setProblem("Email code isn't available for this account. Try Google on a development build.");
+        const strategies =
+          created.supportedFirstFactors?.map((item) => item.strategy).join(", ") || "(none)";
+        console.warn("[sign-in] email_code factor missing; factors =", strategies);
+        setProblem(
+          `Email code isn't available for this account (factors: ${strategies}). Try Google on a development build.`,
+        );
         return;
       }
+      console.log("[sign-in] email code: prepareFirstFactor", factor.emailAddressId);
       await signIn.prepareFirstFactor({
         strategy: "email_code",
         emailAddressId: factor.emailAddressId,
       });
+      setEmailFlow("signIn");
       setEmailStep("code");
       setCode("");
-    } catch {
-      setProblem("Couldn't send a code to that email. Check it and try again.");
+    } catch (err) {
+      const codeName = clerkErrorCode(err);
+      console.warn("[sign-in] email code send failed", codeName, err);
+      // Brand-new email → fall through to sign-up + email verification.
+      if (
+        codeName === "form_identifier_not_found" ||
+        codeName === "form_param_nil" ||
+        /Couldn't find your account/i.test(clerkErrorMessage(err, ""))
+      ) {
+        try {
+          console.log("[sign-in] falling back to sign-up email_code for", identifier);
+          await beginSignUpWithEmailCode(identifier);
+          return;
+        } catch (signUpErr) {
+          console.warn("[sign-in] sign-up email code failed", signUpErr);
+          setProblem(
+            clerkErrorMessage(
+              signUpErr,
+              "Couldn't start sign-up for that email. Check it and try again.",
+            ),
+          );
+          return;
+        }
+      }
+      setProblem(clerkErrorMessage(err, "Couldn't send a code to that email. Check it and try again."));
     } finally {
       setBusy(false);
     }
   };
 
   const verifyEmailCode = async () => {
-    if (busy || !isLoaded || !signIn || !setActive) return;
+    if (busy || !isLoaded || !setActive) return;
     const value = code.trim();
     if (value.length < 4) {
       setProblem("Enter the code from your email.");
@@ -142,14 +225,28 @@ export default function SignInScreen() {
     setBusy(true);
     setProblem(null);
     try {
+      if (emailFlow === "signUp") {
+        if (!signUp) throw new Error("Sign-up is not ready yet.");
+        console.log("[sign-in] verifying sign-up email code");
+        const result = await signUp.attemptEmailAddressVerification({ code: value });
+        if (result.status === "complete" && result.createdSessionId) {
+          await setActive({ session: result.createdSessionId });
+          return;
+        }
+        setProblem(`That code didn't complete sign-up (${result.status}). Try again.`);
+        return;
+      }
+      if (!signIn) throw new Error("Sign-in is not ready yet.");
+      console.log("[sign-in] verifying sign-in email code");
       const result = await signIn.attemptFirstFactor({ strategy: "email_code", code: value });
       if (result.status === "complete" && result.createdSessionId) {
         await setActive({ session: result.createdSessionId });
-      } else {
-        setProblem("That code didn't complete sign-in. Try again.");
+        return;
       }
-    } catch {
-      setProblem("That code didn't work. Request a new one and try again.");
+      setProblem(`That code didn't complete sign-in (${result.status}). Try again.`);
+    } catch (err) {
+      console.warn("[sign-in] email code verify failed", err);
+      setProblem(clerkErrorMessage(err, "That code didn't work. Request a new one and try again."));
     } finally {
       setBusy(false);
     }
@@ -171,7 +268,7 @@ export default function SignInScreen() {
           </Txt>
         ) : null}
 
-        {IS_EXPO_GO ? (
+        {inExpoGo ? (
           <Txt variant="quiet" tone="secondary" center style={styles.hint}>
             Expo Go tip: email code avoids the old Play app stealing Google&apos;s redirect. Google
             needs an allowlisted exp:// redirect in Clerk (see Metro log).
@@ -236,6 +333,7 @@ export default function SignInScreen() {
               label="Use a different email"
               onPress={() => {
                 setEmailStep("email");
+                setEmailFlow("signIn");
                 setCode("");
                 setProblem(null);
               }}
