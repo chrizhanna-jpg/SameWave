@@ -578,7 +578,13 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     configureForegroundPushes();
     return listenForPushes({
-      onArrive: () => void syncNow({ force: true }),
+      onArrive: (target) => {
+        // Foreground Wave: route to the reveal (or show the system banner via handler).
+        if (target.waveId || (target.photoA && target.photoB)) {
+          setPushTarget(target);
+        }
+        void syncNow({ force: true });
+      },
       onOpen: (target) => {
         setPushTarget(target);
         void syncNow({ force: true });

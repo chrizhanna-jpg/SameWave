@@ -13,7 +13,13 @@ import { apiOrigin, appVersionLabel, LEGAL_LINKS } from "@/config/env";
 import { flagFor, nameFor } from "@/data/countries";
 import { sceneFor } from "@/data/scenes";
 import { MUSIC_CREDIT } from "@/data/vibes";
-import { enablePushes, pushPermission, type PushPermission } from "@/device/push";
+import {
+  enablePushes,
+  pushPermission,
+  remotePushUnavailable,
+  scheduleLocalWaveNotification,
+  type PushPermission,
+} from "@/device/push";
 import { useAppState } from "@/state/AppState";
 import { useSession } from "@/state/session";
 import { colors, radius, space } from "@/theme";
@@ -25,12 +31,14 @@ export default function AccountScreen() {
   const {
     countryCode,
     history,
+    waves,
     deletePhoto,
     askForPushes,
     shouldAskForPushes,
   } = useAppState();
   const [permission, setPermission] = useState<PushPermission | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [testPushBusy, setTestPushBusy] = useState(false);
 
   React.useEffect(() => {
     void pushPermission().then(setPermission);
@@ -158,6 +166,51 @@ export default function AccountScreen() {
               }
             />
           ) : null}
+        </View>
+
+        {/* Expo Go cannot receive remote push — local schedule tests tap → reveal. */}
+        <View style={styles.row}>
+          <View style={styles.fill}>
+            <Txt variant="quiet" tone="secondary">
+              Preview Wave tap
+            </Txt>
+            <Txt>
+              {remotePushUnavailable
+                ? "Local notification (Expo Go)"
+                : "Local notification (test routing)"}
+            </Txt>
+          </View>
+          <Button
+            kind="quiet"
+            label={testPushBusy ? "…" : "Try"}
+            busy={testPushBusy}
+            onPress={() => {
+              const sample = waves[0];
+              if (!sample) {
+                Alert.alert(
+                  "No Wave yet",
+                  "Open or form a Wave first, then try again so the tap has somewhere to go.",
+                );
+                return;
+              }
+              setTestPushBusy(true);
+              void scheduleLocalWaveNotification({ waveId: sample.id, delaySeconds: 3 })
+                .then((id) => {
+                  if (!id) {
+                    Alert.alert(
+                      "Couldn't schedule",
+                      "Allow notifications for SameWave, then try again.",
+                    );
+                    return;
+                  }
+                  Alert.alert(
+                    "Notification in ~3s",
+                    "Background the app (or stay here), then tap the notification to open the Wave reveal.",
+                  );
+                })
+                .finally(() => setTestPushBusy(false));
+            }}
+          />
         </View>
 
         <View style={styles.legal}>

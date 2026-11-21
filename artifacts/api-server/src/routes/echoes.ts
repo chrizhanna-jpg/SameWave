@@ -177,21 +177,34 @@ export async function recordEchoOffer(input: {
     // celebration moment) so the user lands on the actual match
     // instead of the inbox list. The pair endpoint requires mutual
     // state, which we've just promoted to, so the link will resolve.
+    // Client routes waveId → full-screen Wave reveal (`/wave/[id]?reveal=1`).
+    // Keep photo ids for older clients that still resolve via echo-pair.
+    const waveLink = `/wave/${encodeURIComponent(echoId)}?reveal=1`;
     const pairLink = `/echo-pair?a=${encodeURIComponent(
       pair.lowId,
     )}&b=${encodeURIComponent(pair.highId)}`;
+    const mutualData = {
+      deepLink: waveLink,
+      legacyDeepLink: pairLink,
+      waveId: echoId,
+      echoId,
+      state: "mutual" as const,
+      reveal: "1",
+      a: pair.lowId,
+      b: pair.highId,
+    };
     void Promise.allSettled([
       sendPushToUser(recipientUserId, {
         title: PUSH_COPY.mutual.title,
         body: PUSH_COPY.mutual.body,
         categoryId: PUSH_COPY.mutual.categoryId,
-        data: { deepLink: pairLink, echoId, state: "mutual" },
+        data: mutualData,
       }),
       sendPushToUser(voterUserId, {
         title: PUSH_COPY.mutual.title,
         body: PUSH_COPY.mutual.body,
         categoryId: PUSH_COPY.mutual.categoryId,
-        data: { deepLink: pairLink, echoId, state: "mutual" },
+        data: mutualData,
       }),
     ]).catch((err) => logger.error({ err }, "echo push (mutual) failed"));
   } else if (wasNew) {
@@ -199,7 +212,7 @@ export async function recordEchoOffer(input: {
       title: PUSH_COPY.pending.title,
       body: PUSH_COPY.pending.body,
       categoryId: PUSH_COPY.pending.categoryId,
-      data: { deepLink: "/echoes", echoId, state: "pending" },
+      data: { deepLink: "/echoes", echoId, waveId: echoId, state: "pending" },
     }).catch((err) => logger.error({ err }, "echo push (pending) failed"));
   }
 
@@ -594,21 +607,32 @@ router.post("/echoes/:id/respond", async (req, res) => {
     // view since the row is now mutual. Best-effort, never blocks.
     const otherUserId =
       echo.userLowId === user.id ? echo.userHighId : echo.userLowId;
+    const waveLink = `/wave/${encodeURIComponent(echoId)}?reveal=1`;
     const pairLink = `/echo-pair?a=${encodeURIComponent(
       echo.photoLowId,
     )}&b=${encodeURIComponent(echo.photoHighId)}`;
+    const mutualData = {
+      deepLink: waveLink,
+      legacyDeepLink: pairLink,
+      waveId: echoId,
+      echoId,
+      state: "mutual" as const,
+      reveal: "1",
+      a: echo.photoLowId,
+      b: echo.photoHighId,
+    };
     void Promise.allSettled([
       sendPushToUser(otherUserId, {
         title: PUSH_COPY.mutual.title,
         body: PUSH_COPY.mutual.body,
         categoryId: PUSH_COPY.mutual.categoryId,
-        data: { deepLink: pairLink, echoId, state: "mutual" },
+        data: mutualData,
       }),
       sendPushToUser(user.id, {
         title: PUSH_COPY.mutual.title,
         body: PUSH_COPY.mutual.body,
         categoryId: PUSH_COPY.mutual.categoryId,
-        data: { deepLink: pairLink, echoId, state: "mutual" },
+        data: mutualData,
       }),
     ]).catch((err) => req.log.error({ err }, "echo push (respond) failed"));
 
