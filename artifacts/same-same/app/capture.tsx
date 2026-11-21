@@ -19,6 +19,12 @@ import { Header } from "@/components/Header";
 import { Icon } from "@/components/Icon";
 import { Screen } from "@/components/Screen";
 import { Txt } from "@/components/Txt";
+import {
+  ZOOM_1X,
+  ZOOM_2X,
+  isZoomChipActive,
+  zoomFromPinch,
+} from "@/core/cameraZoom";
 import { wavePhotoSlot } from "@/core/wavePhotoSlot";
 import { chooseFromLibrary, cropToWaveSlot } from "@/device/photos";
 import { setDraftPhoto, setDraftTopic } from "@/state/draft";
@@ -27,9 +33,6 @@ import { colors, layout, radius, space } from "@/theme";
 /** Some phones never report that the camera is ready; after this long it is treated as ready. */
 const READY_FALLBACK_MS = 1200;
 const MAX_RESTARTS = 2;
-/** expo-camera zoom is 0–1 of device max; 2× is treated as halfway. */
-const ZOOM_1X = 0;
-const ZOOM_2X = 0.5;
 /** Matches the camera chrome — keeps Android edge-to-edge nav from flashing light. */
 const CAMERA_CHROME = "#1A2425";
 
@@ -133,10 +136,8 @@ export default function CaptureScreen() {
 
   const onPinchMove = (event: GestureResponderEvent) => {
     const dist = pinchDistance(event);
-    if (dist == null || !pinch.current || pinch.current.startDist < 8) return;
-    const scale = dist / pinch.current.startDist;
-    const next = Math.min(1, Math.max(0, pinch.current.startZoom + (scale - 1) * 0.85));
-    setZoom(next);
+    if (dist == null || !pinch.current) return;
+    setZoom(zoomFromPinch(pinch.current.startZoom, pinch.current.startDist, dist));
   };
 
   const onPinchEnd = () => {
@@ -229,29 +230,6 @@ export default function CaptureScreen() {
                 }}
               />
             ) : null}
-            <View style={styles.zoomChips} pointerEvents="box-none">
-              {(
-                [
-                  { label: "1×", value: ZOOM_1X },
-                  { label: "2×", value: ZOOM_2X },
-                ] as const
-              ).map((chip) => {
-                const active = Math.abs(zoom - chip.value) < 0.08;
-                return (
-                  <Pressable
-                    key={chip.label}
-                    onPress={() => setZoom(chip.value)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Zoom ${chip.label}`}
-                    style={[styles.chip, active && styles.chipOn]}
-                  >
-                    <Txt variant="quiet" tone={active ? "white" : "secondary"}>
-                      {chip.label}
-                    </Txt>
-                  </Pressable>
-                );
-              })}
-            </View>
           </View>
         </View>
         {problem ? (
@@ -262,37 +240,63 @@ export default function CaptureScreen() {
       </View>
 
       <View style={[styles.controls, { paddingBottom: insets.bottom + space.lg }]}>
-        <Pressable
-          onPress={useLibrary}
-          hitSlop={layout.hitSlop}
-          accessibilityRole="button"
-          accessibilityLabel="Choose from your photos"
-          style={styles.side}
-        >
-          <Icon name="photos" size={28} />
-        </Pressable>
-        <Pressable
-          onPress={takePhoto}
-          disabled={!ready || busy}
-          accessibilityRole="button"
-          accessibilityLabel="Take photo"
-          style={({ pressed }) => [
-            styles.shutter,
-            (!ready || busy) && styles.shutterWaiting,
-            pressed && styles.shutterPressed,
-          ]}
-        >
-          <View style={styles.shutterInner} />
-        </Pressable>
-        <Pressable
-          onPress={flipCamera}
-          hitSlop={layout.hitSlop}
-          accessibilityRole="button"
-          accessibilityLabel="Switch camera"
-          style={styles.side}
-        >
-          <Icon name="flip" size={28} />
-        </Pressable>
+        <View style={styles.zoomRow} pointerEvents="box-none">
+          {(
+            [
+              { label: "1×", value: ZOOM_1X },
+              { label: "2×", value: ZOOM_2X },
+            ] as const
+          ).map((chip) => {
+            const active = isZoomChipActive(zoom, chip.value);
+            return (
+              <Pressable
+                key={chip.label}
+                onPress={() => setZoom(chip.value)}
+                accessibilityRole="button"
+                accessibilityLabel={`Zoom ${chip.label}`}
+                accessibilityState={{ selected: active }}
+                style={[styles.chip, active && styles.chipOn]}
+              >
+                <Txt variant="quiet" tone="white">
+                  {chip.label}
+                </Txt>
+              </Pressable>
+            );
+          })}
+        </View>
+        <View style={styles.shutterRow}>
+          <Pressable
+            onPress={useLibrary}
+            hitSlop={layout.hitSlop}
+            accessibilityRole="button"
+            accessibilityLabel="Choose from your photos"
+            style={styles.side}
+          >
+            <Icon name="photos" size={28} />
+          </Pressable>
+          <Pressable
+            onPress={takePhoto}
+            disabled={!ready || busy}
+            accessibilityRole="button"
+            accessibilityLabel="Take photo"
+            style={({ pressed }) => [
+              styles.shutter,
+              (!ready || busy) && styles.shutterWaiting,
+              pressed && styles.shutterPressed,
+            ]}
+          >
+            <View style={styles.shutterInner} />
+          </Pressable>
+          <Pressable
+            onPress={flipCamera}
+            hitSlop={layout.hitSlop}
+            accessibilityRole="button"
+            accessibilityLabel="Switch camera"
+            style={styles.side}
+          >
+            <Icon name="flip" size={28} />
+          </Pressable>
+        </View>
       </View>
     </View>
   );
@@ -314,14 +318,11 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     overflow: "hidden",
   },
-  zoomChips: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: space.md,
+  zoomRow: {
     flexDirection: "row",
     justifyContent: "center",
     gap: space.sm,
+    marginBottom: space.md,
   },
   chip: {
     minWidth: layout.iconButtonSize,
@@ -330,21 +331,25 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(26, 36, 37, 0.72)",
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255, 255, 255, 0.28)",
+    borderColor: "rgba(255, 255, 255, 0.35)",
   },
   chipOn: {
-    backgroundColor: "rgba(69, 180, 252, 0.35)",
-    borderColor: colors.waterMid,
+    backgroundColor: "rgba(255, 255, 255, 0.28)",
+    borderColor: "rgba(255, 255, 255, 0.7)",
   },
   problem: { position: "absolute", bottom: space.md, left: space.lg, right: space.lg },
   controls: {
+    alignItems: "center",
+    paddingTop: space.md,
+    backgroundColor: CAMERA_CHROME,
+  },
+  shutterRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-around",
-    paddingTop: space.md,
-    backgroundColor: CAMERA_CHROME,
+    alignSelf: "stretch",
   },
   side: { width: 56, height: 56, alignItems: "center", justifyContent: "center" },
   shutter: {
