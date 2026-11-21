@@ -66,17 +66,41 @@ export function withOptionalSampleWaves(
   return [...live, ...samples.filter((w) => !liveIds.has(w.id))];
 }
 
+/** In-memory mirror so Match can react without remount / re-send. */
+let cachedToggle: boolean | null = null;
+const toggleListeners = new Set<(on: boolean) => void>();
+
+/** Last known toggle (null until first read/write this session). */
+export function peekSamplePhotosToggle(): boolean | null {
+  return cachedToggle;
+}
+
+export function subscribeSamplePhotosToggle(listener: (on: boolean) => void): () => void {
+  toggleListeners.add(listener);
+  return () => {
+    toggleListeners.delete(listener);
+  };
+}
+
+function publishToggle(on: boolean): void {
+  cachedToggle = on;
+  for (const listener of toggleListeners) listener(on);
+}
+
 export async function readSamplePhotosToggle(): Promise<boolean> {
   if (!testPhotosBuildEnabled()) return false;
   try {
-    return (await AsyncStorage.getItem(TOGGLE_KEY)) === "1";
+    const on = (await AsyncStorage.getItem(TOGGLE_KEY)) === "1";
+    cachedToggle = on;
+    return on;
   } catch {
-    return false;
+    return cachedToggle === true;
   }
 }
 
 export async function writeSamplePhotosToggle(on: boolean): Promise<void> {
   if (!testPhotosBuildEnabled()) return;
+  publishToggle(on);
   try {
     await AsyncStorage.setItem(TOGGLE_KEY, on ? "1" : "0");
   } catch {

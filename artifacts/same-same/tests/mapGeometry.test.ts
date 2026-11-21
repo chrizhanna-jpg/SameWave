@@ -6,8 +6,12 @@ import {
   buildMapGeometry,
   buildMapLines,
   buildMapMarkers,
+  geodesicArcPath,
+  geodesicLonLat,
   lineAt,
   markerAt,
+  MIN_ARC_LENGTH,
+  pathFromPoints,
   spreadCoincidentMarkers,
   type MapMarker,
   type Point,
@@ -34,7 +38,8 @@ test("two countries make a line and one country makes a loop", () => {
     ["abroad", "arc"],
     ["home", "loop"],
   ]);
-  assert.match(lines[0]?.d ?? "", /^M[\d.-]+ [\d.-]+Q/);
+  // Arcs are polylines (great-circle samples / Bezier samples); loops stay cubic.
+  assert.match(lines[0]?.d ?? "", /^M[\d.-]+ [\d.-]+ L/);
   assert.match(lines[1]?.d ?? "", /^M[\d.-]+ [\d.-]+C/);
 });
 
@@ -166,13 +171,13 @@ test("precise lon/lat endpoints draw an arc and expose mine markers", () => {
       {
         id: "gps",
         mine: "GB",
-        theirs: "FR",
+        theirs: "JP",
         mineLonLat: [-0.12, 51.5],
-        theirsLonLat: [2.35, 48.85],
+        theirsLonLat: [139.7, 35.7],
       },
     ],
     project,
-    options,
+    { ...options, minArcLength: 4 },
     projectLonLat,
   );
   assert.equal(lines.length, 1);
@@ -224,4 +229,67 @@ test("buildMapMarkers spreads shared London sample endpoints", () => {
   );
   assert.equal(markerAt(markers, markers[0]!.point, 10)?.waveId, "w1");
   assert.equal(markerAt(markers, markers[1]!.point, 10)?.waveId, "w2");
+});
+
+test("near-zero pairs drop their arc stroke", () => {
+  const projectLonLat = (lonLat: [number, number]): Point => ({
+    x: (lonLat[0] + 180) * 2,
+    y: (90 - lonLat[1]) * 2,
+  });
+  const { lines, markers } = buildMapGeometry(
+    [
+      {
+        id: "hair",
+        mine: "GB",
+        theirs: "GB",
+        mineLonLat: [-0.12, 51.5],
+        theirsLonLat: [-0.12 + 0.001, 51.5],
+      },
+    ],
+    project,
+    options,
+    projectLonLat,
+  );
+  assert.equal(lines.length, 0);
+  assert.ok(markers.length >= 2);
+});
+
+test("pathFromPoints rejects chords shorter than MIN_ARC_LENGTH", () => {
+  assert.equal(
+    pathFromPoints(
+      [
+        { x: 0, y: 0 },
+        { x: MIN_ARC_LENGTH - 1, y: 0 },
+      ],
+      0,
+    ),
+    null,
+  );
+  assert.ok(
+    pathFromPoints(
+      [
+        { x: 0, y: 0 },
+        { x: MIN_ARC_LENGTH + 5, y: 0 },
+      ],
+      0,
+    ),
+  );
+});
+
+test("geodesicLonLat midpoints sit between the endpoints", () => {
+  const mid = geodesicLonLat([-0.12, 51.5], [2.35, 48.85], 0.5);
+  assert.ok(mid[0] > -0.12 && mid[0] < 2.35);
+  assert.ok(mid[1] < 51.5 && mid[1] > 48.85);
+});
+
+test("geodesicArcPath returns a polyline arc with a tip", () => {
+  const projectLonLat = (lonLat: [number, number]): Point => ({
+    x: (lonLat[0] + 180) * 2,
+    y: (90 - lonLat[1]) * 2,
+  });
+  const shape = geodesicArcPath([-0.12, 51.5], [139.7, 35.7], projectLonLat, 0.2, 4);
+  assert.ok(shape);
+  assert.match(shape!.d, /^M/);
+  assert.ok(shape!.points.length > 4);
+  assert.ok(typeof shape!.tip.x === "number");
 });

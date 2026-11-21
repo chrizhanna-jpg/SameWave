@@ -1,5 +1,5 @@
 import * as ExpoLinking from "expo-linking";
-import { Alert, Linking, Pressable, StyleSheet, View } from "react-native";
+import { Alert, Linking, Platform, Pressable, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 
@@ -40,6 +40,7 @@ export default function AccountScreen() {
     deletePhoto,
     askForPushes,
     shouldAskForPushes,
+    backend,
   } = useAppState();
   const [permission, setPermission] = useState<PushPermission | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -173,9 +174,20 @@ export default function AccountScreen() {
             <Button
               kind="quiet"
               label="Refresh"
-              onPress={() =>
-                void enablePushes({ ask: false }).then(() => pushPermission().then(setPermission))
-              }
+              onPress={() => {
+                void (async () => {
+                  const address = await enablePushes({ ask: false });
+                  if (address) {
+                    await backend
+                      .registerPushToken(
+                        address,
+                        Platform.OS === "ios" ? "ios" : "android",
+                      )
+                      .catch(() => undefined);
+                  }
+                  setPermission(await pushPermission());
+                })();
+              }}
             />
           ) : null}
         </View>

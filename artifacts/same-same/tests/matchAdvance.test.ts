@@ -55,3 +55,24 @@ test("withOptionalTestPhotos stays empty when the build flag is off or toggle is
     assert.deepEqual(withOptionalTestPhotos(live, { useSamplePhotos: true }), live);
   }
 });
+
+test("sample toggle cache publishes to subscribers without remount", async () => {
+  const { writeSamplePhotosToggle, peekSamplePhotosToggle, subscribeSamplePhotosToggle } =
+    await import("../core/testPhotos");
+  if (!process.env.EXPO_PUBLIC_TEST_PHOTOS) {
+    // Unit tests run without the build flag — writing is a no-op for storage,
+    // but publish still happens only when the flag is on. Skip when off.
+    return;
+  }
+  let seen: boolean | null = null;
+  const stop = subscribeSamplePhotosToggle((on) => {
+    seen = on;
+  });
+  await writeSamplePhotosToggle(true);
+  assert.equal(peekSamplePhotosToggle(), true);
+  assert.equal(seen, true);
+  await writeSamplePhotosToggle(false);
+  assert.equal(peekSamplePhotosToggle(), false);
+  assert.equal(seen, false);
+  stop();
+});

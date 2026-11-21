@@ -1,13 +1,24 @@
 import { geoEqualEarth, geoPath } from "d3-geo";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Pressable,
-  ScrollView,
+  Animated,
   StyleSheet,
   View,
-  type GestureResponderEvent,
   type LayoutChangeEvent,
 } from "react-native";
+import {
+  GestureHandlerRootView,
+  PanGestureHandler,
+  PinchGestureHandler,
+  State,
+  TapGestureHandler,
+  type HandlerStateChangeEvent,
+  type PanGestureHandlerEventPayload,
+  type PanGestureHandlerGestureEvent,
+  type PinchGestureHandlerEventPayload,
+  type PinchGestureHandlerGestureEvent,
+  type TapGestureHandlerEventPayload,
+} from "react-native-gesture-handler";
 import Svg, { Circle, G, Path } from "react-native-svg";
 import { feature } from "topojson-client";
 import type { GeometryCollection, Topology } from "topojson-specification";
@@ -39,6 +50,9 @@ const MARKER_TOUCH_REACH = 28;
 /** Invisible mid-path hit target radius (platforms where polyline press is flaky). */
 const MIDPOINT_HIT = 22;
 
+const MIN_SCALE = 1;
+const MAX_SCALE = 4;
+
 interface Props {
   waves: readonly Wave[];
   /** The map opens centred here. */
@@ -52,8 +66,8 @@ interface Props {
 }
 
 /**
- * Keepsake map: muted land, one soft glowing thread per Wave between the
- * two photos' locations, and a tappable marker on the user's photo.
+ * Keepsake map: readable land, one calm geographic arc per Wave, pinch-zoom
+ * and pan via react-native-gesture-handler (no react-native-maps).
  */
 export function WorldMap({
   waves,
@@ -121,77 +135,176 @@ export function WorldMap({
     return { lines, markers };
   }, [map, waves, homeCountry]);
 
-  const startX = useMemo(() => {
-    if (!map || !box) return 0;
-    const home = homeCountry ? map.project(homeCountry) : null;
-    const centre = home ? home.x : map.width / 2;
-    return Math.max(0, Math.min(map.width - box.width, centre - box.width / 2));
-  }, [map, box, homeCountry]);
+  const scale = useRef(new Animated.Value(1)).current;
+  const translateX = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(0)).current;
+  const pinchScale0 = useRef(1);
+  const pan0 = useRef({ x: 0, y: 0 });
+  const live = useRef({ scale: 1, x: 0, y: 0 });
 
-  const [offsetX, setOffsetX] = useState(0);
+  // Centre on home country when the map first lays out.
   useEffect(() => {
-    setOffsetX(startX);
-  }, [startX]);
+    if (!map || !box) return;
+    const home = homeCountry ? map.project(homeCountry) : null;
+    const centreX = home ? home.x : map.width / 2;
+    const centreY = home ? home.y : map.height / 2;
+    const x = Math.min(0, Math.max(box.width - map.width, box.width / 2 - centreX));
+    const y = Math.min(0, Math.max(box.height - map.height, box.height / 2 - centreY));
+    live.current = { scale: 1, x, y };
+    scale.setValue(1);
+    translateX.setValue(x);
+    translateY.setValue(y);
+  }, [map, box, homeCountry, scale, translateX, translateY]);
 
-  const onTouch = (event: GestureResponderEvent) => {
-    const { locationX, locationY } = event.nativeEvent;
-    const point = { x: locationX, y: locationY };
-    // Photo markers win over lines so a tap on the pin opens the photo.
-    const marker = markerAt(geometry.markers, point, MARKER_TOUCH_REACH);
-    if (marker) {
-      onOpenPhoto(marker.waveId, marker.photoId);
-      return;
-    }
-    const line = lineAt(geometry.lines, point, LINE_TOUCH_REACH);
-    if (line) onOpenWave(line.waveId);
-  };
+  const clampPan = useCallback(
+    (s: number, x: number, y: number) => {
+      if (!map || !box) return { x, y };
+      const worldW = map.width * s;
+      const worldH = map.height * s;
+      const minX = Math.min(0, box.width - worldW);
+      const minY = Math.min(0, box.height - worldH);
+      return {
+        x: Math.max(minX, Math.min(0, x)),
+        y: Math.max(minY, Math.min(0, y)),
+      };
+    },
+    [map, box],
+  );
+
+  const onPinchGestureEvent = useCallback(
+    (event: PinchGestureHandlerGestureEvent) => {
+      const next = Math.min(
+        MAX_SCALE,
+        Math.max(MIN_SCALE, pinchScale0.current * event.nativeEvent.scale),
+      );
+      const pan = clampPan(next, live.current.x, live.current.y);
+      live.current = { scale: next, x: pan.x, y: pan.y };
+      scale.setValue(next);
+      translateX.setValue(pan.x);
+      translateY.setValue(pan.y);
+    },
+    [clampPan, scale, translateX, translateY],
+  );
+
+  const onPinchStateChange = useCallback(
+    (event: HandlerStateChangeEvent<PinchGestureHandlerEventPayload>) => {
+      if (event.nativeEvent.state === State.BEGAN || event.nativeEvent.oldState === State.ACTIVE) {
+        if (event.nativeEvent.state === State.BEGAN) {
+          pinchScale0.current = live.current.scale;
+        }
+      }
+      if (event.nativeEvent.state === State.BEGAN) {
+        pinchScale0.current = live.current.scale;
+      }
+    },
+    [],
+  );
+
+  const onPanGestureEvent = useCallback(
+    (event: PanGestureHandlerGestureEvent) => {
+      const next = clampPan(
+        live.current.scale,
+        pan0.current.x + event.nativeEvent.translationX,
+        pan0.current.y + event.nativeEvent.translationY,
+      );
+      live.current = { ...live.current, x: next.x, y: next.y };
+      translateX.setValue(next.x);
+      translateY.setValue(next.y);
+    },
+    [clampPan, translateX, translateY],
+  );
+
+  const onPanStateChange = useCallback(
+    (event: HandlerStateChangeEvent<PanGestureHandlerEventPayload>) => {
+      if (event.nativeEvent.state === State.BEGAN) {
+        pan0.current = { x: live.current.x, y: live.current.y };
+      }
+    },
+    [],
+  );
+
+  const onMapPress = useCallback(
+    (locationX: number, locationY: number) => {
+      // locationX/Y are in the map view's local space (pre-transform), same as SVG coords.
+      const point = { x: locationX, y: locationY };
+      const marker = markerAt(geometry.markers, point, MARKER_TOUCH_REACH);
+      if (marker) {
+        onOpenPhoto(marker.waveId, marker.photoId);
+        return;
+      }
+      const line = lineAt(geometry.lines, point, LINE_TOUCH_REACH);
+      if (line) onOpenWave(line.waveId);
+    },
+    [geometry.lines, geometry.markers, onOpenPhoto, onOpenWave],
+  );
 
   return (
-    <View style={styles.fill} onLayout={onLayout}>
-      {map ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          bounces={false}
-          contentOffset={{ x: offsetX, y: 0 }}
-          contentContainerStyle={styles.content}
-        >
-          <Svg width={map.width} height={map.height}>
-            <Path
-              d={map.landPath}
-              fill={colors.waterSoft}
-              fillOpacity={0.42}
-              stroke={colors.waterMuted}
-              strokeOpacity={0.2}
-              strokeWidth={0.5}
-            />
-            {geometry.lines.map((line) => (
-              <Thread
-                key={line.waveId}
-                line={line}
-                draw={!reduced && drawingIds.includes(line.waveId)}
-                reduced={reduced}
-              />
-            ))}
-            {geometry.markers.map((marker) => (
-              <PhotoMarker key={`${marker.waveId}-mine`} marker={marker} />
-            ))}
-          </Svg>
-          <Pressable
-            style={[styles.touch, { width: map.width, height: map.height }]}
-            onPress={onTouch}
-            accessibilityLabel="Your Waves on a map of the world"
-          />
-        </ScrollView>
+    <GestureHandlerRootView style={styles.fill} onLayout={onLayout}>
+      {map && box ? (
+        <PinchGestureHandler onGestureEvent={onPinchGestureEvent} onHandlerStateChange={onPinchStateChange}>
+          <Animated.View style={styles.fill}>
+            <PanGestureHandler
+              onGestureEvent={onPanGestureEvent}
+              onHandlerStateChange={onPanStateChange}
+              minPointers={1}
+              maxPointers={1}
+              avgTouches
+              minDist={8}
+            >
+              <Animated.View
+                style={[
+                  styles.stage,
+                  {
+                    width: map.width,
+                    height: map.height,
+                    transform: [{ translateX }, { translateY }, { scale }],
+                  },
+                ]}
+              >
+                <TapGestureHandler
+                  onHandlerStateChange={(
+                    event: HandlerStateChangeEvent<TapGestureHandlerEventPayload>,
+                  ) => {
+                    if (event.nativeEvent.state !== State.END) return;
+                    onMapPress(event.nativeEvent.x, event.nativeEvent.y);
+                  }}
+                >
+                  <Animated.View style={{ width: map.width, height: map.height }}>
+                    <Svg width={map.width} height={map.height}>
+                      <Path
+                        d={map.landPath}
+                        fill={colors.waterSoft}
+                        fillOpacity={0.9}
+                        stroke={colors.waterMid}
+                        strokeOpacity={0.55}
+                        strokeWidth={0.75}
+                      />
+                      {geometry.lines.map((line) => (
+                        <Thread
+                          key={line.waveId}
+                          line={line}
+                          draw={!reduced && drawingIds.includes(line.waveId)}
+                          reduced={reduced}
+                        />
+                      ))}
+                      {geometry.markers.map((marker) => (
+                        <PhotoMarker key={`${marker.waveId}-mine`} marker={marker} />
+                      ))}
+                    </Svg>
+                  </Animated.View>
+                </TapGestureHandler>
+              </Animated.View>
+            </PanGestureHandler>
+          </Animated.View>
+        </PinchGestureHandler>
       ) : null}
-    </View>
+    </GestureHandlerRootView>
   );
 }
 
 function PhotoMarker({ marker }: { marker: MapMarker }) {
   return (
     <G>
-      {/* Invisible generous hit disc (drawn under the visible pin). */}
       <Circle
         cx={marker.point.x}
         cy={marker.point.y}
@@ -267,31 +380,15 @@ function Thread({
         fill={colors.waterMid}
         fillOpacity={0.001}
       />
-      <Path
-        d={line.d}
-        fill="none"
-        stroke={colors.white}
-        strokeOpacity={0.55}
-        strokeWidth={6}
-        strokeLinecap="round"
-        {...dashProps}
-      />
-      <Path
-        d={line.d}
-        fill="none"
-        stroke={colors.waterPale}
-        strokeOpacity={0.85}
-        strokeWidth={2.2}
-        strokeLinecap="round"
-        {...dashProps}
-      />
+      {/* Single calm stroke — no triple glow. */}
       <Path
         d={line.d}
         fill="none"
         stroke={colors.waterMid}
-        strokeOpacity={0.7}
-        strokeWidth={1.1}
+        strokeOpacity={0.78}
+        strokeWidth={2}
         strokeLinecap="round"
+        strokeLinejoin="round"
         {...dashProps}
       />
     </G>
@@ -309,7 +406,6 @@ function pathLength(points: Point[]): number {
 }
 
 const styles = StyleSheet.create({
-  fill: { flex: 1, alignSelf: "stretch", backgroundColor: colors.background },
-  content: { alignItems: "center" },
-  touch: { position: "absolute", left: 0 },
+  fill: { flex: 1, alignSelf: "stretch", backgroundColor: colors.background, overflow: "hidden" },
+  stage: {},
 });

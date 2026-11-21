@@ -1,8 +1,9 @@
 import * as Haptics from "expo-haptics";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
   Pressable,
   StyleSheet,
   useWindowDimensions,
@@ -10,6 +11,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { Button } from "@/components/Button";
 import { FrostIconWell } from "@/components/Frost";
 import { Icon } from "@/components/Icon";
 import { RippleMark } from "@/components/RippleMark";
@@ -22,7 +24,9 @@ import { parseMatchStage } from "@/core/matchAdvance";
 import { MATCH } from "@/core/reach";
 import { rankMatchCandidates } from "@/core/matchDeck";
 import {
+  peekSamplePhotosToggle,
   readSamplePhotosToggle,
+  subscribeSamplePhotosToggle,
   testPhotosBuildEnabled,
   withOptionalTestPhotos,
 } from "@/core/testPhotos";
@@ -30,7 +34,7 @@ import type { Candidate } from "@/core/types";
 import { findWaveByPhotos } from "@/core/waves";
 import { playEffect } from "@/device/sound";
 import { useAppState } from "@/state/AppState";
-import { colors, layout, space } from "@/theme";
+import { colors, layout, motion, space } from "@/theme";
 
 /** Exact empty copy Chris asked for — do not paraphrase. */
 const EMPTY_COPY =
@@ -63,12 +67,46 @@ export default function MatchScreen() {
     recordMatchSeen,
     finishMatchLook,
   } = useAppState();
-  const [useSamples, setUseSamples] = useState(false);
+  // null = still reading toggle; never fetch until known (avoids empty-deck race).
+  const [useSamples, setUseSamples] = useState<boolean | null>(() => {
+    if (!testPhotosBuildEnabled()) return false;
+    return peekSamplePhotosToggle();
+  });
+  const [samplesReady, setSamplesReady] = useState(
+    () => !testPhotosBuildEnabled() || peekSamplePhotosToggle() !== null,
+  );
 
   useEffect(() => {
-    if (!testPhotosBuildEnabled()) return;
-    void readSamplePhotosToggle().then(setUseSamples);
+    if (!testPhotosBuildEnabled()) {
+      setUseSamples(false);
+      setSamplesReady(true);
+      return;
+    }
+    let cancelled = false;
+    void readSamplePhotosToggle().then((on) => {
+      if (cancelled) return;
+      setUseSamples(on);
+      setSamplesReady(true);
+    });
+    const stop = subscribeSamplePhotosToggle((on) => {
+      setUseSamples(on);
+      setSamplesReady(true);
+    });
+    return () => {
+      cancelled = true;
+      stop();
+    };
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!testPhotosBuildEnabled()) return;
+      void readSamplePhotosToggle().then((on) => {
+        setUseSamples(on);
+        setSamplesReady(true);
+      });
+    }, []),
+  );
 
   const ripple = ripples.find((r) => r.photoId === photoId) ?? ripples[0] ?? null;
   const myPhotoId = ripple?.photoId ?? photoId;
@@ -80,6 +118,17 @@ export default function MatchScreen() {
   const [problem, setProblem] = useState<string | null>(null);
   const seenRef = useRef<string[]>([]);
   const finishedRef = useRef(false);
+  const loadGen = useRef(0);
+  const bottomPulse = useRef(new Animated.Value(1)).current;
+
+  const pulseBottom = useCallback(() => {
+    bottomPulse.setValue(0.92);
+    Animated.timing(bottomPulse, {
+      toValue: 1,
+      duration: motion.fadeQuick,
+      useNativeDriver: true,
+    }).start();
+  }, [bottomPulse]);
 
   const ownIds = ripples.map((r) => r.photoId);
   const excludeBase = [
@@ -89,13 +138,16 @@ export default function MatchScreen() {
   ];
 
   const loadDeck = useCallback(async () => {
+    if (!samplesReady || useSamples === null) return;
     if (!myPhotoId || !ripple) {
       setLoad("empty");
       setDeck([]);
       return;
     }
+    const gen = ++loadGen.current;
     setLoad("loading");
     setProblem(null);
+    const samplesOn = useSamples;
     try {
       const emotion = ripple.emotion ?? ripple.vibe ?? null;
       const topic = ripple.topic ?? ripple.theme ?? null;
@@ -117,17 +169,19 @@ export default function MatchScreen() {
         if (pageRows.length < MATCH.pageSize) break;
         looked.push(...pageRows.map((c) => c.id));
       }
+      if (gen !== loadGen.current) return;
       const withSamples = withOptionalTestPhotos(ranked, {
-        useSamplePhotos: useSamples,
+        useSamplePhotos: samplesOn,
         excludeIds: [...excludeBase, ...seenRef.current],
       });
       setDeck(withSamples);
       setIndex(0);
       setLoad(withSamples.length === 0 ? "empty" : "ready");
     } catch (error) {
+      if (gen !== loadGen.current) return;
       // Even when the API fails, sample fixtures can still fill the deck.
       const samplesOnly = withOptionalTestPhotos([], {
-        useSamplePhotos: useSamples,
+        useSamplePhotos: samplesOn,
         excludeIds: [...excludeBase, ...seenRef.current],
       });
       if (samplesOnly.length > 0) {
@@ -143,13 +197,11 @@ export default function MatchScreen() {
           : "Couldn't load photos to match. Please try again.",
       );
     }
-  }, [backend, excludeBase, myPhotoId, ownIds, ripple, useSamples]);
+  }, [backend, excludeBase, myPhotoId, ownIds, ripple, samplesReady, useSamples]);
 
   useEffect(() => {
     void loadDeck();
-    // Reload when Ripple id or sample-photos toggle changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myPhotoId, useSamples]);
+  }, [loadDeck]);
 
   // If the screen unmounts (close, Wave ceremony, or app background kill path),
   // count the first look so background reach can continue later.
@@ -175,14 +227,17 @@ export default function MatchScreen() {
     (fromId: string) => {
       seenRef.current = [...new Set([...seenRef.current, fromId])];
       recordMatchSeen(myPhotoId, [fromId]);
+      pulseBottom();
       const next = index + 1;
       if (next < deck.length) {
         setIndex(next);
         return;
       }
-      // End of this page — ask the server for more, excluding what we saw.
+      // End of this page — ask the server for more (and keep sample fixtures).
       void (async () => {
         setBusy(true);
+        const gen = ++loadGen.current;
+        const samplesOn = useSamples === true;
         try {
           const emotion = ripple?.emotion ?? ripple?.vibe ?? null;
           const topic = ripple?.topic ?? ripple?.theme ?? null;
@@ -194,10 +249,15 @@ export default function MatchScreen() {
             limit: MATCH.pageSize,
             excludeIds: [...excludeBase, ...seenRef.current].slice(-200),
           });
-          const more = rankMatchCandidates(pageRows, { emotion, topic }, {
+          const ranked = rankMatchCandidates(pageRows, { emotion, topic }, {
             excludeIds: [...excludeBase, ...seenRef.current],
             ownPhotoIds: ownIds,
           });
+          const more = withOptionalTestPhotos(ranked, {
+            useSamplePhotos: samplesOn,
+            excludeIds: [...excludeBase, ...seenRef.current],
+          });
+          if (gen !== loadGen.current) return;
           if (more.length === 0) {
             setDeck([]);
             setIndex(0);
@@ -208,15 +268,37 @@ export default function MatchScreen() {
             setLoad("ready");
           }
         } catch {
-          setDeck([]);
-          setIndex(0);
-          setLoad("empty");
+          if (gen !== loadGen.current) return;
+          const samplesOnly = withOptionalTestPhotos([], {
+            useSamplePhotos: samplesOn,
+            excludeIds: [...excludeBase, ...seenRef.current],
+          });
+          if (samplesOnly.length > 0) {
+            setDeck(samplesOnly);
+            setIndex(0);
+            setLoad("ready");
+          } else {
+            setDeck([]);
+            setIndex(0);
+            setLoad("empty");
+          }
         } finally {
           setBusy(false);
         }
       })();
     },
-    [backend, deck.length, excludeBase, index, myPhotoId, ownIds, recordMatchSeen, ripple],
+    [
+      backend,
+      deck.length,
+      excludeBase,
+      index,
+      myPhotoId,
+      ownIds,
+      pulseBottom,
+      recordMatchSeen,
+      ripple,
+      useSamples,
+    ],
   );
 
   const isSample = (id: string) => id.startsWith("test_sample_");
@@ -292,7 +374,24 @@ export default function MatchScreen() {
 
   const candidate = load === "ready" ? deck[index] ?? null : null;
   const empty = load === "empty" || (load === "ready" && !candidate);
-  const showActions = true; // X + wave always visible, even when empty.
+  // Hide match/skip when there's nothing to act on — dead buttons confuse people.
+  const showActions = load === "ready" && !empty;
+  const sampleCaption =
+    candidate && candidate.id.startsWith("test_sample_")
+      ? [
+          candidate.countryCode ? `Sample · ${candidate.countryCode}` : "Sample",
+          candidate.takenAt
+            ? new Date(candidate.takenAt).toLocaleString(undefined, {
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      : null;
 
   if (!ripple && load !== "loading") {
     return (
@@ -342,7 +441,7 @@ export default function MatchScreen() {
           style={[
             styles.emptyWrap,
             {
-              // Lower half only: seam mid → above the X / wave action row.
+              // Lower half only: seam mid → above the action / Done row.
               top: height / 2,
               bottom:
                 ACTION_SIZE + Math.max(insets.bottom, space.md) + space.sm + space.md,
@@ -358,10 +457,33 @@ export default function MatchScreen() {
                 {problem}
               </Txt>
             ) : (
-              <Txt center style={styles.emptyText}>
-                {EMPTY_COPY}
-              </Txt>
+              <>
+                <Txt center style={styles.emptyText}>
+                  {EMPTY_COPY}
+                </Txt>
+                {empty ? (
+                  <Button
+                    kind="soft"
+                    label="Back home"
+                    onPress={() => void close()}
+                    style={styles.emptyDone}
+                  />
+                ) : null}
+              </>
             )}
+          </Scrim>
+        </View>
+      ) : null}
+
+      {sampleCaption && showActions ? (
+        <View
+          style={[styles.sampleCaption, { bottom: Math.max(insets.bottom, space.md) + ACTION_SIZE + space.lg }]}
+          pointerEvents="none"
+        >
+          <Scrim kind="light">
+            <Txt variant="quiet" center>
+              {sampleCaption}
+            </Txt>
           </Scrim>
         </View>
       ) : null}
@@ -393,21 +515,23 @@ export default function MatchScreen() {
       </View>
 
       {showActions ? (
-        <View
-          style={[styles.actions, { paddingBottom: Math.max(insets.bottom, space.md) + space.sm }]}
+        <Animated.View
+          style={[
+            styles.actions,
+            {
+              paddingBottom: Math.max(insets.bottom, space.md) + space.sm,
+              transform: [{ scale: bottomPulse }],
+            },
+          ]}
           pointerEvents="box-none"
         >
           <Pressable
             onPress={() => void onPass()}
-            disabled={busy || empty || load !== "ready"}
+            disabled={busy}
             accessibilityRole="button"
             accessibilityLabel="Pass"
-            accessibilityState={{ disabled: busy || empty || load !== "ready" }}
-            style={({ pressed }) => [
-              styles.actionHit,
-              (busy || empty || load !== "ready") && styles.actionDim,
-              pressed && !empty && load === "ready" && styles.actionPressed,
-            ]}
+            accessibilityState={{ disabled: busy }}
+            style={({ pressed }) => [styles.actionHit, pressed && styles.actionPressed]}
           >
             <FrostIconWell style={styles.actionWell}>
               <Icon name="close" size={28} color={colors.textPrimary} />
@@ -416,16 +540,12 @@ export default function MatchScreen() {
 
           <Pressable
             onPress={() => void onMatch()}
-            disabled={busy || empty || load !== "ready"}
+            disabled={busy}
             accessibilityRole="button"
             accessibilityLabel={stage === "wave" ? "Wave" : "Ripple"}
             accessibilityHint="Offers a match on this photo. Any tap advances the bottom photo."
-            accessibilityState={{ disabled: busy || empty || load !== "ready" }}
-            style={({ pressed }) => [
-              styles.actionHit,
-              (busy || empty || load !== "ready") && styles.actionDim,
-              pressed && !empty && load === "ready" && styles.actionPressed,
-            ]}
+            accessibilityState={{ disabled: busy }}
+            style={({ pressed }) => [styles.actionHit, pressed && styles.actionPressed]}
           >
             {/* Frosted well so stage glyphs stay legible on the photo. */}
             <FrostIconWell style={styles.actionWell}>
@@ -436,7 +556,7 @@ export default function MatchScreen() {
               )}
             </FrostIconWell>
           </Pressable>
-        </View>
+        </Animated.View>
       ) : null}
     </View>
   );
@@ -490,8 +610,15 @@ const styles = StyleSheet.create({
     height: ACTION_SIZE,
     borderRadius: ACTION_SIZE / 2,
   },
-  actionDim: { opacity: 0.45 },
-  actionPressed: { opacity: 0.85 },
+  actionPressed: { opacity: 0.85, transform: [{ scale: 0.94 }] },
+  emptyDone: { marginTop: space.lg, alignSelf: "stretch" },
+  sampleCaption: {
+    position: "absolute",
+    left: space.lg,
+    right: space.lg,
+    zIndex: 3,
+    alignItems: "center",
+  },
   missing: { marginHorizontal: space.lg, marginTop: space.xxl },
   missingBtn: { alignSelf: "center", marginTop: space.lg, padding: space.md },
 });
