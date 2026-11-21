@@ -83,15 +83,24 @@ export function Button({
         <ActivityIndicator color={colors.textPrimary} />
       ) : detail ? (
         <View style={styles.row}>
+          {/*
+            Main (waterMid) uses the same primary foreground for label + detail
+            so topic text stays readable on the blue fill. Soft keeps secondary detail.
+          */}
           <Txt variant="button" tone="primary" numberOfLines={1}>
             {label}
           </Txt>
-          <Txt variant="button" tone="secondary" style={styles.sep} numberOfLines={1}>
+          <Txt
+            variant="button"
+            tone={main ? "primary" : "secondary"}
+            style={styles.sep}
+            numberOfLines={1}
+          >
             {" · "}
           </Txt>
           <Txt
             variant="quiet"
-            tone="secondary"
+            tone={main ? "primary" : "secondary"}
             numberOfLines={1}
             ellipsizeMode="tail"
             style={styles.detail}

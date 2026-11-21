@@ -141,7 +141,6 @@ export default function RippleScreen() {
               style={styles.actionGap}
             />
             <Button
-              kind="soft"
               label="Today's topic"
               detail={today.label}
               onPress={() => void beginCompose(today.id, true)}
