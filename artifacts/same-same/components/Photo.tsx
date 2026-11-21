@@ -74,5 +74,5 @@ export function Photo({ uri, ownPhotoId, blurRadius, style, accessibilityLabel }
 }
 
 const styles = StyleSheet.create({
-  box: { overflow: "hidden", backgroundColor: colors.pondLift },
+  box: { overflow: "hidden", backgroundColor: colors.surface },
 });

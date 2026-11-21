@@ -2,6 +2,7 @@ import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 
+import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/Button";
 import { RippleRings } from "@/components/RippleRings";
 import { Screen } from "@/components/Screen";
@@ -24,12 +25,10 @@ export default function RippleScreen() {
   const arrived = newWaves[0] ?? null;
   const waiting = !arrived && travelling !== null && !sendingAnother;
 
-  // A new Ripple replaces the choice to send another.
   useEffect(() => {
     setSendingAnother(false);
   }, [travelling?.photoId]);
 
-  // Notifications are offered once, after the first Ripple has gone.
   useEffect(() => {
     if (!waiting || !shouldAskForPushes) return;
     const timer = setTimeout(() => void askForPushes(), 1500);
@@ -50,7 +49,6 @@ export default function RippleScreen() {
 
   const takePhoto = () => {
     setProblem(null);
-    // Browsers have no camera screen here; they go straight to choosing a photo.
     if (Platform.OS === "web") void pickFromLibrary();
     else router.push("/capture");
   };
@@ -60,7 +58,7 @@ export default function RippleScreen() {
       <View style={styles.centre}>
         {arrived ? (
           <>
-            <RippleRings size={240} />
+            <RippleRings size={220} />
             <Txt variant="title" center style={styles.title}>
               Your moment found a match
             </Txt>
@@ -74,9 +72,12 @@ export default function RippleScreen() {
           <>
             <RippleRings size={240} />
             <Txt variant="title" center style={styles.title}>
-              Your Ripple is travelling
+              Your Ripple is out there
             </Txt>
-            <Txt tone="haze" center style={styles.line}>
+            <Txt tone="secondary" center style={styles.line}>
+              We'll tell you when someone shares your moment.
+            </Txt>
+            <Txt variant="quiet" tone="quiet" center style={styles.line}>
               Waves usually arrive within a few days.
             </Txt>
             <Button
@@ -88,13 +89,11 @@ export default function RippleScreen() {
           </>
         ) : (
           <>
-            <Txt variant="title" center>
-              Send a Ripple
-            </Txt>
-            <Txt tone="haze" center style={styles.line}>
+            <BrandMark size={96} withName />
+            <Txt tone="secondary" center style={styles.line}>
               {travelling ? "Your last Ripple is still travelling." : "One photo of your day."}
             </Txt>
-            <Button label="Take a photo" onPress={takePhoto} style={styles.main} />
+            <Button label="Send a Ripple" onPress={takePhoto} style={styles.main} />
             {Platform.OS !== "web" ? (
               <Button
                 kind="quiet"
@@ -111,7 +110,7 @@ export default function RippleScreen() {
           </Txt>
         ) : null}
         {sync === "offline" ? (
-          <Txt variant="quiet" tone="haze" center style={styles.line}>
+          <Txt variant="quiet" tone="secondary" center style={styles.line}>
             Can't reach SameWave right now. It will keep trying.
           </Txt>
         ) : null}
@@ -129,8 +128,8 @@ const styles = StyleSheet.create({
   screen: { justifyContent: "space-between" },
   centre: { flex: 1, alignItems: "center", justifyContent: "center" },
   title: { marginTop: space.lg },
-  line: { marginTop: space.md },
-  main: { marginTop: space.xl },
+  line: { marginTop: space.md, maxWidth: 300 },
+  main: { marginTop: space.xl, alignSelf: "stretch" },
   quiet: { marginTop: space.md },
   foot: { flexDirection: "row", justifyContent: "center", gap: space.lg },
 });

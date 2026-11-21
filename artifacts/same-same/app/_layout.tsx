@@ -85,7 +85,7 @@ function Routes() {
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: colors.pond },
+          contentStyle: { backgroundColor: colors.background },
           animation: "fade",
           animationDuration: motion.fadeQuick,
         }}
@@ -122,7 +122,7 @@ export default function RootLayout() {
   const ready = fontsLoaded || fontError !== null || fontWaitOver;
 
   useEffect(() => {
-    void SystemUI.setBackgroundColorAsync(colors.pond).catch(() => undefined);
+    void SystemUI.setBackgroundColorAsync(colors.background).catch(() => undefined);
     prepareEffects();
     // If the fonts are slow the app opens in the system font instead of waiting.
     const fontTimer = setTimeout(() => setFontWaitOver(true), FONT_WAIT_MS);
@@ -139,11 +139,11 @@ export default function RootLayout() {
     if (ready) SplashScreen.hideAsync().catch(() => undefined);
   }, [ready]);
 
-  if (!ready) return <View style={{ flex: 1, backgroundColor: colors.pond }} />;
+  if (!ready) return <View style={{ flex: 1, backgroundColor: colors.background }} />;
 
   return (
-    <SafeAreaProvider style={{ backgroundColor: colors.pond }}>
-      <StatusBar style="light" />
+    <SafeAreaProvider style={{ backgroundColor: colors.background }}>
+      <StatusBar style="dark" />
       <ErrorBoundary>
         <SessionProvider>
           <AppStateProvider>

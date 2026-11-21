@@ -11,12 +11,12 @@ interface Props {
   scroll?: boolean;
   /** Centres the content vertically. */
   center?: boolean;
-  /** Draws edge to edge, for the camera and the map. */
+  /** Draws edge to edge, for the camera, the map and the Wave reveal. */
   bare?: boolean;
   style?: ViewStyle;
 }
 
-/** The pond: every screen sits on the same water, edge to edge. */
+/** Calm mist canvas. Every quiet screen sits on the same light water. */
 export function Screen({ children, scroll, center, bare, style }: Props) {
   const insets = useSafeAreaInsets();
   const padding: ViewStyle = bare
@@ -35,7 +35,8 @@ export function Screen({ children, scroll, center, bare, style }: Props) {
   return (
     <View style={styles.root}>
       <LinearGradient
-        colors={[colors.pond, colors.pondDeep]}
+        colors={[colors.background, colors.waterPale]}
+        locations={[0.55, 1]}
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
@@ -58,7 +59,7 @@ export function Screen({ children, scroll, center, bare, style }: Props) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.pond },
+  root: { flex: 1, backgroundColor: colors.background },
   fill: { flex: 1 },
   center: { justifyContent: "center", alignItems: "center" },
   centerScroll: { flexGrow: 1, justifyContent: "center", alignItems: "center" },

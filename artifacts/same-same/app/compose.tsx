@@ -95,7 +95,7 @@ export default function ComposeScreen() {
         <Photo uri={photo.uri} style={styles.photo} accessibilityLabel="Today's photo" />
       </View>
 
-      <Txt tone="haze" style={styles.section}>
+      <Txt tone="secondary" style={styles.section}>
         A feeling (optional)
       </Txt>
       <View style={styles.vibes}>
@@ -119,7 +119,7 @@ export default function ComposeScreen() {
         })}
       </View>
 
-      <Txt tone="haze" style={styles.section}>
+      <Txt tone="secondary" style={styles.section}>
         A sound (optional)
       </Txt>
       <SoundRecorder value={recording} onChange={setRecording} />
@@ -152,7 +152,7 @@ export default function ComposeScreen() {
           {problem}
         </Txt>
       ) : (
-        <Txt variant="quiet" tone="haze" center style={styles.problem}>
+        <Txt variant="quiet" tone="secondary" center style={styles.problem}>
           Matching is on the photo only. The feeling and sound travel with it.
         </Txt>
       )}
@@ -168,7 +168,7 @@ const styles = StyleSheet.create({
     aspectRatio: 3 / 4,
     borderRadius: radius.lg,
     overflow: "hidden",
-    backgroundColor: colors.pondLift,
+    backgroundColor: colors.surface,
   },
   photo: { width: "100%", height: "100%" },
   section: { marginTop: space.xl, marginBottom: space.sm },
@@ -177,9 +177,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
     borderRadius: radius.pill,
-    backgroundColor: colors.pondLift,
+    backgroundColor: colors.surface,
   },
-  chipOn: { backgroundColor: colors.pondEdge },
+  chipOn: { backgroundColor: colors.line },
   send: { marginTop: space.xl, position: "relative", overflow: "visible" },
   rings: { position: "absolute", width: 280, height: 280 },
   problem: { marginTop: space.md, marginBottom: space.lg },

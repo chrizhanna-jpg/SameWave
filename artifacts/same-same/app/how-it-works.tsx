@@ -32,13 +32,13 @@ export default function HowItWorksScreen() {
       <Txt variant="title">How it works</Txt>
       {STEPS.map((step, index) => (
         <View key={step.title} style={styles.step}>
-          <Txt variant="quiet" tone="haze">
+          <Txt variant="quiet" tone="secondary">
             {String(index + 1).padStart(2, "0")}
           </Txt>
           <Txt variant="heading" style={styles.heading}>
             {step.title}
           </Txt>
-          <Txt tone="haze">{step.body}</Txt>
+          <Txt tone="secondary">{step.body}</Txt>
         </View>
       ))}
       <Button kind="soft" label="Got it" onPress={() => router.back()} style={styles.done} />

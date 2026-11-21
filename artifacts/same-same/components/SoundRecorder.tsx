@@ -111,7 +111,7 @@ export function SoundRecorder({ value, onChange }: Props) {
       >
         <Icon name="stop" size={20} color={colors.ember} />
         <Txt style={styles.label}>{`Recording… ${Math.max(0, secondsLeft)}`}</Txt>
-        <Txt variant="quiet" tone="haze">
+        <Txt variant="quiet" tone="secondary">
           Tap to stop
         </Txt>
       </Pressable>
@@ -160,7 +160,7 @@ export function SoundRecorder({ value, onChange }: Props) {
       >
         <Icon name="mic" size={20} />
         <Txt style={styles.label}>Record a sound</Txt>
-        <Txt variant="quiet" tone="haze">
+        <Txt variant="quiet" tone="secondary">
           {`Up to ${MAX_SECONDS} seconds`}
         </Txt>
       </Pressable>
@@ -181,7 +181,7 @@ const styles = StyleSheet.create({
     height: 52,
     paddingHorizontal: space.md,
     borderRadius: radius.md,
-    backgroundColor: colors.pondLift,
+    backgroundColor: colors.surface,
   },
   label: { flex: 1 },
   remove: { paddingVertical: 0, paddingHorizontal: 0 },

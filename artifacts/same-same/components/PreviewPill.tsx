@@ -16,7 +16,7 @@ export function PreviewPill() {
   return (
     <View style={[styles.wrap, { top: insets.top + space.xs }]} pointerEvents="none">
       <View style={styles.pill}>
-        <Txt variant="label" tone="moonInk" numberOfLines={1}>
+        <Txt variant="label" tone="primary" numberOfLines={1}>
           {`Preview: ${PREVIEW_LABEL} · sample data`}
         </Txt>
       </View>
@@ -27,10 +27,12 @@ export function PreviewPill() {
 const styles = StyleSheet.create({
   wrap: { position: "absolute", left: 0, right: 0, alignItems: "center", zIndex: 10 },
   pill: {
-    backgroundColor: colors.moon,
+    backgroundColor: colors.waterPale,
     borderRadius: radius.pill,
     paddingHorizontal: space.md,
     paddingVertical: space.xs,
     maxWidth: "92%",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.line,
   },
 });

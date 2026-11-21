@@ -71,14 +71,14 @@ export default function AccountScreen() {
         style={styles.row}
       >
         <View style={styles.fill}>
-          <Txt variant="quiet" tone="haze">
+          <Txt variant="quiet" tone="secondary">
             Country
           </Txt>
           <Txt>
             {flagFor(countryCode)} {nameFor(countryCode) ?? "Choose"}
           </Txt>
         </View>
-        <Txt tone="haze">Change</Txt>
+        <Txt tone="secondary">Change</Txt>
       </Pressable>
 
       <Pressable
@@ -91,7 +91,7 @@ export default function AccountScreen() {
 
       <View style={styles.row}>
         <View style={styles.fill}>
-          <Txt variant="quiet" tone="haze">
+          <Txt variant="quiet" tone="secondary">
             Notifications
           </Txt>
           <Txt>{notificationsLabel()}</Txt>
@@ -121,7 +121,7 @@ export default function AccountScreen() {
         Your Ripples
       </Txt>
       {history.length === 0 ? (
-        <Txt tone="haze" style={styles.empty}>
+        <Txt tone="secondary" style={styles.empty}>
           Photos you send will live here.
         </Txt>
       ) : (
@@ -140,7 +140,7 @@ export default function AccountScreen() {
               />
               {busyId === photo.photoId ? (
                 <View style={styles.tileBusy}>
-                  <Txt variant="quiet" tone="mist">
+                  <Txt variant="quiet" tone="primary">
                     …
                   </Txt>
                 </View>
@@ -150,7 +150,7 @@ export default function AccountScreen() {
         </View>
       )}
       {history.length > 0 ? (
-        <Txt variant="quiet" tone="haze" style={styles.hint}>
+        <Txt variant="quiet" tone="secondary" style={styles.hint}>
           Long press a photo to delete it.
         </Txt>
       ) : null}
@@ -173,16 +173,16 @@ export default function AccountScreen() {
         />
       </View>
 
-      <Txt variant="quiet" tone="haze" center style={styles.credit}>
+      <Txt variant="quiet" tone="secondary" center style={styles.credit}>
         {MUSIC_CREDIT}
       </Txt>
-      <Txt variant="quiet" tone="haze" center>
+      <Txt variant="quiet" tone="secondary" center>
         {appVersionLabel()}
       </Txt>
 
       {sample && sampleTools ? (
         <View style={styles.sample}>
-          <Txt variant="quiet" tone="haze" center>
+          <Txt variant="quiet" tone="secondary" center>
             Sample tools
           </Txt>
           <Button kind="soft" label="Arrive Wave now" onPress={() => void sampleTools.arriveNow()} style={styles.sampleBtn} />
@@ -209,7 +209,7 @@ const styles = StyleSheet.create({
     marginTop: space.lg,
     paddingVertical: space.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.pondEdge,
+    borderBottomColor: colors.line,
   },
   section: { marginTop: space.xxl },
   empty: { marginTop: space.md },
@@ -224,7 +224,7 @@ const styles = StyleSheet.create({
     aspectRatio: 1,
     borderRadius: radius.sm,
     overflow: "hidden",
-    backgroundColor: colors.pondLift,
+    backgroundColor: colors.surface,
   },
   tilePhoto: { width: "100%", height: "100%" },
   tileBusy: {

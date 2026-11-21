@@ -14,12 +14,12 @@ interface Props {
   label: string;
   onPress: (event: GestureResponderEvent) => void;
   /**
-   * main: the one gold button a screen may have.
-   * soft: a second, calmer choice.
+   * main: pale water fill — the one clear action a screen may have.
+   * soft: a second, calmer choice on surface.
    * quiet: a line of text.
    */
   kind?: "main" | "soft" | "quiet";
-  tone?: "haze" | "mist" | "ember";
+  tone?: "secondary" | "primary" | "ember" | "haze" | "mist" | "white";
   disabled?: boolean;
   busy?: boolean;
   style?: ViewStyle;
@@ -48,7 +48,7 @@ export function Button({
         accessibilityHint={accessibilityHint}
         style={({ pressed }) => [styles.quiet, (pressed || inactive) && styles.dim, style]}
       >
-        <Txt variant="quiet" tone={tone ?? "haze"} center>
+        <Txt variant="quiet" tone={tone ?? "secondary"} center>
           {label}
         </Txt>
       </Pressable>
@@ -72,9 +72,9 @@ export function Button({
       ]}
     >
       {busy ? (
-        <ActivityIndicator color={main ? colors.moonInk : colors.mist} />
+        <ActivityIndicator color={colors.textPrimary} />
       ) : (
-        <Txt variant="button" tone={main ? "moonInk" : "mist"}>
+        <Txt variant="button" tone="primary">
           {label}
         </Txt>
       )}
@@ -84,20 +84,20 @@ export function Button({
 
 const styles = StyleSheet.create({
   base: {
-    height: layout.buttonHeight,
+    minHeight: layout.buttonHeight,
     borderRadius: radius.pill,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: space.xl,
+    paddingHorizontal: space.lg,
     alignSelf: "stretch",
   },
-  main: { backgroundColor: colors.moon },
+  main: { backgroundColor: colors.waterPale },
   soft: {
-    backgroundColor: colors.pondLift,
+    backgroundColor: colors.surface,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.pondEdge,
+    borderColor: colors.line,
   },
   quiet: { paddingVertical: space.sm, paddingHorizontal: space.md, alignSelf: "center" },
-  pressed: { opacity: 0.85, transform: [{ scale: 0.985 }] },
+  pressed: { opacity: 0.85 },
   dim: { opacity: 0.5 },
 });

@@ -31,7 +31,7 @@ export function TabBar({ state, descriptors, navigateToTab }: TabBarProps) {
               if (!focused) navigateToTab(route.key);
             }}
           >
-            <Txt variant="button" tone={focused ? "mist" : "haze"} style={!focused && styles.rest}>
+            <Txt variant="button" tone={focused ? "primary" : "secondary"} style={!focused && styles.rest}>
               {title}
             </Txt>
             <View style={[styles.mark, focused && styles.markOn]} />
@@ -48,10 +48,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: space.xxl,
     paddingTop: space.md,
-    backgroundColor: colors.pondDeep,
+    backgroundColor: colors.background,
   },
   item: { alignItems: "center", paddingHorizontal: space.md, paddingVertical: space.xs },
   rest: { opacity: 0.8 },
   mark: { marginTop: space.sm, width: 4, height: 4, borderRadius: 2, backgroundColor: "transparent" },
-  markOn: { backgroundColor: colors.water },
+  markOn: { backgroundColor: colors.waterMid },
 });

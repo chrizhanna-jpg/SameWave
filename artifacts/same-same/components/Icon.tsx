@@ -21,7 +21,7 @@ interface Props {
 }
 
 /** The few line icons the app needs, drawn here so no icon font has to load. */
-export function Icon({ name, size = 24, color = colors.mist }: Props) {
+export function Icon({ name, size = 24, color = colors.textPrimary }: Props) {
   const stroke = {
     stroke: color,
     strokeWidth: 1.6,

@@ -9,13 +9,13 @@
       "same-same",
       "echo.samewaveripple.app"
     ],
-    "userInterfaceStyle": "dark",
-    "backgroundColor": "#0B1F33",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#F7F8F7",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0B1F33"
+      "backgroundColor": "#F7F8F7"
     },
     "ios": {
       "supportsTablet": false,
@@ -33,7 +33,7 @@
       "versionCode": 51,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
-        "backgroundColor": "#0B1F33"
+        "backgroundColor": "#F7F8F7"
       },
       "permissions": [
         "android.permission.CAMERA",
@@ -99,7 +99,7 @@
       [
         "expo-notifications",
         {
-          "color": "#0B1F33"
+          "color": "#D7E7EE"
         }
       ]
     ],

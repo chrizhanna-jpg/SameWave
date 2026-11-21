@@ -6,15 +6,18 @@ import {
   PanResponder,
   Pressable,
   StyleSheet,
+  useWindowDimensions,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Button } from "@/components/Button";
 import { Header } from "@/components/Header";
 import { Icon } from "@/components/Icon";
 import { Photo } from "@/components/Photo";
-import { Screen } from "@/components/Screen";
+import { Scrim } from "@/components/Scrim";
 import { Txt } from "@/components/Txt";
+import { WaveJoin } from "@/components/WaveJoin";
 import type { WaveDetail } from "@/backend/types";
 import { describeGap, matchBonuses } from "@/core/bonuses";
 import { clipUrlFor, vibeFor } from "@/core/vibes";
@@ -27,31 +30,37 @@ import { colors, motion, radius, space } from "@/theme";
 type Phase = "build" | "splash" | "reveal" | "done";
 
 /**
- * The Wave ceremony: two photos drift together over still water, the word
- * "Wave" appears with a chime, then the photos sharpen and a quiet headline
- * settles in. Details wait behind a tap or a swipe up.
+ * The Wave ceremony, photography first.
+ *
+ * The two photographs fill the whole screen, stacked edge to edge, with a
+ * soft wave-shaped join between them. Labels and controls sit on small local
+ * scrims and hide after a moment; a swipe up lifts the story beneath.
  */
 export default function WaveScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const { waves, markWaveSeen, reportWave, backend } = useAppState();
   const wave = waves.find((w) => w.id === id) ?? null;
   const reduced = useReducedMotion();
 
   const [phase, setPhase] = useState<Phase>("build");
   const [details, setDetails] = useState(false);
+  const [chrome, setChrome] = useState(true);
   const [detail, setDetail] = useState<WaveDetail | null>(null);
   const [playing, setPlaying] = useState<"mine" | "theirs" | null>(null);
   const [reporting, setReporting] = useState(false);
   const [reportDone, setReportDone] = useState(false);
 
   const fade = useRef(new Animated.Value(0)).current;
-  const drift = useRef(new Animated.Value(0)).current;
   const splash = useRef(new Animated.Value(0)).current;
   const sharpen = useRef(new Animated.Value(0)).current;
   const headline = useRef(new Animated.Value(0)).current;
+  const chromeOpacity = useRef(new Animated.Value(1)).current;
   const panel = useRef(new Animated.Value(0)).current;
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const chromeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const seen = useRef(false);
 
   const bonuses = useMemo(
@@ -65,15 +74,34 @@ export default function WaveScreen() {
     [wave],
   );
 
+  const showChrome = () => {
+    setChrome(true);
+    Animated.timing(chromeOpacity, {
+      toValue: 1,
+      duration: motion.quick,
+      useNativeDriver: NATIVE_DRIVER,
+    }).start();
+    if (chromeTimer.current) clearTimeout(chromeTimer.current);
+    chromeTimer.current = setTimeout(() => {
+      Animated.timing(chromeOpacity, {
+        toValue: 0,
+        duration: motion.slow,
+        useNativeDriver: NATIVE_DRIVER,
+      }).start(({ finished }) => {
+        if (finished) setChrome(false);
+      });
+    }, motion.chromeHide);
+  };
+
   const finish = () => {
     timers.current.forEach(clearTimeout);
     timers.current = [];
     fade.setValue(1);
-    drift.setValue(1);
-    splash.setValue(1);
+    splash.setValue(0);
     sharpen.setValue(1);
     headline.setValue(1);
     setPhase("done");
+    showChrome();
   };
 
   useEffect(() => {
@@ -110,13 +138,6 @@ export default function WaveScreen() {
       return;
     }
 
-    Animated.timing(drift, {
-      toValue: 1,
-      duration: motion.waveBuildUp,
-      easing: Easing.inOut(Easing.quad),
-      useNativeDriver: NATIVE_DRIVER,
-    }).start();
-
     const splashAt = setTimeout(() => {
       setPhase("splash");
       void playEffect("chime");
@@ -135,7 +156,7 @@ export default function WaveScreen() {
           useNativeDriver: NATIVE_DRIVER,
         }),
       ]).start();
-    }, motion.waveBuildUp);
+    }, Math.min(motion.waveBuildUp, 1600));
 
     const revealAt = setTimeout(() => {
       setPhase("reveal");
@@ -145,7 +166,7 @@ export default function WaveScreen() {
         easing: Easing.out(Easing.quad),
         useNativeDriver: NATIVE_DRIVER,
       }).start();
-    }, motion.waveBuildUp + motion.waveSplash);
+    }, Math.min(motion.waveBuildUp, 1600) + motion.waveSplash);
 
     const headlineAt = setTimeout(() => {
       setPhase("done");
@@ -154,12 +175,14 @@ export default function WaveScreen() {
         duration: motion.fade,
         useNativeDriver: NATIVE_DRIVER,
       }).start();
-    }, motion.waveBuildUp + motion.waveSplash + motion.waveSharpen + motion.waveHeadlineDelay);
+      showChrome();
+    }, Math.min(motion.waveBuildUp, 1600) + motion.waveSplash + motion.waveSharpen + motion.waveHeadlineDelay);
 
     timers.current = [splashAt, revealAt, headlineAt];
     return () => {
       timers.current.forEach(clearTimeout);
       timers.current = [];
+      if (chromeTimer.current) clearTimeout(chromeTimer.current);
       stopClip();
     };
     // Ceremony runs once for this Wave.
@@ -169,7 +192,7 @@ export default function WaveScreen() {
   useEffect(() => {
     Animated.timing(panel, {
       toValue: details ? 1 : 0,
-      duration: motion.fadeQuick,
+      duration: motion.standard,
       useNativeDriver: NATIVE_DRIVER,
     }).start();
   }, [details, panel]);
@@ -186,16 +209,17 @@ export default function WaveScreen() {
 
   if (!wave) {
     return (
-      <Screen center>
+      <View style={[styles.root, styles.missing]}>
         <Txt variant="heading" center>
           This Wave isn't here
         </Txt>
         <Button kind="soft" label="Back" onPress={() => router.back()} style={styles.back} />
-      </Screen>
+      </View>
     );
   }
 
-  const blur = phase === "build" || phase === "splash" ? 18 : 0;
+  const blur = phase === "build" || phase === "splash" ? 16 : 0;
+  const half = height / 2;
   const mineClip =
     detail?.mine.recordingUri ?? clipUrlFor(detail?.mine.vibe ?? null, wave.mine.photoId);
   const theirsClip =
@@ -225,121 +249,101 @@ export default function WaveScreen() {
     }
   };
 
+  const onTapPhotos = () => {
+    if (phase !== "done") {
+      finish();
+      return;
+    }
+    if (!chrome) showChrome();
+    else setDetails((d) => !d);
+  };
+
   return (
-    <Screen bare>
-      <Animated.View style={[styles.fill, { opacity: fade }]} {...pan.panHandlers}>
-        <View style={styles.top}>
-          <Header
-            icon="close"
-            onPress={() => {
-              stopClip();
-              router.back();
-            }}
-          />
-        </View>
-
-        <Pressable style={styles.stage} onPress={() => (phase === "done" ? setDetails((d) => !d) : finish())}>
-          <View style={styles.pair}>
-            <Animated.View
-              style={[
-                styles.photoCard,
-                {
-                  transform: [
-                    {
-                      translateX: drift.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [-36, -8],
-                      }),
-                    },
-                    {
-                      rotate: drift.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: ["-6deg", "-2deg"],
-                      }),
-                    },
-                  ],
-                },
-              ]}
-            >
-              <Photo
-                uri={wave.mine.uri}
-                ownPhotoId={wave.mine.photoId}
-                blurRadius={blur}
-                style={styles.photo}
-                accessibilityLabel="Your photo"
-              />
-            </Animated.View>
-            <Animated.View
-              style={[
-                styles.photoCard,
-                styles.photoFront,
-                {
-                  transform: [
-                    {
-                      translateX: drift.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [36, 8],
-                      }),
-                    },
-                    {
-                      rotate: drift.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: ["6deg", "2deg"],
-                      }),
-                    },
-                  ],
-                  opacity: sharpen.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.85, 1],
-                  }),
-                },
-              ]}
-            >
-              <Photo
-                uri={wave.theirs.uri}
-                blurRadius={blur}
-                style={styles.photo}
-                accessibilityLabel="Their photo"
-              />
-            </Animated.View>
+    <View style={styles.root} {...pan.panHandlers}>
+      <Animated.View style={[styles.fill, { opacity: fade }]}>
+        <Pressable style={styles.fill} onPress={onTapPhotos}>
+          <View style={[styles.half, { height: half }]}>
+            <Photo
+              uri={wave.mine.uri}
+              ownPhotoId={wave.mine.photoId}
+              blurRadius={blur}
+              style={styles.photo}
+              accessibilityLabel="Your photo"
+            />
           </View>
-
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.splash,
-              {
-                opacity: splash,
-                transform: [
-                  {
-                    scale: splash.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0.85, 1.05],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          >
-            <Txt variant="hero" tone="moon" center>
-              Wave
-            </Txt>
-          </Animated.View>
+          <View style={[styles.half, { height: half }]}>
+            <Photo
+              uri={wave.theirs.uri}
+              blurRadius={blur}
+              style={styles.photo}
+              accessibilityLabel="Their photo"
+            />
+          </View>
+          <WaveJoin width={width} />
         </Pressable>
 
-        <Animated.View style={[styles.footer, { opacity: headline }]}>
-          {bonuses?.headline ? (
-            <Txt variant="heading" center>
-              {bonuses.headline}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.splash,
+            {
+              opacity: splash,
+              transform: [
+                {
+                  scale: splash.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.9, 1.04],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <Scrim>
+            <Txt variant="hero" tone="white" center overPhoto>
+              Wave
             </Txt>
-          ) : (
-            <Txt tone="haze" center>
-              Your moments met
-            </Txt>
-          )}
-          <Txt variant="quiet" tone="haze" center style={styles.hint}>
-            Tap for details
-          </Txt>
+          </Scrim>
+        </Animated.View>
+
+        <Animated.View
+          pointerEvents={chrome && !details ? "box-none" : "none"}
+          style={[
+            styles.chrome,
+            {
+              paddingTop: insets.top + space.sm,
+              paddingBottom: insets.bottom + space.lg,
+              opacity: chromeOpacity,
+            },
+          ]}
+        >
+          <View style={styles.topRow}>
+            <Header
+              icon="close"
+              onPress={() => {
+                stopClip();
+                router.back();
+              }}
+            />
+          </View>
+
+          <Animated.View style={{ opacity: headline }}>
+            {bonuses?.headline ? (
+              <Scrim style={styles.headline}>
+                <Txt tone="white" center overPhoto>
+                  {bonuses.headline}
+                </Txt>
+              </Scrim>
+            ) : null}
+            <Scrim kind="light" style={styles.hint}>
+              <View style={styles.up}>
+                <Icon name="chevron" size={16} color={colors.textSecondary} />
+              </View>
+              <Txt variant="quiet" tone="primary" center>
+                Discover
+              </Txt>
+            </Scrim>
+          </Animated.View>
         </Animated.View>
 
         <Animated.View
@@ -347,12 +351,13 @@ export default function WaveScreen() {
           style={[
             styles.panel,
             {
+              paddingBottom: insets.bottom + space.lg,
               opacity: panel,
               transform: [
                 {
                   translateY: panel.interpolate({
                     inputRange: [0, 1],
-                    outputRange: [40, 0],
+                    outputRange: [48, 0],
                   }),
                 },
               ],
@@ -360,7 +365,7 @@ export default function WaveScreen() {
           ]}
         >
           <Pressable onPress={() => setDetails(false)} style={styles.panelInner}>
-            <View style={styles.panelHandle} />
+            <View style={styles.panelHandle} accessibilityLabel="Hide details" />
             <Side
               label="You"
               country={wave.mine.countryCode}
@@ -378,7 +383,7 @@ export default function WaveScreen() {
               onPlay={() => playSide("theirs", theirsClip)}
             />
             {describeGap(wave.mine.takenAt, wave.theirs.takenAt) ? (
-              <Txt tone="haze" center style={styles.gap}>
+              <Txt tone="secondary" center style={styles.gap}>
                 {describeGap(wave.mine.takenAt, wave.theirs.takenAt)}
               </Txt>
             ) : null}
@@ -394,7 +399,7 @@ export default function WaveScreen() {
           </Pressable>
         </Animated.View>
       </Animated.View>
-    </Screen>
+    </View>
   );
 }
 
@@ -416,7 +421,7 @@ function Side({
   const place = nameFor(country);
   return (
     <View style={styles.side}>
-      <Txt variant="quiet" tone="haze">
+      <Txt variant="quiet" tone="quiet">
         {label}
       </Txt>
       <Txt>
@@ -431,7 +436,7 @@ function Side({
           style={styles.vibe}
         >
           {clip ? <Icon name={playing ? "stop" : "play"} size={18} /> : null}
-          <Txt tone="haze">{vibeFor(vibe)?.label ?? "Sound"}</Txt>
+          <Txt tone="secondary">{vibeFor(vibe)?.label ?? "Sound"}</Txt>
         </Pressable>
       ) : null}
     </View>
@@ -439,42 +444,38 @@ function Side({
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.background },
   fill: { flex: 1 },
-  top: { paddingHorizontal: space.lg, paddingTop: space.lg },
-  stage: { flex: 1, alignItems: "center", justifyContent: "center" },
-  pair: {
-    width: "100%",
-    height: 320,
+  missing: { alignItems: "center", justifyContent: "center", padding: space.xl },
+  half: { width: "100%", overflow: "hidden" },
+  photo: { width: "100%", height: "100%", borderRadius: 0 },
+  splash: {
+    position: "absolute", left: 0, right: 0, top: 0, bottom: 0,
     alignItems: "center",
     justifyContent: "center",
   },
-  photoCard: {
-    position: "absolute",
-    width: 200,
-    height: 260,
-    borderRadius: radius.lg,
-    overflow: "hidden",
-    backgroundColor: colors.pondLift,
+  chrome: {
+    position: "absolute", left: 0, right: 0, top: 0, bottom: 0,
+    justifyContent: "space-between",
+    paddingHorizontal: space.lg,
   },
-  photoFront: { zIndex: 1 },
-  photo: { width: "100%", height: "100%" },
-  splash: {
-    position: "absolute",
-    left: 0,
-    right: 0,
+  topRow: { marginHorizontal: -space.sm },
+  headline: { marginBottom: space.sm },
+  hint: {
+    flexDirection: "row",
     alignItems: "center",
+    gap: space.xs,
+    alignSelf: "center",
   },
-  footer: { paddingHorizontal: space.lg, paddingBottom: space.xxl, minHeight: 88 },
-  hint: { marginTop: space.sm },
+  up: { transform: [{ rotate: "-90deg" }] },
   panel: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: colors.pondLift,
+    backgroundColor: colors.surfaceTranslucent,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
-    paddingBottom: space.xxl,
   },
   panelInner: { paddingHorizontal: space.lg, paddingTop: space.md },
   panelHandle: {
@@ -482,7 +483,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: colors.pondEdge,
+    backgroundColor: colors.line,
     marginBottom: space.lg,
   },
   side: { marginBottom: space.lg, gap: space.xs },

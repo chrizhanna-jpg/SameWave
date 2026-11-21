@@ -1,6 +1,7 @@
 import React from "react";
 import { StyleSheet, View } from "react-native";
 
+import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/Button";
 import { RippleRings } from "@/components/RippleRings";
 import { Screen } from "@/components/Screen";
@@ -12,13 +13,15 @@ interface Props {
   message?: string | null;
   detail?: string | null;
   onRetry?: () => void;
+  /** Show the SameWave mark instead of (or above) the rings. */
+  brand?: boolean;
 }
 
-/** Still water with rings, for the moments the app is getting ready. */
-export function Waiting({ message, detail, onRetry }: Props) {
+/** Soft mist with a quiet ring — for the moments the app is getting ready. */
+export function Waiting({ message, detail, onRetry, brand }: Props) {
   return (
     <Screen center>
-      <RippleRings size={220} />
+      {brand ? <BrandMark size={88} /> : <RippleRings size={200} />}
       <View style={styles.words}>
         {message ? (
           <Txt variant="heading" center>
@@ -26,7 +29,7 @@ export function Waiting({ message, detail, onRetry }: Props) {
           </Txt>
         ) : null}
         {detail ? (
-          <Txt tone="haze" center style={styles.detail}>
+          <Txt tone="secondary" center style={styles.detail}>
             {detail}
           </Txt>
         ) : null}
@@ -37,7 +40,7 @@ export function Waiting({ message, detail, onRetry }: Props) {
 }
 
 const styles = StyleSheet.create({
-  words: { minHeight: 140, marginTop: space.lg, alignItems: "center", alignSelf: "stretch" },
+  words: { minHeight: 120, marginTop: space.lg, alignItems: "center", alignSelf: "stretch" },
   detail: { marginTop: space.sm },
   retry: { marginTop: space.lg, alignSelf: "center", minWidth: 200 },
 });

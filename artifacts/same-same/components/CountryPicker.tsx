@@ -43,14 +43,14 @@ export function CountryPicker({ title, initial, confirmLabel, onConfirm }: Props
   return (
     <View style={styles.fill}>
       <Txt variant="title">{title}</Txt>
-      <Txt tone="haze" style={styles.line}>
+      <Txt tone="secondary" style={styles.line}>
         Only your country is ever shown, never where you are.
       </Txt>
       <TextInput
         value={search}
         onChangeText={setSearch}
         placeholder="Search"
-        placeholderTextColor={colors.haze}
+        placeholderTextColor={colors.textQuiet}
         autoCorrect={false}
         style={styles.search}
         accessibilityLabel="Search countries"
@@ -81,7 +81,7 @@ export function CountryPicker({ title, initial, confirmLabel, onConfirm }: Props
           );
         }}
         ListEmptyComponent={
-          <Txt tone="haze" center style={styles.line}>
+          <Txt tone="secondary" center style={styles.line}>
             No country by that name.
           </Txt>
         }
@@ -102,8 +102,8 @@ const styles = StyleSheet.create({
   line: { marginTop: space.sm },
   search: {
     ...type.body,
-    color: colors.mist,
-    backgroundColor: colors.pondLift,
+    color: colors.textPrimary,
+    backgroundColor: colors.surface,
     borderRadius: radius.md,
     paddingHorizontal: space.md,
     height: 48,
@@ -117,7 +117,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.md,
     borderRadius: radius.md,
   },
-  rowOn: { backgroundColor: colors.pondLift },
+  rowOn: { backgroundColor: colors.surface },
   flag: { width: 36 },
   confirm: { marginTop: space.md },
 });

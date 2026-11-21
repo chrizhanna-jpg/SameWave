@@ -100,7 +100,7 @@ export default function CaptureScreen() {
           <Txt variant="title" center>
             Take today's photo
           </Txt>
-          <Txt tone="haze" center style={styles.line}>
+          <Txt tone="secondary" center style={styles.line}>
             SameWave needs your camera to take it.
           </Txt>
           <Button
@@ -192,10 +192,10 @@ export default function CaptureScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.pondDeep },
+  root: { flex: 1, backgroundColor: "#1A2425" },
   header: { paddingHorizontal: space.lg },
   middle: { flex: 1, justifyContent: "center", alignItems: "center" },
-  frame: { backgroundColor: colors.pond, borderRadius: radius.lg, overflow: "hidden" },
+  frame: { backgroundColor: colors.background, borderRadius: radius.lg, overflow: "hidden" },
   problem: { position: "absolute", bottom: space.md, left: space.lg, right: space.lg },
   controls: {
     flexDirection: "row",
@@ -209,11 +209,11 @@ const styles = StyleSheet.create({
     height: 76,
     borderRadius: 38,
     borderWidth: 3,
-    borderColor: colors.mist,
+    borderColor: colors.white,
     alignItems: "center",
     justifyContent: "center",
   },
-  shutterInner: { width: 60, height: 60, borderRadius: 30, backgroundColor: colors.mist },
+  shutterInner: { width: 60, height: 60, borderRadius: 30, backgroundColor: colors.white },
   shutterWaiting: { opacity: 0.4 },
   shutterPressed: { transform: [{ scale: 0.94 }] },
   ask: { justifyContent: "flex-start" },

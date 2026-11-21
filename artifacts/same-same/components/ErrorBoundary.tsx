@@ -38,7 +38,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
         <Txt variant="title" center>
           Something went still
         </Txt>
-        <Txt tone="haze" center style={styles.body}>
+        <Txt tone="secondary" center style={styles.body}>
           That screen ran into a problem. Your photos and Waves are safe.
         </Txt>
         <Button
@@ -59,7 +59,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: colors.pond,
+    backgroundColor: colors.background,
     alignItems: "center",
     justifyContent: "center",
     padding: space.xl,

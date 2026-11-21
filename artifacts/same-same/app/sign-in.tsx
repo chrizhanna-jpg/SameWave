@@ -7,8 +7,8 @@ import * as WebBrowser from "expo-web-browser";
 import React, { useEffect, useState } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 
+import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/Button";
-import { RippleRings } from "@/components/RippleRings";
 import { Screen } from "@/components/Screen";
 import { Txt } from "@/components/Txt";
 import { apiOrigin, IS_EXPO_GO, LEGAL_LINKS } from "@/config/env";
@@ -71,11 +71,8 @@ export default function SignInScreen() {
   return (
     <Screen style={styles.screen}>
       <View style={styles.top}>
-        <RippleRings size={200} />
-        <Txt variant="title" center style={styles.title}>
-          SameWave
-        </Txt>
-        <Txt tone="haze" center style={styles.line}>
+        <BrandMark size={104} withName />
+        <Txt tone="secondary" center style={styles.line}>
           Send a photo of your day. Somewhere, someone has the same moment.
         </Txt>
       </View>
@@ -87,7 +84,7 @@ export default function SignInScreen() {
           </Txt>
         ) : null}
         {IS_EXPO_GO ? (
-          <Txt variant="quiet" tone="haze" center style={styles.problem}>
+          <Txt variant="quiet" tone="secondary" center style={styles.problem}>
             Google sign-in can't finish inside Expo Go. Use the installed app, or the sample preview.
           </Txt>
         ) : null}
@@ -98,11 +95,11 @@ export default function SignInScreen() {
           onPress={() => router.push("/how-it-works")}
           style={styles.quiet}
         />
-        <Txt variant="quiet" tone="haze" center style={styles.legal}>
+        <Txt variant="quiet" tone="secondary" center style={styles.legal}>
           By continuing you agree to the{" "}
           <Txt
             variant="quiet"
-            tone="mist"
+            tone="primary"
             accessibilityRole="link"
             onPress={() => void Linking.openURL(apiOrigin() + LEGAL_LINKS.terms)}
           >
@@ -111,7 +108,7 @@ export default function SignInScreen() {
           and{" "}
           <Txt
             variant="quiet"
-            tone="mist"
+            tone="primary"
             accessibilityRole="link"
             onPress={() => void Linking.openURL(apiOrigin() + LEGAL_LINKS.privacy)}
           >
@@ -127,7 +124,6 @@ export default function SignInScreen() {
 const styles = StyleSheet.create({
   screen: { justifyContent: "space-between" },
   top: { flex: 1, alignItems: "center", justifyContent: "center" },
-  title: { marginTop: space.lg },
   line: { marginTop: space.md, maxWidth: 300 },
   problem: { marginBottom: space.md },
   quiet: { marginTop: space.md },
