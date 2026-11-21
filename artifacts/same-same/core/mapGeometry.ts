@@ -1,12 +1,9 @@
 /**
  * Shapes for the Waves map. One line per Wave.
  *
- * Two places: a geographic great-circle–style arc between them. Several Waves
- * between the same pair fan out so each can be tapped.
- * One country: a soft loop that leaves the country and returns. Loops in the
- * same country spread in angle and size so each can be tapped.
- * Near-zero-length pairs drop their line (markers stay) so Europe doesn't
- * fill with hairlines.
+ * Two distinct pins: a calm arc (or short straight) between them. Never a
+ * self-loop. Near-zero pairs keep pins only. Several Waves that share an
+ * endpoint fan their pins so each stays tappable; lines always run pin-to-pin.
  */
 import { normalizeCountryCode } from "../data/countries";
 import { centroidLonLatForCountry } from "../data/countryCentroids";
@@ -38,44 +35,60 @@ export interface MapMarker {
 
 export interface MapLine {
   waveId: string;
-  kind: "arc" | "loop";
+  kind: "arc" | "straight";
   /** SVG path data. */
   d: string;
-  /** Furthest point from the ends: the top of an arc, the tip of a loop. */
+  /** Furthest point from the ends: the top of an arc, or the midpoint of a short. */
   tip: Point;
   /** Points along the line, in order, for working out which line was touched. */
   points: Point[];
 }
 
 export interface MapGeometryOptions {
-  /** Length of the smallest loop, in map units. */
+  /**
+   * Legacy size hint (used for pin fan radius). Loops are gone — kept so
+   * callers that already pass `loopSize` keep compiling.
+   */
   loopSize: number;
   /** Used when neither photo has a country. Usually the user's home country. */
   fallbackCountry?: string | null;
   /**
-   * Drop arc strokes shorter than this (map units). Defaults to ~half a loop
-   * so phone-scale maps lose hairlines without killing real city-to-city arcs.
+   * Below this chord (map units): pins only, no stroke.
+   * Defaults to a few pixels so identical centroids don't scribble.
    */
+  minLineLength?: number;
+  /** @deprecated Alias for minLineLength. */
   minArcLength?: number;
+  /**
+   * Below this chord (map units): draw a straight short instead of an arc.
+   */
+  straightBelow?: number;
 }
 
 /** Where a Wave is drawn when no country is known: open water in the Atlantic. */
 export const SOMEWHERE = "ZZ";
 
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
-const LOOP_SPREAD = 0.6;
-const LOOP_REACH = 1.35;
-const LOOP_GROWTH = 0.12;
-const LOOP_MAX_SCALE = 2.2;
 
 const SAMPLES = 16;
-/** Fallback when options omit minArcLength (phone Equal Earth maps). */
-export const MIN_ARC_LENGTH = 14;
-/** Samples along a geodesic before projecting (smoother than a single Bezier). */
+/** Default: drop hairlines shorter than this. */
+export const MIN_LINE_LENGTH = 3;
+/** Default: straight stroke when the chord is shorter than this. */
+export const STRAIGHT_BELOW = 28;
+/** Soft cap on arc bow as a fraction of chord length. */
+export const MAX_BOW = 0.14;
+/** Samples along a geodesic before projecting. */
 const GEODESIC_SAMPLES = 24;
 
-function minArcFor(options: MapGeometryOptions): number {
-  return options.minArcLength ?? Math.max(MIN_ARC_LENGTH, options.loopSize * 0.5);
+/** @deprecated Use MIN_LINE_LENGTH — kept for older tests/imports. */
+export const MIN_ARC_LENGTH = MIN_LINE_LENGTH;
+
+function minLineFor(options: MapGeometryOptions): number {
+  return options.minLineLength ?? options.minArcLength ?? MIN_LINE_LENGTH;
+}
+
+function straightBelowFor(options: MapGeometryOptions): number {
+  return options.straightBelow ?? STRAIGHT_BELOW;
 }
 
 function round(n: number): string {
@@ -104,39 +117,15 @@ function sample(controls: readonly Point[]): Point[] {
 
 type Shape = Pick<MapLine, "d" | "tip" | "points">;
 
-/** A loop that leaves `at` in direction `angle` and returns to it. */
-export function loopPath(at: Point, angle: number, size: number): Shape {
-  const reach = size * LOOP_REACH;
-  const c1 = {
-    x: at.x + reach * Math.cos(angle - LOOP_SPREAD),
-    y: at.y + reach * Math.sin(angle - LOOP_SPREAD),
-  };
-  const c2 = {
-    x: at.x + reach * Math.cos(angle + LOOP_SPREAD),
-    y: at.y + reach * Math.sin(angle + LOOP_SPREAD),
-  };
-  // Midpoint of a cubic whose two ends are the same point.
-  const out = 0.75 * reach * Math.cos(LOOP_SPREAD);
-  return {
-    d: `M${round(at.x)} ${round(at.y)}C${round(c1.x)} ${round(c1.y)} ${round(c2.x)} ${round(c2.y)} ${round(at.x)} ${round(at.y)}`,
-    tip: { x: at.x + out * Math.cos(angle), y: at.y + out * Math.sin(angle) },
-    points: sample([at, c1, c2, at]),
-  };
-}
-
-/** Direction and size of the nth loop in one country. */
-export function loopPlacement(index: number, baseSize: number): { angle: number; size: number } {
-  return {
-    angle: -Math.PI / 2 + index * GOLDEN_ANGLE,
-    size: baseSize * Math.min(LOOP_MAX_SCALE, 1 + LOOP_GROWTH * index),
-  };
-}
-
-/** How far the nth line between the same two countries bows, as a share of its length. */
-export function arcBow(index: number): number {
+/**
+ * How far the nth line between the same two pins bows, as a share of chord.
+ * Magnitude is capped and scaled down for short chords so Europe never curls.
+ */
+export function arcBow(index: number, chord = 100): number {
   const step = Math.floor(index / 2);
-  // Wider fan than before so European stacks don't sit on top of each other.
-  const magnitude = 0.22 + 0.18 * step;
+  const base = Math.min(MAX_BOW, 0.06 + 0.04 * step);
+  const scale = Math.min(1, Math.max(0, chord / 90));
+  const magnitude = base * scale;
   return index % 2 === 0 ? magnitude : -magnitude;
 }
 
@@ -144,7 +133,7 @@ export function arcBow(index: number): number {
 export function pathFromPoints(
   raw: readonly Point[],
   bow = 0,
-  minLength = MIN_ARC_LENGTH,
+  minLength = MIN_LINE_LENGTH,
 ): Shape | null {
   if (raw.length < 2) return null;
   const a = raw[0]!;
@@ -172,6 +161,11 @@ export function pathFromPoints(
     .join(" ");
   const mid = points[Math.floor(points.length / 2)] ?? a;
   return { d, tip: mid, points };
+}
+
+/** Straight segment between two pins (for short pairs). */
+export function straightPath(a: Point, b: Point, minLength = MIN_LINE_LENGTH): Shape | null {
+  return pathFromPoints([a, b], 0, minLength);
 }
 
 /** Spherical linear interpolation between two lon/lat degrees. */
@@ -211,7 +205,7 @@ export function geodesicArcPath(
   bLonLat: readonly [number, number],
   projectLonLat: ProjectLonLat,
   bow: number,
-  minLength = MIN_ARC_LENGTH,
+  minLength = MIN_LINE_LENGTH,
 ): Shape | null {
   const projected: Point[] = [];
   for (let i = 0; i <= GEODESIC_SAMPLES; i++) {
@@ -224,11 +218,12 @@ export function geodesicArcPath(
 }
 
 /** A curved line from `a` to `b`. A positive bow curves towards the top of the map. */
-export function arcPath(a: Point, b: Point, bow: number): Shape {
+export function arcPath(a: Point, b: Point, bow: number, minLength = MIN_LINE_LENGTH): Shape | null {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const length = Math.hypot(dx, dy) || 1;
-  // Unit normal, flipped if needed so a positive bow always points up the map.
+  if (length < minLength) return null;
+  if (Math.abs(bow) < 1e-6) return straightPath(a, b, minLength);
   let nx = -dy / length;
   let ny = dx / length;
   if (ny > 0) {
@@ -239,26 +234,18 @@ export function arcPath(a: Point, b: Point, bow: number): Shape {
     x: (a.x + b.x) / 2 + nx * length * bow,
     y: (a.y + b.y) / 2 + ny * length * bow,
   };
-  const shape = pathFromPoints(sample([a, control, b]), 0);
-  if (shape) return shape;
-  return {
-    d: `M${round(a.x)} ${round(a.y)}Q${round(control.x)} ${round(control.y)} ${round(b.x)} ${round(b.y)}`,
-    tip: {
-      x: 0.25 * a.x + 0.5 * control.x + 0.25 * b.x,
-      y: 0.25 * a.y + 0.5 * control.y + 0.25 * b.y,
-    },
-    points: sample([a, control, b]),
-  };
+  return pathFromPoints(sample([a, control, b]), 0, minLength);
 }
 
 export type ProjectCountry = (countryCode: string) => Point | null;
 export type ProjectLonLat = (lonLat: [number, number]) => Point | null;
 
-type Placed = { code: string; point: Point };
+type Placed = { code: string; point: Point; lonLat: [number, number] | null };
 
 /**
  * Lines + endpoint markers for Waves.
  * Prefer precise lon/lat when present; otherwise country centroids.
+ * Never draws self-loops — coincident ends keep pins only.
  */
 export function buildMapLines(
   waves: readonly MapWaveInput[],
@@ -279,7 +266,9 @@ export function buildMapGeometry(
     const normalized = normalizeCountryCode(code);
     if (!normalized) return null;
     const point = project(normalized);
-    return point ? { code: normalized, point } : null;
+    if (!point) return null;
+    const lonLat = centroidLonLatForCountry(normalized) as [number, number] | null;
+    return { code: normalized, point, lonLat };
   };
   const placeLonLat = (
     lonLat: [number, number] | null | undefined,
@@ -288,18 +277,21 @@ export function buildMapGeometry(
     if (lonLat && projectLonLat) {
       const point = projectLonLat(lonLat);
       if (point) {
-        return { code: normalizeCountryCode(code) ?? "XX", point };
+        return {
+          code: normalizeCountryCode(code) ?? "XX",
+          point,
+          lonLat: [lonLat[0], lonLat[1]],
+        };
       }
     }
     return placeCountry(code);
   };
   const fallback = placeCountry(options.fallbackCountry ?? null) ?? placeCountry(SOMEWHERE);
-  const minArc = minArcFor(options);
+  const minLine = minLineFor(options);
+  const straightBelow = straightBelowFor(options);
 
-  const arcCounts = new Map<string, number>();
-  const loopCounts = new Map<string, number>();
-  const lines: MapLine[] = [];
-  const markers: MapMarker[] = [];
+  const rawMarkers: MapMarker[] = [];
+  const placedByWave = new Map<string, { mine: Placed; theirs: Placed }>();
 
   for (const wave of waves) {
     const mine =
@@ -312,81 +304,93 @@ export function buildMapGeometry(
       fallback;
     if (!mine || !theirs) continue;
 
-    markers.push({
+    rawMarkers.push({
       waveId: wave.id,
       side: "mine",
-      photoId: wave.id, // caller overwrites via separate marker build when photo ids known
+      photoId: wave.id,
       point: mine.point,
     });
-    markers.push({
+    rawMarkers.push({
       waveId: wave.id,
       side: "theirs",
       photoId: wave.id,
       point: theirs.point,
     });
+    placedByWave.set(wave.id, { mine, theirs });
+  }
 
-    if (mine.code === theirs.code && !wave.mineLonLat && !wave.theirsLonLat) {
-      const index = loopCounts.get(mine.code) ?? 0;
-      loopCounts.set(mine.code, index + 1);
-      const { angle, size } = loopPlacement(index, options.loopSize);
-      lines.push({ waveId: wave.id, kind: "loop", ...loopPath(mine.point, angle, size) });
-      continue;
-    }
+  // Fan coincident / near-coincident pins first so lines can run pin-to-pin.
+  // Keep the spiral tight: Europe chords are only tens of map units, so a
+  // large fan turns London into "Atlantic / Scandinavia" scribbles.
+  const markers = spreadCoincidentMarkers(
+    rawMarkers,
+    Math.max(8, Math.min(12, options.loopSize * 0.18)),
+    8,
+  );
 
-    // Same-country but distinct GPS: still draw a short arc between points.
-    if (mine.point.x === theirs.point.x && mine.point.y === theirs.point.y) {
-      const index = loopCounts.get(mine.code) ?? 0;
-      loopCounts.set(mine.code, index + 1);
-      const { angle, size } = loopPlacement(index, options.loopSize);
-      lines.push({ waveId: wave.id, kind: "loop", ...loopPath(mine.point, angle, size) });
-      continue;
-    }
+  const arcCounts = new Map<string, number>();
+  const lines: MapLine[] = [];
 
-    const chord = Math.hypot(mine.point.x - theirs.point.x, mine.point.y - theirs.point.y);
-    if (chord < minArc) {
-      // Hairline clutter (common in the European sample pile) — keep pins only.
-      continue;
-    }
+  for (const wave of waves) {
+    const mineMark = markers.find((m) => m.waveId === wave.id && m.side === "mine");
+    const theirsMark = markers.find((m) => m.waveId === wave.id && m.side === "theirs");
+    if (!mineMark || !theirsMark) continue;
+
+    const placed = placedByWave.get(wave.id);
+    // Decide from geography *before* pin fan — fanning coincident ends apart
+    // must not create short stub lines that look like UK/France curls.
+    const geoA = placed?.mine.point ?? mineMark.point;
+    const geoB = placed?.theirs.point ?? theirsMark.point;
+    const geoChord = Math.hypot(geoA.x - geoB.x, geoA.y - geoB.y);
+    if (geoChord < minLine) continue; // pins only — never a loop or stub
+
+    // Strokes always end on the (possibly fanned) visible pins.
+    const a = mineMark.point;
+    const b = theirsMark.point;
+    const chord = Math.hypot(a.x - b.x, a.y - b.y);
+    if (chord < minLine) continue;
 
     const key =
-      mine.code === theirs.code
-        ? `${mine.code}|${mine.point.x.toFixed(1)},${mine.point.y.toFixed(1)}|${theirs.point.x.toFixed(1)},${theirs.point.y.toFixed(1)}`
-        : mine.code < theirs.code
-          ? `${mine.code}|${theirs.code}`
-          : `${theirs.code}|${mine.code}`;
+      placed && placed.mine.code === placed.theirs.code
+        ? `${placed.mine.code}|${a.x.toFixed(1)},${a.y.toFixed(1)}|${b.x.toFixed(1)},${b.y.toFixed(1)}`
+        : placed
+          ? placed.mine.code < placed.theirs.code
+            ? `${placed.mine.code}|${placed.theirs.code}`
+            : `${placed.theirs.code}|${placed.mine.code}`
+          : `${a.x.toFixed(1)},${a.y.toFixed(1)}|${b.x.toFixed(1)},${b.y.toFixed(1)}`;
     const index = arcCounts.get(key) ?? 0;
     arcCounts.set(key, index + 1);
-    const bow = arcBow(index);
 
-    const mineLon =
-      wave.mineLonLat ??
-      (centroidLonLatForCountry(mine.code) as [number, number] | null);
-    const theirsLon =
-      wave.theirsLonLat ??
-      (centroidLonLatForCountry(theirs.code) as [number, number] | null);
+    if (geoChord < straightBelow) {
+      const shape = straightPath(a, b, minLine);
+      if (shape) lines.push({ waveId: wave.id, kind: "straight", ...shape });
+      continue;
+    }
 
+    const bow = arcBow(index, chord);
+    // Prefer geodesic when both lon/lats are known; otherwise bow in screen space
+    // between the (already fanned) pin positions so the stroke ends on the pins.
     let shape: Shape | null = null;
-    if (mineLon && theirsLon && projectLonLat) {
-      shape = geodesicArcPath(mineLon, theirsLon, projectLonLat, bow, minArc);
+    const mineLon = placed?.mine.lonLat ?? null;
+    const theirsLon = placed?.theirs.lonLat ?? null;
+    if (mineLon && theirsLon && projectLonLat && index === 0) {
+      // First of a pair: geographic arc, then nudge ends onto the fanned pins.
+      const geo = geodesicArcPath(mineLon, theirsLon, projectLonLat, bow, minLine);
+      if (geo && geo.points.length >= 2) {
+        const mid = geo.points.slice(1, -1);
+        shape = pathFromPoints([a, ...mid, b], 0, minLine);
+      }
     }
     if (!shape) {
-      const [first, second] =
-        mine.code === theirs.code
-          ? [mine, theirs]
-          : mine.code < theirs.code
-            ? [mine, theirs]
-            : [theirs, mine];
-      if (Math.hypot(first.point.x - second.point.x, first.point.y - second.point.y) < minArc) {
-        continue;
-      }
-      shape = arcPath(first.point, second.point, bow);
+      shape = arcPath(a, b, bow, minLine);
     }
-    lines.push({ waveId: wave.id, kind: "arc", ...shape });
+    if (shape) lines.push({ waveId: wave.id, kind: "arc", ...shape });
   }
+
   return { lines, markers };
 }
 
-/** Markers for Wave endpoints with real photo ids. */
+/** Markers for Wave endpoints with real photo ids (both sides). */
 export function buildMapMarkers(
   waves: readonly {
     id: string;
@@ -407,7 +411,7 @@ export function buildMapMarkers(
       w.theirs.lng != null && w.theirs.lat != null ? [w.theirs.lng, w.theirs.lat] : null,
   }));
   const { markers } = buildMapGeometry(inputs, project, options, projectLonLat);
-  const withIds = markers.map((m) => {
+  return markers.map((m) => {
     const wave = waves.find((w) => w.id === m.waveId);
     if (!wave) return m;
     return {
@@ -415,10 +419,6 @@ export function buildMapMarkers(
       photoId: m.side === "mine" ? wave.mine.photoId : wave.theirs.photoId,
     };
   });
-  // Several Waves can share one capture spot (e.g. sample "mine" in London),
-  // and European GPS points often sit within a few map units of each other.
-  // Fan near-coincident pins out so the Europe pile stays readable + tappable.
-  return spreadCoincidentMarkers(withIds, Math.max(14, options.loopSize * 0.55), 12);
 }
 
 /**
@@ -463,6 +463,90 @@ export function spreadCoincidentMarkers(
       },
     };
   });
+}
+
+/** Axis-aligned bounds of points, or null when empty. */
+export function boundsOf(points: readonly Point[]): {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+} | null {
+  if (points.length === 0) return null;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of points) {
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y > maxY) maxY = p.y;
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+export type MapBounds = { minX: number; minY: number; maxX: number; maxY: number };
+
+/**
+ * Prefer the densest local cluster (seeded by home when known) so a lone
+ * overseas Wave does not yank the first view away from Europe.
+ */
+export function focusBounds(
+  points: readonly Point[],
+  seed: Point | null = null,
+  keepRatio = 0.65,
+): MapBounds | null {
+  if (points.length === 0) return null;
+  if (points.length <= 3) return boundsOf(points);
+  const origin =
+    seed ??
+    ({
+      x: points.reduce((s, p) => s + p.x, 0) / points.length,
+      y: points.reduce((s, p) => s + p.y, 0) / points.length,
+    } satisfies Point);
+  const ranked = [...points].sort(
+    (a, b) =>
+      Math.hypot(a.x - origin.x, a.y - origin.y) - Math.hypot(b.x - origin.x, b.y - origin.y),
+  );
+  const keep = Math.max(3, Math.ceil(ranked.length * keepRatio));
+  const core = ranked.slice(0, keep);
+  const radius = Math.hypot(
+    core[core.length - 1]!.x - origin.x,
+    core[core.length - 1]!.y - origin.y,
+  );
+  // Pull in neighbours that sit just outside the core so a tight Europe
+  // cluster is not clipped mid-country.
+  const padded = ranked.filter(
+    (p) => Math.hypot(p.x - origin.x, p.y - origin.y) <= radius * 1.35 + 24,
+  );
+  return boundsOf(padded.length >= 3 ? padded : core);
+}
+
+/**
+ * Scale + translate so `bounds` fills `box` with padding.
+ * Assumes transform-origin top-left (WorldMap sets `transformOrigin: "0 0"`).
+ */
+export function frameTransform(
+  bounds: MapBounds,
+  box: { width: number; height: number },
+  options: { padding?: number; minScale?: number; maxScale?: number } = {},
+): { scale: number; x: number; y: number } {
+  const padding = options.padding ?? 36;
+  const minScale = options.minScale ?? 1;
+  const maxScale = options.maxScale ?? 4;
+  const bw = Math.max(bounds.maxX - bounds.minX, 48);
+  const bh = Math.max(bounds.maxY - bounds.minY, 48);
+  const usableW = Math.max(1, box.width - padding * 2);
+  const usableH = Math.max(1, box.height - padding * 2);
+  const scale = Math.min(maxScale, Math.max(minScale, Math.min(usableW / bw, usableH / bh)));
+  const cx = (bounds.minX + bounds.maxX) / 2;
+  const cy = (bounds.minY + bounds.maxY) / 2;
+  return {
+    scale,
+    x: box.width / 2 - cx * scale,
+    y: box.height / 2 - cy * scale,
+  };
 }
 
 /** Nearest marker within `reach`, or null. */
@@ -514,10 +598,8 @@ export function distanceToLine(line: MapLine, point: Point): number {
 /**
  * The line a touch at `point` means.
  *
- * Only lines passing within `reach` of the touch are considered. Lines often
- * run close together, above all loops leaving the same country, so among
- * those the one whose far end is nearest the touch wins: each line's far end
- * is the part of it that no other line shares.
+ * Only lines passing within `reach` of the touch are considered. Among those
+ * the one whose tip is nearest the touch wins.
  */
 export function lineAt(lines: readonly MapLine[], point: Point, reach: number): MapLine | null {
   let best: MapLine | null = null;
@@ -531,4 +613,14 @@ export function lineAt(lines: readonly MapLine[], point: Point, reach: number): 
     }
   }
   return best;
+}
+
+/** @deprecated Loops removed — kept as a no-op stub for any stray imports. */
+export function loopPath(at: Point, _angle: number, _size: number): Shape {
+  return { d: `M${round(at.x)} ${round(at.y)}`, tip: at, points: [at] };
+}
+
+/** @deprecated Loops removed. */
+export function loopPlacement(index: number, baseSize: number): { angle: number; size: number } {
+  return { angle: -Math.PI / 2 + index * GOLDEN_ANGLE, size: baseSize };
 }

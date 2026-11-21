@@ -147,7 +147,8 @@ const styles = StyleSheet.create({
     paddingVertical: space.md,
     gap: space.xs,
   },
-  wordsSpacer: { minHeight: 24 },
+  /** No dead band under the map when Waves are present. */
+  wordsSpacer: { height: 0 },
   body: { marginTop: space.xs },
   photoRoot: {
     flex: 1,

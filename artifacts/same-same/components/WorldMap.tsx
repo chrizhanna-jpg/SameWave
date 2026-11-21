@@ -27,6 +27,8 @@ import land110 from "world-atlas/land-110m.json";
 import {
   buildMapGeometry,
   buildMapMarkers,
+  focusBounds,
+  frameTransform,
   lineAt,
   markerAt,
   type MapLine,
@@ -51,11 +53,11 @@ const MARKER_TOUCH_REACH = 28;
 const MIDPOINT_HIT = 22;
 
 const MIN_SCALE = 1;
-const MAX_SCALE = 4;
+const MAX_SCALE = 5;
 
 interface Props {
   waves: readonly Wave[];
-  /** The map opens centred here. */
+  /** The map opens centred here when there are no wave pins yet. */
   homeCountry: string | null;
   /** Waves whose threads should draw themselves like a travelling ripple. */
   drawingIds?: readonly string[];
@@ -66,7 +68,7 @@ interface Props {
 }
 
 /**
- * Keepsake map: readable land, one calm geographic arc per Wave, pinch-zoom
+ * Keepsake map: fills the tab, frames the first view on wave pins, pinch-zoom
  * and pan via react-native-gesture-handler (no react-native-maps).
  */
 export function WorldMap({
@@ -88,9 +90,10 @@ export function WorldMap({
 
   const map = useMemo(() => {
     if (!box) return null;
-    const height = Math.max(220, Math.min(box.height, 560));
+    // World canvas is at least as tall as the tab and wide enough for Equal Earth.
+    const height = Math.max(box.height, 220);
     const width = Math.max(box.width, Math.round(height * WORLD_ASPECT));
-    const fittedHeight = Math.min(height, Math.round(width / WORLD_ASPECT));
+    const fittedHeight = Math.max(box.height, Math.round(width / WORLD_ASPECT));
     const projection = geoEqualEarth().fitSize([width, fittedHeight], { type: "Sphere" });
     const project = (code: string): Point | null => {
       const lonLat = centroidLonLatForCountry(code);
@@ -128,10 +131,9 @@ export function WorldMap({
           ? ([wave.theirs.lng, wave.theirs.lat] as [number, number])
           : null,
     }));
+    // buildMapGeometry already fans pins and draws pin-to-pin lines.
     const { lines } = buildMapGeometry(inputs, map.project, opts, map.projectLonLat);
-    const markers = buildMapMarkers(waves, map.project, opts, map.projectLonLat).filter(
-      (m) => m.side === "mine",
-    );
+    const markers = buildMapMarkers(waves, map.project, opts, map.projectLonLat);
     return { lines, markers };
   }, [map, waves, homeCountry]);
 
@@ -141,35 +143,72 @@ export function WorldMap({
   const pinchScale0 = useRef(1);
   const pan0 = useRef({ x: 0, y: 0 });
   const live = useRef({ scale: 1, x: 0, y: 0 });
-
-  // Centre on home country when the map first lays out.
-  useEffect(() => {
-    if (!map || !box) return;
-    const home = homeCountry ? map.project(homeCountry) : null;
-    const centreX = home ? home.x : map.width / 2;
-    const centreY = home ? home.y : map.height / 2;
-    const x = Math.min(0, Math.max(box.width - map.width, box.width / 2 - centreX));
-    const y = Math.min(0, Math.max(box.height - map.height, box.height / 2 - centreY));
-    live.current = { scale: 1, x, y };
-    scale.setValue(1);
-    translateX.setValue(x);
-    translateY.setValue(y);
-  }, [map, box, homeCountry, scale, translateX, translateY]);
+  const framedFor = useRef<string>("");
 
   const clampPan = useCallback(
     (s: number, x: number, y: number) => {
       if (!map || !box) return { x, y };
       const worldW = map.width * s;
       const worldH = map.height * s;
-      const minX = Math.min(0, box.width - worldW);
-      const minY = Math.min(0, box.height - worldH);
+      const loX = worldW <= box.width ? (box.width - worldW) / 2 : box.width - worldW;
+      const hiX = worldW <= box.width ? (box.width - worldW) / 2 : 0;
+      const loY = worldH <= box.height ? (box.height - worldH) / 2 : box.height - worldH;
+      const hiY = worldH <= box.height ? (box.height - worldH) / 2 : 0;
       return {
-        x: Math.max(minX, Math.min(0, x)),
-        y: Math.max(minY, Math.min(0, y)),
+        x: Math.min(Math.max(x, Math.min(loX, hiX)), Math.max(loX, hiX)),
+        y: Math.min(Math.max(y, Math.min(loY, hiY)), Math.max(loY, hiY)),
       };
     },
     [map, box],
   );
+
+  // Frame the first view on wave pins (or home country) so the tab has no dead band.
+  useEffect(() => {
+    if (!map || !box) return;
+    const key = `${map.width}x${map.height}:${geometry.markers
+      .map((m) => m.waveId)
+      .sort()
+      .join(",")}`;
+    if (framedFor.current === key) return;
+    framedFor.current = key;
+
+    const home = homeCountry ? map.project(homeCountry) : null;
+    const pinPoints = geometry.markers.map((m) => m.point);
+    const lineTips = geometry.lines.map((l) => l.tip);
+    // Frame the local cluster (Europe when home is GB) — not the whole globe.
+    const bounds = focusBounds([...pinPoints, ...lineTips], home);
+    let next: { scale: number; x: number; y: number };
+    if (bounds) {
+      next = frameTransform(bounds, box, {
+        padding: 48,
+        minScale: MIN_SCALE,
+        maxScale: MAX_SCALE,
+      });
+    } else {
+      const centreX = home ? home.x : map.width / 2;
+      const centreY = home ? home.y : map.height / 2;
+      next = {
+        scale: 2.2,
+        x: box.width / 2 - centreX * 2.2,
+        y: box.height / 2 - centreY * 2.2,
+      };
+    }
+    const clamped = clampPan(next.scale, next.x, next.y);
+    live.current = { scale: next.scale, x: clamped.x, y: clamped.y };
+    scale.setValue(next.scale);
+    translateX.setValue(clamped.x);
+    translateY.setValue(clamped.y);
+  }, [
+    map,
+    box,
+    geometry.markers,
+    geometry.lines,
+    homeCountry,
+    clampPan,
+    scale,
+    translateX,
+    translateY,
+  ]);
 
   const onPinchGestureEvent = useCallback(
     (event: PinchGestureHandlerGestureEvent) => {
@@ -188,11 +227,6 @@ export function WorldMap({
 
   const onPinchStateChange = useCallback(
     (event: HandlerStateChangeEvent<PinchGestureHandlerEventPayload>) => {
-      if (event.nativeEvent.state === State.BEGAN || event.nativeEvent.oldState === State.ACTIVE) {
-        if (event.nativeEvent.state === State.BEGAN) {
-          pinchScale0.current = live.current.scale;
-        }
-      }
       if (event.nativeEvent.state === State.BEGAN) {
         pinchScale0.current = live.current.scale;
       }
@@ -225,7 +259,6 @@ export function WorldMap({
 
   const onMapPress = useCallback(
     (locationX: number, locationY: number) => {
-      // locationX/Y are in the map view's local space (pre-transform), same as SVG coords.
       const point = { x: locationX, y: locationY };
       const marker = markerAt(geometry.markers, point, MARKER_TOUCH_REACH);
       if (marker) {
@@ -257,6 +290,8 @@ export function WorldMap({
                   {
                     width: map.width,
                     height: map.height,
+                    // Top-left origin so frameTransform math matches the view.
+                    transformOrigin: "0 0",
                     transform: [{ translateX }, { translateY }, { scale }],
                   },
                 ]}
@@ -288,7 +323,10 @@ export function WorldMap({
                         />
                       ))}
                       {geometry.markers.map((marker) => (
-                        <PhotoMarker key={`${marker.waveId}-mine`} marker={marker} />
+                        <PhotoMarker
+                          key={`${marker.waveId}-${marker.side}-${marker.photoId}`}
+                          marker={marker}
+                        />
                       ))}
                     </Svg>
                   </Animated.View>
@@ -364,7 +402,6 @@ function Thread({
 
   return (
     <G>
-      {/* Wide invisible stroke + tip disc for reliable taps. */}
       <Path
         d={line.d}
         fill="none"
@@ -380,7 +417,6 @@ function Thread({
         fill={colors.waterMid}
         fillOpacity={0.001}
       />
-      {/* Single calm stroke — no triple glow. */}
       <Path
         d={line.d}
         fill="none"
