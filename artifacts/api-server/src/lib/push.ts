@@ -77,7 +77,10 @@ export async function sendPushToTokens(
     title: payload.title,
     body: payload.body,
     data: payload.data ?? {},
-    channelId: "echoes",
+    // Android channel id — keep in sync with the mobile app (`waves`).
+    // Older clients that only created channel "echoes" still receive the
+    // notification (system default / existing channel fallback).
+    channelId: "waves",
     ...(payload.categoryId ? { categoryId: payload.categoryId } : {}),
   }));
 
