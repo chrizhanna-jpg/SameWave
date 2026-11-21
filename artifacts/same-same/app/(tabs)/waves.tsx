@@ -7,14 +7,14 @@ import { Frost } from "@/components/Frost";
 import { Screen } from "@/components/Screen";
 import { Txt } from "@/components/Txt";
 import { WorldMap } from "@/components/WorldMap";
-import { sceneFor } from "@/data/scenes";
 import { useAppState } from "@/state/AppState";
 import { useTabBarClearance } from "@/state/TabBarHeight";
 import { space } from "@/theme";
 
 /**
- * Keepsake map of past Waves over a Style 3 calm sky scene, with a frosted
- * caption card. Only completed Waves appear here.
+ * Waves tab (Ripple | Waves): keepsake map of past Waves.
+ * Plain app background (no scene photo); map is edge-to-edge.
+ * Only completed Waves appear here.
  */
 export default function WavesScreen() {
   const router = useRouter();
@@ -58,16 +58,16 @@ export default function WavesScreen() {
   const tabClearance = useTabBarClearance(space.md);
 
   return (
-    <Screen bare scene={sceneFor.waves}>
+    <Screen bare scene="none">
       <View style={[styles.fill, { paddingTop: insets.top + space.sm, paddingBottom: tabClearance }]}>
-        <Frost kind="card" style={styles.mapCard} contentStyle={styles.mapInner}>
+        <View style={styles.map}>
           <WorldMap
             waves={waves}
             homeCountry={countryCode}
             drawingIds={drawingIds}
             onOpenWave={(id) => router.push({ pathname: "/wave/[id]", params: { id } })}
           />
-        </Frost>
+        </View>
         {emptyCopy ? (
           <Frost kind="card" style={styles.wordsCard} contentStyle={styles.words}>
             <Txt tone="secondary" center>
@@ -88,10 +88,10 @@ export default function WavesScreen() {
 }
 
 const styles = StyleSheet.create({
-  fill: { flex: 1, paddingHorizontal: space.md },
-  mapCard: { flex: 1, marginBottom: space.sm },
-  mapInner: { flex: 1, overflow: "hidden", borderRadius: 22 },
-  wordsCard: { marginBottom: space.sm },
+  fill: { flex: 1 },
+  /** Edge-to-edge map — no side pad, no frosted inset card. */
+  map: { flex: 1 },
+  wordsCard: { marginHorizontal: space.md, marginBottom: space.sm },
   words: {
     minHeight: 72,
     justifyContent: "center",

@@ -25,6 +25,11 @@ interface Props {
    * Never wraps — long names ellipsize at the tail (360dp Android).
    */
   detail?: string;
+  /**
+   * Colour for the detail segment only. Defaults to secondary.
+   * Use "moon" (colors.waterMid) to highlight topic names on a soft button.
+   */
+  detailTone?: "secondary" | "primary" | "moon";
   tone?: "secondary" | "primary" | "ember" | "haze" | "mist" | "white";
   disabled?: boolean;
   busy?: boolean;
@@ -37,6 +42,7 @@ export function Button({
   onPress,
   kind = "main",
   detail,
+  detailTone = "secondary",
   tone,
   disabled,
   busy,
@@ -83,24 +89,15 @@ export function Button({
         <ActivityIndicator color={colors.textPrimary} />
       ) : detail ? (
         <View style={styles.row}>
-          {/*
-            Main (waterMid) uses the same primary foreground for label + detail
-            so topic text stays readable on the blue fill. Soft keeps secondary detail.
-          */}
           <Txt variant="button" tone="primary" numberOfLines={1}>
             {label}
           </Txt>
-          <Txt
-            variant="button"
-            tone={main ? "primary" : "secondary"}
-            style={styles.sep}
-            numberOfLines={1}
-          >
+          <Txt variant="button" tone="secondary" style={styles.sep} numberOfLines={1}>
             {" · "}
           </Txt>
           <Txt
             variant="quiet"
-            tone={main ? "primary" : "secondary"}
+            tone={detailTone}
             numberOfLines={1}
             ellipsizeMode="tail"
             style={styles.detail}

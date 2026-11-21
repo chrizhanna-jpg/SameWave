@@ -141,8 +141,10 @@ export default function RippleScreen() {
               style={styles.actionGap}
             />
             <Button
+              kind="soft"
               label="Today's topic"
               detail={today.label}
+              detailTone="moon"
               onPress={() => void beginCompose(today.id, true)}
               style={styles.actionGap}
               accessibilityHint="Starts a Ripple locked to today's topic"
