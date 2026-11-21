@@ -73,7 +73,7 @@ export default function ComposeScreen() {
   const box = useRef({ width: 0, height: 0 });
 
   useEffect(() => {
-    if (!photo) router.replace("/");
+    if (!photo) router.replace("/home");
   }, [photo, router]);
 
   // Keep a locked Daily topic pinned even if something else tries to change state.
@@ -160,7 +160,7 @@ export default function ComposeScreen() {
         icon="close"
         onPress={() => {
           clearDraft();
-          router.replace("/");
+          router.replace("/home");
         }}
       />
 

@@ -160,6 +160,7 @@ function Routes() {
         }}
       >
         <Stack.Protected guard={inApp}>
+          <Stack.Screen name="index" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="capture" />
           <Stack.Screen name="compose" />

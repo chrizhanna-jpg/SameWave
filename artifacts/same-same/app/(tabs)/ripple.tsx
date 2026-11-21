@@ -1,5 +1,5 @@
-import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import React, { useCallback, useEffect, useState } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 
 import { BrandMark } from "@/components/BrandMark";
@@ -9,6 +9,7 @@ import { RippleRings } from "@/components/RippleRings";
 import { Screen } from "@/components/Screen";
 import { Txt } from "@/components/Txt";
 import { dailyTopicFor } from "@/core/dailyTopic";
+import { shouldShowHomeWaiting } from "@/core/homeWaiting";
 import { sceneFor } from "@/data/scenes";
 import { chooseFromLibrary } from "@/device/photos";
 import { playOceanSound } from "@/device/sound";
@@ -19,20 +20,42 @@ import { space } from "@/theme";
 
 /**
  * Ripple tab: send / waiting focused. Account lives on Home.
+ * Same post-send waiting gate as Home — travelling alone does not lock the UI.
  */
 export default function RippleScreen() {
   const router = useRouter();
-  const { travelling, sync } = useAppState();
+  const { travelling, sync, postSendWaiting, dismissPostSendWaiting } = useAppState();
   const [sendingAnother, setSendingAnother] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
-  const waiting = travelling !== null && !sendingAnother;
+  const waiting = shouldShowHomeWaiting({
+    hasTravellingRipple: travelling !== null,
+    postSendWaiting,
+    sendingAnother,
+  });
   const today = dailyTopicFor();
   const tabClearance = useTabBarClearance(space.md);
 
   useEffect(() => {
     setSendingAnother(false);
   }, [travelling?.photoId]);
+
+  const dismissTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (dismissTimer.current) {
+        clearTimeout(dismissTimer.current);
+        dismissTimer.current = null;
+      }
+      return () => {
+        dismissTimer.current = setTimeout(() => {
+          dismissPostSendWaiting();
+          dismissTimer.current = null;
+        }, 100);
+      };
+    }, [dismissPostSendWaiting]),
+  );
 
   const beginCompose = async (topicId: string | null, locked = false) => {
     setProblem(null);
@@ -101,7 +124,10 @@ export default function RippleScreen() {
           <Button
             kind="soft"
             label="Send another"
-            onPress={() => setSendingAnother(true)}
+            onPress={() => {
+              setSendingAnother(true);
+              dismissPostSendWaiting();
+            }}
             style={styles.actionGap}
           />
         ) : (

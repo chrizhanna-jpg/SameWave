@@ -154,7 +154,7 @@ export default function CaptureScreen() {
   const abandon = () => {
     setDraftTopic(null);
     if (router.canGoBack()) router.back();
-    else router.replace("/");
+    else router.replace("/home");
   };
 
   if (!permission.granted) {

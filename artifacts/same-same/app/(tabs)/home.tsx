@@ -11,6 +11,7 @@ import { RippleRings } from "@/components/RippleRings";
 import { Screen } from "@/components/Screen";
 import { Txt } from "@/components/Txt";
 import { dailyTopicFor } from "@/core/dailyTopic";
+import { shouldShowHomeWaiting } from "@/core/homeWaiting";
 import { sceneFor } from "@/data/scenes";
 import { chooseFromLibrary } from "@/device/photos";
 import { isWaveSwooshPlaying, playOceanSound } from "@/device/sound";
@@ -23,15 +24,27 @@ import { colors, layout, space } from "@/theme";
 /**
  * Home tab: brand, topic, send actions, Account. Default launch tab.
  * Ocean sound plays on every focus after splash (no overlap with launch swoosh).
+ * Post-send waiting shows once after send; leaving the tab dismisses it.
  */
 export default function HomeScreen() {
   const router = useRouter();
   const splashReady = useContext(SplashReadyContext);
-  const { travelling, sync, shouldAskForPushes, askForPushes } = useAppState();
+  const {
+    travelling,
+    sync,
+    shouldAskForPushes,
+    askForPushes,
+    postSendWaiting,
+    dismissPostSendWaiting,
+  } = useAppState();
   const [sendingAnother, setSendingAnother] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
-  const waiting = travelling !== null && !sendingAnother;
+  const waiting = shouldShowHomeWaiting({
+    hasTravellingRipple: travelling !== null,
+    postSendWaiting,
+    sendingAnother,
+  });
   const today = dailyTopicFor();
   const tabClearance = useTabBarClearance(space.md);
 
@@ -46,9 +59,15 @@ export default function HomeScreen() {
   }, [waiting, shouldAskForPushes, askForPushes]);
 
   const playedForFocus = React.useRef(false);
+  /** Deferred so React Strict Mode remounts cancel before waiting is cleared. */
+  const dismissTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useFocusEffect(
     useCallback(() => {
+      if (dismissTimer.current) {
+        clearTimeout(dismissTimer.current);
+        dismissTimer.current = null;
+      }
       playedForFocus.current = false;
       let cancelled = false;
       const tryPlay = () => {
@@ -64,8 +83,13 @@ export default function HomeScreen() {
       tryPlay();
       return () => {
         cancelled = true;
+        // Leaving Home dismisses post-send waiting so re-entry shows send buttons.
+        dismissTimer.current = setTimeout(() => {
+          dismissPostSendWaiting();
+          dismissTimer.current = null;
+        }, 100);
       };
-    }, [splashReady]),
+    }, [splashReady, dismissPostSendWaiting]),
   );
 
   const beginCompose = async (topicId: string | null, locked = false) => {
@@ -162,7 +186,10 @@ export default function HomeScreen() {
           <Button
             kind="soft"
             label="Send another"
-            onPress={() => setSendingAnother(true)}
+            onPress={() => {
+              setSendingAnother(true);
+              dismissPostSendWaiting();
+            }}
             style={styles.actionGap}
           />
         ) : (

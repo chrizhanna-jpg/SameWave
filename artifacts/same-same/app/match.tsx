@@ -168,7 +168,7 @@ export default function MatchScreen() {
       finishMatchLook(myPhotoId, seenRef.current);
     }
     if (router.canGoBack()) router.back();
-    else router.replace("/");
+    else router.replace("/home");
   }, [finishMatchLook, myPhotoId, router]);
 
   const advance = useCallback(
@@ -300,7 +300,7 @@ export default function MatchScreen() {
         <Txt center tone="secondary" style={styles.missing}>
           That Ripple isn&apos;t on this device any more.
         </Txt>
-        <Pressable onPress={() => router.replace("/")} style={styles.missingBtn}>
+        <Pressable onPress={() => router.replace("/home")} style={styles.missingBtn}>
           <Txt tone="moon">Back home</Txt>
         </Pressable>
       </View>
