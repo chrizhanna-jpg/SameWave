@@ -273,11 +273,11 @@ export function WorldMap({
                     <Svg width={map.width} height={map.height}>
                       <Path
                         d={map.landPath}
-                        fill={colors.waterSoft}
-                        fillOpacity={0.9}
-                        stroke={colors.waterMid}
-                        strokeOpacity={0.55}
-                        strokeWidth={0.75}
+                        fill={colors.waterMuted}
+                        fillOpacity={0.55}
+                        stroke={colors.slate}
+                        strokeOpacity={0.28}
+                        strokeWidth={1.1}
                       />
                       {geometry.lines.map((line) => (
                         <Thread

@@ -415,27 +415,46 @@ export function buildMapMarkers(
       photoId: m.side === "mine" ? wave.mine.photoId : wave.theirs.photoId,
     };
   });
-  // Several Waves can share one capture spot (e.g. sample "mine" in London).
-  // Fan them out so each current-photo pin stays independently tappable.
-  return spreadCoincidentMarkers(withIds, options.loopSize * 0.35);
+  // Several Waves can share one capture spot (e.g. sample "mine" in London),
+  // and European GPS points often sit within a few map units of each other.
+  // Fan near-coincident pins out so the Europe pile stays readable + tappable.
+  return spreadCoincidentMarkers(withIds, Math.max(14, options.loopSize * 0.55), 12);
 }
 
 /**
- * Nudge markers that sit on the same map point into a small spiral so each
- * keeps a distinct hit target.
+ * Nudge markers that sit on the same (or nearly the same) map point into a
+ * spiral so each keeps a distinct hit target. `clusterWithin` merges points
+ * closer than that many map units into one spiral group.
  */
 export function spreadCoincidentMarkers(
   markers: readonly MapMarker[],
   radius: number,
+  clusterWithin = 0,
 ): MapMarker[] {
-  const groups = new Map<string, number>();
+  const anchors: { side: string; point: Point }[] = [];
+  const groupIndex = new Map<string, number>();
+  const groupKeyFor = (marker: MapMarker): string => {
+    if (clusterWithin <= 0) {
+      return `${marker.side}:${marker.point.x.toFixed(1)},${marker.point.y.toFixed(1)}`;
+    }
+    for (let i = 0; i < anchors.length; i++) {
+      const a = anchors[i]!;
+      if (a.side !== marker.side) continue;
+      if (Math.hypot(a.point.x - marker.point.x, a.point.y - marker.point.y) <= clusterWithin) {
+        return `${marker.side}:a${i}`;
+      }
+    }
+    const id = anchors.length;
+    anchors.push({ side: marker.side, point: marker.point });
+    return `${marker.side}:a${id}`;
+  };
   return markers.map((marker) => {
-    const key = `${marker.side}:${marker.point.x.toFixed(1)},${marker.point.y.toFixed(1)}`;
-    const index = groups.get(key) ?? 0;
-    groups.set(key, index + 1);
+    const key = groupKeyFor(marker);
+    const index = groupIndex.get(key) ?? 0;
+    groupIndex.set(key, index + 1);
     if (index === 0) return marker;
     const angle = -Math.PI / 2 + index * GOLDEN_ANGLE;
-    const reach = radius * (0.55 + 0.2 * index);
+    const reach = radius * (0.65 + 0.28 * index);
     return {
       ...marker,
       point: {

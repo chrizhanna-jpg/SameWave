@@ -202,6 +202,38 @@ test("coincident mine markers fan out so each stays tappable", () => {
   }
 });
 
+test("spreadCoincidentMarkers clusters near-coincident Europe pins", () => {
+  const clustered = spreadCoincidentMarkers(
+    [
+      {
+        waveId: "a",
+        side: "mine",
+        photoId: "pa",
+        point: { x: 100, y: 100 },
+      },
+      {
+        waveId: "b",
+        side: "mine",
+        photoId: "pb",
+        point: { x: 105, y: 102 },
+      },
+      {
+        waveId: "c",
+        side: "mine",
+        photoId: "pc",
+        point: { x: 108, y: 99 },
+      },
+    ],
+    16,
+    12,
+  );
+  const keys = new Set(clustered.map((m) => `${m.point.x.toFixed(1)},${m.point.y.toFixed(1)}`));
+  assert.equal(keys.size, 3);
+  assert.ok(
+    Math.hypot(clustered[1]!.point.x - clustered[0]!.point.x, clustered[1]!.point.y - clustered[0]!.point.y) >= 8,
+  );
+});
+
 test("buildMapMarkers spreads shared London sample endpoints", () => {
   const projectLonLat = (lonLat: [number, number]): Point => ({
     x: (lonLat[0] + 180) * 2,

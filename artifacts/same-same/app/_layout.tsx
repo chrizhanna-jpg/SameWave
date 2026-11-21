@@ -10,7 +10,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
 import React, { useContext, useEffect, useRef, useState } from "react";
-import { AppState, View } from "react-native";
+import { AppState, LogBox, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -22,6 +22,12 @@ import { AppStateProvider, useAppState } from "@/state/AppState";
 import { SplashReadyContext } from "@/state/SplashReady";
 import { SessionProvider, useSession } from "@/state/session";
 import { colors, motion } from "@/theme";
+
+/**
+ * Expo Router + Stack.Protected briefly emits ROUTE_NAMES_CHANGED when the
+ * signed-in tab set mounts. Harmless, but LogBox overlays block taps in Expo Go.
+ */
+LogBox.ignoreLogs(["ROUTE_NAMES_CHANGED"]);
 
 /** The splash never stays up longer than this, whatever else is still loading. */
 const SPLASH_LIMIT_MS = 4000;
