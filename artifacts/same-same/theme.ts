@@ -3,33 +3,37 @@
  * colours, spacing, corner radius, type and motion timings from here and
  * nowhere else, so the whole app can be retuned in this file.
  *
- * Mood: a quiet lake on a misty morning. Photographs carry the colour;
- * the interface sits lightly over them.
+ * Mood: soft baby blue — calm water, never clinical white. Photographs and
+ * the Wave divider keep their own treatment; chrome stays light and readable.
  */
 
 export const colors = {
-  /** Standard application background — warm mist, not pure white. */
-  background: "#F7F8F7",
-  /** Bottom sheets, quiet inputs, inactive controls, empty states. */
-  surface: "#F1F4F3",
-  /** Soft translucent mist for sheets over photographs. */
-  surfaceTranslucent: "rgba(247, 248, 247, 0.92)",
+  /** App canvas — gentle baby blue, not off-white. */
+  background: "#E7F1F8",
+  /** Sheets, inputs, quiet pills — a touch deeper baby blue. */
+  surface: "#D7EAF4",
+  /** Soft translucent baby blue for sheets over photographs. */
+  surfaceTranslucent: "rgba(215, 234, 244, 0.92)",
 
-  /** Pale water — ripple rings, selected states, map threads, play controls. */
-  waterPale: "#D7E7EE",
-  waterSoft: "#C2D7E1",
-  waterMid: "#8BCED8",
-  waterMuted: "#8B9FA8",
+  /** Selected rows, soft fills, map glow — clearer baby blue. */
+  waterPale: "#BFDFF0",
+  waterSoft: "#9ECFE6",
+  /** Primary actions and active marks — richer baby blue, still calm. */
+  waterMid: "#6EB4D6",
+  waterMuted: "#7A9AAB",
 
-  /** Text. Never pure black. */
+  /** Text. Never pure black — dark slate for contrast on blue. */
   slate: "#3F4A4B",
   textPrimary: "#3F4A4B",
-  textSecondary: "#7E8B8E",
-  textQuiet: "#A4AEB0",
+  textSecondary: "#5E6E74",
+  textQuiet: "#7E9098",
 
   /** Hairlines and quiet outlines. */
-  line: "rgba(63, 74, 75, 0.12)",
-  /** Local scrim behind text over a photograph — never across the whole image. */
+  line: "rgba(63, 74, 75, 0.14)",
+  /**
+   * Local scrim behind text over a photograph — stay warm/neutral so photo
+   * screens are unchanged in feel.
+   */
   overlayLight: "rgba(247, 248, 247, 0.74)",
   overlayDark: "rgba(25, 34, 36, 0.28)",
 
@@ -42,14 +46,14 @@ export const colors = {
    * Aliases used by older call sites in this rebuild. Prefer the names above
    * in new code; these keep the screens compiling while the look is mist.
    */
-  pond: "#F7F8F7",
-  pondDeep: "#F1F4F3",
-  pondLift: "#F1F4F3",
-  pondEdge: "rgba(63, 74, 75, 0.12)",
+  pond: "#E7F1F8",
+  pondDeep: "#D7EAF4",
+  pondLift: "#D7EAF4",
+  pondEdge: "rgba(63, 74, 75, 0.14)",
   mist: "#3F4A4B",
-  haze: "#7E8B8E",
-  water: "#8BCED8",
-  moon: "#D7E7EE",
+  haze: "#5E6E74",
+  water: "#6EB4D6",
+  moon: "#BFDFF0",
   moonInk: "#3F4A4B",
   scrim: "rgba(25, 34, 36, 0.28)",
 } as const;
@@ -57,6 +61,7 @@ export const colors = {
 /**
  * The soft join between the two full-screen photographs on a Wave.
  * Warm white so it stays visible over sky and water; never pale blue.
+ * Left unchanged when the chrome shifted to baby blue.
  */
 export const waveJoin = {
   /** The thin line itself — brief overlayLight. */

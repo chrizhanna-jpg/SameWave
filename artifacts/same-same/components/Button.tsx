@@ -14,7 +14,7 @@ interface Props {
   label: string;
   onPress: (event: GestureResponderEvent) => void;
   /**
-   * main: pale water fill — the one clear action a screen may have.
+   * main: richer baby-blue fill — the one clear action a screen may have.
    * soft: a second, calmer choice on surface.
    * quiet: a line of text.
    */
@@ -91,7 +91,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.lg,
     alignSelf: "stretch",
   },
-  main: { backgroundColor: colors.waterPale },
+  main: { backgroundColor: colors.waterMid },
   soft: {
     backgroundColor: colors.surface,
     borderWidth: StyleSheet.hairlineWidth,

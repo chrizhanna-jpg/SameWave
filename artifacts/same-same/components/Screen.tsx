@@ -86,8 +86,8 @@ export function Screen({
   return (
     <View style={styles.root}>
       <LinearGradient
-        colors={[colors.background, colors.waterPale]}
-        locations={[0.55, 1]}
+        colors={[colors.background, colors.waterPale, colors.waterSoft]}
+        locations={[0.35, 0.78, 1]}
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
