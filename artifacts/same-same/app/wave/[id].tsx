@@ -51,7 +51,7 @@ export default function WaveScreen() {
   const isSampleWave = (waveId: string) => {
     if (process.env.EXPO_PUBLIC_TEST_PHOTOS !== "1") return false;
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { isSampleWaveId } = require("../assets/test-photos/sampleIds") as {
+    const { isSampleWaveId } = require("../../assets/test-photos/sampleIds") as {
       isSampleWaveId: (value: string) => boolean;
     };
     return isSampleWaveId(waveId);

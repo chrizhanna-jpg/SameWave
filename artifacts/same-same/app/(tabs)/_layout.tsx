@@ -17,6 +17,8 @@ export default function TabsLayout() {
     <TabBarHeightProvider>
       <Tabs
         tabBar={(props) => <TabBar {...props} />}
+        // Expo Router anchors Home; without initialRoute, back skips Home.
+        backBehavior="initialRoute"
         screenOptions={{
           headerShown: false,
           sceneStyle: { backgroundColor: "transparent" },

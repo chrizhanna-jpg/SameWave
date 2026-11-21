@@ -1,6 +1,6 @@
 import * as Haptics from "expo-haptics";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -130,12 +130,16 @@ export default function MatchScreen() {
     }).start();
   }, [bottomPulse]);
 
-  const ownIds = ripples.map((r) => r.photoId);
-  const excludeBase = [
-    ...ownIds,
-    ...(ripple?.reach.offeredIds ?? []),
-    ...waves.flatMap((w) => [w.mine.photoId, w.theirs.photoId]),
-  ];
+  const ownIds = useMemo(() => ripples.map((r) => r.photoId), [ripples]);
+  const offeredIds = ripple?.reach.offeredIds;
+  const excludeBase = useMemo(
+    () => [
+      ...ownIds,
+      ...(offeredIds ?? []),
+      ...waves.flatMap((w) => [w.mine.photoId, w.theirs.photoId]),
+    ],
+    [ownIds, offeredIds, waves],
+  );
 
   const loadDeck = useCallback(async () => {
     if (!samplesReady || useSamples === null) return;
