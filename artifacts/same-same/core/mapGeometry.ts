@@ -19,6 +19,18 @@ export interface MapWaveInput {
   mine: string | null;
   /** Country of the other photo. */
   theirs: string | null;
+  /** Precise capture position [lng, lat] when known (overrides country centroid). */
+  mineLonLat?: [number, number] | null;
+  /** Precise capture position [lng, lat] when known (overrides country centroid). */
+  theirsLonLat?: [number, number] | null;
+}
+
+/** Endpoint marker for a Wave photo on the map. */
+export interface MapMarker {
+  waveId: string;
+  side: "mine" | "theirs";
+  photoId: string;
+  point: Point;
 }
 
 export interface MapLine {
@@ -137,30 +149,80 @@ export function arcPath(a: Point, b: Point, bow: number): Shape {
   };
 }
 
+export type ProjectCountry = (countryCode: string) => Point | null;
+export type ProjectLonLat = (lonLat: [number, number]) => Point | null;
+
+type Placed = { code: string; point: Point };
+
+/**
+ * Lines + endpoint markers for Waves.
+ * Prefer precise lon/lat when present; otherwise country centroids.
+ */
 export function buildMapLines(
   waves: readonly MapWaveInput[],
-  project: (countryCode: string) => Point | null,
+  project: ProjectCountry,
   options: MapGeometryOptions,
+  projectLonLat?: ProjectLonLat,
 ): MapLine[] {
-  const place = (code: string | null): { code: string; point: Point } | null => {
+  return buildMapGeometry(waves, project, options, projectLonLat).lines;
+}
+
+export function buildMapGeometry(
+  waves: readonly MapWaveInput[],
+  project: ProjectCountry,
+  options: MapGeometryOptions,
+  projectLonLat?: ProjectLonLat,
+): { lines: MapLine[]; markers: MapMarker[] } {
+  const placeCountry = (code: string | null): Placed | null => {
     const normalized = normalizeCountryCode(code);
     if (!normalized) return null;
     const point = project(normalized);
     return point ? { code: normalized, point } : null;
   };
-  const fallback = place(options.fallbackCountry ?? null) ?? place(SOMEWHERE);
+  const placeLonLat = (
+    lonLat: [number, number] | null | undefined,
+    code: string | null,
+  ): Placed | null => {
+    if (lonLat && projectLonLat) {
+      const point = projectLonLat(lonLat);
+      if (point) {
+        return { code: normalizeCountryCode(code) ?? "XX", point };
+      }
+    }
+    return placeCountry(code);
+  };
+  const fallback = placeCountry(options.fallbackCountry ?? null) ?? placeCountry(SOMEWHERE);
 
   const arcCounts = new Map<string, number>();
   const loopCounts = new Map<string, number>();
   const lines: MapLine[] = [];
+  const markers: MapMarker[] = [];
 
   for (const wave of waves) {
-    // A side with no known country sits with the other side.
-    const mine = place(wave.mine) ?? place(wave.theirs) ?? fallback;
-    const theirs = place(wave.theirs) ?? place(wave.mine) ?? fallback;
+    const mine =
+      placeLonLat(wave.mineLonLat ?? null, wave.mine) ??
+      placeLonLat(wave.theirsLonLat ?? null, wave.theirs) ??
+      fallback;
+    const theirs =
+      placeLonLat(wave.theirsLonLat ?? null, wave.theirs) ??
+      placeLonLat(wave.mineLonLat ?? null, wave.mine) ??
+      fallback;
     if (!mine || !theirs) continue;
 
-    if (mine.code === theirs.code) {
+    markers.push({
+      waveId: wave.id,
+      side: "mine",
+      photoId: wave.id, // caller overwrites via separate marker build when photo ids known
+      point: mine.point,
+    });
+    markers.push({
+      waveId: wave.id,
+      side: "theirs",
+      photoId: wave.id,
+      point: theirs.point,
+    });
+
+    if (mine.code === theirs.code && !wave.mineLonLat && !wave.theirsLonLat) {
       const index = loopCounts.get(mine.code) ?? 0;
       loopCounts.set(mine.code, index + 1);
       const { angle, size } = loopPlacement(index, options.loopSize);
@@ -168,17 +230,85 @@ export function buildMapLines(
       continue;
     }
 
-    const [first, second] = mine.code < theirs.code ? [mine, theirs] : [theirs, mine];
-    const key = `${first.code}|${second.code}`;
+    // Same-country but distinct GPS: still draw a short arc between points.
+    if (mine.point.x === theirs.point.x && mine.point.y === theirs.point.y) {
+      const index = loopCounts.get(mine.code) ?? 0;
+      loopCounts.set(mine.code, index + 1);
+      const { angle, size } = loopPlacement(index, options.loopSize);
+      lines.push({ waveId: wave.id, kind: "loop", ...loopPath(mine.point, angle, size) });
+      continue;
+    }
+
+    const key =
+      mine.code === theirs.code
+        ? `${mine.code}|${mine.point.x.toFixed(1)},${mine.point.y.toFixed(1)}|${theirs.point.x.toFixed(1)},${theirs.point.y.toFixed(1)}`
+        : mine.code < theirs.code
+          ? `${mine.code}|${theirs.code}`
+          : `${theirs.code}|${mine.code}`;
     const index = arcCounts.get(key) ?? 0;
     arcCounts.set(key, index + 1);
+    const [first, second] =
+      mine.code === theirs.code
+        ? [mine, theirs]
+        : mine.code < theirs.code
+          ? [mine, theirs]
+          : [theirs, mine];
     lines.push({
       waveId: wave.id,
       kind: "arc",
       ...arcPath(first.point, second.point, arcBow(index)),
     });
   }
-  return lines;
+  return { lines, markers };
+}
+
+/** Markers for Wave endpoints with real photo ids. */
+export function buildMapMarkers(
+  waves: readonly {
+    id: string;
+    mine: { photoId: string; countryCode: string | null; lat?: number | null; lng?: number | null };
+    theirs: { photoId: string; countryCode: string | null; lat?: number | null; lng?: number | null };
+  }[],
+  project: ProjectCountry,
+  options: MapGeometryOptions,
+  projectLonLat?: ProjectLonLat,
+): MapMarker[] {
+  const inputs: MapWaveInput[] = waves.map((w) => ({
+    id: w.id,
+    mine: w.mine.countryCode,
+    theirs: w.theirs.countryCode,
+    mineLonLat:
+      w.mine.lng != null && w.mine.lat != null ? [w.mine.lng, w.mine.lat] : null,
+    theirsLonLat:
+      w.theirs.lng != null && w.theirs.lat != null ? [w.theirs.lng, w.theirs.lat] : null,
+  }));
+  const { markers } = buildMapGeometry(inputs, project, options, projectLonLat);
+  return markers.map((m) => {
+    const wave = waves.find((w) => w.id === m.waveId);
+    if (!wave) return m;
+    return {
+      ...m,
+      photoId: m.side === "mine" ? wave.mine.photoId : wave.theirs.photoId,
+    };
+  });
+}
+
+/** Nearest marker within `reach`, or null. */
+export function markerAt(
+  markers: readonly MapMarker[],
+  point: Point,
+  reach: number,
+): MapMarker | null {
+  let best: MapMarker | null = null;
+  let bestDist = reach;
+  for (const marker of markers) {
+    const d = Math.hypot(point.x - marker.point.x, point.y - marker.point.y);
+    if (d <= bestDist) {
+      best = marker;
+      bestDist = d;
+    }
+  }
+  return best;
 }
 
 function distanceToSegment(p: Point, a: Point, b: Point): number {

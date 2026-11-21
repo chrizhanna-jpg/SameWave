@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { arcBow, buildMapLines, lineAt, type Point } from "../core/mapGeometry";
+import {
+  arcBow,
+  buildMapGeometry,
+  buildMapLines,
+  lineAt,
+  markerAt,
+  type Point,
+} from "../core/mapGeometry";
 import { COUNTRY_CENTROID_LON_LAT } from "../data/countryCentroids";
 
 const project = (code: string): Point | null => {
@@ -144,4 +151,30 @@ test("two lines between the same countries are told apart", () => {
   );
   assert.equal(lineAt(lines, lines[0]!.tip, 22)?.waveId, "first");
   assert.equal(lineAt(lines, lines[1]!.tip, 22)?.waveId, "second");
+});
+
+test("precise lon/lat endpoints draw an arc and expose mine markers", () => {
+  const projectLonLat = (lonLat: [number, number]): Point => ({
+    x: (lonLat[0] + 180) * 2,
+    y: (90 - lonLat[1]) * 2,
+  });
+  const { lines, markers } = buildMapGeometry(
+    [
+      {
+        id: "gps",
+        mine: "GB",
+        theirs: "FR",
+        mineLonLat: [-0.12, 51.5],
+        theirsLonLat: [2.35, 48.85],
+      },
+    ],
+    project,
+    options,
+    projectLonLat,
+  );
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0]?.kind, "arc");
+  const mine = markers.find((m) => m.side === "mine");
+  assert.ok(mine);
+  assert.equal(markerAt(markers, mine!.point, 28)?.waveId, "gps");
 });

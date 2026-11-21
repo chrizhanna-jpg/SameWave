@@ -8,12 +8,20 @@ import {
   type GestureResponderEvent,
   type LayoutChangeEvent,
 } from "react-native";
-import Svg, { G, Path } from "react-native-svg";
+import Svg, { Circle, G, Path } from "react-native-svg";
 import { feature } from "topojson-client";
 import type { GeometryCollection, Topology } from "topojson-specification";
 import land110 from "world-atlas/land-110m.json";
 
-import { buildMapLines, lineAt, type MapLine, type Point } from "@/core/mapGeometry";
+import {
+  buildMapGeometry,
+  buildMapMarkers,
+  lineAt,
+  markerAt,
+  type MapLine,
+  type MapMarker,
+  type Point,
+} from "@/core/mapGeometry";
 import type { Wave } from "@/core/types";
 import { centroidLonLatForCountry } from "@/data/countryCentroids";
 import { useReducedMotion } from "@/device/motion";
@@ -25,7 +33,11 @@ const land = feature(topology, topology.objects.land as GeometryCollection);
 /** Width of the Equal Earth world divided by its height. */
 const WORLD_ASPECT = 2.054;
 /** How close a touch has to be to a line to open its Wave, in map units. */
-const TOUCH_REACH = 24;
+const LINE_TOUCH_REACH = 32;
+/** Hit radius for photo endpoint markers (generous for fingers). */
+const MARKER_TOUCH_REACH = 28;
+/** Invisible mid-path hit target radius (platforms where polyline press is flaky). */
+const MIDPOINT_HIT = 22;
 
 interface Props {
   waves: readonly Wave[];
@@ -33,15 +45,23 @@ interface Props {
   homeCountry: string | null;
   /** Waves whose threads should draw themselves like a travelling ripple. */
   drawingIds?: readonly string[];
+  /** Line or mid-path tap → paired Wave view. */
   onOpenWave: (waveId: string) => void;
+  /** Current (mine) photo marker tap → full-screen / detail. */
+  onOpenPhoto: (waveId: string, photoId: string) => void;
 }
 
 /**
- * The keepsake map: muted water-blue land, and one soft glowing thread for
- * each of the user's own Waves. No text, labels, pins or counters. Touch a
- * thread to open that Wave again.
+ * Keepsake map: muted land, one soft glowing thread per Wave between the
+ * two photos' locations, and a tappable marker on the user's photo.
  */
-export function WorldMap({ waves, homeCountry, drawingIds = [], onOpenWave }: Props) {
+export function WorldMap({
+  waves,
+  homeCountry,
+  drawingIds = [],
+  onOpenWave,
+  onOpenPhoto,
+}: Props) {
   const reduced = useReducedMotion();
   const [box, setBox] = useState<{ width: number; height: number } | null>(null);
   const onLayout = (event: LayoutChangeEvent) => {
@@ -64,26 +84,41 @@ export function WorldMap({ waves, homeCountry, drawingIds = [], onOpenWave }: Pr
       const xy = projection([lonLat[0], lonLat[1]] as [number, number]);
       return xy ? { x: xy[0], y: xy[1] } : null;
     };
+    const projectLonLat = (lonLat: [number, number]): Point | null => {
+      const xy = projection([lonLat[0], lonLat[1]]);
+      return xy ? { x: xy[0], y: xy[1] } : null;
+    };
     return {
       width,
       height: fittedHeight,
       landPath: geoPath(projection)(land) ?? "",
       project,
+      projectLonLat,
       loopSize: Math.max(22, fittedHeight * 0.08),
     };
   }, [box]);
 
-  const lines = useMemo<MapLine[]>(() => {
-    if (!map) return [];
-    return buildMapLines(
-      waves.map((wave) => ({
-        id: wave.id,
-        mine: wave.mine.countryCode,
-        theirs: wave.theirs.countryCode,
-      })),
-      map.project,
-      { loopSize: map.loopSize, fallbackCountry: homeCountry },
+  const geometry = useMemo(() => {
+    if (!map) return { lines: [] as MapLine[], markers: [] as MapMarker[] };
+    const opts = { loopSize: map.loopSize, fallbackCountry: homeCountry };
+    const inputs = waves.map((wave) => ({
+      id: wave.id,
+      mine: wave.mine.countryCode,
+      theirs: wave.theirs.countryCode,
+      mineLonLat:
+        wave.mine.lng != null && wave.mine.lat != null
+          ? ([wave.mine.lng, wave.mine.lat] as [number, number])
+          : null,
+      theirsLonLat:
+        wave.theirs.lng != null && wave.theirs.lat != null
+          ? ([wave.theirs.lng, wave.theirs.lat] as [number, number])
+          : null,
+    }));
+    const { lines } = buildMapGeometry(inputs, map.project, opts, map.projectLonLat);
+    const markers = buildMapMarkers(waves, map.project, opts, map.projectLonLat).filter(
+      (m) => m.side === "mine",
     );
+    return { lines, markers };
   }, [map, waves, homeCountry]);
 
   const startX = useMemo(() => {
@@ -100,7 +135,14 @@ export function WorldMap({ waves, homeCountry, drawingIds = [], onOpenWave }: Pr
 
   const onTouch = (event: GestureResponderEvent) => {
     const { locationX, locationY } = event.nativeEvent;
-    const line = lineAt(lines, { x: locationX, y: locationY }, TOUCH_REACH);
+    const point = { x: locationX, y: locationY };
+    // Photo markers win over lines so a tap on the pin opens the photo.
+    const marker = markerAt(geometry.markers, point, MARKER_TOUCH_REACH);
+    if (marker) {
+      onOpenPhoto(marker.waveId, marker.photoId);
+      return;
+    }
+    const line = lineAt(geometry.lines, point, LINE_TOUCH_REACH);
     if (line) onOpenWave(line.waveId);
   };
 
@@ -123,13 +165,16 @@ export function WorldMap({ waves, homeCountry, drawingIds = [], onOpenWave }: Pr
               strokeOpacity={0.2}
               strokeWidth={0.5}
             />
-            {lines.map((line) => (
+            {geometry.lines.map((line) => (
               <Thread
                 key={line.waveId}
                 line={line}
                 draw={!reduced && drawingIds.includes(line.waveId)}
                 reduced={reduced}
               />
+            ))}
+            {geometry.markers.map((marker) => (
+              <PhotoMarker key={`${marker.waveId}-mine`} marker={marker} />
             ))}
           </Svg>
           <Pressable
@@ -140,6 +185,31 @@ export function WorldMap({ waves, homeCountry, drawingIds = [], onOpenWave }: Pr
         </ScrollView>
       ) : null}
     </View>
+  );
+}
+
+function PhotoMarker({ marker }: { marker: MapMarker }) {
+  return (
+    <G>
+      {/* Invisible generous hit disc (drawn under the visible pin). */}
+      <Circle
+        cx={marker.point.x}
+        cy={marker.point.y}
+        r={MARKER_TOUCH_REACH}
+        fill={colors.waterMid}
+        fillOpacity={0.001}
+      />
+      <Circle
+        cx={marker.point.x}
+        cy={marker.point.y}
+        r={7}
+        fill={colors.white}
+        fillOpacity={0.95}
+        stroke={colors.waterMid}
+        strokeWidth={2}
+      />
+      <Circle cx={marker.point.x} cy={marker.point.y} r={2.5} fill={colors.waterMid} />
+    </G>
   );
 }
 
@@ -166,7 +236,6 @@ function Thread({
     let frame = 0;
     const tick = () => {
       const t = Math.min(1, (Date.now() - started) / duration);
-      // Ease out cubic — the thread arrives like a quiet ripple.
       const eased = 1 - Math.pow(1 - t, 3);
       setOffset(length * (1 - eased));
       if (t < 1) frame = requestAnimationFrame(tick);
@@ -182,6 +251,22 @@ function Thread({
 
   return (
     <G>
+      {/* Wide invisible stroke + tip disc for reliable taps. */}
+      <Path
+        d={line.d}
+        fill="none"
+        stroke={colors.waterMid}
+        strokeOpacity={0.001}
+        strokeWidth={LINE_TOUCH_REACH}
+        strokeLinecap="round"
+      />
+      <Circle
+        cx={line.tip.x}
+        cy={line.tip.y}
+        r={MIDPOINT_HIT}
+        fill={colors.waterMid}
+        fillOpacity={0.001}
+      />
       <Path
         d={line.d}
         fill="none"

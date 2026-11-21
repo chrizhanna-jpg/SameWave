@@ -21,6 +21,7 @@ import { Txt } from "@/components/Txt";
 import { WaveJoin } from "@/components/WaveJoin";
 import type { WaveDetail } from "@/backend/types";
 import { describeGap, matchBonuses } from "@/core/bonuses";
+import { loadSampleWaves } from "@/core/testPhotos";
 import { clipUrlFor, vibeFor } from "@/core/vibes";
 import { flagFor, nameFor } from "@/data/countries";
 import { NATIVE_DRIVER, useReducedMotion } from "@/device/motion";
@@ -48,7 +49,15 @@ export default function WaveScreen() {
   const insets = useSafeAreaInsets();
   const { waves, markWaveSeen, markWaveRevealed, shouldRevealWave, reportWave, backend } =
     useAppState();
-  const wave = waves.find((w) => w.id === id) ?? null;
+  const wave = useMemo(() => {
+    const live = waves.find((w) => w.id === id) ?? null;
+    if (live) return live;
+    // Dev/preview sample fixtures (EXPO_PUBLIC_TEST_PHOTOS=1) are not in AppState.
+    if (typeof id === "string" && id.startsWith("test_wave_")) {
+      return loadSampleWaves().find((w) => w.id === id) ?? null;
+    }
+    return null;
+  }, [waves, id]);
   const reduced = useReducedMotion();
   // Persist across push-tap + auto-reveal so the ceremony never double-plays.
   const wantsPulse = reveal === "1" && Boolean(id) && shouldRevealWave(id ?? "");
@@ -116,6 +125,7 @@ export default function WaveScreen() {
   useEffect(() => {
     if (!wave || seen.current) return;
     seen.current = true;
+    if (wave.id.startsWith("test_wave_")) return;
     markWaveSeen(wave.id);
     // Browsing from the map without a reveal still counts as revealed so
     // foreground auto-reveal / a later push-tap will not surprise-replay.
@@ -123,7 +133,7 @@ export default function WaveScreen() {
   }, [wave, markWaveSeen, markWaveRevealed, reveal]);
 
   useEffect(() => {
-    if (!wave) return;
+    if (!wave || wave.id.startsWith("test_wave_")) return;
     let cancelled = false;
     backend
       .getWaveDetail(wave)
