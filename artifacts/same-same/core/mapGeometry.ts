@@ -28,6 +28,8 @@ export interface MapLine {
   d: string;
   /** Furthest point from the ends: the top of an arc, the tip of a loop. */
   tip: Point;
+  /** Points along the line, in order, for working out which line was touched. */
+  points: Point[];
 }
 
 export interface MapGeometryOptions {
@@ -46,12 +48,36 @@ const LOOP_REACH = 1.35;
 const LOOP_GROWTH = 0.12;
 const LOOP_MAX_SCALE = 2.2;
 
+const SAMPLES = 16;
+
 function round(n: number): string {
   return (Math.round(n * 10) / 10).toString();
 }
 
+/** Points along a Bezier curve with the given control points. */
+function sample(controls: readonly Point[]): Point[] {
+  const points: Point[] = [];
+  for (let i = 0; i <= SAMPLES; i++) {
+    const t = i / SAMPLES;
+    let level = [...controls];
+    while (level.length > 1) {
+      const next: Point[] = [];
+      for (let k = 0; k < level.length - 1; k++) {
+        const from = level[k] as Point;
+        const to = level[k + 1] as Point;
+        next.push({ x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t });
+      }
+      level = next;
+    }
+    points.push(level[0] as Point);
+  }
+  return points;
+}
+
+type Shape = Pick<MapLine, "d" | "tip" | "points">;
+
 /** A loop that leaves `at` in direction `angle` and returns to it. */
-export function loopPath(at: Point, angle: number, size: number): { d: string; tip: Point } {
+export function loopPath(at: Point, angle: number, size: number): Shape {
   const reach = size * LOOP_REACH;
   const c1 = {
     x: at.x + reach * Math.cos(angle - LOOP_SPREAD),
@@ -66,6 +92,7 @@ export function loopPath(at: Point, angle: number, size: number): { d: string; t
   return {
     d: `M${round(at.x)} ${round(at.y)}C${round(c1.x)} ${round(c1.y)} ${round(c2.x)} ${round(c2.y)} ${round(at.x)} ${round(at.y)}`,
     tip: { x: at.x + out * Math.cos(angle), y: at.y + out * Math.sin(angle) },
+    points: sample([at, c1, c2, at]),
   };
 }
 
@@ -85,7 +112,7 @@ export function arcBow(index: number): number {
 }
 
 /** A curved line from `a` to `b`. A positive bow curves towards the top of the map. */
-export function arcPath(a: Point, b: Point, bow: number): { d: string; tip: Point } {
+export function arcPath(a: Point, b: Point, bow: number): Shape {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const length = Math.hypot(dx, dy) || 1;
@@ -106,6 +133,7 @@ export function arcPath(a: Point, b: Point, bow: number): { d: string; tip: Poin
       x: 0.25 * a.x + 0.5 * control.x + 0.25 * b.x,
       y: 0.25 * a.y + 0.5 * control.y + 0.25 * b.y,
     },
+    points: sample([a, control, b]),
   };
 }
 
@@ -151,4 +179,49 @@ export function buildMapLines(
     });
   }
   return lines;
+}
+
+function distanceToSegment(p: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lengthSquared = dx * dx + dy * dy;
+  const t =
+    lengthSquared === 0
+      ? 0
+      : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / lengthSquared));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+
+/** How far a point is from a line, in map units. */
+export function distanceToLine(line: MapLine, point: Point): number {
+  let best = Infinity;
+  for (let i = 0; i < line.points.length - 1; i++) {
+    best = Math.min(
+      best,
+      distanceToSegment(point, line.points[i] as Point, line.points[i + 1] as Point),
+    );
+  }
+  return best;
+}
+
+/**
+ * The line a touch at `point` means.
+ *
+ * Only lines passing within `reach` of the touch are considered. Lines often
+ * run close together, above all loops leaving the same country, so among
+ * those the one whose far end is nearest the touch wins: each line's far end
+ * is the part of it that no other line shares.
+ */
+export function lineAt(lines: readonly MapLine[], point: Point, reach: number): MapLine | null {
+  let best: MapLine | null = null;
+  let bestTipDistance = Infinity;
+  for (const line of lines) {
+    if (distanceToLine(line, point) > reach) continue;
+    const tipDistance = Math.hypot(point.x - line.tip.x, point.y - line.tip.y);
+    if (tipDistance < bestTipDistance) {
+      best = line;
+      bestTipDistance = tipDistance;
+    }
+  }
+  return best;
 }

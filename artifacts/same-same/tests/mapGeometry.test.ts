@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { arcBow, buildMapLines, type Point } from "../core/mapGeometry";
+import { arcBow, buildMapLines, lineAt, type Point } from "../core/mapGeometry";
 import { COUNTRY_CENTROID_LON_LAT } from "../data/countryCentroids";
 
 const project = (code: string): Point | null => {
@@ -112,4 +112,36 @@ test("with no country anywhere the Wave sits in open water", () => {
   });
   assert.equal(lines.length, 1);
   assert.equal(lines[0]?.kind, "loop");
+});
+
+test("touching the far end of each loop opens that Wave, even with many in one country", () => {
+  const waves = Array.from({ length: 8 }, (_, i) => ({ id: `w${i}`, mine: "GB", theirs: "GB" }));
+  const lines = buildMapLines(waves, project, options);
+  for (const line of lines) {
+    assert.equal(lineAt(lines, line.tip, 22)?.waveId, line.waveId);
+    // A finger is not exact: a little off the tip still finds it.
+    for (const [dx, dy] of [[5, 0], [-5, 0], [0, 5], [0, -5]] as const) {
+      const nudged = { x: line.tip.x + dx, y: line.tip.y + dy };
+      assert.equal(lineAt(lines, nudged, 22)?.waveId, line.waveId);
+    }
+  }
+});
+
+test("a touch on open water opens nothing", () => {
+  const lines = buildMapLines([{ id: "abroad", mine: "GB", theirs: "JP" }], project, options);
+  assert.equal(lineAt(lines, { x: 5, y: 350 }, 22), null);
+  assert.equal(lineAt(lines, lines[0]!.tip, 22)?.waveId, "abroad");
+});
+
+test("two lines between the same countries are told apart", () => {
+  const lines = buildMapLines(
+    [
+      { id: "first", mine: "GB", theirs: "FR" },
+      { id: "second", mine: "GB", theirs: "FR" },
+    ],
+    project,
+    options,
+  );
+  assert.equal(lineAt(lines, lines[0]!.tip, 22)?.waveId, "first");
+  assert.equal(lineAt(lines, lines[1]!.tip, 22)?.waveId, "second");
 });
