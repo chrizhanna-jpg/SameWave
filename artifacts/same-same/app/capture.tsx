@@ -3,14 +3,15 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Linking, Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import {
-  Linking,
-  Pressable,
-  StyleSheet,
-  useWindowDimensions,
-  View,
-  type GestureResponderEvent,
-} from "react-native";
+  GestureHandlerRootView,
+  PinchGestureHandler,
+  State,
+  type HandlerStateChangeEvent,
+  type PinchGestureHandlerEventPayload,
+  type PinchGestureHandlerGestureEvent,
+} from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Button } from "@/components/Button";
@@ -23,7 +24,7 @@ import {
   ZOOM_1X,
   ZOOM_2X,
   isZoomChipActive,
-  zoomFromPinch,
+  zoomFromPinchScale,
 } from "@/core/cameraZoom";
 import { wavePhotoSlot } from "@/core/wavePhotoSlot";
 import { chooseFromLibrary, cropToWaveSlot } from "@/device/photos";
@@ -35,14 +36,6 @@ const READY_FALLBACK_MS = 1200;
 const MAX_RESTARTS = 2;
 /** Matches the camera chrome — keeps Android edge-to-edge nav from flashing light. */
 const CAMERA_CHROME = "#1A2425";
-
-function pinchDistance(event: GestureResponderEvent): number | null {
-  const touches = event.nativeEvent.touches;
-  if (!touches || touches.length < 2) return null;
-  const a = touches[0]!;
-  const b = touches[1]!;
-  return Math.hypot(a.pageX - b.pageX, a.pageY - b.pageY);
-}
 
 export default function CaptureScreen() {
   const router = useRouter();
@@ -60,7 +53,10 @@ export default function CaptureScreen() {
   const [problem, setProblem] = useState<string | null>(null);
   const [room, setRoom] = useState<number | null>(null);
   const [zoom, setZoom] = useState(ZOOM_1X);
-  const pinch = useRef<{ startDist: number; startZoom: number } | null>(null);
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  /** CameraView zoom at the moment the pinch becomes ACTIVE (scale resets to 1). */
+  const pinchStartZoomRef = useRef(ZOOM_1X);
 
   const slot = wavePhotoSlot(width, height);
 
@@ -125,24 +121,23 @@ export default function CaptureScreen() {
     }
   };
 
-  const onPinchStart = (event: GestureResponderEvent) => {
-    const dist = pinchDistance(event);
-    if (dist == null || dist < 8) {
-      pinch.current = null;
-      return;
-    }
-    pinch.current = { startDist: dist, startZoom: zoom };
-  };
+  /**
+   * Native CameraView swallows JS responder pinches — use RNGH PinchGestureHandler
+   * (same pattern as production in-camera) so scale updates CameraView `zoom` 0–1.
+   */
+  const onPinchGestureEvent = useCallback((event: PinchGestureHandlerGestureEvent) => {
+    setZoom(zoomFromPinchScale(pinchStartZoomRef.current, event.nativeEvent.scale));
+  }, []);
 
-  const onPinchMove = (event: GestureResponderEvent) => {
-    const dist = pinchDistance(event);
-    if (dist == null || !pinch.current) return;
-    setZoom(zoomFromPinch(pinch.current.startZoom, pinch.current.startDist, dist));
-  };
-
-  const onPinchEnd = () => {
-    pinch.current = null;
-  };
+  const onPinchHandlerStateChange = useCallback(
+    (event: HandlerStateChangeEvent<PinchGestureHandlerEventPayload>) => {
+      // Capture baseline when the pinch activates; scale is relative to that moment.
+      if (event.nativeEvent.state === State.ACTIVE) {
+        pinchStartZoomRef.current = zoomRef.current;
+      }
+    },
+    [],
+  );
 
   const flipCamera = () => {
     setZoom(ZOOM_1X);
@@ -198,7 +193,7 @@ export default function CaptureScreen() {
   }
 
   return (
-    <View style={styles.root}>
+    <GestureHandlerRootView style={styles.root}>
       <StatusBar style="light" />
       <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
         <Header icon="close" onPress={abandon} />
@@ -207,30 +202,27 @@ export default function CaptureScreen() {
       <View style={styles.middle} onLayout={(event) => setRoom(event.nativeEvent.layout.height)}>
         {/* Dark letterbox around the Wave-slot frame — never light/baby-blue. */}
         <View style={styles.dim}>
-          <View
-            style={[styles.frame, { width: frameWidth, height: frameHeight }]}
-            onStartShouldSetResponder={() => true}
-            onMoveShouldSetResponder={() => true}
-            onResponderGrant={onPinchStart}
-            onResponderMove={onPinchMove}
-            onResponderRelease={onPinchEnd}
-            onResponderTerminate={onPinchEnd}
+          <PinchGestureHandler
+            onGestureEvent={onPinchGestureEvent}
+            onHandlerStateChange={onPinchHandlerStateChange}
           >
-            {live ? (
-              <CameraView
-                key={`${facing}-${restarts}`}
-                ref={camera}
-                style={StyleSheet.absoluteFill}
-                facing={facing}
-                zoom={zoom}
-                onCameraReady={() => setReady(true)}
-                onMountError={() => {
-                  if (restarts < MAX_RESTARTS) setRestarts((n) => n + 1);
-                  else setProblem("The camera wouldn't start. You can choose a photo instead.");
-                }}
-              />
-            ) : null}
-          </View>
+            <View style={[styles.frame, { width: frameWidth, height: frameHeight }]}>
+              {live ? (
+                <CameraView
+                  key={`${facing}-${restarts}`}
+                  ref={camera}
+                  style={StyleSheet.absoluteFill}
+                  facing={facing}
+                  zoom={zoom}
+                  onCameraReady={() => setReady(true)}
+                  onMountError={() => {
+                    if (restarts < MAX_RESTARTS) setRestarts((n) => n + 1);
+                    else setProblem("The camera wouldn't start. You can choose a photo instead.");
+                  }}
+                />
+              ) : null}
+            </View>
+          </PinchGestureHandler>
         </View>
         {problem ? (
           <Txt variant="quiet" tone="ember" center style={styles.problem}>
@@ -298,7 +290,7 @@ export default function CaptureScreen() {
           </Pressable>
         </View>
       </View>
-    </View>
+    </GestureHandlerRootView>
   );
 }
 
