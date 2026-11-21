@@ -23,6 +23,7 @@ import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { getOpenAIEnv } from "./lib/openaiEnv";
 import { getDeckPreviewSchemaStatus } from "./lib/ensureDeckPreviewSchema";
+import { photoUploadBodyParser } from "./lib/photoLimits";
 
 const app: Express = express();
 
@@ -177,7 +178,9 @@ app.use(
 app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 
 app.use(cors({ credentials: true, origin: true }));
-// 12 MB lets users send a base64-encoded photo (max ~8 MB binary).
+// Upload route parses itself first (5 MB original, with base64 headroom) and
+// answers 413 in JSON. Other routes keep the 12 MB JSON limit.
+app.use(photoUploadBodyParser);
 app.use(express.json({ limit: "12mb" }));
 app.use(express.urlencoded({ extended: true, limit: "12mb" }));
 
