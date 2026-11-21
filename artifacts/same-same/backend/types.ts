@@ -47,8 +47,13 @@ export interface RippleUpload {
   captureCountryCode: string | null;
   /** When the photo was taken. ISO string. */
   capturedAt: string | null;
-  /** Emotion id from data/emotions.ts → musicGenre on the server. */
+  /** Emotion id from data/emotions.ts — used for client matching. */
   emotion: string | null;
+  /**
+   * Library mood id from data/vibes.ts → musicGenre on the server
+   * (defaults to the emotion's mapped mood). Drives Wave playback clips.
+   */
+  song: string | null;
   /** Topic id from data/topics.ts → theme on the server. */
   topic: string | null;
   recording: { base64: string; mime: string } | null;

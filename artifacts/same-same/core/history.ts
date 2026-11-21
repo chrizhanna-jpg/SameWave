@@ -123,14 +123,17 @@ export function newRipple(input: {
   countryCode: string | null;
   emotion: string | null;
   topic: string | null;
+  /** Library mood sent as musicGenre; defaults to emotion. */
+  vibe?: string | null;
   hasRecording: boolean;
   theme: string;
   tags: string[];
   subjects: string[];
 }): Ripple {
+  const { vibe, ...rest } = input;
   return {
-    ...input,
-    vibe: input.emotion,
+    ...rest,
+    vibe: vibe ?? input.emotion,
     reach: emptyReach(),
   };
 }

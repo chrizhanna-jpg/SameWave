@@ -220,7 +220,7 @@ export function createHttpBackend(options: HttpBackendOptions): Backend {
           ...(upload.countryCode ? { countryCode: upload.countryCode } : {}),
           ...(upload.captureCountryCode ? { captureCountryCode: upload.captureCountryCode } : {}),
           ...(upload.capturedAt ? { capturedAt: upload.capturedAt } : {}),
-          ...(upload.emotion ? { musicGenre: upload.emotion } : {}),
+          ...((upload.song || upload.emotion) ? { musicGenre: upload.song || upload.emotion } : {}),
           ...(upload.topic ? { theme: upload.topic } : {}),
           ...(upload.recording
             ? {

@@ -4,8 +4,10 @@ import { test } from "node:test";
 import { combinedMatchScore, emotionTopicScore, MATCH_WEIGHTS } from "../core/matchScore";
 import { selectReachTargets } from "../core/reach";
 import type { Candidate } from "../core/types";
+import { defaultMusicForEmotion, EMOTION_TO_MUSIC } from "../data/emotionMusic";
 import { EMOTION_IDS, EMOTIONS, emotionAffinity, emotionFor } from "../data/emotions";
 import { filterTopics, TOPICS, topicAffinity } from "../data/topics";
+import { VIBES } from "../data/vibes";
 
 /** Mirror of artifacts/api-server/src/lib/allowedMusicGenres.ts — keep in sync. */
 const SERVER_MUSIC_GENRES = new Set([
@@ -51,6 +53,16 @@ test("every picker emotion is one the server already accepts as musicGenre", () 
   assert.ok(EMOTIONS.length >= 19 && EMOTIONS.length <= 22);
   assert.ok(EMOTIONS.some((e) => e.label === "Calm" && e.id === "calm"));
   assert.ok(EMOTIONS.some((e) => e.label === "Grateful" && e.id === "gratitude"));
+});
+
+test("every emotion maps to a library mood that exists in vibes", () => {
+  const vibeIds = new Set(VIBES.map((v) => v.id));
+  for (const id of EMOTION_IDS) {
+    const mood = defaultMusicForEmotion(id);
+    assert.equal(mood, EMOTION_TO_MUSIC[id]);
+    assert.ok(mood && vibeIds.has(mood), id);
+  }
+  assert.equal(defaultMusicForEmotion(null), null);
 });
 
 test("related emotions score partially, exact emotions score fully", () => {

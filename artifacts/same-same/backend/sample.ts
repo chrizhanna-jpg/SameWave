@@ -223,7 +223,7 @@ export function createSampleBackend(
         photoId,
         uri: upload.localUri,
         country: upload.captureCountryCode ?? upload.countryCode ?? current.country ?? "GB",
-        vibe: upload.emotion,
+        vibe: upload.song || upload.emotion,
         topic: upload.topic,
         recording: upload.recording
           ? `data:${upload.recording.mime};base64,${upload.recording.base64}`

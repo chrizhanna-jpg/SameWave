@@ -75,7 +75,9 @@ export interface RippleDraft {
   emotion: string | null;
   /** Topic id from data/topics.ts. */
   topic: string | null;
-  /** A short sound recorded for this Ripple. */
+  /** Library mood id from data/vibes.ts (defaults from the emotion). */
+  song: string | null;
+  /** A short sound recorded for this Ripple (overrides library song when playing). */
   recording: { uri: string; mime: string } | null;
 }
 
@@ -565,6 +567,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           captureCountryCode,
           capturedAt: draft.photo.takenAt,
           emotion: draft.emotion,
+          song: draft.song,
           topic: draft.topic,
           recording,
           localUri: localUri ?? draft.photo.uri,
@@ -580,6 +583,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         countryCode: captureCountryCode ?? countryCode,
         emotion: draft.emotion,
         topic: draft.topic,
+        vibe: draft.song ?? draft.emotion,
         hasRecording: recording !== null,
         theme: draft.topic ?? sent.theme,
         tags: sent.tags,

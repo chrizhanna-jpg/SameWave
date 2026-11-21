@@ -14,18 +14,20 @@ import { Header } from "@/components/Header";
 import { Photo } from "@/components/Photo";
 import { RippleRings } from "@/components/RippleRings";
 import { Screen } from "@/components/Screen";
+import { SongPicker } from "@/components/SongPicker";
 import { SoundRecorder, type Recording } from "@/components/SoundRecorder";
 import { TopicPicker } from "@/components/TopicPicker";
 import { Txt } from "@/components/Txt";
 import { errorKind } from "@/backend/types";
+import { defaultMusicForEmotion } from "@/data/emotionMusic";
 import { playEffect } from "@/device/sound";
 import { useAppState } from "@/state/AppState";
 import { getDraftPhoto, setDraftPhoto } from "@/state/draft";
 import { colors, motion, radius, space } from "@/theme";
 
 /**
- * Send a Ripple. After the photo: emotion first, then Topic, then an optional
- * song. Matching uses emotion + Topic on top of the server's photo score.
+ * Send a Ripple. After the photo: emotion, Topic, then a library song
+ * (pre-selected from the emotion; changeable) and an optional recording.
  */
 export default function ComposeScreen() {
   const router = useRouter();
@@ -34,6 +36,8 @@ export default function ComposeScreen() {
 
   const [emotion, setEmotion] = useState<string | null>(null);
   const [topic, setTopic] = useState<string | null>(null);
+  const [song, setSong] = useState<string | null>(null);
+  const [songTouched, setSongTouched] = useState(false);
   const [recording, setRecording] = useState<Recording | null>(null);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -47,7 +51,17 @@ export default function ComposeScreen() {
 
   if (!photo) return null;
 
-  const canSend = !!emotion && !!topic && !sending && !sent;
+  const canSend = !!emotion && !!topic && !!song && !sending && !sent;
+
+  const onEmotion = (next: string | null) => {
+    setEmotion(next);
+    if (!songTouched) setSong(defaultMusicForEmotion(next));
+  };
+
+  const onSong = (next: string) => {
+    setSongTouched(true);
+    setSong(next);
+  };
 
   const onLayout = (event: LayoutChangeEvent) => {
     box.current = {
@@ -57,7 +71,7 @@ export default function ComposeScreen() {
   };
 
   const send = async (event: GestureResponderEvent) => {
-    if (!canSend || !emotion || !topic) return;
+    if (!canSend || !emotion || !topic || !song) return;
     const { locationX, locationY } = event.nativeEvent;
     setTap({
       x: Number.isFinite(locationX) ? locationX : box.current.width / 2,
@@ -69,7 +83,7 @@ export default function ComposeScreen() {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
 
     try {
-      await sendRipple({ photo, emotion, topic, recording });
+      await sendRipple({ photo, emotion, topic, song, recording });
       setSent(true);
       setDraftPhoto(null);
       setTimeout(() => router.replace("/"), motion.rippleSend);
@@ -104,7 +118,7 @@ export default function ComposeScreen() {
       <Txt variant="heading" style={styles.section}>
         How are you feeling?
       </Txt>
-      <EmotionPicker value={emotion} onChange={setEmotion} />
+      <EmotionPicker value={emotion} onChange={onEmotion} />
 
       {emotion ? (
         <>
@@ -118,10 +132,18 @@ export default function ComposeScreen() {
       {emotion && topic ? (
         <>
           <Txt variant="heading" style={styles.section}>
-            A song (optional)
+            A song for it
           </Txt>
           <Txt tone="secondary" style={styles.hint}>
-            Record a short sound to travel with the photo.
+            Picked from how you're feeling — change it if you like.
+          </Txt>
+          <SongPicker value={song} onChange={onSong} previewSeed={photo.uri} />
+
+          <Txt variant="heading" style={styles.section}>
+            Or record your own (optional)
+          </Txt>
+          <Txt tone="secondary" style={styles.hint}>
+            A short sound of your own travels instead of the library song.
           </Txt>
           <SoundRecorder value={recording} onChange={setRecording} />
         </>
@@ -166,7 +188,7 @@ const styles = StyleSheet.create({
   },
   photo: { width: "100%", height: "100%" },
   section: { marginTop: space.xl, marginBottom: space.sm },
-  hint: { marginTop: space.xs, marginBottom: space.sm },
+  hint: { marginTop: 0, marginBottom: space.sm },
   send: { marginTop: space.xl, position: "relative", overflow: "visible" },
   rings: { position: "absolute", width: 280, height: 280 },
   problem: { marginTop: space.md, marginBottom: space.lg },

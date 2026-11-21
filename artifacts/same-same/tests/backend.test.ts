@@ -55,6 +55,7 @@ const upload: RippleUpload = {
   captureCountryCode: null,
   capturedAt: "2026-11-01T10:00:00.000Z",
   emotion: "calm",
+  song: "calm",
   topic: "nature",
   recording: null,
   localUri: "file:///photo.jpg",
