@@ -38,20 +38,43 @@ export function loadSampleWaves(): Wave[] {
 }
 
 /**
+ * When `preferTopic` is set and any sample shares that theme id, keep only
+ * those — otherwise fall back to the full sample list. Pure helper so unit
+ * tests never pull React Native via the asset catalog.
+ */
+export function preferTopicSamples<T extends { theme?: string | null }>(
+  all: readonly T[],
+  preferTopic?: string | null,
+): T[] {
+  const topic = preferTopic?.trim() || null;
+  if (!topic) return [...all];
+  const matched = all.filter((c) => c.theme === topic);
+  return matched.length > 0 ? matched : [...all];
+}
+
+/**
  * Merge live ranked candidates with optional local test samples.
  * Samples are only appended when the build includes them AND the user toggle is on.
+ * When `preferTopic` is set, topic-tagged samples come first — and if any match,
+ * non-matching samples are held back (fall back only when none match).
  */
 export function withOptionalTestPhotos(
   live: readonly Candidate[],
-  opts: { useSamplePhotos: boolean; excludeIds?: readonly string[] },
+  opts: {
+    useSamplePhotos: boolean;
+    excludeIds?: readonly string[];
+    preferTopic?: string | null;
+  },
 ): Candidate[] {
   if (!testPhotosBuildEnabled() || !opts.useSamplePhotos) {
     return [...live];
   }
   const excluded = new Set(opts.excludeIds ?? []);
-  const samples = loadTestPhotoCandidates().filter((c) => !excluded.has(c.id) && Boolean(c.uri));
+  const all = loadTestPhotoCandidates().filter((c) => !excluded.has(c.id) && Boolean(c.uri));
+  const samples = preferTopicSamples(all, opts.preferTopic);
   const liveIds = new Set(live.map((c) => c.id));
-  return [...live, ...samples.filter((c) => !liveIds.has(c.id))];
+  // Topic-matched samples lead the deck so Coffee & tea never opens on a mountain.
+  return [...samples.filter((c) => !liveIds.has(c.id)), ...live];
 }
 
 export function withOptionalSampleWaves(

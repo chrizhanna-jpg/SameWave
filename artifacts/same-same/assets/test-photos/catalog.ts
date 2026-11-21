@@ -57,7 +57,7 @@ export function getTestPhotoCandidates(): Candidate[] {
       score: 10 - index * 0.1,
       uri,
       createdAt: meta.takenAt,
-      theme: null,
+      theme: meta.theme,
       emotion: null,
       takenAt: meta.takenAt,
       countryCode: meta.countryCode,

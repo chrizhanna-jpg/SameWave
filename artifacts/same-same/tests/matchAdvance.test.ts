@@ -6,8 +6,13 @@ import {
   parseMatchStage,
   shouldAdvanceBottomAfterVote,
 } from "../core/matchAdvance";
-import { withOptionalTestPhotos, testPhotosBuildEnabled } from "../core/testPhotos";
+import {
+  preferTopicSamples,
+  withOptionalTestPhotos,
+  testPhotosBuildEnabled,
+} from "../core/testPhotos";
 import type { Candidate } from "../core/types";
+import { TEST_PHOTO_META } from "../assets/test-photos/fixtures";
 
 test("parseMatchStage defaults to ripple and accepts wave", () => {
   assert.equal(parseMatchStage(undefined), "ripple");
@@ -54,6 +59,21 @@ test("withOptionalTestPhotos stays empty when the build flag is off or toggle is
   if (!testPhotosBuildEnabled()) {
     assert.deepEqual(withOptionalTestPhotos(live, { useSamplePhotos: true }), live);
   }
+});
+
+test("preferTopic keeps only coffee samples when any match (Coffee & tea)", () => {
+  const coffee = preferTopicSamples(TEST_PHOTO_META, "coffee");
+  assert.ok(coffee.length >= 1, "expected at least one coffee sample");
+  assert.ok(
+    coffee.every((c) => c.theme === "coffee"),
+    `Coffee & tea deck leaked other themes: ${coffee.map((c) => c.theme).join(",")}`,
+  );
+  assert.equal(coffee[0]?.file, "02-coffee-hands.jpg");
+  const mountains = preferTopicSamples(TEST_PHOTO_META, "mountains");
+  assert.ok(mountains.every((c) => c.theme === "mountains"));
+  assert.ok(mountains.some((c) => c.file.includes("mountain")));
+  const unknown = preferTopicSamples(TEST_PHOTO_META, "no-such-topic");
+  assert.equal(unknown.length, TEST_PHOTO_META.length);
 });
 
 test("sample toggle cache publishes to subscribers without remount", async () => {

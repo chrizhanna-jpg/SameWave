@@ -174,9 +174,11 @@ export default function MatchScreen() {
         looked.push(...pageRows.map((c) => c.id));
       }
       if (gen !== loadGen.current) return;
+      const preferTopic = topic ?? ripple.theme ?? null;
       const withSamples = withOptionalTestPhotos(ranked, {
         useSamplePhotos: samplesOn,
         excludeIds: [...excludeBase, ...seenRef.current],
+        preferTopic,
       });
       setDeck(withSamples);
       setIndex(0);
@@ -184,9 +186,11 @@ export default function MatchScreen() {
     } catch (error) {
       if (gen !== loadGen.current) return;
       // Even when the API fails, sample fixtures can still fill the deck.
+      const preferTopic = ripple.topic ?? ripple.theme ?? null;
       const samplesOnly = withOptionalTestPhotos([], {
         useSamplePhotos: samplesOn,
         excludeIds: [...excludeBase, ...seenRef.current],
+        preferTopic,
       });
       if (samplesOnly.length > 0) {
         setDeck(samplesOnly);
@@ -257,9 +261,11 @@ export default function MatchScreen() {
             excludeIds: [...excludeBase, ...seenRef.current],
             ownPhotoIds: ownIds,
           });
+          const preferTopic = topic ?? ripple?.theme ?? null;
           const more = withOptionalTestPhotos(ranked, {
             useSamplePhotos: samplesOn,
             excludeIds: [...excludeBase, ...seenRef.current],
+            preferTopic,
           });
           if (gen !== loadGen.current) return;
           if (more.length === 0) {
@@ -273,9 +279,11 @@ export default function MatchScreen() {
           }
         } catch {
           if (gen !== loadGen.current) return;
+          const preferTopic = ripple?.topic ?? ripple?.theme ?? null;
           const samplesOnly = withOptionalTestPhotos([], {
             useSamplePhotos: samplesOn,
             excludeIds: [...excludeBase, ...seenRef.current],
+            preferTopic,
           });
           if (samplesOnly.length > 0) {
             setDeck(samplesOnly);

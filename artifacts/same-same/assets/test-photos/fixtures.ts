@@ -17,6 +17,8 @@ export type TestPhotoMeta = {
   continent: string;
   lat: number;
   lng: number;
+  /** Topic id from `data/topics` so Match can prefer same-topic samples. */
+  theme: string;
 };
 
 /**
@@ -34,6 +36,7 @@ export const TEST_PHOTO_META: readonly TestPhotoMeta[] = [
     continent: "europe",
     lat: 51.5074,
     lng: -0.1278,
+    theme: "mountains",
   },
   {
     id: "test_sample_02",
@@ -43,6 +46,7 @@ export const TEST_PHOTO_META: readonly TestPhotoMeta[] = [
     continent: "europe",
     lat: 51.515,
     lng: -0.12,
+    theme: "coffee",
   },
   {
     id: "test_sample_03",
@@ -52,6 +56,7 @@ export const TEST_PHOTO_META: readonly TestPhotoMeta[] = [
     continent: "europe",
     lat: 48.8566,
     lng: 2.3522,
+    theme: "nature",
   },
   {
     id: "test_sample_04",
@@ -61,6 +66,7 @@ export const TEST_PHOTO_META: readonly TestPhotoMeta[] = [
     continent: "europe",
     lat: 52.52,
     lng: 13.405,
+    theme: "countryside",
   },
   {
     id: "test_sample_05",
@@ -70,6 +76,7 @@ export const TEST_PHOTO_META: readonly TestPhotoMeta[] = [
     continent: "europe",
     lat: 41.9028,
     lng: 12.4964,
+    theme: "weather",
   },
   {
     id: "test_sample_06",
@@ -79,15 +86,17 @@ export const TEST_PHOTO_META: readonly TestPhotoMeta[] = [
     continent: "europe",
     lat: 40.4168,
     lng: -3.7038,
+    theme: "mountains",
   },
   {
     id: "test_sample_07",
     file: "07-beach.jpg",
-    takenAt: "2026-06-15T12:00:00-04:00", // same clock-ish, US (same country pair with 08 uses JP vs BR = no match)
+    takenAt: "2026-06-15T12:00:00-04:00", // same clock-ish, US
     countryCode: "US",
     continent: "americas",
     lat: 40.7128,
     lng: -74.006,
+    theme: "beach",
   },
   {
     id: "test_sample_08",
@@ -97,8 +106,9 @@ export const TEST_PHOTO_META: readonly TestPhotoMeta[] = [
     continent: "asia",
     lat: 35.6762,
     lng: 139.6503,
+    theme: "beach",
   },
-] as const;
+];
 
 export type FixtureCaseId =
   | "same_minute"
