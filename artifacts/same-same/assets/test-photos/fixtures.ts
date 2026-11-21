@@ -6,6 +6,8 @@
 import { matchBonuses, type MatchBonuses } from "@/core/bonuses";
 import type { Wave } from "@/core/types";
 
+import { SAMPLE_WAVE_ID_PREFIX } from "./sampleIds";
+
 export type TestPhotoMeta = {
   id: string;
   file: string;
@@ -198,7 +200,7 @@ export function sampleWavesForMap(): Wave[] {
     const mine = TEST_PHOTO_META[pair.mine]!;
     const theirs = TEST_PHOTO_META[pair.theirs]!;
     out.push({
-      id: `test_wave_${pair.caseId}`,
+      id: `${SAMPLE_WAVE_ID_PREFIX}${pair.caseId}`,
       formedAt: mine.takenAt,
       mine: {
         photoId: mine.id,
@@ -226,7 +228,7 @@ export function sampleWaveEndpoints(waveId: string): {
   mine: { lng: number; lat: number };
   theirs: { lng: number; lat: number };
 } | null {
-  const pair = FIXTURE_PAIRS.find((p) => `test_wave_${p.caseId}` === waveId);
+  const pair = FIXTURE_PAIRS.find((p) => `${SAMPLE_WAVE_ID_PREFIX}${p.caseId}` === waveId);
   if (!pair) return null;
   const mine = TEST_PHOTO_META[pair.mine]!;
   const theirs = TEST_PHOTO_META[pair.theirs]!;

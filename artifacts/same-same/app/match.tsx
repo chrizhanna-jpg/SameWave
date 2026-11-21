@@ -425,7 +425,7 @@ export default function MatchScreen() {
         }}
         bottom={
           candidate
-            ? candidate.uri && candidate.id.startsWith("test_sample_")
+            ? candidate.uri && isSample(candidate.id)
               ? {
                   uri: candidate.uri,
                   accessibilityLabel: "Sample photo",

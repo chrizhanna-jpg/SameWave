@@ -18,10 +18,16 @@ function isSamplePhotoId() {
   return false;
 }
 
+function isSampleWaveId() {
+  return false;
+}
+
 module.exports = {
   getTestPhotoCandidates: emptyList,
   getSampleWaves: emptyList,
   SamplePhotosToggleRow,
   isSamplePhotoId,
+  isSampleWaveId,
   SAMPLE_PHOTO_ID_PREFIX: "",
+  SAMPLE_WAVE_ID_PREFIX: "",
 };

@@ -48,15 +48,20 @@ export default function WaveScreen() {
   const insets = useSafeAreaInsets();
   const { waves, markWaveSeen, markWaveRevealed, shouldRevealWave, reportWave, backend } =
     useAppState();
+  const isSampleWave = (waveId: string) => {
+    if (process.env.EXPO_PUBLIC_TEST_PHOTOS !== "1") return false;
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { isSampleWaveId } = require("../assets/test-photos/sampleIds") as {
+      isSampleWaveId: (value: string) => boolean;
+    };
+    return isSampleWaveId(waveId);
+  };
+
   const wave = useMemo(() => {
     const live = waves.find((w) => w.id === id) ?? null;
     if (live) return live;
     // Dev/preview sample fixtures — only resolve when the build flag is on.
-    if (
-      typeof id === "string" &&
-      id.startsWith("test_wave_") &&
-      process.env.EXPO_PUBLIC_TEST_PHOTOS === "1"
-    ) {
+    if (typeof id === "string" && isSampleWave(id)) {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { loadSampleWaves } = require("@/core/testPhotos") as {
         loadSampleWaves: () => typeof waves;
@@ -132,7 +137,7 @@ export default function WaveScreen() {
   useEffect(() => {
     if (!wave || seen.current) return;
     seen.current = true;
-    if (wave.id.startsWith("test_wave_")) return;
+    if (isSampleWave(wave.id)) return;
     markWaveSeen(wave.id);
     // Browsing from the map without a reveal still counts as revealed so
     // foreground auto-reveal / a later push-tap will not surprise-replay.
@@ -140,7 +145,7 @@ export default function WaveScreen() {
   }, [wave, markWaveSeen, markWaveRevealed, reveal]);
 
   useEffect(() => {
-    if (!wave || wave.id.startsWith("test_wave_")) return;
+    if (!wave || isSampleWave(wave.id)) return;
     let cancelled = false;
     backend
       .getWaveDetail(wave)
