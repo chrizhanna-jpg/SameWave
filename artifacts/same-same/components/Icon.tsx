@@ -15,7 +15,8 @@ export type IconName =
   | "chevron"
   | "help"
   | "account"
-  | "history";
+  | "history"
+  | "wave";
 
 interface Props {
   name: IconName;
@@ -79,6 +80,12 @@ export function Icon({ name, size = 24, color = colors.textPrimary }: Props) {
           <Circle cx={12} cy={12} r={9} {...stroke} />
           <Path d="M12 7.5V12l3 2" {...stroke} />
         </>
+      )}
+      {name === "wave" && (
+        <Path
+          d="M3 14c1.5-2.5 3-3.5 4.5-3.5S10.5 13 12 13s3-2.5 4.5-2.5S19.5 12 21 14"
+          {...stroke}
+        />
       )}
     </Svg>
   );

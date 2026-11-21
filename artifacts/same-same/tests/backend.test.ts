@@ -220,6 +220,16 @@ test("an offer is a 'same' vote made on behalf of my photo", async () => {
   assert.deepEqual(calls[0]!.body, { verdict: "same", voterPhotoId: "mine-1" });
 });
 
+test("a pass is a 'different' vote without a voter photo", async () => {
+  const { backend, calls } = fakeServer(() => ({
+    status: 200,
+    body: { ok: true },
+  }));
+  await backend.pass("theirs-3");
+  assert.equal(calls[0]!.url, "https://api.example/api/photos/theirs-3/vote");
+  assert.deepEqual(calls[0]!.body, { verdict: "different" });
+});
+
 test("incoming offers are read from the inbox and accepted with 'same'", async () => {
   const { backend, calls } = fakeServer((call) =>
     call.method === "GET"

@@ -139,12 +139,18 @@ export interface AppStateValue {
   /** Uploads the photo. Throws a BackendError when it does not reach the server. */
   sendRipple(draft: RippleDraft): Promise<Ripple>;
   syncNow(options?: { force?: boolean }): Promise<void>;
+  /** Match screen: remember candidates already shown without counting a background look. */
+  recordMatchSeen(myPhotoId: string, theirIds: readonly string[]): void;
+  /** Match screen closed / mutual Wave: count one look so background reach waits. */
+  finishMatchLook(myPhotoId: string, theirIds: readonly string[]): void;
   markWaveSeen(waveId: string): void;
   deletePhoto(photoId: string): Promise<void>;
   reportWave(wave: Wave, reason: string): Promise<void>;
   /** True once the first Ripple has gone and the notification prompt has not been shown. */
   shouldAskForPushes: boolean;
   askForPushes(): Promise<PushPermission>;
+  /** Sent Ripples on this device (newest first) — Match screen needs the active one. */
+  ripples: Ripple[];
 }
 
 const AppStateContext = createContext<AppStateValue | null>(null);
@@ -273,6 +279,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     async (forAccount: string): Promise<boolean> => {
       const ripple = dataRef.current.ripples[0];
       if (!ripple) return false;
+      // First look belongs to the Match screen (manual X / wave). Background
+      // reach starts after finishMatchLook bumps passes past 0.
+      if (ripple.reach.passes === 0) return false;
       const decision = reachDecision(ripple, dataRef.current.waves, Date.now());
       if (!decision.due) return false;
 
@@ -696,6 +705,41 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     [backend, commit, save, syncNow],
   );
 
+  const recordMatchSeen = useCallback(
+    (myPhotoId: string, theirIds: readonly string[]) => {
+      if (!theirIds.length) return;
+      commit((current) => ({
+        ...current,
+        ripples: current.ripples.map((r) =>
+          r.photoId === myPhotoId
+            ? {
+                ...r,
+                reach: {
+                  ...r.reach,
+                  offeredIds: [...new Set([...r.reach.offeredIds, ...theirIds])],
+                },
+              }
+            : r,
+        ),
+      }));
+      save("ripples");
+    },
+    [commit, save],
+  );
+
+  const finishMatchLook = useCallback(
+    (myPhotoId: string, theirIds: readonly string[]) => {
+      commit((current) => ({
+        ...current,
+        ripples: current.ripples.map((r) =>
+          r.photoId === myPhotoId ? withReachPass(r, theirIds, Date.now()) : r,
+        ),
+      }));
+      save("ripples");
+    },
+    [commit, save],
+  );
+
   const markWaveSeen = useCallback(
     (waveId: string) => {
       if (dataRef.current.seenWaveIds.includes(waveId)) return;
@@ -762,6 +806,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       wavesKnown: data.wavesKnown,
       newWaves,
       travelling,
+      ripples: data.ripples,
       history,
       sync: data.sync,
       backend,
@@ -770,6 +815,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       setCountry,
       sendRipple,
       syncNow,
+      recordMatchSeen,
+      finishMatchLook,
       markWaveSeen,
       deletePhoto,
       reportWave,
@@ -781,6 +828,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       data.country,
       data.profile.countryCode,
       data.profile.pushAsked,
+      data.ripples,
       boot,
       bootDetail,
       retryBoot,
@@ -797,6 +845,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       setCountry,
       sendRipple,
       syncNow,
+      recordMatchSeen,
+      finishMatchLook,
       markWaveSeen,
       deletePhoto,
       reportWave,

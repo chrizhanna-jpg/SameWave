@@ -123,10 +123,18 @@ export default function ComposeScreen() {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
 
     try {
-      await sendRipple({ photo, emotion, topic: topicToSend, song, recording });
+      const sent = await sendRipple({ photo, emotion, topic: topicToSend, song, recording });
       setSent(true);
       clearDraft();
-      setTimeout(() => router.replace("/"), motion.rippleSend);
+      // Brief send flash, then the Match deck (own photo + candidates).
+      setTimeout(
+        () =>
+          router.replace({
+            pathname: "/match",
+            params: { photoId: sent.photoId },
+          }),
+        motion.rippleSend,
+      );
     } catch (error) {
       setSending(false);
       setTap(null);

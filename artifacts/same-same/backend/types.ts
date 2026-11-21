@@ -110,6 +110,8 @@ export interface Backend {
   findCandidates(query: CandidateQuery): Promise<Candidate[]>;
   /** Offers `myPhotoId` to `theirPhotoId`. "wave" means they had already offered. */
   offer(myPhotoId: string, theirPhotoId: string): Promise<OfferResult>;
+  /** Match-screen pass (X): records verdict "different" so the photo stays out of the deck. */
+  pass(photoId: string): Promise<void>;
 
   /** Offers from other people waiting on one of the user's photos. */
   listOffers(): Promise<Offer[]>;

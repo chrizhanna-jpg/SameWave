@@ -2,14 +2,12 @@
  * Background matching, decided on the device.
  *
  * The server only forms a Wave when both people have said "same" about each
- * other's photo. Nobody swipes any more, so the app says it for them:
+ * other's photo. The Match screen owns the first look (X = pass, wave =
+ * offer). After that look is finished, the app may keep looking quietly:
  *
- *   1. After a Ripple is sent, the app asks the server for the photos most
- *      like it and offers the Ripple to the closest one.
+ *   1. Later passes ask the server for photos most like the Ripple and offer
+ *      to the closest real upload.
  *   2. When an offer reaches one of the user's own photos, the app accepts it.
- *
- * Similarity is the server's score for the two photos. The feeling or sound
- * sent with a Ripple is never part of it.
  */
 import { isSameUtcDay } from "./dailyTopic";
 import { combinedMatchScore } from "./matchScore";
@@ -40,10 +38,12 @@ export const MATCH = {
 export type MatchRules = typeof MATCH;
 
 /**
- * Stock photos are served from a public image CDN. Photos real people sent
- * are served by the API. Only real photos can answer, so only they are offered to.
+ * Stock photos are served from a public image CDN (and/or stock_% /
+ * atlas_global_seed_% ids). Photos real people sent are served by the API.
+ * Only real photos can answer, so only they are offered to.
  */
-export function isRealUpload(candidate: Pick<Candidate, "uri">): boolean {
+export function isRealUpload(candidate: Pick<Candidate, "id" | "uri">): boolean {
+  if (/^(stock_|atlas_global_seed_)/i.test(candidate.id.trim())) return false;
   return !/^https?:\/\//i.test(candidate.uri.trim());
 }
 

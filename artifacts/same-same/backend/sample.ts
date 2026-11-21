@@ -253,6 +253,8 @@ export function createSampleBackend(
       return "skipped";
     },
 
+    async pass() {},
+
     async listOffers() {
       return [];
     },

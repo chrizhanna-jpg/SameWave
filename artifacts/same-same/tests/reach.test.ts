@@ -58,11 +58,26 @@ const wave = (id: string, myPhotoId: string): Wave => ({
 test("stock photos are never offered to, however well they score", () => {
   assert.equal(isRealUpload(stock("a", 40)), false);
   assert.equal(isRealUpload(real("b", 1)), true);
-  const picked = selectReachTargets([stock("a", 40), real("b", 12)], {
-    minScore: 10,
-    limit: 3,
-    alreadyOffered: [],
-  });
+  assert.equal(
+    isRealUpload({ id: "stock_pool_v1_x", uri: "/api/photos/stock_pool_v1_x/image" }),
+    false,
+  );
+  assert.equal(
+    isRealUpload({ id: "atlas_global_seed_9", uri: "/api/photos/atlas_global_seed_9/image" }),
+    false,
+  );
+  const picked = selectReachTargets(
+    [
+      stock("a", 40),
+      { id: "stock_pool_v1_x", score: 50, uri: "/api/photos/stock_pool_v1_x/image", createdAt: null, theme: null, emotion: null },
+      real("b", 12),
+    ],
+    {
+      minScore: 10,
+      limit: 3,
+      alreadyOffered: [],
+    },
+  );
   assert.deepEqual(picked.map((c) => c.id), ["b"]);
 });
 

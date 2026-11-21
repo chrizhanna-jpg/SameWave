@@ -64,7 +64,11 @@ function WaveArrivalHost() {
   const root = segments[0];
   const busy =
     // echo-pair: legacy deep-link path from server push payloads (Wave pair).
-    root === "wave" || root === "capture" || root === "compose" || root === "echo-pair";
+    root === "wave" ||
+    root === "capture" ||
+    root === "compose" ||
+    root === "match" ||
+    root === "echo-pair";
 
   if (!wave || busy) return null;
 
@@ -125,6 +129,7 @@ function Routes() {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="capture" />
           <Stack.Screen name="compose" />
+          <Stack.Screen name="match" />
           <Stack.Screen name="wave/[id]" />
           <Stack.Screen name="account" />
           <Stack.Screen name="change-country" />

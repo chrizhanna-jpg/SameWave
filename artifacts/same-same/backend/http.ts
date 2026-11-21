@@ -291,6 +291,13 @@ export function createHttpBackend(options: HttpBackendOptions): Backend {
       return offerResultFromVote(body);
     },
 
+    async pass(photoId) {
+      await call("POST", `/photos/${id(photoId)}/vote`, {
+        body: { verdict: "different" },
+        repeatable: true,
+      });
+    },
+
     /** Pending matches waiting on the user — live path `/echoes/inbox`. */
     async listOffers(): Promise<Offer[]> {
       const body = await call("GET", "/echoes/inbox", { repeatable: true });
