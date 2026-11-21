@@ -59,12 +59,12 @@ export function EmotionPicker({ value, onChange, onSearchFocusChange }: Props) {
       <TextInput
         value={query}
         onChangeText={setQuery}
-        placeholder="Search or browse"
+        placeholder="This feels…"
         placeholderTextColor={colors.textQuiet}
         autoCorrect={false}
         autoCapitalize="none"
         style={styles.search}
-        accessibilityLabel="Search emotions"
+        accessibilityLabel="This feels…"
         onFocus={() => onSearchFocusChange?.(true)}
         onBlur={() => onSearchFocusChange?.(false)}
       />

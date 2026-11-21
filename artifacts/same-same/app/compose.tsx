@@ -151,7 +151,7 @@ export default function ComposeScreen() {
 
       <View onLayout={markSection("emotion")}>
         <Txt variant="heading" style={styles.section}>
-          How are you feeling?
+          This feels…
         </Txt>
         <EmotionPicker
           value={emotion}
