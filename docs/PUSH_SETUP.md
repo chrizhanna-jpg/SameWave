@@ -12,7 +12,7 @@ Real remote push needs a **development or production build**. Expo Go (Android S
 | Client: auto-reveal backup on launch/foreground (persisted `revealedWaveIds`) | PR #45 |
 | `eas.json` → `development` (`developmentClient: true`, `distribution: internal`) | Present |
 | `expo-dev-client` dependency | Present (~58) |
-| `app.json` → `android.googleServicesFile`: `./google-services.json` | Present |
+| `app.config.js` → `android.googleServicesFile`: `process.env.GOOGLE_SERVICES_JSON ?? './google-services.json'` | Present |
 | `android.permission.POST_NOTIFICATIONS` | Present |
 | Server: `POST /api/push-tokens`, Expo Push on **mutual** Wave only, prune `DeviceNotRegistered` | Separate server PR (see below) |
 | Migration SQL | `lib/db/migrations/0001_push_tokens.sql` |
@@ -31,24 +31,22 @@ EAS project id: `435d5953-8fbe-48a4-9b0c-85096db24c53` (owner `chrizhanna`).
 
 1. Create a Firebase project (or use an existing one).
 2. Add an **Android** app with package name `echo.samewaveripple.app`.
-3. Download `google-services.json` and place it at:
+3. Download `google-services.json`. Prefer uploading it in **expo.dev** as an EAS
+   **File** environment variable named `GOOGLE_SERVICES_JSON` for development /
+   preview / production (path injected at build time via `app.config.js`).
+
+   Local fallback (optional, gitignored — never commit):
 
    `artifacts/same-same/google-services.json`
-
-   (gitignored — never commit).
 
 4. In Firebase → Project settings → Service accounts → generate a **FCM V1** service-account JSON key (for EAS).
 
 ### 2. EAS credentials (Android FCM)
 
-```bash
-cd artifacts/same-same
-eas credentials -p android
-```
+Upload the FCM V1 service-account JSON in expo.dev → Android credentials for
+`echo.samewaveripple.app` (or via `eas credentials -p android`).
 
-Upload the FCM V1 service-account JSON when prompted (Expo “FCM V1 service account key”).
-
-### 3. Development build (Android only — after `google-services.json` is in place)
+### 3. Development build (Android only — after FCM + `GOOGLE_SERVICES_JSON` are confirmed)
 
 ```bash
 cd artifacts/same-same
