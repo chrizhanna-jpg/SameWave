@@ -1,0 +1,157 @@
+import {
+  Inter_300Light,
+  Inter_400Regular,
+  Inter_500Medium,
+  useFonts,
+} from "@expo-google-fonts/inter";
+import { Stack, useRouter } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
+import { StatusBar } from "expo-status-bar";
+import * as SystemUI from "expo-system-ui";
+import React, { useEffect, useState } from "react";
+import { View } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { PreviewPill } from "@/components/PreviewPill";
+import { Waiting } from "@/components/Waiting";
+import { findWaveByPhotos } from "@/core/waves";
+import { prepareEffects } from "@/device/sound";
+import { AppStateProvider, useAppState } from "@/state/AppState";
+import { SessionProvider, useSession } from "@/state/session";
+import { colors, motion } from "@/theme";
+
+/** The splash never stays up longer than this, whatever else is still loading. */
+const SPLASH_LIMIT_MS = 4000;
+const FONT_WAIT_MS = 3000;
+
+SplashScreen.preventAutoHideAsync().catch(() => undefined);
+
+/** Opens the Wave a tapped notification was about, once it has been collected. */
+function OpenWaveFromPush() {
+  const router = useRouter();
+  const { pushTarget, clearPushTarget, waves, sync } = useAppState();
+
+  useEffect(() => {
+    if (!pushTarget) return;
+    const wave =
+      pushTarget.photoA && pushTarget.photoB
+        ? findWaveByPhotos(waves, pushTarget.photoA, pushTarget.photoB)
+        : null;
+    if (wave) {
+      clearPushTarget();
+      router.push({ pathname: "/wave/[id]", params: { id: wave.id } });
+    } else if (sync !== "syncing") {
+      // Not a Wave notification, or the Wave is not here yet. The Ripple screen shows what is new.
+      clearPushTarget();
+    }
+  }, [pushTarget, waves, sync, clearPushTarget, router]);
+
+  return null;
+}
+
+function Routes() {
+  const session = useSession();
+  const app = useAppState();
+
+  if (session.status === "unavailable") {
+    return (
+      <Waiting
+        message="Can't reach SameWave"
+        detail="Check your connection and try again."
+        onRetry={session.retry}
+      />
+    );
+  }
+  if (session.status === "loading") {
+    return session.slow ? (
+      <Waiting
+        message="Still connecting…"
+        detail="This can take a moment on a slow connection."
+        onRetry={session.retry}
+      />
+    ) : (
+      <Waiting />
+    );
+  }
+
+  // Exactly one of these four is true, so there is always one place to be.
+  const signedIn = session.status === "signedIn";
+  const starting = signedIn && (!app.ready || app.country === "checking");
+  const inApp = signedIn && !starting && app.country === "known";
+  const choosingCountry = signedIn && !starting && !inApp;
+  return (
+    <>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.pond },
+          animation: "fade",
+          animationDuration: motion.fadeQuick,
+        }}
+      >
+        <Stack.Protected guard={inApp}>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="capture" />
+          <Stack.Screen name="compose" />
+          <Stack.Screen name="wave/[id]" />
+          <Stack.Screen name="account" />
+          <Stack.Screen name="change-country" />
+          <Stack.Screen name="echo-pair" />
+        </Stack.Protected>
+        <Stack.Protected guard={starting}>
+          <Stack.Screen name="starting" />
+        </Stack.Protected>
+        <Stack.Protected guard={choosingCountry}>
+          <Stack.Screen name="country" />
+        </Stack.Protected>
+        <Stack.Protected guard={!signedIn}>
+          <Stack.Screen name="sign-in" />
+        </Stack.Protected>
+        <Stack.Screen name="how-it-works" />
+        <Stack.Screen name="+not-found" />
+      </Stack>
+      {inApp ? <OpenWaveFromPush /> : null}
+    </>
+  );
+}
+
+export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({ Inter_300Light, Inter_400Regular, Inter_500Medium });
+  const [fontWaitOver, setFontWaitOver] = useState(false);
+  const ready = fontsLoaded || fontError !== null || fontWaitOver;
+
+  useEffect(() => {
+    void SystemUI.setBackgroundColorAsync(colors.pond).catch(() => undefined);
+    prepareEffects();
+    // If the fonts are slow the app opens in the system font instead of waiting.
+    const fontTimer = setTimeout(() => setFontWaitOver(true), FONT_WAIT_MS);
+    const splashTimer = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => undefined);
+    }, SPLASH_LIMIT_MS);
+    return () => {
+      clearTimeout(fontTimer);
+      clearTimeout(splashTimer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (ready) SplashScreen.hideAsync().catch(() => undefined);
+  }, [ready]);
+
+  if (!ready) return <View style={{ flex: 1, backgroundColor: colors.pond }} />;
+
+  return (
+    <SafeAreaProvider style={{ backgroundColor: colors.pond }}>
+      <StatusBar style="light" />
+      <ErrorBoundary>
+        <SessionProvider>
+          <AppStateProvider>
+            <Routes />
+            <PreviewPill />
+          </AppStateProvider>
+        </SessionProvider>
+      </ErrorBoundary>
+    </SafeAreaProvider>
+  );
+}
