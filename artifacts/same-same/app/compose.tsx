@@ -15,7 +15,7 @@ import { Frost } from "@/components/Frost";
 import { Header } from "@/components/Header";
 import { Photo } from "@/components/Photo";
 import { RippleRings } from "@/components/RippleRings";
-import { Screen, type ScreenScroll } from "@/components/Screen";
+import { Screen } from "@/components/Screen";
 import { SongPicker } from "@/components/SongPicker";
 import { SoundRecorder, type Recording } from "@/components/SoundRecorder";
 import { TopicPicker } from "@/components/TopicPicker";
@@ -36,22 +36,22 @@ import {
 } from "@/state/draft";
 import { colors, font, motion, radius, space } from "@/theme";
 
-type SearchField = "emotion" | "topic" | "song" | null;
+/** Fixed preview width (pt). Height comes from match-screen slotAspect. */
+const PREVIEW_WIDTH = 128;
 
 /**
- * Send a Ripple. After the photo: emotion, Topic, then a library song
- * (pre-selected from the emotion; changeable) and an optional recording.
+ * Send a Ripple. Fixed order: small slot-shaped photo preview on top, then
+ * emotion / Topic / sound fields. New sections appear below without reordering
+ * or scrolling the page; the keyboard keeps the focused field visible.
  *
  * Daily flow: topic is locked in draft memory (not URL params) for the whole
  * capture → compose → send path; the picker is replaced by a chip.
- *
- * While editing fields, the form sits at the top and the photo moves below so
- * the keyboard never jumps the page past the moment/song “curtain”.
  */
 export default function ComposeScreen() {
   const router = useRouter();
   const { width, height } = useWindowDimensions();
   const slotAspect = wavePhotoSlot(width, height).aspectRatio;
+  const previewHeight = Math.max(1, Math.round(PREVIEW_WIDTH / slotAspect));
   const { sendRipple } = useAppState();
   const photo = getDraftPhoto();
 
@@ -70,9 +70,7 @@ export default function ComposeScreen() {
   const [sent, setSent] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [tap, setTap] = useState<{ x: number; y: number } | null>(null);
-  const [searchField, setSearchField] = useState<SearchField>(null);
   const box = useRef({ width: 0, height: 0 });
-  const scrollRef = useRef<ScreenScroll | null>(null);
 
   useEffect(() => {
     if (!photo) router.replace("/");
@@ -87,16 +85,7 @@ export default function ComposeScreen() {
   if (!photo) return null;
 
   const canSend = !!emotion && !!topic && !!song && !sending && !sent;
-  const editingFields = searchField !== null || emotion !== null;
   const lockedLabel = topicFor(lockedTopicId)?.label ?? "Today's topic";
-
-  const bringFieldIntoView = (field: "emotion" | "topic" | "song") => {
-    // Reorder puts fields at the top — no scrollTo jump past the curtain.
-    setSearchField(field);
-    requestAnimationFrame(() => {
-      scrollRef.current?.scrollTo({ y: 0, animated: true });
-    });
-  };
 
   const onEmotion = (next: string | null) => {
     setEmotion(next);
@@ -152,120 +141,10 @@ export default function ComposeScreen() {
     }
   };
 
-  const photoBlock = (
-    <View
-      style={[
-        styles.photoWrap,
-        { aspectRatio: slotAspect },
-        editingFields && styles.photoWrapCompact,
-      ]}
-    >
-      <Photo uri={photo.uri} style={styles.photo} accessibilityLabel="Today's photo" />
-    </View>
-  );
-
-  const fieldsBlock = (
-    <>
-      <View>
-        <Txt variant="heading" style={[styles.section, styles.sectionBold]}>
-          This feels…
-        </Txt>
-        <EmotionPicker
-          value={emotion}
-          onChange={onEmotion}
-          onSearchFocusChange={(focused) => {
-            if (focused) bringFieldIntoView("emotion");
-            else setSearchField((current) => (current === "emotion" ? null : current));
-          }}
-        />
-      </View>
-
-      {emotion ? (
-        <View>
-          <Txt variant="heading" style={[styles.section, styles.sectionBold]}>
-            What&apos;s the moment?
-          </Txt>
-          {topicLocked ? (
-            <View style={styles.lockedChip} accessibilityLabel={`Today's topic: ${lockedLabel}`}>
-              <Txt variant="quiet" tone="secondary">
-                Today&apos;s topic
-              </Txt>
-              <Txt>{lockedLabel}</Txt>
-            </View>
-          ) : (
-            <TopicPicker
-              value={topic}
-              onChange={onTopicChange}
-              onSearchFocusChange={(focused) => {
-                if (focused) bringFieldIntoView("topic");
-                else setSearchField((current) => (current === "topic" ? null : current));
-              }}
-            />
-          )}
-        </View>
-      ) : null}
-
-      {emotion && topic ? (
-        <>
-          <View>
-            <Txt variant="heading" style={[styles.section, styles.sectionBold]}>
-              A sound for it
-            </Txt>
-            <Txt tone="secondary" style={styles.hint}>
-              Picked from how you&apos;re feeling — change it if you like.
-            </Txt>
-            <SongPicker
-              value={song}
-              onChange={onSong}
-              previewSeed={photo.uri}
-              onSearchFocusChange={(focused) => {
-                if (focused) bringFieldIntoView("song");
-                else setSearchField((current) => (current === "song" ? null : current));
-              }}
-            />
-          </View>
-
-          <Txt variant="heading" style={styles.section}>
-            Or record your own (optional)
-          </Txt>
-          <Txt tone="secondary" style={styles.hint}>
-            A short sound of your own travels instead of the library song.
-          </Txt>
-          <SoundRecorder value={recording} onChange={setRecording} />
-        </>
-      ) : null}
-
-      <View style={styles.send} onLayout={onLayout}>
-        <Button
-          label={sending || sent ? "Sending…" : "Send Ripple"}
-          onPress={send}
-          busy={sending && !sent}
-          disabled={!canSend}
-        />
-        {tap ? (
-          <View pointerEvents="none" style={[styles.rings, { left: tap.x - 140, top: tap.y - 140 }]}>
-            <RippleRings size={280} loop={false} duration={motion.rippleSend} rings={4} />
-          </View>
-        ) : null}
-      </View>
-
-      {problem ? (
-        <Txt variant="quiet" tone="ember" center style={styles.problem}>
-          {problem}
-        </Txt>
-      ) : (
-        <Txt variant="quiet" tone="secondary" center style={styles.problem}>
-          Matching leans on the emotion and Topic you pick, together with the photo.
-        </Txt>
-      )}
-    </>
-  );
-
   return (
     <Screen
       scroll
-      scrollRef={scrollRef}
-      contentBottomPad={searchField ? 200 : 48}
+      contentBottomPad={48}
       photoUri={photo.uri}
       scene={sceneFor.composeFallback}
     >
@@ -278,30 +157,93 @@ export default function ComposeScreen() {
       />
 
       {/*
-        While filling fields: form first (top), photo below — avoids the old
-        scrollTo jump that threw the curtain past moment/song.
-        Fresh open: photo first, then fields. Both sit on frosted cards over
-        the full-bleed Ripple photo (Style 3).
+        Stable order: fixed-size slot-shaped preview on top, then fields.
+        Explicit width/height — percentage width + aspectRatio under Frost
+        alignItems:center was collapsing into a tall strip on device.
       */}
-      {editingFields ? (
-        <>
-          <Frost kind="card" style={styles.card} contentStyle={styles.cardPad}>
-            {fieldsBlock}
-          </Frost>
-          <Frost kind="card" style={styles.photoCard} contentStyle={styles.photoCardPad}>
-            {photoBlock}
-          </Frost>
-        </>
-      ) : (
-        <>
-          <Frost kind="card" style={styles.photoCard} contentStyle={styles.photoCardPad}>
-            {photoBlock}
-          </Frost>
-          <Frost kind="card" style={styles.card} contentStyle={styles.cardPad}>
-            {fieldsBlock}
-          </Frost>
-        </>
-      )}
+      <Frost kind="card" style={styles.photoCard} contentStyle={styles.photoCardPad}>
+        <View
+          style={[
+            styles.photoWrap,
+            { width: PREVIEW_WIDTH, height: previewHeight },
+          ]}
+        >
+          <Photo uri={photo.uri} style={styles.photo} accessibilityLabel="Today's photo" />
+        </View>
+      </Frost>
+
+      <Frost kind="card" style={styles.card} contentStyle={styles.cardPad}>
+        <View>
+          <Txt variant="heading" style={[styles.section, styles.sectionBold]}>
+            This feels…
+          </Txt>
+          <EmotionPicker value={emotion} onChange={onEmotion} />
+        </View>
+
+        {emotion ? (
+          <View>
+            <Txt variant="heading" style={[styles.section, styles.sectionBold]}>
+              What&apos;s the moment?
+            </Txt>
+            {topicLocked ? (
+              <View style={styles.lockedChip} accessibilityLabel={`Today's topic: ${lockedLabel}`}>
+                <Txt variant="quiet" tone="secondary">
+                  Today&apos;s topic
+                </Txt>
+                <Txt>{lockedLabel}</Txt>
+              </View>
+            ) : (
+              <TopicPicker value={topic} onChange={onTopicChange} />
+            )}
+          </View>
+        ) : null}
+
+        {emotion && topic ? (
+          <>
+            <View>
+              <Txt variant="heading" style={[styles.section, styles.sectionBold]}>
+                A sound for it
+              </Txt>
+              <Txt tone="secondary" style={styles.hint}>
+                Picked from how you&apos;re feeling — change it if you like.
+              </Txt>
+              <SongPicker value={song} onChange={onSong} previewSeed={photo.uri} />
+            </View>
+
+            <Txt variant="heading" style={styles.section}>
+              Or record your own (optional)
+            </Txt>
+            <Txt tone="secondary" style={styles.hint}>
+              A short sound of your own travels instead of the library song.
+            </Txt>
+            <SoundRecorder value={recording} onChange={setRecording} />
+          </>
+        ) : null}
+
+        <View style={styles.send} onLayout={onLayout}>
+          <Button
+            label={sending || sent ? "Sending…" : "Send Ripple"}
+            onPress={send}
+            busy={sending && !sent}
+            disabled={!canSend}
+          />
+          {tap ? (
+            <View pointerEvents="none" style={[styles.rings, { left: tap.x - 140, top: tap.y - 140 }]}>
+              <RippleRings size={280} loop={false} duration={motion.rippleSend} rings={4} />
+            </View>
+          ) : null}
+        </View>
+
+        {problem ? (
+          <Txt variant="quiet" tone="ember" center style={styles.problem}>
+            {problem}
+          </Txt>
+        ) : (
+          <Txt variant="quiet" tone="secondary" center style={styles.problem}>
+            Matching leans on the emotion and Topic you pick, together with the photo.
+          </Txt>
+        )}
+      </Frost>
     </Screen>
   );
 }
@@ -312,17 +254,9 @@ const styles = StyleSheet.create({
   photoCard: { marginTop: space.sm, marginBottom: space.md },
   photoCardPad: { padding: space.md, alignItems: "center" },
   photoWrap: {
-    alignSelf: "center",
-    width: "100%",
-    maxWidth: 320,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     overflow: "hidden",
     backgroundColor: colors.surface,
-  },
-  photoWrapCompact: {
-    maxWidth: 120,
-    aspectRatio: 1,
-    borderRadius: radius.md,
   },
   photo: { width: "100%", height: "100%" },
   section: { marginTop: space.xl, marginBottom: space.sm },
