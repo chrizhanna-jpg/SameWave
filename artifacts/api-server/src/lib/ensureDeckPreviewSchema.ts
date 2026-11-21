@@ -39,6 +39,20 @@ export async function ensureDeckPreviewSchema(): Promise<void> {
     await db.execute(sql`
       ALTER TABLE photos ALTER COLUMN bytes_base64 DROP NOT NULL
     `);
+    // Sends stay counted after the photo row is deleted (no FK to photos).
+    // Stock and atlas scripts insert into photos directly and do not write here.
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS photo_send_log (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        photo_id varchar NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS photo_send_log_user_created_idx
+      ON photo_send_log (user_id, created_at)
+    `);
     ensured = true;
     logger.info("deck preview and photo object schema ensured");
   } catch (err) {
