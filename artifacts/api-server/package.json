@@ -27,7 +27,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "dotenv": "^16.4.7",
+    "@aws-sdk/client-s3": "^3.1175.0",
     "@clerk/express": "^2.1.13",
     "@clerk/shared": "^4.10.0",
     "@google/genai": "^1.50.1",
@@ -35,22 +35,23 @@
     "@workspace/db": "workspace:*",
     "cookie-parser": "^1.4.7",
     "cors": "^2",
+    "dotenv": "^16.4.7",
     "drizzle-orm": "catalog:",
     "express": "^5",
     "http-proxy-middleware": "^3.0.5",
     "openai": "^6.35.0",
     "pino": "^9",
-    "sharp": "^0.34.3",
-    "pino-http": "^10"
+    "pino-http": "^10",
+    "sharp": "^0.34.3"
   },
   "devDependencies": {
-    "pg": "^8.20.0",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "catalog:",
     "esbuild": "^0.27.3",
     "esbuild-plugin-pino": "^2.3.3",
+    "pg": "^8.20.0",
     "pino-pretty": "^13",
     "thread-stream": "3.1.0"
   }

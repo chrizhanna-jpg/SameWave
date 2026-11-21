@@ -1,5 +1,7 @@
 import { inArray } from "drizzle-orm";
 import { db, photosTable } from "@workspace/db";
+import { logger } from "./logger";
+import { getPhotoObject } from "./r2PhotoStore";
 import { isStockPhotoCdnEligible } from "./stockPhotoCdn";
 
 /**
@@ -25,15 +27,47 @@ export async function fetchDeckPreviewsByIds(
       id: photosTable.id,
       previewB64: photosTable.deckPreviewBase64,
       previewMime: photosTable.deckPreviewMime,
+      deckPreviewKey: photosTable.deckPreviewKey,
     })
     .from(photosTable)
     .where(inArray(photosTable.id, need));
 
+  const fromR2: Array<{ id: string; key: string; mime: string }> = [];
   for (const row of rows) {
     const b64 = row.previewB64?.trim();
-    if (!b64) continue;
     const mime = row.previewMime?.trim() || "image/jpeg";
-    out.set(row.id, { previewUri: `data:${mime};base64,${b64}` });
+    if (b64) {
+      // The Ripple deck only paints previewUri when it starts with "data:".
+      out.set(row.id, { previewUri: `data:${mime};base64,${b64}` });
+      continue;
+    }
+    const key = row.deckPreviewKey?.trim();
+    if (key) fromR2.push({ id: row.id, key, mime });
   }
+
+  const workers = Math.min(8, fromR2.length);
+  let cursor = 0;
+  async function pull(): Promise<void> {
+    while (cursor < fromR2.length) {
+      const item = fromR2[cursor];
+      cursor += 1;
+      if (!item) return;
+      try {
+        const obj = await getPhotoObject(item.key);
+        if (!obj) continue;
+        const mime = item.mime.startsWith("image/")
+          ? item.mime
+          : obj.contentType.startsWith("image/")
+            ? obj.contentType
+            : "image/jpeg";
+        out.set(item.id, {
+          previewUri: `data:${mime};base64,${obj.body.toString("base64")}`,
+        });
+      } catch (err) {
+        logger.warn({ err, photoId: item.id }, "deck preview object read failed");
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: workers }, () => pull()));
   return out;
 }
