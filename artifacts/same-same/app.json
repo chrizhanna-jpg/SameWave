@@ -10,6 +10,7 @@
       "echo.samewaveripple.app"
     ],
     "userInterfaceStyle": "dark",
+    "backgroundColor": "#0B1F33",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/icon.png",
@@ -46,7 +47,8 @@
       ]
     },
     "web": {
-      "favicon": "./assets/images/icon.png"
+      "favicon": "./assets/images/icon.png",
+      "output": "single"
     },
     "plugins": [
       [
@@ -55,6 +57,13 @@
       ],
       "@clerk/expo",
       "expo-font",
+      "expo-secure-store",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "SameWave uses your microphone so you can record a short sound to travel with today’s photo."
+        }
+      ],
       "expo-web-browser",
       [
         "expo-image-picker",
@@ -76,12 +85,6 @@
         }
       ],
       [
-        "expo-notifications",
-        {
-          "color": "#0A2552"
-        }
-      ],
-      [
         "expo-build-properties",
         {
           "android": {
@@ -92,11 +95,16 @@
             }
           }
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#0B1F33"
+        }
       ]
     ],
     "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
+      "typedRoutes": true
     },
     "extra": {
       "eas": {
