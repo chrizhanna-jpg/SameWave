@@ -6,12 +6,13 @@ import { Button } from "@/components/Button";
 import { Frost } from "@/components/Frost";
 import { Screen } from "@/components/Screen";
 import { Txt } from "@/components/Txt";
+import { sceneFor } from "@/data/scenes";
 import { space } from "@/theme";
 
 export default function NotFoundScreen() {
   const router = useRouter();
   return (
-    <Screen center scene="homeIllustration">
+    <Screen center scene={sceneFor.home}>
       <Frost kind="card" style={styles.card} contentStyle={styles.pad}>
         <Txt variant="title" center>
           Nothing here

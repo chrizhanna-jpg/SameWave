@@ -24,7 +24,8 @@ interface Props {
 
 /**
  * Full-bleed backdrop behind frosted UI.
- * Photographs on most screens; stylised vector scene on home only.
+ * Photographs on main screens. `homeIllustration` keeps HomeScene available
+ * unused-by-default for an easy switch-back from the lake photo.
  */
 export function SceneBackdrop({ source, wash = true }: Props) {
   if (source.kind === "none") return null;

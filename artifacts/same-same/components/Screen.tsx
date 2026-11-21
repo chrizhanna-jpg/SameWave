@@ -12,7 +12,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { SceneBackdrop } from "@/components/SceneBackdrop";
-import type { SceneId } from "@/data/scenes";
+import { sceneFor, type SceneId } from "@/data/scenes";
 import { colors, layout, space } from "@/theme";
 
 /** Minimal scroll handle — avoids RN 0.81 ScrollView ref typing quirks. */
@@ -55,7 +55,7 @@ export function Screen({
   scrollRef,
   contentBottomPad,
   onScroll,
-  scene = "homeIllustration",
+  scene = sceneFor.home,
   photoUri,
   sceneWash = true,
 }: Props) {

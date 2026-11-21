@@ -11,14 +11,16 @@ import { RippleRings } from "@/components/RippleRings";
 import { Screen } from "@/components/Screen";
 import { Txt } from "@/components/Txt";
 import { dailyTopicFor } from "@/core/dailyTopic";
+import { sceneFor } from "@/data/scenes";
 import { chooseFromLibrary } from "@/device/photos";
 import { useAppState } from "@/state/AppState";
 import { setDraftPhoto, setDraftTopic } from "@/state/draft";
 import { colors, layout, space } from "@/theme";
 
 /**
- * Home: Style 3 frosted cards over a stylised (non-photo) lake illustration.
+ * Home: Style 3 frosted cards over the calm lake photo (mist-lake).
  * Soft "Today's topic · {name}" stays on one line.
+ * HomeScene.tsx (vector illustration) stays in the repo unused for easy switch-back.
  */
 export default function RippleScreen() {
   const router = useRouter();
@@ -77,7 +79,7 @@ export default function RippleScreen() {
 
   return (
     <Screen
-      scene="homeIllustration"
+      scene={sceneFor.home}
       style={styles.screen}
       contentBottomPad={layout.tabBarContentHeight + space.md}
     >
