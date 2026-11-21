@@ -111,7 +111,15 @@ export default function RippleScreen() {
             <Txt tone="secondary" center style={styles.tagline}>
               We&apos;ll tell you when someone shares your moment.
             </Txt>
-            <Txt variant="quiet" tone="quiet" center style={styles.caption}>
+            <Txt
+              variant="quiet"
+              tone="quiet"
+              center
+              style={styles.caption}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.85}
+            >
               Waves usually arrive within a few days.
             </Txt>
           </>
@@ -203,7 +211,8 @@ const styles = StyleSheet.create({
   },
   brandTitle: { marginTop: space.sm },
   tagline: { maxWidth: 300 },
-  caption: { maxWidth: 280 },
+  // Keep "…a few days." on one line on narrow phones (wrap was dropping "days").
+  caption: { alignSelf: "stretch", maxWidth: 320, paddingHorizontal: space.sm },
   actionsCard: {
     marginBottom: space.sm,
   },
