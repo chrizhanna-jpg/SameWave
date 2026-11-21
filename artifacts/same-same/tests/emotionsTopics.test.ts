@@ -6,7 +6,7 @@ import { selectReachTargets } from "../core/reach";
 import type { Candidate } from "../core/types";
 import { defaultMusicForEmotion, EMOTION_TO_MUSIC } from "../data/emotionMusic";
 import { EMOTION_IDS, EMOTIONS, emotionAffinity, emotionFor } from "../data/emotions";
-import { filterTopics, TOPICS, topicAffinity } from "../data/topics";
+import { filterTopics, TOPICS, topicAffinity, topicFor } from "../data/topics";
 import { VIBES } from "../data/vibes";
 
 /** Mirror of artifacts/api-server/src/lib/allowedMusicGenres.ts — keep in sync. */
@@ -82,6 +82,11 @@ test("Topics are everyday moments with type-ahead aliases", () => {
   assert.ok(filterTopics("road").some((t) => t.id === "roadtrip"));
   assert.ok(filterTopics("din").some((t) => t.id === "dinner"));
   assert.ok(filterTopics("cof").some((t) => t.id === "coffee"));
+  assert.equal(topicFor("coffee")?.label, "Coffee & tea");
+  assert.ok(filterTopics("cuppa").some((t) => t.id === "coffee"));
+  assert.ok(filterTopics("tea").some((t) => t.id === "coffee"));
+  assert.ok(filterTopics("brew").some((t) => t.id === "coffee"));
+  assert.ok(filterTopics("latte").some((t) => t.id === "coffee"));
   assert.ok(filterTopics("pic").some((t) => t.id === "picnic"));
   assert.ok(filterTopics("camp").some((t) => t.id === "camping"));
   assert.ok(filterTopics("nat").some((t) => t.id === "nature"));

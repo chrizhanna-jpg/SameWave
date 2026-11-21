@@ -4,7 +4,7 @@
  * and aliases. Ids reuse challenge/theme ids the server already scores
  * when a close match exists.
  *
- * Base style from Chris (Holiday, Road trip, Family, Dinner, Coffee…).
+ * Base style from Chris (Holiday, Road trip, Family, Dinner, Coffee & tea…).
  * Additions beyond his examples (flag in report / PR): Brunch, Picnic,
  * Café, Camping, Groceries, Cooking, Night in, Daily ritual, Chores,
  * Favourite chair, Something I love, Front door, A small good thing,
@@ -34,7 +34,7 @@ export const TOPICS: readonly Topic[] = [
   { id: "lunch", label: "Lunch", aliases: ["midday", "sandwich", "salad", "soup", "noon meal"] },
   { id: "dinner", label: "Dinner", aliases: ["supper", "evening meal", "roast", "takeaway"] },
   { id: "picnic", label: "Picnic", aliases: ["outdoor lunch", "blanket meal", "park lunch", "hamper"] },
-  { id: "coffee", label: "Coffee", aliases: ["tea", "latte", "espresso", "cappuccino", "cuppa", "drink"] },
+  { id: "coffee", label: "Coffee & tea", aliases: ["tea", "latte", "espresso", "cappuccino", "cuppa", "drink", "brew", "coffee"] },
   { id: "cafe", label: "Café", aliases: ["coffee shop", "coffeehouse", "bakery sit-in", "tea room"] },
   { id: "cooking", label: "Cooking", aliases: ["bake", "baking", "kitchen", "recipe", "chopping", "stove", "oven", "meal prep"] },
   { id: "groceries", label: "Groceries", aliases: ["supermarket", "market shop", "food shop", "trolley"] },
