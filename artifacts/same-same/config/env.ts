@@ -37,14 +37,6 @@ export function clerkProxyUrl(publishableKey: string): string | undefined {
   return forced;
 }
 
-/**
- * Sample mode: no sign-in, no server, seeded Waves. It exists so the whole
- * loop can be looked at in Expo Go or a browser. It needs a development
- * bundle and the flag, so a store build can never be in it.
- */
-export const SAMPLE_MODE =
-  __DEV__ && process.env.EXPO_PUBLIC_EXPO_GO_PREVIEW_SKIP_SIGN_IN === "1";
-
 export const IS_EXPO_GO =
   Constants.appOwnership === "expo" || Constants.executionEnvironment === "storeClient";
 

@@ -1,10 +1,6 @@
 /**
- * A stand-in server for sample mode. It never touches the network and never
- * runs in a store build (see SAMPLE_MODE in config/env.ts).
- *
- * It seeds one Wave for every bonus level, including several Waves inside one
- * country, and it answers each Ripple sent in sample mode with a Wave about
- * twenty seconds later, so the whole loop can be checked without waiting days.
+ * In-memory stand-in server used only by unit tests. The app never imports
+ * this module — production and Expo Go always talk to the real HTTP API.
  */
 import type { Wave } from "../core/types";
 import {

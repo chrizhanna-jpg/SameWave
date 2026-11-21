@@ -2,7 +2,7 @@
  * Everything the app asks of a server, in one interface.
  *
  * Two implementations exist: `http.ts` talks to the SameWave API, and
- * `sample.ts` is an in-memory stand-in used only in sample mode.
+ * `sample.ts` is an in-memory stand-in used only by unit tests.
  * Every method either returns what it promises or throws a BackendError.
  * Nothing here returns null, [] or false to hide a failure.
  */
@@ -57,7 +57,7 @@ export interface RippleUpload {
   /** Topic id from data/topics.ts → theme on the server. */
   topic: string | null;
   recording: { base64: string; mime: string } | null;
-  /** The photo on this device. Only sample mode reads it. */
+  /** The photo on this device. Test backends may read it; the HTTP API uploads the file. */
   localUri: string;
 }
 

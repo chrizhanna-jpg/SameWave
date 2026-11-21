@@ -2,8 +2,7 @@
  * Who is using the app. The rest of the app only sees this small shape and
  * never talks to the sign-in service directly.
  *
- * Real builds sign in through Clerk with the same keys as before. Sample
- * mode has a stand-in account and never loads Clerk at all.
+ * Sign-in goes through Clerk with the same keys as before.
  */
 import { ClerkProvider, useAuth } from "@clerk/expo";
 import { tokenCache } from "@clerk/expo/token-cache";
@@ -17,7 +16,7 @@ import React, {
   useState,
 } from "react";
 
-import { apiOrigin, clerkProxyUrl, clerkPublishableKey, SAMPLE_MODE } from "@/config/env";
+import { apiOrigin, clerkProxyUrl, clerkPublishableKey } from "@/config/env";
 
 export type SessionStatus = "loading" | "signedOut" | "signedIn" | "unavailable";
 
@@ -44,15 +43,6 @@ export function useSession(): Session {
 
 const SLOW_AFTER_MS = 8000;
 const SERVER_KEY_TIMEOUT_MS = 15000;
-
-const sampleSession: Session = {
-  status: "signedIn",
-  accountId: "sample",
-  getToken: async () => null,
-  signOut: async () => undefined,
-  slow: false,
-  retry: () => undefined,
-};
 
 /**
  * In a store build the server is the authority on which Clerk key is live.
@@ -181,8 +171,5 @@ function ClerkSessionProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
-  if (SAMPLE_MODE) {
-    return <SessionContext.Provider value={sampleSession}>{children}</SessionContext.Provider>;
-  }
   return <ClerkSessionProvider>{children}</ClerkSessionProvider>;
 }

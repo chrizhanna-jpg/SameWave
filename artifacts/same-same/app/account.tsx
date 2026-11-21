@@ -24,8 +24,6 @@ export default function AccountScreen() {
     countryCode,
     history,
     deletePhoto,
-    sample,
-    sampleTools,
     askForPushes,
     shouldAskForPushes,
   } = useAppState();
@@ -180,16 +178,6 @@ export default function AccountScreen() {
         {appVersionLabel()}
       </Txt>
 
-      {sample && sampleTools ? (
-        <View style={styles.sample}>
-          <Txt variant="quiet" tone="secondary" center>
-            Sample tools
-          </Txt>
-          <Button kind="soft" label="Arrive Wave now" onPress={() => void sampleTools.arriveNow()} style={styles.sampleBtn} />
-          <Button kind="soft" label="Reset sample data" onPress={() => void sampleTools.reset()} style={styles.sampleBtn} />
-        </View>
-      ) : null}
-
       <Button
         kind="soft"
         label="Sign out"
@@ -246,7 +234,5 @@ const styles = StyleSheet.create({
     gap: space.sm,
   },
   credit: { marginTop: space.lg },
-  sample: { marginTop: space.xl, gap: space.sm },
-  sampleBtn: { alignSelf: "stretch" },
   signOut: { marginTop: space.xl, marginBottom: space.xxl },
 });

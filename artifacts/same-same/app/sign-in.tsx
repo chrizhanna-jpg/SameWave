@@ -85,7 +85,7 @@ export default function SignInScreen() {
         ) : null}
         {IS_EXPO_GO ? (
           <Txt variant="quiet" tone="secondary" center style={styles.problem}>
-            Google sign-in can't finish inside Expo Go. Use the installed app, or the sample preview.
+            Google sign-in can't finish inside Expo Go. Use a development build or the installed app.
           </Txt>
         ) : null}
         <Button label="Continue with Google" onPress={signIn} busy={busy} />

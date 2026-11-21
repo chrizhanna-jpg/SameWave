@@ -10,13 +10,13 @@
 import type * as NotificationsModule from "expo-notifications";
 import { Platform } from "react-native";
 
-import { easProjectId, IS_EXPO_GO, SAMPLE_MODE } from "@/config/env";
+import { easProjectId, IS_EXPO_GO } from "@/config/env";
 import { colors } from "@/theme";
 
 type Notifications = typeof NotificationsModule;
 
 let notifications: Notifications | null = null;
-if (!IS_EXPO_GO && !SAMPLE_MODE && Platform.OS !== "web") {
+if (!IS_EXPO_GO && Platform.OS !== "web") {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     notifications = require("expo-notifications") as Notifications;

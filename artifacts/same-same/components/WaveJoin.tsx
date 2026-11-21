@@ -118,7 +118,7 @@ export function WaveJoin({ width, height, top, bottom, blurRadius }: Props) {
 }
 
 const styles = StyleSheet.create({
-  root: { ...StyleSheet.absoluteFillObject },
+  root: { ...StyleSheet.absoluteFill },
   fill: { flex: 1 },
   photo: { width: "100%", height: "100%", borderRadius: 0 },
   maskRoot: { flex: 1, backgroundColor: "transparent" },

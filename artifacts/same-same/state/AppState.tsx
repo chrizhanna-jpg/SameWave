@@ -16,9 +16,8 @@ import React, {
 import { AppState as NativeAppState, Platform } from "react-native";
 
 import { createHttpBackend } from "@/backend/http";
-import { createSampleBackend, type SampleBackend } from "@/backend/sample";
 import { errorKind, type Backend } from "@/backend/types";
-import { apiOrigin, SAMPLE_MODE } from "@/config/env";
+import { apiOrigin } from "@/config/env";
 import {
   mergeRipples,
   newRipple,
@@ -56,13 +55,11 @@ import {
 } from "@/device/push";
 import {
   accountKey,
-  deviceKey,
   LEGACY_KEYS,
   legacyDeviceId,
   readJson,
   readText,
   writeJson,
-  writeText,
 } from "@/device/storage";
 import { useSession } from "@/state/session";
 
@@ -114,7 +111,6 @@ interface Data {
 
 export interface AppStateValue {
   ready: boolean;
-  sample: boolean;
   country: CountryStatus;
   countryCode: string | null;
   /** Waves on the map, newest first. */
@@ -140,8 +136,6 @@ export interface AppStateValue {
   /** True once the first Ripple has gone and the notification prompt has not been shown. */
   shouldAskForPushes: boolean;
   askForPushes(): Promise<PushPermission>;
-  /** Present only in sample mode. */
-  sampleTools: { arriveNow(): Promise<void>; reset(): Promise<void> } | null;
 }
 
 const AppStateContext = createContext<AppStateValue | null>(null);
@@ -153,7 +147,7 @@ export function useAppState(): AppStateValue {
 }
 
 const SYNC_MIN_GAP_MS = 60_000;
-const TRAVEL_POLL_MS = SAMPLE_MODE ? 4_000 : 3 * 60_000;
+const TRAVEL_POLL_MS = 3 * 60_000;
 const MAX_EXCLUDE_IDS = 200;
 
 function freshProfile(): Profile {
@@ -221,16 +215,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const accountId = session.status === "signedIn" ? session.accountId : null;
   const getToken = session.getToken;
 
-  const backend = useMemo<Backend>(() => {
-    if (SAMPLE_MODE) {
-      const key = deviceKey("sample-server");
-      return createSampleBackend({
-        read: () => readText(key),
-        write: (value) => writeText(key, value),
-      });
-    }
-    return createHttpBackend({ origin: apiOrigin(), getToken, getDeviceId: legacyDeviceId });
-  }, [getToken]);
+  const backend = useMemo<Backend>(
+    () => createHttpBackend({ origin: apiOrigin(), getToken, getDeviceId: legacyDeviceId }),
+    [getToken],
+  );
 
   const [data, setData] = useState<Data>(emptyData);
   const dataRef = useRef(data);
@@ -402,7 +390,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       ]);
       let profile: Profile = { ...freshProfile(), ...(savedProfile ?? {}) };
       let ripples = Array.isArray(savedRipples) ? savedRipples : [];
-      if (!profile.migrated && !SAMPLE_MODE) {
+      if (!profile.migrated) {
         const legacy = await readText(LEGACY_KEYS.state);
         ripples = mergeRipples(ripples, ripplesFromLegacyState(legacy));
         profile = {
@@ -657,34 +645,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   const clearPushTarget = useCallback(() => setPushTarget(null), []);
 
-  const sampleTools = useMemo(() => {
-    if (!SAMPLE_MODE) return null;
-    const sample = backend as SampleBackend;
-    return {
-      arriveNow: async () => {
-        await sample.arriveNow();
-        await syncNow({ force: true });
-      },
-      reset: async () => {
-        await sample.reset();
-        commit((current) => ({
-          ...current,
-          ripples: [],
-          seenWaveIds: [],
-          hidden: { photoIds: [], waveIds: [] },
-        }));
-        save("ripples");
-        save("seen");
-        save("hidden");
-        await syncNow({ force: true });
-      },
-    };
-  }, [backend, commit, save, syncNow]);
-
   const value = useMemo<AppStateValue>(
     () => ({
       ready: data.ready,
-      sample: SAMPLE_MODE,
       country: data.country,
       countryCode: data.profile.countryCode,
       waves: visibleWaves,
@@ -704,7 +667,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       reportWave,
       shouldAskForPushes: data.ready && !data.profile.pushAsked && sentThisSession,
       askForPushes,
-      sampleTools,
     }),
     [
       data.ready,
@@ -728,7 +690,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       deletePhoto,
       reportWave,
       askForPushes,
-      sampleTools,
     ],
   );
 

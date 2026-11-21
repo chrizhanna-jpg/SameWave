@@ -80,13 +80,10 @@ else
   ok "restarted ngrok tunnel for $HOST"
 fi
 
-# 6. Metro, with the preview-only flags. The skip-sign-in flag is required:
-#    Google OAuth redirects to echo.samewaveripple.app://, which an installed
-#    SameWave app on the phone steals, so sign-in can never finish in Expo Go.
-#    With that flag the rebuilt app runs in sample mode (seeded Waves, no API).
+# 6. Metro against the real API. No sample/skip-sign-in flags — history and
+#    Waves come only from the signed-in account on the server.
 "${TMUX[@]}" new-session -d -s "$METRO_SESSION" -c "$APP_DIR" \
-  "EXPO_PUBLIC_EXPO_GO_PREVIEW_SKIP_SIGN_IN=1 \
-EXPO_PUBLIC_API_URL=https://samewave.onrender.com \
+  "EXPO_PUBLIC_API_URL=https://samewave.onrender.com \
 EXPO_PUBLIC_HOSTED_API_URL=https://samewave.onrender.com \
 EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY='$CLERK_KEY' \
 EXPO_PACKAGER_PROXY_URL=https://$HOST \
@@ -112,14 +109,19 @@ case "$BUNDLE_URL" in
   *) fail "bundle URL is $BUNDLE_URL, expected https://$HOST/..." ;;
 esac
 
-# 8. The bundle itself must contain this branch's code and the preview flag.
+# 8. The bundle must be the real-API build (no sample mode).
 echo "Building Android bundle (first build takes ~1 minute)..."
 BUNDLE_FILE="$(mktemp)"
 curl -fsS -m 600 "${BUNDLE_URL/https:\/\/$HOST/http://localhost:$PORT}" -o "$BUNDLE_FILE" \
   || fail "could not build the Android bundle; see tmux session $METRO_SESSION"
-grep -q 'EXPO_PUBLIC_EXPO_GO_PREVIEW_SKIP_SIGN_IN": { enumerable: true, value: "1" }' "$BUNDLE_FILE" \
-  || fail "bundle does not have the skip-sign-in flag inlined"
-ok "bundle has the skip-sign-in flag"
+if grep -q 'EXPO_PUBLIC_EXPO_GO_PREVIEW_SKIP_SIGN_IN": { enumerable: true, value: "1" }' "$BUNDLE_FILE"; then
+  fail "bundle still has the skip-sign-in / sample-mode flag"
+fi
+ok "bundle has no sample skip-sign-in flag"
+if grep -q "sample-hour-country" "$BUNDLE_FILE"; then
+  fail "bundle still contains seeded sample Wave ids"
+fi
+ok "bundle has no seeded sample Wave ids"
 grep -q "Send a Ripple" "$BUNDLE_FILE" || fail "bundle is missing the Ripple send screen"
 ok "bundle has the Ripple send screen"
 grep -q "Your Ripple is out there" "$BUNDLE_FILE" || fail "bundle is missing the waiting screen"
@@ -143,7 +145,8 @@ READY: $BRANCH @ $COMMIT
   Expo Go -> "Enter URL manually" -> exp://$HOST
 
 Open the Expo Go app itself (not the installed SameWave icon).
-Sample mode seeds Waves and answers each Ripple after about 20 seconds.
-If Google sign-in appears, they are not in this preview.
+This preview uses the real API — history and Waves come from your account.
+Google sign-in may not finish inside Expo Go (the installed app can steal
+the OAuth redirect); use a development build or the installed app to sign in.
 =====================================================================
 EOF
