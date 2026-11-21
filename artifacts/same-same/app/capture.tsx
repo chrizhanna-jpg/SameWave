@@ -14,6 +14,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Button } from "@/components/Button";
+import { Frost } from "@/components/Frost";
 import { Header } from "@/components/Header";
 import { Icon } from "@/components/Icon";
 import { Screen } from "@/components/Screen";
@@ -148,7 +149,7 @@ export default function CaptureScreen() {
   };
 
   if (!permission) {
-    return <Screen>{null}</Screen>;
+    return <Screen scene="none">{null}</Screen>;
   }
 
   const abandon = () => {
@@ -159,9 +160,9 @@ export default function CaptureScreen() {
 
   if (!permission.granted) {
     return (
-      <Screen style={styles.ask}>
+      <Screen scene="softPeaks" style={styles.ask}>
         <Header icon="close" onPress={abandon} />
-        <View style={styles.askCentre}>
+        <Frost kind="card" style={styles.askCard} contentStyle={styles.askCentre}>
           <Txt variant="title" center>
             Take today&apos;s photo
           </Txt>
@@ -181,7 +182,7 @@ export default function CaptureScreen() {
             onPress={useLibrary}
             style={styles.line}
           />
-        </View>
+        </Frost>
       </Screen>
     );
   }
@@ -359,7 +360,14 @@ const styles = StyleSheet.create({
   shutterWaiting: { opacity: 0.4 },
   shutterPressed: { transform: [{ scale: 0.94 }] },
   ask: { justifyContent: "flex-start" },
-  askCentre: { flex: 1, justifyContent: "center" },
+  askCard: { marginTop: space.xl, flexGrow: 1 },
+  askCentre: {
+    flexGrow: 1,
+    justifyContent: "center",
+    paddingHorizontal: space.lg,
+    paddingVertical: space.xl,
+  },
   line: { marginTop: space.md },
   allow: { marginTop: space.xl },
 });
+

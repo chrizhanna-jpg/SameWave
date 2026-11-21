@@ -1,11 +1,13 @@
 import { useRouter } from "expo-router";
 import React from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet } from "react-native";
 
 import { Button } from "@/components/Button";
+import { Frost } from "@/components/Frost";
 import { Header } from "@/components/Header";
 import { Screen } from "@/components/Screen";
 import { Txt } from "@/components/Txt";
+import { sceneFor } from "@/data/scenes";
 import { space } from "@/theme";
 
 const STEPS = [
@@ -23,31 +25,36 @@ const STEPS = [
   },
 ] as const;
 
-/** Short instructions, reached from a quiet line — never shown on first launch. */
+/** Short instructions on a frosted card over a calm Style 3 scene. */
 export default function HowItWorksScreen() {
   const router = useRouter();
   return (
-    <Screen scroll>
+    <Screen scroll scene={sceneFor.howItWorks}>
       <Header />
-      <Txt variant="title">How it works</Txt>
-      {STEPS.map((step, index) => (
-        <View key={step.title} style={styles.step}>
-          <Txt variant="quiet" tone="secondary">
-            {String(index + 1).padStart(2, "0")}
-          </Txt>
-          <Txt variant="heading" style={styles.heading}>
-            {step.title}
-          </Txt>
-          <Txt tone="secondary">{step.body}</Txt>
-        </View>
-      ))}
-      <Button kind="soft" label="Got it" onPress={() => router.back()} style={styles.done} />
+      <Frost kind="card" style={styles.card} contentStyle={styles.pad}>
+        <Txt variant="title">How it works</Txt>
+        {STEPS.map((step, index) => (
+          <Frost key={step.title} kind="card" style={styles.step} contentStyle={styles.stepPad}>
+            <Txt variant="quiet" tone="secondary">
+              {String(index + 1).padStart(2, "0")}
+            </Txt>
+            <Txt variant="heading" style={styles.heading}>
+              {step.title}
+            </Txt>
+            <Txt tone="secondary">{step.body}</Txt>
+          </Frost>
+        ))}
+        <Button kind="soft" label="Got it" onPress={() => router.back()} style={styles.done} />
+      </Frost>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  step: { marginTop: space.xl },
+  card: { marginBottom: space.lg },
+  pad: { paddingHorizontal: space.lg, paddingVertical: space.lg },
+  step: { marginTop: space.lg },
+  stepPad: { paddingHorizontal: space.md, paddingVertical: space.md },
   heading: { marginTop: space.xs, marginBottom: space.sm },
-  done: { marginTop: space.xxl, marginBottom: space.lg },
+  done: { marginTop: space.xxl, marginBottom: space.sm },
 });

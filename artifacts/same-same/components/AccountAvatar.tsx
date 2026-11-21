@@ -54,11 +54,12 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.line,
-    backgroundColor: colors.surface,
+    // Existing surface at opacity — frosted well over Style 3 scenes.
+    backgroundColor: "rgba(222, 242, 254, 0.62)",
   },
   fallback: {
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.waterPale,
+    backgroundColor: "rgba(199, 232, 254, 0.55)",
   },
 });

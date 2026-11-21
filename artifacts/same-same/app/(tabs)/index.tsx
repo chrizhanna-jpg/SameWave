@@ -5,6 +5,7 @@ import { Platform, Pressable, StyleSheet, View } from "react-native";
 import { AccountAvatar } from "@/components/AccountAvatar";
 import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/Button";
+import { Frost, FrostIconWell } from "@/components/Frost";
 import { Icon } from "@/components/Icon";
 import { RippleRings } from "@/components/RippleRings";
 import { Screen } from "@/components/Screen";
@@ -16,8 +17,8 @@ import { setDraftPhoto, setDraftTopic } from "@/state/draft";
 import { colors, layout, space } from "@/theme";
 
 /**
- * Home: quiet brand group above, one primary send action in the thumb zone,
- * and a lowered toolbar (? left, account avatar right).
+ * Home: Style 3 frosted cards over a stylised (non-photo) lake illustration.
+ * Soft "Today's topic · {name}" stays on one line.
  */
 export default function RippleScreen() {
   const router = useRouter();
@@ -75,43 +76,50 @@ export default function RippleScreen() {
   };
 
   return (
-    <Screen style={styles.screen}>
+    <Screen
+      scene="homeIllustration"
+      style={styles.screen}
+      contentBottomPad={layout.tabBarContentHeight + space.md}
+    >
       <View style={styles.toolbar}>
         <Pressable
           onPress={() => router.push("/how-it-works")}
           hitSlop={layout.hitSlop}
           accessibilityRole="button"
           accessibilityLabel="How it works"
-          style={styles.iconBtn}
         >
-          <Icon name="help" size={22} color={colors.waterMuted} />
+          <FrostIconWell>
+            <Icon name="help" size={22} color={colors.waterMuted} />
+          </FrostIconWell>
         </Pressable>
         <AccountAvatar onPress={() => router.push("/account")} />
       </View>
 
-      {waiting ? (
-        <View style={styles.brand}>
-          <RippleRings size={200} />
-          <Txt variant="title" center style={styles.brandTitle}>
-            Your Ripple is out there
-          </Txt>
-          <Txt tone="secondary" center style={styles.tagline}>
-            We&apos;ll tell you when someone shares your moment.
-          </Txt>
-          <Txt variant="quiet" tone="quiet" center style={styles.caption}>
-            Waves usually arrive within a few days.
-          </Txt>
-        </View>
-      ) : (
-        <View style={styles.brand}>
-          <BrandMark size={120} withName />
-          <Txt tone="secondary" center style={styles.tagline}>
-            Someone, somewhere is having a similar moment.
-          </Txt>
-        </View>
-      )}
+      <Frost kind="card" style={styles.brandCard} contentStyle={styles.brand}>
+        {waiting ? (
+          <>
+            <RippleRings size={160} />
+            <Txt variant="title" center style={styles.brandTitle}>
+              Your Ripple is out there
+            </Txt>
+            <Txt tone="secondary" center style={styles.tagline}>
+              We&apos;ll tell you when someone shares your moment.
+            </Txt>
+            <Txt variant="quiet" tone="quiet" center style={styles.caption}>
+              Waves usually arrive within a few days.
+            </Txt>
+          </>
+        ) : (
+          <>
+            <BrandMark size={120} withName />
+            <Txt tone="secondary" center style={styles.tagline}>
+              Someone, somewhere is having a similar moment.
+            </Txt>
+          </>
+        )}
+      </Frost>
 
-      <View style={styles.actions}>
+      <Frost kind="card" style={styles.actionsCard} contentStyle={styles.actions}>
         {waiting ? (
           <Button
             kind="soft"
@@ -155,7 +163,7 @@ export default function RippleScreen() {
             Can&apos;t reach SameWave right now. It will keep trying.
           </Txt>
         ) : null}
-      </View>
+      </Frost>
     </Screen>
   );
 }
@@ -170,30 +178,30 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     minHeight: layout.iconButtonSize,
   },
-  iconBtn: {
-    width: layout.iconButtonSize,
-    height: layout.iconButtonSize,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: layout.iconButtonSize / 2,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.line,
-    backgroundColor: colors.surface,
+  brandCard: {
+    flexGrow: 1,
+    marginBottom: space.md,
   },
   brand: {
-    flex: 1,
+    flexGrow: 1,
     alignItems: "center",
     justifyContent: "center",
     width: "100%",
-    paddingVertical: space.lg,
+    paddingVertical: space.xl,
+    paddingHorizontal: space.lg,
     gap: space.md,
+    minHeight: 220,
   },
   brandTitle: { marginTop: space.sm },
   tagline: { maxWidth: 300 },
   caption: { maxWidth: 280 },
+  actionsCard: {
+    marginBottom: space.sm,
+  },
   actions: {
     width: "100%",
-    paddingBottom: space.md,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.lg,
     gap: space.sm,
   },
   actionGap: { alignSelf: "stretch" },

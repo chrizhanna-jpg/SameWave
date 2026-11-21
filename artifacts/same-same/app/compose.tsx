@@ -11,6 +11,7 @@ import {
 
 import { Button } from "@/components/Button";
 import { EmotionPicker } from "@/components/EmotionPicker";
+import { Frost } from "@/components/Frost";
 import { Header } from "@/components/Header";
 import { Photo } from "@/components/Photo";
 import { RippleRings } from "@/components/RippleRings";
@@ -22,6 +23,7 @@ import { Txt } from "@/components/Txt";
 import { errorKind } from "@/backend/types";
 import { dailyTopicFor } from "@/core/dailyTopic";
 import { wavePhotoSlot } from "@/core/wavePhotoSlot";
+import { sceneFor } from "@/data/scenes";
 import { defaultMusicForEmotion } from "@/data/emotionMusic";
 import { topicFor } from "@/data/topics";
 import { playEffect } from "@/device/sound";
@@ -260,7 +262,13 @@ export default function ComposeScreen() {
   );
 
   return (
-    <Screen scroll scrollRef={scrollRef} contentBottomPad={searchField ? 200 : 48}>
+    <Screen
+      scroll
+      scrollRef={scrollRef}
+      contentBottomPad={searchField ? 200 : 48}
+      photoUri={photo.uri}
+      scene={sceneFor.composeFallback}
+    >
       <Header
         icon="close"
         onPress={() => {
@@ -272,17 +280,26 @@ export default function ComposeScreen() {
       {/*
         While filling fields: form first (top), photo below — avoids the old
         scrollTo jump that threw the curtain past moment/song.
-        Fresh open: photo first, then fields.
+        Fresh open: photo first, then fields. Both sit on frosted cards over
+        the full-bleed Ripple photo (Style 3).
       */}
       {editingFields ? (
         <>
-          {fieldsBlock}
-          {photoBlock}
+          <Frost kind="card" style={styles.card} contentStyle={styles.cardPad}>
+            {fieldsBlock}
+          </Frost>
+          <Frost kind="card" style={styles.photoCard} contentStyle={styles.photoCardPad}>
+            {photoBlock}
+          </Frost>
         </>
       ) : (
         <>
-          {photoBlock}
-          {fieldsBlock}
+          <Frost kind="card" style={styles.photoCard} contentStyle={styles.photoCardPad}>
+            {photoBlock}
+          </Frost>
+          <Frost kind="card" style={styles.card} contentStyle={styles.cardPad}>
+            {fieldsBlock}
+          </Frost>
         </>
       )}
     </Screen>
@@ -290,6 +307,10 @@ export default function ComposeScreen() {
 }
 
 const styles = StyleSheet.create({
+  card: { marginTop: space.sm, marginBottom: space.md },
+  cardPad: { paddingHorizontal: space.lg, paddingBottom: space.lg },
+  photoCard: { marginTop: space.sm, marginBottom: space.md },
+  photoCardPad: { padding: space.md, alignItems: "center" },
   photoWrap: {
     alignSelf: "center",
     width: "100%",
@@ -297,14 +318,11 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     overflow: "hidden",
     backgroundColor: colors.surface,
-    marginTop: space.md,
   },
   photoWrapCompact: {
     maxWidth: 120,
     aspectRatio: 1,
     borderRadius: radius.md,
-    marginTop: space.xl,
-    marginBottom: space.lg,
   },
   photo: { width: "100%", height: "100%" },
   section: { marginTop: space.xl, marginBottom: space.sm },
@@ -315,7 +333,8 @@ const styles = StyleSheet.create({
     paddingVertical: space.md,
     paddingHorizontal: space.md,
     borderRadius: radius.md,
-    backgroundColor: colors.surface,
+    // Existing surface at opacity — frost chip on Style 3 compose.
+    backgroundColor: "rgba(222, 242, 254, 0.72)",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.line,
     gap: space.xs,

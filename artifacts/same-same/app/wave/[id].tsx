@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Button } from "@/components/Button";
+import { Frost } from "@/components/Frost";
 import { Header } from "@/components/Header";
 import { Icon } from "@/components/Icon";
 import { Scrim } from "@/components/Scrim";
@@ -358,39 +359,41 @@ export default function WaveScreen() {
             },
           ]}
         >
-          <Pressable onPress={() => setDetails(false)} style={styles.panelInner}>
-            <View style={styles.panelHandle} accessibilityLabel="Hide details" />
-            <Side
-              label="You"
-              country={wave.mine.countryCode}
-              vibe={detail?.mine.vibe ?? null}
-              clip={mineClip}
-              playing={playing === "mine"}
-              onPlay={() => playSide("mine", mineClip)}
-            />
-            <Side
-              label="Them"
-              country={wave.theirs.countryCode}
-              vibe={detail?.theirs.vibe ?? null}
-              clip={theirsClip}
-              playing={playing === "theirs"}
-              onPlay={() => playSide("theirs", theirsClip)}
-            />
-            {describeGap(wave.mine.takenAt, wave.theirs.takenAt) ? (
-              <Txt tone="secondary" center style={styles.gap}>
-                {describeGap(wave.mine.takenAt, wave.theirs.takenAt)}
-              </Txt>
-            ) : null}
-            <Button
-              kind="quiet"
-              tone="ember"
-              label={reportDone ? "Reported" : "Report this photo"}
-              onPress={onReport}
-              busy={reporting}
-              disabled={reportDone}
-              style={styles.report}
-            />
-          </Pressable>
+          <Frost kind="card" style={styles.panelFrost} contentStyle={styles.panelInner}>
+            <Pressable onPress={() => setDetails(false)}>
+              <View style={styles.panelHandle} accessibilityLabel="Hide details" />
+              <Side
+                label="You"
+                country={wave.mine.countryCode}
+                vibe={detail?.mine.vibe ?? null}
+                clip={mineClip}
+                playing={playing === "mine"}
+                onPlay={() => playSide("mine", mineClip)}
+              />
+              <Side
+                label="Them"
+                country={wave.theirs.countryCode}
+                vibe={detail?.theirs.vibe ?? null}
+                clip={theirsClip}
+                playing={playing === "theirs"}
+                onPlay={() => playSide("theirs", theirsClip)}
+              />
+              {describeGap(wave.mine.takenAt, wave.theirs.takenAt) ? (
+                <Txt tone="secondary" center style={styles.gap}>
+                  {describeGap(wave.mine.takenAt, wave.theirs.takenAt)}
+                </Txt>
+              ) : null}
+              <Button
+                kind="quiet"
+                tone="ember"
+                label={reportDone ? "Reported" : "Report this photo"}
+                onPress={onReport}
+                busy={reporting}
+                disabled={reportDone}
+                style={styles.report}
+              />
+            </Pressable>
+          </Frost>
         </Animated.View>
       </Animated.View>
     </View>
@@ -462,12 +465,13 @@ const styles = StyleSheet.create({
   up: { transform: [{ rotate: "-90deg" }] },
   panel: {
     position: "absolute",
-    left: 0,
-    right: 0,
+    left: space.md,
+    right: space.md,
     bottom: 0,
-    backgroundColor: colors.surfaceTranslucent,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
+  },
+  panelFrost: {
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
   },
   panelInner: { paddingHorizontal: space.lg, paddingTop: space.md },
   panelHandle: {

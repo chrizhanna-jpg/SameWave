@@ -1,4 +1,3 @@
-import { LinearGradient } from "expo-linear-gradient";
 import React from "react";
 import {
   KeyboardAvoidingView,
@@ -12,6 +11,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { SceneBackdrop } from "@/components/SceneBackdrop";
+import type { SceneId } from "@/data/scenes";
 import { colors, layout, space } from "@/theme";
 
 /** Minimal scroll handle — avoids RN 0.81 ScrollView ref typing quirks. */
@@ -33,9 +34,18 @@ interface Props {
   /** Extra bottom padding inside a scrolling screen (for keyboard room). */
   contentBottomPad?: number;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  /**
+   * Style 3 full-bleed backdrop. Bundled calm photo scene, home illustration,
+   * a photo URI (compose), or "none" for camera / true bare photography.
+   */
+  scene?: SceneId | "homeIllustration" | "none";
+  /** When set, the backdrop is this Ripple/Wave photo instead of a scene. */
+  photoUri?: string | null;
+  /** Soft palette wash over a photograph for text legibility. Default true. */
+  sceneWash?: boolean;
 }
 
-/** Calm mist canvas. Every quiet screen sits on the same light water. */
+/** Style 3 canvas: full-bleed calm scene (or photo) under frosted content. */
 export function Screen({
   children,
   scroll,
@@ -45,6 +55,9 @@ export function Screen({
   scrollRef,
   contentBottomPad,
   onScroll,
+  scene = "homeIllustration",
+  photoUri,
+  sceneWash = true,
 }: Props) {
   const insets = useSafeAreaInsets();
   const padding: ViewStyle = bare
@@ -85,14 +98,25 @@ export function Screen({
     <View style={[styles.fill, padding, column, center && styles.center, style]}>{children}</View>
   );
 
+  const backdrop =
+    photoUri != null && photoUri.length > 0
+      ? ({ kind: "uri" as const, uri: photoUri })
+      : scene === "none"
+        ? ({ kind: "none" as const })
+        : scene === "homeIllustration"
+          ? ({ kind: "homeIllustration" as const })
+          : ({ kind: "scene" as const, id: scene });
+
   return (
     <View style={styles.root}>
-      <LinearGradient
-        colors={[colors.background, colors.waterPale, colors.waterSoft]}
-        locations={[0.35, 0.78, 1]}
-        style={StyleSheet.absoluteFill}
-        pointerEvents="none"
+      <SceneBackdrop
+        source={backdrop}
+        wash={sceneWash && (backdrop.kind === "scene" || backdrop.kind === "uri")}
       />
+      {/* Fallback canvas for bare/camera — existing background only. */}
+      {backdrop.kind === "none" ? (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background }]} />
+      ) : null}
       <KeyboardAvoidingView
         style={styles.fill}
         behavior={Platform.OS === "ios" ? "padding" : undefined}

@@ -17,9 +17,11 @@ import { Platform, StyleSheet, TextInput, View } from "react-native";
 
 import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/Button";
+import { Frost } from "@/components/Frost";
 import { Screen } from "@/components/Screen";
 import { Txt } from "@/components/Txt";
 import { apiOrigin, isExpoGo, LEGAL_LINKS } from "@/config/env";
+import { sceneFor } from "@/data/scenes";
 import { clerkErrorCode, clerkErrorMessage } from "@/lib/clerkError";
 import { colors, radius, space, type } from "@/theme";
 
@@ -253,15 +255,15 @@ export default function SignInScreen() {
   };
 
   return (
-    <Screen style={styles.screen} scroll contentBottomPad={48}>
-      <View style={styles.top}>
+    <Screen scene={sceneFor.signIn} style={styles.screen} scroll contentBottomPad={48}>
+      <Frost kind="card" style={styles.brandCard} contentStyle={styles.top}>
         <BrandMark size={104} withName />
         <Txt tone="secondary" center style={styles.line}>
           Someone, somewhere is having a similar moment.
         </Txt>
-      </View>
+      </Frost>
 
-      <View>
+      <Frost kind="card" style={styles.formCard} contentStyle={styles.formPad}>
         {problem ? (
           <Txt variant="quiet" tone="ember" center style={styles.problem}>
             {problem}
@@ -369,14 +371,23 @@ export default function SignInScreen() {
           </Txt>
           .
         </Txt>
-      </View>
+      </Frost>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { justifyContent: "space-between" },
-  top: { alignItems: "center", justifyContent: "center", paddingTop: space.xl },
+  brandCard: { marginBottom: space.md },
+  top: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: space.xl,
+    paddingBottom: space.lg,
+    paddingHorizontal: space.lg,
+  },
+  formCard: { marginBottom: space.lg },
+  formPad: { paddingHorizontal: space.lg, paddingVertical: space.lg },
   line: { marginTop: space.md, maxWidth: 300 },
   problem: { marginBottom: space.md },
   hint: { marginBottom: space.md, maxWidth: 340, alignSelf: "center" },

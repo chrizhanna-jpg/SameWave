@@ -33,6 +33,7 @@
     "expo": "~58.0.21",
     "expo-audio": "~58.0.10",
     "expo-auth-session": "~58.0.16",
+    "expo-blur": "~58.0.6",
     "expo-build-properties": "~58.0.11",
     "expo-camera": "^58.0.14",
     "expo-constants": "~58.0.14",

@@ -3,27 +3,26 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { Frost } from "@/components/Frost";
 import { Screen } from "@/components/Screen";
 import { Txt } from "@/components/Txt";
 import { WorldMap } from "@/components/WorldMap";
+import { sceneFor } from "@/data/scenes";
 import { useAppState } from "@/state/AppState";
 import { layout, space } from "@/theme";
 
 /**
- * The quiet keepsake of past Waves. Threads on the map are the only list;
- * tapping one opens that Wave again. Only completed Waves appear here —
- * unanswered Ripples stay on the Ripple tab's waiting state, never on the map.
+ * Keepsake map of past Waves over a Style 3 calm sky scene, with a frosted
+ * caption card. Only completed Waves appear here.
  */
 export default function WavesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  /** Completed Waves only (from the API / local cache) — never travelling Ripples. */
   const { waves, wavesKnown, countryCode, sync } = useAppState();
   const [drawingIds, setDrawingIds] = useState<string[]>([]);
   const drawn = useRef(new Set<string>());
   const firstPass = useRef(true);
 
-  // A newly arrived Wave draws its thread like a ripple across the world.
   useEffect(() => {
     if (waves.length === 0) return;
     if (firstPass.current) {
@@ -55,23 +54,21 @@ export default function WavesScreen() {
     [empty, unreachable],
   );
 
-  /**
-   * Tabs scene can still sit flush with the custom tab bar on some Android
-   * nav modes — keep the caption clear of the bar + gesture/3-button inset.
-   */
   const bottomPad = layout.tabBarContentHeight + Math.max(insets.bottom, space.md);
 
   return (
-    <Screen bare>
+    <Screen bare scene={sceneFor.waves}>
       <View style={[styles.fill, { paddingTop: insets.top + space.sm, paddingBottom: bottomPad }]}>
-        <WorldMap
-          waves={waves}
-          homeCountry={countryCode}
-          drawingIds={drawingIds}
-          onOpenWave={(id) => router.push({ pathname: "/wave/[id]", params: { id } })}
-        />
+        <Frost kind="card" style={styles.mapCard} contentStyle={styles.mapInner}>
+          <WorldMap
+            waves={waves}
+            homeCountry={countryCode}
+            drawingIds={drawingIds}
+            onOpenWave={(id) => router.push({ pathname: "/wave/[id]", params: { id } })}
+          />
+        </Frost>
         {emptyCopy ? (
-          <View style={styles.words} pointerEvents="none">
+          <Frost kind="card" style={styles.wordsCard} contentStyle={styles.words}>
             <Txt tone="secondary" center>
               {emptyCopy.title}
             </Txt>
@@ -80,9 +77,9 @@ export default function WavesScreen() {
                 {emptyCopy.body}
               </Txt>
             ) : null}
-          </View>
+          </Frost>
         ) : (
-          <View style={styles.words} />
+          <View style={styles.wordsSpacer} />
         )}
       </View>
     </Screen>
@@ -90,13 +87,17 @@ export default function WavesScreen() {
 }
 
 const styles = StyleSheet.create({
-  fill: { flex: 1 },
+  fill: { flex: 1, paddingHorizontal: space.md },
+  mapCard: { flex: 1, marginBottom: space.sm },
+  mapInner: { flex: 1, overflow: "hidden", borderRadius: 22 },
+  wordsCard: { marginBottom: space.sm },
   words: {
     minHeight: 72,
     justifyContent: "center",
     paddingHorizontal: space.lg,
-    paddingTop: space.sm,
-    paddingBottom: space.md,
+    paddingVertical: space.md,
+    gap: space.xs,
   },
+  wordsSpacer: { minHeight: 24 },
   body: { marginTop: space.xs },
 });
