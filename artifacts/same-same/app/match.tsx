@@ -289,7 +289,18 @@ export default function MatchScreen() {
       />
 
       {empty || load === "loading" || load === "error" ? (
-        <View style={styles.emptyWrap} pointerEvents="box-none">
+        <View
+          style={[
+            styles.emptyWrap,
+            {
+              // Lower half only: seam mid → above the X / wave action row.
+              top: height / 2,
+              bottom:
+                ACTION_SIZE + Math.max(insets.bottom, space.md) + space.sm + space.md,
+            },
+          ]}
+          pointerEvents="box-none"
+        >
           <Scrim kind="light" style={styles.emptyScrim}>
             {load === "loading" ? (
               <ActivityIndicator color={colors.textPrimary} />
@@ -388,8 +399,11 @@ const styles = StyleSheet.create({
     zIndex: 4,
   },
   emptyWrap: {
-    ...StyleSheet.absoluteFill,
+    position: "absolute",
+    left: 0,
+    right: 0,
     justifyContent: "center",
+    alignItems: "center",
     paddingHorizontal: space.lg,
     zIndex: 2,
   },
