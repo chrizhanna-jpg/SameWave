@@ -7,7 +7,7 @@ When the user asks to see, preview, or try the app on their phone, do this and n
 1. Check out the branch the user wants to see.
 2. Run `artifacts/same-same/scripts/expo-go-preview.sh`. It restarts Metro and the ngrok tunnel and verifies the SDK, the bundle contents, and the public tunnel. Do not share a link unless it prints `READY`.
 3. Give the user exactly the link it prints (`exp://sw6cd7preview.exp.direct`) and tell them to open the **Expo Go** app, choose **Enter URL manually**, and paste it. Never tell them to tap the SameWave app icon.
-4. Tell them what to expect: a gold pill at the top reading `Preview: <branch> · sample data`. If the pill is missing, the phone is running a different SameWave build (the installed Play app), not the preview. Sample mode seeds Waves and answers each Ripple after about 20 seconds (no live API).
+4. Tell them the preview runs in sample mode (seeded Waves, answers each Ripple after about 20 seconds, no live API). There is no preview pill on screen — if they land in Google sign-in, they are in the installed Play app, not this preview.
 5. Confirm from the Metro log (tmux `expo-dev`) that the phone's bundle prints `[preview] skip sign-in is ON` and that no `google sso start` line appears after it. A `google sso start` line means the phone is sitting on the sign-in screen and the preview is not working. A browser check alone missed this once, so do both.
 6. Before saying it works, load the same code in a browser (a second Metro with `--web --port 8082` and the same `EXPO_PUBLIC_EXPO_GO_PREVIEW_*` flags) and look at a screenshot. Passing curl checks is not proof of what renders.
 

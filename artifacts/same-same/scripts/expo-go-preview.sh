@@ -84,12 +84,8 @@ fi
 #    Google OAuth redirects to echo.samewaveripple.app://, which an installed
 #    SameWave app on the phone steals, so sign-in can never finish in Expo Go.
 #    With that flag the rebuilt app runs in sample mode (seeded Waves, no API).
-LABEL="Preview: ${BRANCH#cursor/}"
-LABEL="${LABEL%-7ecf}"
-LABEL="${LABEL%-6cd7}"
 "${TMUX[@]}" new-session -d -s "$METRO_SESSION" -c "$APP_DIR" \
   "EXPO_PUBLIC_EXPO_GO_PREVIEW_SKIP_SIGN_IN=1 \
-EXPO_PUBLIC_EXPO_GO_PREVIEW_LABEL='$LABEL' \
 EXPO_PUBLIC_API_URL=https://samewave.onrender.com \
 EXPO_PUBLIC_HOSTED_API_URL=https://samewave.onrender.com \
 EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY='$CLERK_KEY' \
@@ -128,8 +124,8 @@ grep -q "Send a Ripple" "$BUNDLE_FILE" || fail "bundle is missing the Ripple sen
 ok "bundle has the Ripple send screen"
 grep -q "Your Ripple is out there" "$BUNDLE_FILE" || fail "bundle is missing the waiting screen"
 ok "bundle has the waiting screen"
-grep -q "sample data" "$BUNDLE_FILE" || fail "bundle is missing the sample-data preview pill"
-ok "bundle mentions sample data"
+grep -q "Today:" "$BUNDLE_FILE" || fail "bundle is missing the Daily topic button"
+ok "bundle has the Daily topic button"
 rm -f "$BUNDLE_FILE"
 
 # 9. The public tunnel must serve the same manifest.
@@ -146,9 +142,8 @@ READY: $BRANCH @ $COMMIT
 
   Expo Go -> "Enter URL manually" -> exp://$HOST
 
-Expect a gold pill at the top reading "$LABEL · sample data".
-No pill means the phone is running a different SameWave (for example the
-installed Play app), not this preview. Open the Expo Go app itself.
+Open the Expo Go app itself (not the installed SameWave icon).
 Sample mode seeds Waves and answers each Ripple after about 20 seconds.
+If Google sign-in appears, they are not in this preview.
 =====================================================================
 EOF

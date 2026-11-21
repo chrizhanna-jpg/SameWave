@@ -13,7 +13,6 @@ import { View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { PreviewPill } from "@/components/PreviewPill";
 import { Waiting } from "@/components/Waiting";
 import { findWaveByPhotos } from "@/core/waves";
 import { prepareEffects } from "@/device/sound";
@@ -148,7 +147,6 @@ export default function RootLayout() {
         <SessionProvider>
           <AppStateProvider>
             <Routes />
-            <PreviewPill />
           </AppStateProvider>
         </SessionProvider>
       </ErrorBoundary>
