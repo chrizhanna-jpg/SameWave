@@ -1,65 +1,29 @@
-import { useUser } from "@clerk/expo";
-import { Image } from "expo-image";
 import React from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Pressable } from "react-native";
 
-import { Txt } from "@/components/Txt";
+import { FrostIconWell } from "@/components/Frost";
+import { Icon } from "@/components/Icon";
 import { colors, layout } from "@/theme";
 
 interface Props {
   onPress: () => void;
-  size?: number;
 }
 
-/** Round profile mark for the home toolbar — photo when Clerk has one, else initial. */
-export function AccountAvatar({ onPress, size = layout.iconButtonSize }: Props) {
-  const { user } = useUser();
-  const uri = user?.imageUrl ?? null;
-  const initial = (
-    user?.firstName?.trim()?.[0] ||
-    user?.username?.trim()?.[0] ||
-    user?.primaryEmailAddress?.emailAddress?.trim()?.[0] ||
-    "A"
-  ).toUpperCase();
-
+/**
+ * Account control — same frosted well as the help button (size, border, icon
+ * colour). Person glyph instead of a profile photo so it fits Style 3 chrome.
+ */
+export function AccountAvatar({ onPress }: Props) {
   return (
     <Pressable
       onPress={onPress}
       hitSlop={layout.hitSlop}
       accessibilityRole="button"
       accessibilityLabel="Account"
-      style={[styles.hit, { width: size, height: size, borderRadius: size / 2 }]}
     >
-      {uri ? (
-        <Image
-          source={{ uri }}
-          style={{ width: size, height: size, borderRadius: size / 2 }}
-          contentFit="cover"
-        />
-      ) : (
-        <View style={[styles.fallback, { width: size, height: size, borderRadius: size / 2 }]}>
-          <Txt variant="button" tone="primary">
-            {initial}
-          </Txt>
-        </View>
-      )}
+      <FrostIconWell>
+        <Icon name="account" size={22} color={colors.waterMuted} />
+      </FrostIconWell>
     </Pressable>
   );
 }
-
-const styles = StyleSheet.create({
-  hit: {
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.line,
-    // Existing surface at opacity — frosted well over Style 3 scenes.
-    backgroundColor: "rgba(222, 242, 254, 0.62)",
-  },
-  fallback: {
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(199, 232, 254, 0.55)",
-  },
-});

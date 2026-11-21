@@ -152,8 +152,12 @@ export const layout = {
    * an icon button, so ? / history / account clear the status chrome.
    */
   homeToolbarOffset: 48 * 3,
-  /** Approximate custom tab bar content height (excluding safe-area inset). */
-  tabBarContentHeight: 56,
+  /**
+   * Frosted tab bar content height excluding safe-area inset:
+   * paddingTop (space.md) + tab item row (iconButtonSize).
+   * Prefer useTabBarClearance() for screen padding — it measures the overlay.
+   */
+  tabBarContentHeight: 16 + 48,
   hitSlop: { top: 12, bottom: 12, left: 12, right: 12 },
 } as const;
 

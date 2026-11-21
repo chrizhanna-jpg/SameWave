@@ -1,9 +1,10 @@
 import React from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View, type LayoutChangeEvent } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Frost } from "@/components/Frost";
 import { Txt } from "@/components/Txt";
+import { useReportTabBarHeight } from "@/state/TabBarHeight";
 import { colors, layout, space } from "@/theme";
 
 /** Shape expo-router passes to a custom `tabBar` render prop. */
@@ -20,41 +21,49 @@ interface TabBarProps {
 /** Frosted bottom bar over the Style 3 scene (TIDE / Weather style). */
 export function TabBar({ state, descriptors, navigateToTab }: TabBarProps) {
   const insets = useSafeAreaInsets();
+  const reportHeight = useReportTabBarHeight();
+
+  const onBarLayout = (event: LayoutChangeEvent) => {
+    reportHeight(event.nativeEvent.layout.height);
+  };
+
   return (
     <View style={styles.anchor} pointerEvents="box-none">
-      <Frost
-        kind="bar"
-        intensity={55}
-        style={[styles.bar, { paddingBottom: Math.max(insets.bottom, space.md) }]}
-        contentStyle={styles.row}
-      >
-        {state.routes.map((route, index) => {
-          const focused = state.index === index;
-          const title = descriptors[route.key]?.options.title ?? route.name;
-          return (
-            <Pressable
-              key={route.key}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: focused }}
-              accessibilityLabel={title}
-              hitSlop={layout.hitSlop}
-              style={styles.item}
-              onPress={() => {
-                if (!focused) navigateToTab(route.key);
-              }}
-            >
-              <Txt
-                variant="button"
-                tone={focused ? "primary" : "secondary"}
-                style={!focused && styles.rest}
+      <View onLayout={onBarLayout}>
+        <Frost
+          kind="bar"
+          intensity={55}
+          style={[styles.bar, { paddingBottom: Math.max(insets.bottom, space.md) }]}
+          contentStyle={styles.row}
+        >
+          {state.routes.map((route, index) => {
+            const focused = state.index === index;
+            const title = descriptors[route.key]?.options.title ?? route.name;
+            return (
+              <Pressable
+                key={route.key}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: focused }}
+                accessibilityLabel={title}
+                hitSlop={layout.hitSlop}
+                style={styles.item}
+                onPress={() => {
+                  if (!focused) navigateToTab(route.key);
+                }}
               >
-                {title}
-              </Txt>
-              <View style={[styles.mark, focused && styles.markOn]} />
-            </Pressable>
-          );
-        })}
-      </Frost>
+                <Txt
+                  variant="button"
+                  tone={focused ? "primary" : "secondary"}
+                  style={!focused && styles.rest}
+                >
+                  {title}
+                </Txt>
+                <View style={[styles.mark, focused && styles.markOn]} />
+              </Pressable>
+            );
+          })}
+        </Frost>
+      </View>
     </View>
   );
 }

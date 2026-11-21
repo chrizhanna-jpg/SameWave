@@ -15,6 +15,7 @@ import { sceneFor } from "@/data/scenes";
 import { chooseFromLibrary } from "@/device/photos";
 import { useAppState } from "@/state/AppState";
 import { setDraftPhoto, setDraftTopic } from "@/state/draft";
+import { useTabBarClearance } from "@/state/TabBarHeight";
 import { colors, layout, space } from "@/theme";
 
 /**
@@ -30,6 +31,8 @@ export default function RippleScreen() {
 
   const waiting = travelling !== null && !sendingAnother;
   const today = dailyTopicFor();
+  // Option (a): lift the actions card clear of the absolute frosted tab bar.
+  const tabClearance = useTabBarClearance(space.md);
 
   useEffect(() => {
     setSendingAnother(false);
@@ -81,7 +84,8 @@ export default function RippleScreen() {
     <Screen
       scene={sceneFor.home}
       style={styles.screen}
-      contentBottomPad={layout.tabBarContentHeight + space.md}
+      scroll
+      reserveBottom={tabClearance}
     >
       <View style={styles.toolbar}>
         <Pressable
@@ -171,7 +175,9 @@ export default function RippleScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { justifyContent: "flex-start" },
+  // flexGrow so the brand card fills tall phones; scroll + reserveBottom
+  // keeps the actions card clear of the absolute tab bar on short ones.
+  screen: { flexGrow: 1, justifyContent: "flex-start" },
   toolbar: {
     marginTop: layout.homeToolbarOffset,
     marginBottom: space.md,

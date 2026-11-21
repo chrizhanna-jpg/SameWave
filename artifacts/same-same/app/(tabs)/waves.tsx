@@ -9,7 +9,8 @@ import { Txt } from "@/components/Txt";
 import { WorldMap } from "@/components/WorldMap";
 import { sceneFor } from "@/data/scenes";
 import { useAppState } from "@/state/AppState";
-import { layout, space } from "@/theme";
+import { useTabBarClearance } from "@/state/TabBarHeight";
+import { space } from "@/theme";
 
 /**
  * Keepsake map of past Waves over a Style 3 calm sky scene, with a frosted
@@ -54,11 +55,11 @@ export default function WavesScreen() {
     [empty, unreachable],
   );
 
-  const bottomPad = layout.tabBarContentHeight + Math.max(insets.bottom, space.md);
+  const tabClearance = useTabBarClearance(space.md);
 
   return (
     <Screen bare scene={sceneFor.waves}>
-      <View style={[styles.fill, { paddingTop: insets.top + space.sm, paddingBottom: bottomPad }]}>
+      <View style={[styles.fill, { paddingTop: insets.top + space.sm, paddingBottom: tabClearance }]}>
         <Frost kind="card" style={styles.mapCard} contentStyle={styles.mapInner}>
           <WorldMap
             waves={waves}

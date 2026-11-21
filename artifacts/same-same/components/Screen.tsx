@@ -33,6 +33,12 @@ interface Props {
   scrollRef?: React.MutableRefObject<ScreenScroll | null>;
   /** Extra bottom padding inside a scrolling screen (for keyboard room). */
   contentBottomPad?: number;
+  /**
+   * When set, replaces the default bottom padding (safe-area + space.lg +
+   * contentBottomPad). Use for tab screens that clear an absolute tab bar via
+   * useTabBarClearance().
+   */
+  reserveBottom?: number;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   /**
    * Style 3 full-bleed backdrop. Bundled calm photo scene, home illustration,
@@ -54,6 +60,7 @@ export function Screen({
   style,
   scrollRef,
   contentBottomPad,
+  reserveBottom,
   onScroll,
   scene = sceneFor.home,
   photoUri,
@@ -64,7 +71,10 @@ export function Screen({
     ? {}
     : {
         paddingTop: insets.top + space.lg,
-        paddingBottom: insets.bottom + space.lg + (contentBottomPad ?? 0),
+        paddingBottom:
+          reserveBottom != null
+            ? reserveBottom
+            : insets.bottom + space.lg + (contentBottomPad ?? 0),
         paddingHorizontal: space.lg,
       };
   const column: ViewStyle = {
