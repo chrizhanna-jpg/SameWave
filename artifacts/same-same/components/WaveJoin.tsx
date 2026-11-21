@@ -1,7 +1,7 @@
 import MaskedViewImport from "@react-native-masked-view/masked-view";
-import React, { useMemo, type ComponentType } from "react";
+import React, { useId, useMemo, type ComponentType } from "react";
 import { StyleSheet, View, type StyleProp, type ViewProps, type ViewStyle } from "react-native";
-import Svg, { Path } from "react-native-svg";
+import Svg, { ClipPath, Defs, Image as SvgImage, Path } from "react-native-svg";
 
 /** RN 0.88 typings disagree with the MaskedView package; cast keeps JSX valid. */
 const MaskedView = MaskedViewImport as unknown as ComponentType<
@@ -18,7 +18,7 @@ import {
   waveClipAbove,
   waveClipBelow,
 } from "@/core/waveJoin";
-import { waveJoin } from "@/theme";
+import { colors, waveJoin } from "@/theme";
 
 interface PhotoSide {
   uri: string | null;
@@ -41,8 +41,12 @@ interface Props {
 /**
  * The two Wave photographs meet along the logo ribbon: each photo is clipped
  * to the shared curve, and a thin warm-white stroke sits exactly on that seam.
+ *
+ * Prefer SVG `ClipPath` when we have a plain `uri` (works in Expo Go + web).
+ * Fall back to MaskedView + `Photo` when we need signed headers / blur.
  */
 export function WaveJoin({ width, height, top, bottom, blurRadius }: Props) {
+  const reactId = useId().replace(/:/g, "");
   const band = joinBandHeight(width);
   const half = height / 2;
   const topBox = half + band / 2;
@@ -54,49 +58,57 @@ export function WaveJoin({ width, height, top, bottom, blurRadius }: Props) {
 
   if (width <= 0 || height <= 0) return null;
 
+  // Plain URIs: SVG ClipPath (reliable in Expo Go + web). Blur / signed own-photo: MaskedView.
+  const useSvgClip = !blurRadius;
+
   return (
-    <View style={styles.root} pointerEvents="box-none">
+    <View style={[styles.root, { backgroundColor: colors.background }]} pointerEvents="box-none">
       <View style={[styles.bottomBox, { height: bottomBox }]}>
-        <MaskedView
-          style={styles.fill}
-          maskElement={
-            <View style={styles.maskRoot}>
-              <Svg width={width} height={bottomBox}>
-                <Path d={below} fill="#FFFFFF" />
-              </Svg>
-            </View>
-          }
-        >
-          <Photo
+        {useSvgClip && bottom.uri ? (
+          <ClippedSvgPhoto
             uri={bottom.uri}
-            blurRadius={blurRadius}
-            style={styles.photo}
+            width={width}
+            height={bottomBox}
+            clipPathId={`wave-below-${reactId}`}
+            clipD={below}
             accessibilityLabel={bottom.accessibilityLabel}
           />
-        </MaskedView>
+        ) : (
+          <MaskedClip width={width} height={bottomBox} clipD={below}>
+            <Photo
+              uri={bottom.uri}
+              blurRadius={blurRadius}
+              style={styles.photo}
+              accessibilityLabel={bottom.accessibilityLabel}
+            />
+          </MaskedClip>
+        )}
       </View>
 
       <View style={[styles.topBox, { height: topBox }]}>
-        <MaskedView
-          style={styles.fill}
-          maskElement={
-            <View style={styles.maskRoot}>
-              <Svg width={width} height={topBox}>
-                <Path d={above} fill="#FFFFFF" />
-              </Svg>
-            </View>
-          }
-        >
-          <Photo
+        {useSvgClip && top.uri ? (
+          <ClippedSvgPhoto
             uri={top.uri}
-            ownPhotoId={top.ownPhotoId}
-            blurRadius={blurRadius}
-            style={styles.photo}
+            width={width}
+            height={topBox}
+            clipPathId={`wave-above-${reactId}`}
+            clipD={above}
             accessibilityLabel={top.accessibilityLabel}
           />
-        </MaskedView>
+        ) : (
+          <MaskedClip width={width} height={topBox} clipD={above}>
+            <Photo
+              uri={top.uri}
+              ownPhotoId={top.ownPhotoId}
+              blurRadius={blurRadius}
+              style={styles.photo}
+              accessibilityLabel={top.accessibilityLabel}
+            />
+          </MaskedClip>
+        )}
       </View>
 
+      {/* Stroke sits on the shared curve — not a separate band beside the photos. */}
       <View
         style={[styles.strokeWrap, { height: band, marginTop: -band / 2 }]}
         pointerEvents="none"
@@ -125,22 +137,93 @@ export function WaveJoin({ width, height, top, bottom, blurRadius }: Props) {
   );
 }
 
+function ClippedSvgPhoto({
+  uri,
+  width,
+  height,
+  clipPathId,
+  clipD,
+  accessibilityLabel,
+}: {
+  uri: string;
+  width: number;
+  height: number;
+  clipPathId: string;
+  clipD: string;
+  accessibilityLabel?: string;
+}) {
+  return (
+    <Svg
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      accessibilityLabel={accessibilityLabel}
+    >
+      <Defs>
+        <ClipPath id={clipPathId}>
+          <Path d={clipD} />
+        </ClipPath>
+      </Defs>
+      <SvgImage
+        href={{ uri }}
+        x={0}
+        y={0}
+        width={width}
+        height={height}
+        preserveAspectRatio="xMidYMid slice"
+        clipPath={`url(#${clipPathId})`}
+      />
+    </Svg>
+  );
+}
+
+/** MaskedView fallback: explicit pixel size + non-collapsible mask (Android). */
+function MaskedClip({
+  width,
+  height,
+  clipD,
+  children,
+}: {
+  width: number;
+  height: number;
+  clipD: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <MaskedView
+      style={{ width, height }}
+      maskElement={
+        <View
+          collapsable={false}
+          style={{ width, height, backgroundColor: "transparent" }}
+        >
+          <Svg width={width} height={height}>
+            <Path d={clipD} fill="#FFFFFF" />
+          </Svg>
+        </View>
+      }
+    >
+      <View style={{ width, height }}>{children}</View>
+    </MaskedView>
+  );
+}
+
 const styles = StyleSheet.create({
   root: { ...StyleSheet.absoluteFill },
-  fill: { flex: 1 },
   photo: { width: "100%", height: "100%", borderRadius: 0 },
-  maskRoot: { flex: 1, backgroundColor: "transparent" },
   topBox: {
     position: "absolute",
     left: 0,
     right: 0,
     top: 0,
+    overflow: "hidden",
   },
   bottomBox: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
+    overflow: "hidden",
   },
   strokeWrap: {
     position: "absolute",

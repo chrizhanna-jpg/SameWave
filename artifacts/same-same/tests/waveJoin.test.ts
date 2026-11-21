@@ -39,3 +39,16 @@ test("clip paths close above and below the same wave seam", () => {
   assert.equal((above.match(/C /g) ?? []).length, 4);
   assert.equal((below.match(/C /g) ?? []).length, 4);
 });
+
+test("the shared seam sits in the bottom band of the top box (not a mid rectangle)", () => {
+  const width = 400;
+  const band = joinBandHeight(width);
+  const topBox = 400 + band / 2;
+  // Lift offset used by waveClipAbove — wave lives only in the bottom `band` of the top box.
+  const lift = topBox - band;
+  assert.ok(lift > 0);
+  assert.ok(lift + band === topBox);
+  const above = waveClipAbove(width, topBox, band);
+  assert.ok(above.includes(`L ${width} 0`));
+  assert.match(above, /Z$/);
+});
