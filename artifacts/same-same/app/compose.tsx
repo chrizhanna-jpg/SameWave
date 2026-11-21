@@ -22,20 +22,22 @@ import { errorKind } from "@/backend/types";
 import { defaultMusicForEmotion } from "@/data/emotionMusic";
 import { playEffect } from "@/device/sound";
 import { useAppState } from "@/state/AppState";
-import { getDraftPhoto, setDraftPhoto } from "@/state/draft";
+import { clearDraft, getDraftPhoto, getDraftTopic } from "@/state/draft";
 import { colors, motion, radius, space } from "@/theme";
 
 /**
  * Send a Ripple. After the photo: emotion, Topic, then a library song
  * (pre-selected from the emotion; changeable) and an optional recording.
+ * A Daily topic from home arrives already filled on the Topic step.
  */
 export default function ComposeScreen() {
   const router = useRouter();
   const { sendRipple } = useAppState();
   const photo = getDraftPhoto();
 
+  const prefilledTopic = useRef(getDraftTopic()).current;
   const [emotion, setEmotion] = useState<string | null>(null);
-  const [topic, setTopic] = useState<string | null>(null);
+  const [topic, setTopic] = useState<string | null>(() => prefilledTopic);
   const [song, setSong] = useState<string | null>(null);
   const [songTouched, setSongTouched] = useState(false);
   const [recording, setRecording] = useState<Recording | null>(null);
@@ -85,7 +87,7 @@ export default function ComposeScreen() {
     try {
       await sendRipple({ photo, emotion, topic, song, recording });
       setSent(true);
-      setDraftPhoto(null);
+      clearDraft();
       setTimeout(() => router.replace("/"), motion.rippleSend);
     } catch (error) {
       setSending(false);
@@ -106,7 +108,7 @@ export default function ComposeScreen() {
       <Header
         icon="close"
         onPress={() => {
-          setDraftPhoto(null);
+          clearDraft();
           router.replace("/");
         }}
       />
@@ -125,6 +127,11 @@ export default function ComposeScreen() {
           <Txt variant="heading" style={styles.section}>
             What's the moment?
           </Txt>
+          {prefilledTopic && topic === prefilledTopic ? (
+            <Txt tone="secondary" style={styles.hint}>
+              Today's topic — change it if you like.
+            </Txt>
+          ) : null}
           <TopicPicker value={topic} onChange={setTopic} />
         </>
       ) : null}

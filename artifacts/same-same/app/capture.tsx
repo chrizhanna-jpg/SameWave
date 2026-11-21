@@ -10,7 +10,7 @@ import { Icon } from "@/components/Icon";
 import { Screen } from "@/components/Screen";
 import { Txt } from "@/components/Txt";
 import { chooseFromLibrary } from "@/device/photos";
-import { setDraftPhoto } from "@/state/draft";
+import { setDraftPhoto, setDraftTopic } from "@/state/draft";
 import { colors, layout, radius, space } from "@/theme";
 
 /** Some phones never report that the camera is ready; after this long it is treated as ready. */
@@ -92,10 +92,16 @@ export default function CaptureScreen() {
     return <Screen>{null}</Screen>;
   }
 
+  const abandon = () => {
+    setDraftTopic(null);
+    if (router.canGoBack()) router.back();
+    else router.replace("/");
+  };
+
   if (!permission.granted) {
     return (
       <Screen style={styles.ask}>
-        <Header icon="close" />
+        <Header icon="close" onPress={abandon} />
         <View style={styles.askCentre}>
           <Txt variant="title" center>
             Take today's photo
@@ -128,7 +134,7 @@ export default function CaptureScreen() {
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
-        <Header icon="close" />
+        <Header icon="close" onPress={abandon} />
       </View>
 
       <View style={styles.middle} onLayout={(event) => setRoom(event.nativeEvent.layout.height)}>

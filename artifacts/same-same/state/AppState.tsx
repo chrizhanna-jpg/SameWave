@@ -287,6 +287,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           alreadyOffered: ripple.reach.offeredIds,
           emotion,
           topic,
+          sentAt: ripple.sentAt,
+          relaxMinScoreForSameDayTopic: true,
         });
         if (candidates.length < MATCH.pageSize) break;
         looked.push(...candidates.map((c) => c.id));

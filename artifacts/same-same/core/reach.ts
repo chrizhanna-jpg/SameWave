@@ -11,6 +11,7 @@
  * Similarity is the server's score for the two photos. The feeling or sound
  * sent with a Ripple is never part of it.
  */
+import { isSameUtcDay } from "./dailyTopic";
 import { combinedMatchScore } from "./matchScore";
 import type { Candidate, Offer, Ripple, Wave } from "./types";
 
@@ -59,22 +60,44 @@ export function selectReachTargets(
     alreadyOffered: readonly string[];
     emotion?: string | null;
     topic?: string | null;
+    /** ISO time this Ripple was sent — used for same-day Daily topic boost. */
+    sentAt?: string | null;
+    /**
+     * When set, candidates that share this Topic and the same UTC day as
+     * `sentAt` may pass even if their server score is below `minScore`, so
+     * early Daily topic peers still find each other.
+     */
+    relaxMinScoreForSameDayTopic?: boolean;
   },
 ): Candidate[] {
   const offered = new Set(options.alreadyOffered);
   const seen = new Set<string>();
-  const mine = { emotion: options.emotion ?? null, topic: options.topic ?? null };
+  const mine = {
+    emotion: options.emotion ?? null,
+    topic: options.topic ?? null,
+    at: options.sentAt ?? null,
+  };
+  const floor = Math.max(0, options.minScore);
   return candidates
     .filter((c) => {
       if (seen.has(c.id) || offered.has(c.id)) return false;
       seen.add(c.id);
-      return isRealUpload(c) && c.score >= options.minScore;
+      if (!isRealUpload(c)) return false;
+      if (c.score >= floor) return true;
+      if (!options.relaxMinScoreForSameDayTopic) return false;
+      // Same Topic + same UTC day: let a weak server score through for ranking.
+      return (
+        !!mine.topic &&
+        c.theme === mine.topic &&
+        isSameUtcDay(mine.at, c.createdAt)
+      );
     })
     .map((c) => ({
       candidate: c,
       rank: combinedMatchScore(c.score, mine, {
         emotion: c.emotion,
         topic: c.theme,
+        at: c.createdAt,
       }),
     }))
     .sort(

@@ -7,14 +7,16 @@ import { Button } from "@/components/Button";
 import { RippleRings } from "@/components/RippleRings";
 import { Screen } from "@/components/Screen";
 import { Txt } from "@/components/Txt";
+import { dailyTopicFor } from "@/core/dailyTopic";
 import { chooseFromLibrary } from "@/device/photos";
 import { useAppState } from "@/state/AppState";
-import { setDraftPhoto } from "@/state/draft";
+import { setDraftPhoto, setDraftTopic } from "@/state/draft";
 import { space } from "@/theme";
 
 /**
  * The Ripple screen is always one of three things:
  * a Wave has arrived, a Ripple is travelling, or it is time to send one.
+ * The Daily topic sits quietly beside the main Ripple action.
  */
 export default function RippleScreen() {
   const router = useRouter();
@@ -24,6 +26,7 @@ export default function RippleScreen() {
 
   const arrived = newWaves[0] ?? null;
   const waiting = !arrived && travelling !== null && !sendingAnother;
+  const today = dailyTopicFor();
 
   useEffect(() => {
     setSendingAnother(false);
@@ -35,6 +38,27 @@ export default function RippleScreen() {
     return () => clearTimeout(timer);
   }, [waiting, shouldAskForPushes, askForPushes]);
 
+  const beginCompose = async (topicId: string | null) => {
+    setProblem(null);
+    setDraftTopic(topicId);
+    if (Platform.OS === "web") {
+      try {
+        const photo = await chooseFromLibrary();
+        if (!photo) {
+          setDraftTopic(null);
+          return;
+        }
+        setDraftPhoto(photo);
+        router.push("/compose");
+      } catch {
+        setDraftTopic(null);
+        setProblem("That photo couldn't be opened. Try another.");
+      }
+      return;
+    }
+    router.push("/capture");
+  };
+
   const pickFromLibrary = async () => {
     setProblem(null);
     try {
@@ -45,12 +69,6 @@ export default function RippleScreen() {
     } catch {
       setProblem("That photo couldn't be opened. Try another.");
     }
-  };
-
-  const takePhoto = () => {
-    setProblem(null);
-    if (Platform.OS === "web") void pickFromLibrary();
-    else router.push("/capture");
   };
 
   return (
@@ -93,12 +111,22 @@ export default function RippleScreen() {
             <Txt tone="secondary" center style={styles.line}>
               {travelling ? "Your last Ripple is still travelling." : "One photo of your day."}
             </Txt>
-            <Button label="Send a Ripple" onPress={takePhoto} style={styles.main} />
+            <Button label="Send a Ripple" onPress={() => void beginCompose(null)} style={styles.main} />
+            <Button
+              kind="soft"
+              label={`Today: ${today.label}`}
+              onPress={() => void beginCompose(today.id)}
+              style={styles.daily}
+              accessibilityHint="Starts a Ripple with today's Daily topic already chosen"
+            />
             {Platform.OS !== "web" ? (
               <Button
                 kind="quiet"
                 label="Choose from your photos"
-                onPress={pickFromLibrary}
+                onPress={() => {
+                  setDraftTopic(null);
+                  void pickFromLibrary();
+                }}
                 style={styles.quiet}
               />
             ) : null}
@@ -130,6 +158,7 @@ const styles = StyleSheet.create({
   title: { marginTop: space.lg },
   line: { marginTop: space.md, maxWidth: 300 },
   main: { marginTop: space.xl, alignSelf: "stretch" },
+  daily: { marginTop: space.md, alignSelf: "stretch" },
   quiet: { marginTop: space.md },
   foot: { flexDirection: "row", justifyContent: "center", gap: space.lg },
 });

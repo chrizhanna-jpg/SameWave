@@ -11,11 +11,11 @@ import { space } from "@/theme";
 const STEPS = [
   {
     title: "Send a Ripple",
-    body: "One photo of your day, an emotion, and a Topic. You can add a short sound. Matching leans on the emotion and Topic together with the photo.",
+    body: "One photo of your day, an emotion, and a Topic. Or tap Today for the shared Daily topic. Matching leans on the emotion and Topic together with the photo.",
   },
   {
     title: "Wait",
-    body: "Your Ripple travels quietly. Waves usually arrive within a few days. There is nothing to check or refresh.",
+    body: "Your Ripple travels quietly. People who share today's Daily topic are more likely to find each other the same day.",
   },
   {
     title: "A Wave arrives",
