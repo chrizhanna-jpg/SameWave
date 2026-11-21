@@ -20,6 +20,11 @@ import {
   scheduleLocalWaveNotification,
   type PushPermission,
 } from "@/device/push";
+import {
+  readSamplePhotosToggle,
+  testPhotosBuildEnabled,
+  writeSamplePhotosToggle,
+} from "@/core/testPhotos";
 import { useAppState } from "@/state/AppState";
 import { useSession } from "@/state/session";
 import { colors, radius, space } from "@/theme";
@@ -39,10 +44,17 @@ export default function AccountScreen() {
   const [permission, setPermission] = useState<PushPermission | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [testPushBusy, setTestPushBusy] = useState(false);
+  const [samplePhotos, setSamplePhotos] = useState(false);
+  const samplesAvailable = testPhotosBuildEnabled();
 
   React.useEffect(() => {
     void pushPermission().then(setPermission);
   }, []);
+
+  React.useEffect(() => {
+    if (!samplesAvailable) return;
+    void readSamplePhotosToggle().then(setSamplePhotos);
+  }, [samplesAvailable]);
 
   const onDelete = (photoId: string) => {
     Alert.alert("Delete this Ripple?", "It leaves your history on this phone and the server.", [
@@ -167,6 +179,26 @@ export default function AccountScreen() {
             />
           ) : null}
         </View>
+
+        {samplesAvailable ? (
+          <View style={styles.row}>
+            <View style={styles.fill}>
+              <Txt variant="quiet" tone="secondary">
+                Sample photos (preview)
+              </Txt>
+              <Txt>{samplePhotos ? "On — Match deck includes fixtures" : "Off"}</Txt>
+            </View>
+            <Button
+              kind="quiet"
+              label={samplePhotos ? "Turn off" : "Turn on"}
+              onPress={() => {
+                const next = !samplePhotos;
+                setSamplePhotos(next);
+                void writeSamplePhotosToggle(next);
+              }}
+            />
+          </View>
+        ) : null}
 
         {/* Expo Go cannot receive remote push — local schedule tests tap → reveal. */}
         <View style={styles.row}>

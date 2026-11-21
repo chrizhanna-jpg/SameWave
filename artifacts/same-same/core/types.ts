@@ -11,6 +11,9 @@ export interface WaveSide {
   countryCode: string | null;
   /** When the photo was taken, falling back to when it was sent. ISO string. */
   takenAt: string | null;
+  /** Optional precise map position (sample fixtures / future GPS). */
+  lat?: number | null;
+  lng?: number | null;
 }
 
 /** Two photos that found each other. */
@@ -60,6 +63,10 @@ export interface Candidate {
   createdAt: string | null;
   theme: string | null;
   emotion: string | null;
+  /** Optional capture time (ISO) — used by Match bonuses / sample fixtures. */
+  takenAt?: string | null;
+  /** Optional capture country — used by Match bonuses / sample fixtures. */
+  countryCode?: string | null;
 }
 
 /** Someone else's Ripple reached one of the user's photos. */

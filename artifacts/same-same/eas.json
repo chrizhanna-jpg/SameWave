@@ -15,7 +15,8 @@
         "EXPO_PUBLIC_DOMAIN": "samewave.onrender.com",
         "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_a25vd2luZy1qYXdmaXNoLTQ1LmNsZXJrLmFjY291bnRzLmRldiQ",
         "EXPO_PUBLIC_CLERK_PROXY_URL": "none",
-        "EXPO_PUBLIC_STOCK_PHOTOS_ENABLED": "true"
+        "EXPO_PUBLIC_STOCK_PHOTOS_ENABLED": "true",
+        "EXPO_PUBLIC_TEST_PHOTOS": "1"
       }
     },
     "preview": {

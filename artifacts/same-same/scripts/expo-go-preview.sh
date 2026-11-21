@@ -80,12 +80,13 @@ else
   ok "restarted ngrok tunnel for $HOST"
 fi
 
-# 6. Metro against the real API. No sample/skip-sign-in flags — history and
-#    Waves come only from the signed-in account on the server.
+# 6. Metro against the real API. EXPO_PUBLIC_TEST_PHOTOS=1 enables the Account
+#    sample-photo toggle + Waves-map fixtures (never in production/preview APK).
 "${TMUX[@]}" new-session -d -s "$METRO_SESSION" -c "$APP_DIR" \
   "EXPO_PUBLIC_API_URL=https://samewave.onrender.com \
 EXPO_PUBLIC_HOSTED_API_URL=https://samewave.onrender.com \
 EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY='$CLERK_KEY' \
+EXPO_PUBLIC_TEST_PHOTOS=1 \
 EXPO_PACKAGER_PROXY_URL=https://$HOST \
 pnpm exec expo start --go --localhost --port $PORT --clear"
 

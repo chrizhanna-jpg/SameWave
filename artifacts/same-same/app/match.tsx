@@ -12,13 +12,20 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { FrostIconWell } from "@/components/Frost";
 import { Icon } from "@/components/Icon";
+import { RippleMark } from "@/components/RippleMark";
 import { Scrim } from "@/components/Scrim";
 import { Txt } from "@/components/Txt";
 import { WaveJoin } from "@/components/WaveJoin";
 import { WaveMark } from "@/components/WaveMark";
 import { errorKind } from "@/backend/types";
+import { parseMatchStage } from "@/core/matchAdvance";
 import { MATCH } from "@/core/reach";
 import { rankMatchCandidates } from "@/core/matchDeck";
+import {
+  readSamplePhotosToggle,
+  testPhotosBuildEnabled,
+  withOptionalTestPhotos,
+} from "@/core/testPhotos";
 import type { Candidate } from "@/core/types";
 import { findWaveByPhotos } from "@/core/waves";
 import { playEffect } from "@/device/sound";
@@ -35,13 +42,17 @@ type LoadState = "loading" | "ready" | "empty" | "error";
 
 /**
  * After Send Ripple: your photo on top, a live candidate below, joined by the
- * Wave seam. X passes (vote different); the wave button offers (vote same).
- * Stock / seed rows are filtered client-side; ranking is emotion + Topic.
+ * Wave seam. Full-bleed overlay: X + RippleMark (ripple stage) or X + WaveMark
+ * (wave stage). Any action tap advances the bottom photo.
  */
 export default function MatchScreen() {
   const router = useRouter();
-  const { photoId: rawId } = useLocalSearchParams<{ photoId?: string }>();
+  const { photoId: rawId, stage: rawStage } = useLocalSearchParams<{
+    photoId?: string;
+    stage?: string;
+  }>();
   const photoId = typeof rawId === "string" ? rawId : Array.isArray(rawId) ? rawId[0] : "";
+  const stage = parseMatchStage(rawStage);
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const {
@@ -52,6 +63,12 @@ export default function MatchScreen() {
     recordMatchSeen,
     finishMatchLook,
   } = useAppState();
+  const [useSamples, setUseSamples] = useState(false);
+
+  useEffect(() => {
+    if (!testPhotosBuildEnabled()) return;
+    void readSamplePhotosToggle().then(setUseSamples);
+  }, []);
 
   const ripple = ripples.find((r) => r.photoId === photoId) ?? ripples[0] ?? null;
   const myPhotoId = ripple?.photoId ?? photoId;
@@ -100,10 +117,25 @@ export default function MatchScreen() {
         if (pageRows.length < MATCH.pageSize) break;
         looked.push(...pageRows.map((c) => c.id));
       }
-      setDeck(ranked);
+      const withSamples = withOptionalTestPhotos(ranked, {
+        useSamplePhotos: useSamples,
+        excludeIds: [...excludeBase, ...seenRef.current],
+      });
+      setDeck(withSamples);
       setIndex(0);
-      setLoad(ranked.length === 0 ? "empty" : "ready");
+      setLoad(withSamples.length === 0 ? "empty" : "ready");
     } catch (error) {
+      // Even when the API fails, sample fixtures can still fill the deck.
+      const samplesOnly = withOptionalTestPhotos([], {
+        useSamplePhotos: useSamples,
+        excludeIds: [...excludeBase, ...seenRef.current],
+      });
+      if (samplesOnly.length > 0) {
+        setDeck(samplesOnly);
+        setIndex(0);
+        setLoad("ready");
+        return;
+      }
       setLoad("error");
       setProblem(
         errorKind(error) === "unreachable"
@@ -111,13 +143,13 @@ export default function MatchScreen() {
           : "Couldn't load photos to match. Please try again.",
       );
     }
-  }, [backend, excludeBase, myPhotoId, ownIds, ripple]);
+  }, [backend, excludeBase, myPhotoId, ownIds, ripple, useSamples]);
 
   useEffect(() => {
     void loadDeck();
-    // Only re-load when the Ripple id changes — not on every waves sync.
+    // Reload when Ripple id or sample-photos toggle changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myPhotoId]);
+  }, [myPhotoId, useSamples]);
 
   // If the screen unmounts (close, Wave ceremony, or app background kill path),
   // count the first look so background reach can continue later.
@@ -187,15 +219,19 @@ export default function MatchScreen() {
     [backend, deck.length, excludeBase, index, myPhotoId, ownIds, recordMatchSeen, ripple],
   );
 
+  const isSample = (id: string) => id.startsWith("test_sample_");
+
   const onPass = async () => {
     const current = deck[index];
     if (!current || busy || load !== "ready") return;
     setBusy(true);
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
-    try {
-      await backend.pass(current.id);
-    } catch {
-      // Still move on — local exclude keeps it out of this session.
+    if (!isSample(current.id)) {
+      try {
+        await backend.pass(current.id);
+      } catch {
+        // Still move on — local exclude keeps it out of this session.
+      }
     }
     setBusy(false);
     advance(current.id);
@@ -207,6 +243,14 @@ export default function MatchScreen() {
     setBusy(true);
     void playEffect("drop");
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
+
+    // Sample fixtures: advance only (no server offer).
+    if (isSample(current.id)) {
+      setBusy(false);
+      advance(current.id);
+      return;
+    }
+
     let result: "waiting" | "wave" | "skipped" = "waiting";
     try {
       result = await backend.offer(myPhotoId, current.id);
@@ -237,7 +281,7 @@ export default function MatchScreen() {
       if (formed) {
         router.replace({ pathname: "/wave/[id]", params: { id: formed.id } });
       } else {
-        router.replace("/");
+        router.replace("/home");
       }
       return;
     }
@@ -275,12 +319,17 @@ export default function MatchScreen() {
         }}
         bottom={
           candidate
-            ? {
-                // Relative /api/… URIs need auth — Photo fetches by id.
-                uri: null,
-                ownPhotoId: candidate.id,
-                accessibilityLabel: "Their photo",
-              }
+            ? candidate.uri && candidate.id.startsWith("test_sample_")
+              ? {
+                  uri: candidate.uri,
+                  accessibilityLabel: "Sample photo",
+                }
+              : {
+                  // Relative /api/… URIs need auth — Photo fetches by id.
+                  uri: null,
+                  ownPhotoId: candidate.id,
+                  accessibilityLabel: "Their photo",
+                }
             : {
                 uri: null,
                 accessibilityLabel: "No photo to match",
@@ -369,8 +418,8 @@ export default function MatchScreen() {
             onPress={() => void onMatch()}
             disabled={busy || empty || load !== "ready"}
             accessibilityRole="button"
-            accessibilityLabel="Match"
-            accessibilityHint="Sends a match on this photo. When they match back, it becomes a Wave."
+            accessibilityLabel={stage === "wave" ? "Wave" : "Ripple"}
+            accessibilityHint="Offers a match on this photo. Any tap advances the bottom photo."
             accessibilityState={{ disabled: busy || empty || load !== "ready" }}
             style={({ pressed }) => [
               styles.actionHit,
@@ -378,9 +427,13 @@ export default function MatchScreen() {
               pressed && !empty && load === "ready" && styles.actionPressed,
             ]}
           >
-            {/* Frosted well (not blue) so the logo’s coloured waves stay legible. */}
+            {/* Frosted well so stage glyphs stay legible on the photo. */}
             <FrostIconWell style={styles.actionWell}>
-              <WaveMark width={44} />
+              {stage === "wave" ? (
+                <WaveMark width={44} />
+              ) : (
+                <RippleMark size={36} color={colors.waterMid} />
+              )}
             </FrostIconWell>
           </Pressable>
         </View>
