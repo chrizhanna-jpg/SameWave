@@ -4,10 +4,16 @@
  */
 import type { ImageSourcePropType } from "react-native";
 
-export type SceneId = "mistLake" | "softPeaks" | "quietShore" | "openSky";
+export type SceneId =
+  | "mistLake"
+  | "mistLakeNoboat"
+  | "softPeaks"
+  | "quietShore"
+  | "openSky";
 
 export const scenes: Record<SceneId, ImageSourcePropType> = {
   mistLake: require("../assets/scenes/mist-lake.jpg"),
+  mistLakeNoboat: require("../assets/scenes/mist-lake-noboat.jpg"),
   softPeaks: require("../assets/scenes/soft-peaks.jpg"),
   quietShore: require("../assets/scenes/quiet-shore.jpg"),
   openSky: require("../assets/scenes/open-sky.jpg"),
@@ -15,7 +21,7 @@ export const scenes: Record<SceneId, ImageSourcePropType> = {
 
 /** Stable scene picks per surface so the look stays familiar. */
 export const sceneFor = {
-  home: "mistLake" as SceneId,
+  home: "mistLakeNoboat" as SceneId,
   waves: "openSky" as SceneId,
   account: "quietShore" as SceneId,
   howItWorks: "softPeaks" as SceneId,

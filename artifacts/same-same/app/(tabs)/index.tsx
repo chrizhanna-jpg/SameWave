@@ -18,7 +18,7 @@ import { setDraftPhoto, setDraftTopic } from "@/state/draft";
 import { colors, layout, space } from "@/theme";
 
 /**
- * Home: Style 3 frosted cards over the calm lake photo (mist-lake).
+ * Home: Style 3 frosted cards over mist-lake-noboat (edited lake photo).
  * Soft "Today's topic · {name}" stays on one line.
  * HomeScene.tsx (vector illustration) stays in the repo unused for easy switch-back.
  */
