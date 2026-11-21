@@ -4,8 +4,6 @@ import { logger } from "./lib/logger";
 import { startPhotoRetentionCleanup } from "./lib/photoRetentionCleanup";
 import { getPhotoRetentionDays } from "./lib/photoRetention";
 import { getAndroidLatestDebugInfo } from "./androidLatest";
-import { warmStockDisplayCache } from "./lib/warmStockDisplayCache";
-import { startDeckEncodeBackfill } from "./lib/deckEncodeBackfill";
 import { ensureDeckPreviewSchema } from "./lib/ensureDeckPreviewSchema";
 
 const rawPort = process.env["PORT"];
@@ -57,8 +55,6 @@ void (async () => {
       );
     }
     startPhotoRetentionCleanup();
-    warmStockDisplayCache();
-    startDeckEncodeBackfill();
   });
 
   server.on("error", (err) => {

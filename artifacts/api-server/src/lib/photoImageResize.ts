@@ -93,11 +93,10 @@ const DISPLAY_CACHE_MAX = 512;
 const DISPLAY_CACHE_TTL_MS = 10 * 60 * 1000;
 const displayCache = new Map<string, DisplayEntry>();
 
-// Curated stock pool (`stock_*` ids) is a fixed, static set that makes up the
-// bulk of the matching deck. Its display bytes are warmed once at startup and
-// pinned here — never TTL-expired and never evicted by user-upload traffic — so
-// every stock card streams from memory (~2ms) instead of paying a multi-MB DB
-// read + sharp resize on each viewer's first sight of it.
+// Optional pin for stock display bytes. Startup used to fill this from
+// photos.bytes_base64 on every cold start; stock cards now load from the
+// Unsplash CDN, so this map stays empty unless something calls
+// putStockDisplayBytes. It is never TTL-expired or evicted by user traffic.
 const stockDisplayCache = new Map<string, { buf: Buffer; mime: string }>();
 
 function displayKey(photoId: string, maxWidth: number): string {

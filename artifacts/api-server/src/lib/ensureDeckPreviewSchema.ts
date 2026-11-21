@@ -61,7 +61,6 @@ export async function getDeckPreviewSchemaStatus(): Promise<DeckPreviewSchemaSta
         AND status = 'active'
         AND (expires_at IS NULL OR expires_at > now())
         AND (display_bytes_base64 IS NULL OR deck_preview_base64 IS NULL)
-        AND length(bytes_base64) > 0
     `);
     const missingPreviewCount = Number(
       (missRows.rows[0] as Record<string, unknown> | undefined)?.c ?? 0,

@@ -36,7 +36,6 @@ import {
   resizePhotoForDisplay,
   withDisplayImageSlot,
 } from "../lib/photoImageResize";
-import { prioritizeWarmPhotoIds } from "../lib/warmStockDisplayCache";
 import { stockPhotoCdnUrl } from "../lib/stockPhotoCdn";
 import { fetchDeckPreviewsByIds } from "../lib/deckEncodeBackfill";
 import {
@@ -902,13 +901,6 @@ router.get("/photos/candidates", async (req, res) => {
       const preview = previewMap.get(p.id);
       return preview ? { ...p, previewUri: preview.previewUri } : p;
     });
-
-    prioritizeWarmPhotoIds(
-      withPreviews
-        .filter((p) => !p.uri.startsWith("https://") && !p.previewUri)
-        .slice(0, 4)
-        .map((p) => p.id),
-    );
 
     res.json({ photos: withPreviews });
   } catch (err) {
@@ -1864,7 +1856,6 @@ router.get("/photos/atlas/:countryCode", async (req, res) => {
         SELECT
           p.id,
           p.user_id,
-          p.bytes_base64,
           p.mime_type,
           p.theme,
           p.tags,
@@ -1872,7 +1863,10 @@ router.get("/photos/atlas/:countryCode", async (req, res) => {
           p.custom_audio_base64,
           p.custom_audio_mime,
           p.created_at,
-          md5(substring(p.bytes_base64 from 1 for 4096)) AS content_hash,
+          -- Dedup key only. Do not select p.bytes_base64: the full original
+          -- is multi-MB and was never returned. Hash a 4 KB prefix instead
+          -- (same key as /candidates) so identical images still collapse.
+          md5(left(p.bytes_base64, 4096)) AS content_hash,
           row_number() OVER (
             PARTITION BY p.user_id
             ORDER BY p.created_at DESC
@@ -2013,8 +2007,10 @@ router.get("/photos/:id/image", async (req, res) => {
         return;
       }
 
+      // Display column first. Selecting bytes_base64 in the same statement
+      // ships the multi-MB original even when the display image is used.
       const rows = await db.execute(sql`
-        SELECT mime_type, bytes_base64, display_bytes_base64, display_mime, created_at
+        SELECT mime_type, display_bytes_base64, display_mime, created_at
         FROM photos
         WHERE id::text = ${photoId}
           AND status = 'active'
@@ -2035,26 +2031,41 @@ router.get("/photos/:id/image", async (req, res) => {
             ? new Date(createdAtRaw)
             : null;
       const mime = String(r.mime_type ?? "image/jpeg");
-      const displayB64 = String(r.display_bytes_base64 ?? "");
-      const displayMime = String(r.display_mime ?? "image/jpeg");
-      if (
-        displayB64 &&
-        (maxWidth == null || maxWidth === DECK_DISPLAY_WIDTH)
-      ) {
-        const buf = Buffer.from(displayB64, "base64");
-        putCachedDisplayBytes(photoId, cacheWidth, buf, displayMime);
+      const displayB64 = String(r.display_bytes_base64 ?? "").trim();
+      const displayMime = String(r.display_mime ?? "").trim() || "image/jpeg";
+      if (displayB64) {
+        let buf: Buffer = Buffer.from(displayB64, "base64");
+        let outMime = displayMime;
+        // A non-default width is resized from the display bytes already in
+        // memory. The original is fetched only when display is missing.
+        if (maxWidth != null && maxWidth !== DECK_DISPLAY_WIDTH) {
+          const resized = await resizePhotoForDisplay(buf, outMime, maxWidth);
+          buf = resized.buf;
+          outMime = resized.mime;
+        }
+        putCachedDisplayBytes(photoId, cacheWidth, buf, outMime);
         sendPhotoImageBytes(
           req,
           res,
           buf,
-          displayMime,
+          outMime,
           photoId,
           cacheWidth,
           lastModified,
         );
         return;
       }
-      const b64 = String(r.bytes_base64 ?? "");
+      const originalRows = await db.execute(sql`
+        SELECT bytes_base64
+        FROM photos
+        WHERE id::text = ${photoId}
+          AND status = 'active'
+          AND report_count < ${REPORT_HIDE_THRESHOLD}
+          AND (expires_at IS NULL OR expires_at > now())
+        LIMIT 1
+      `);
+      const original = originalRows.rows[0] as Record<string, unknown> | undefined;
+      const b64 = String(original?.bytes_base64 ?? "");
       if (!b64) {
         res.status(404).json({ error: "photo not found" });
         return;
