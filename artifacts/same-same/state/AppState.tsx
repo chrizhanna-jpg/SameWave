@@ -61,10 +61,13 @@ import {
   readText,
   writeJson,
 } from "@/device/storage";
+import { withTimeout } from "@/lib/timeout";
 import { useSession } from "@/state/session";
 
 export type SyncStatus = "idle" | "syncing" | "offline" | "failed";
 export type CountryStatus = "checking" | "known" | "needed";
+/** Post-sign-in gate while profile/country load from device + API. */
+export type BootStatus = "idle" | "loading" | "slow" | "failed";
 
 export interface RippleDraft {
   photo: ChosenPhoto;
@@ -113,6 +116,12 @@ export interface AppStateValue {
   ready: boolean;
   country: CountryStatus;
   countryCode: string | null;
+  /** Post-sign-in load: slow/failed replace the bare infinite ring. */
+  boot: BootStatus;
+  /** Human detail when boot is slow or failed. */
+  bootDetail: string | null;
+  /** Re-run device + profile load after a boot failure. */
+  retryBoot(): void;
   /** Waves on the map, newest first. */
   waves: Wave[];
   wavesKnown: boolean;
@@ -149,6 +158,14 @@ export function useAppState(): AppStateValue {
 const SYNC_MIN_GAP_MS = 60_000;
 const TRAVEL_POLL_MS = 3 * 60_000;
 const MAX_EXCLUDE_IDS = 200;
+/** Show “still waking…” while Render / Clerk catch up after sign-in. */
+const BOOT_SLOW_MS = 8_000;
+/**
+ * Hard stop for the starting gate. Covers token + /users/me (25s) with a little
+ * spare; never leave RippleRings spinning with no way out.
+ */
+const BOOT_FAIL_MS = 35_000;
+const BOOT_COUNTRY_TIMEOUT_MS = 28_000;
 
 function freshProfile(): Profile {
   return {
@@ -225,6 +242,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [now, setNow] = useState(() => Date.now());
   const [pushTarget, setPushTarget] = useState<PushTarget | null>(null);
   const [sentThisSession, setSentThisSession] = useState(false);
+  const [boot, setBoot] = useState<BootStatus>("idle");
+  const [bootDetail, setBootDetail] = useState<string | null>(null);
+  const [bootAttempt, setBootAttempt] = useState(0);
 
   /** Updates what the screens see and what background work reads, together. */
   const commit = useCallback((change: (current: Data) => Data) => {
@@ -371,84 +391,169 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     [runSync],
   );
 
+  const retryBoot = useCallback(() => {
+    setBoot("loading");
+    setBootDetail(null);
+    setBootAttempt((n) => n + 1);
+  }, []);
+
   // Load what the device remembers for this account, then catch up with the server.
   useEffect(() => {
     lastSyncAt.current = 0;
     if (!accountId) {
       commit(() => emptyData());
+      setBoot("idle");
+      setBootDetail(null);
       return;
     }
     let cancelled = false;
+    setBoot("loading");
+    setBootDetail(null);
     commit(() => ({ ...emptyData(), accountId }));
-    void (async () => {
-      const [savedProfile, savedRipples, seenWaveIds, hidden, savedWaves] = await Promise.all([
-        readJson<Profile | null>(accountKey(accountId, "profile"), null),
-        readJson<Ripple[]>(accountKey(accountId, "ripples"), []),
-        readJson<string[]>(accountKey(accountId, "seen"), []),
-        readJson<Hidden>(accountKey(accountId, "hidden"), { photoIds: [], waveIds: [] }),
-        readJson<Wave[] | null>(accountKey(accountId, "waves"), null),
-      ]);
-      let profile: Profile = { ...freshProfile(), ...(savedProfile ?? {}) };
-      let ripples = Array.isArray(savedRipples) ? savedRipples : [];
-      if (!profile.migrated) {
-        const legacy = await readText(LEGACY_KEYS.state);
-        ripples = mergeRipples(ripples, ripplesFromLegacyState(legacy));
-        profile = {
-          ...profile,
-          migrated: true,
-          countryCode: profile.countryCode ?? legacyCountry(legacy),
-        };
-      }
-      if (cancelled) return;
-      commit((current) => ({
-        ...current,
-        ready: true,
-        profile,
-        country: profile.countryCode ? "known" : "checking",
-        ripples,
-        seenWaveIds: Array.isArray(seenWaveIds) ? seenWaveIds : [],
-        hidden: {
-          photoIds: Array.isArray(hidden?.photoIds) ? hidden.photoIds : [],
-          waveIds: Array.isArray(hidden?.waveIds) ? hidden.waveIds : [],
-        },
-        waves: Array.isArray(savedWaves) ? savedWaves : [],
-        wavesKnown: Array.isArray(savedWaves),
-      }));
-      save("profile");
-      save("ripples");
 
-      if (!profile.countryCode) {
-        let fromServer: string | null = null;
-        try {
-          fromServer = normalizeCountryCode(await backend.getCountry());
-        } catch {
-          // Unknown for now; the person can choose, and it is saved when the server answers.
+    const slowTimer = setTimeout(() => {
+      if (cancelled) return;
+      setBoot((current) => (current === "loading" ? "slow" : current));
+      setBootDetail(
+        "SameWave's server can take a minute to wake. Hang on, or try again if this stalls.",
+      );
+    }, BOOT_SLOW_MS);
+
+    const failTimer = setTimeout(() => {
+      if (cancelled) return;
+      console.warn("[boot] timed out still checking country / ready");
+      setBoot("failed");
+      setBootDetail(
+        "Couldn't finish signing you in. Check your connection, wait for the server to wake, then try again.",
+      );
+      // Leave the starting gate with a clear error + retry (keep country checking).
+      commit((current) =>
+        current.ready
+          ? current
+          : {
+              ...current,
+              ready: true,
+              country: "checking",
+            },
+      );
+    }, BOOT_FAIL_MS);
+
+    void (async () => {
+      try {
+        const [savedProfile, savedRipples, seenWaveIds, hidden, savedWaves] = await Promise.all([
+          readJson<Profile | null>(accountKey(accountId, "profile"), null),
+          readJson<Ripple[]>(accountKey(accountId, "ripples"), []),
+          readJson<string[]>(accountKey(accountId, "seen"), []),
+          readJson<Hidden>(accountKey(accountId, "hidden"), { photoIds: [], waveIds: [] }),
+          readJson<Wave[] | null>(accountKey(accountId, "waves"), null),
+        ]);
+        let profile: Profile = { ...freshProfile(), ...(savedProfile ?? {}) };
+        let ripples = Array.isArray(savedRipples) ? savedRipples : [];
+        if (!profile.migrated) {
+          const legacy = await readText(LEGACY_KEYS.state);
+          ripples = mergeRipples(ripples, ripplesFromLegacyState(legacy));
+          profile = {
+            ...profile,
+            migrated: true,
+            countryCode: profile.countryCode ?? legacyCountry(legacy),
+          };
         }
         if (cancelled) return;
         commit((current) => ({
           ...current,
-          country: fromServer ? "known" : "needed",
-          profile: fromServer
-            ? { ...current.profile, countryCode: fromServer, countrySaved: true }
-            : current.profile,
+          ready: true,
+          profile,
+          country: profile.countryCode ? "known" : "checking",
+          ripples,
+          seenWaveIds: Array.isArray(seenWaveIds) ? seenWaveIds : [],
+          hidden: {
+            photoIds: Array.isArray(hidden?.photoIds) ? hidden.photoIds : [],
+            waveIds: Array.isArray(hidden?.waveIds) ? hidden.waveIds : [],
+          },
+          waves: Array.isArray(savedWaves) ? savedWaves : [],
+          wavesKnown: Array.isArray(savedWaves),
         }));
         save("profile");
-      }
+        save("ripples");
 
-      void syncNow({ force: true });
+        if (profile.countryCode) {
+          if (!cancelled) {
+            setBoot("idle");
+            setBootDetail(null);
+          }
+        } else {
+          let fromServer: string | null = null;
+          let countryError: string | null = null;
+          try {
+            fromServer = normalizeCountryCode(
+              await withTimeout(
+                backend.getCountry(),
+                BOOT_COUNTRY_TIMEOUT_MS,
+                "Profile request timed out",
+              ),
+            );
+          } catch (error) {
+            countryError =
+              error instanceof Error && error.message
+                ? error.message
+                : "Couldn't reach SameWave";
+            if (__DEV__) console.warn("[boot] getCountry failed", error);
+          }
+          if (cancelled) return;
+          if (fromServer) {
+            commit((current) => ({
+              ...current,
+              country: "known",
+              profile: { ...current.profile, countryCode: fromServer, countrySaved: true },
+            }));
+            save("profile");
+            setBoot("idle");
+            setBootDetail(null);
+          } else {
+            // Server unreachable or no country yet — let them pick locally; sync later.
+            commit((current) => ({ ...current, country: "needed" }));
+            setBoot("idle");
+            setBootDetail(null);
+            if (countryError && __DEV__) {
+              console.warn("[boot] continuing to country picker after", countryError);
+            }
+          }
+        }
 
-      // Never prompts here: only refreshes the address if notifications are already on.
-      const address = await enablePushes({ ask: false });
-      if (address && !cancelled) {
-        await backend
-          .registerPushToken(address, Platform.OS === "ios" ? "ios" : "android")
-          .catch(() => undefined);
+        void syncNow({ force: true });
+
+        // Never prompts here: only refreshes the address if notifications are already on.
+        const address = await enablePushes({ ask: false });
+        if (address && !cancelled) {
+          await backend
+            .registerPushToken(address, Platform.OS === "ios" ? "ios" : "android")
+            .catch(() => undefined);
+        }
+      } catch (error) {
+        if (cancelled) return;
+        console.warn("[boot] failed", error);
+        setBoot("failed");
+        setBootDetail(
+          error instanceof Error && error.message
+            ? error.message
+            : "Couldn't finish signing you in. Try again.",
+        );
+        commit((current) => ({
+          ...current,
+          ready: true,
+          country: current.country === "known" ? "known" : "checking",
+        }));
+      } finally {
+        clearTimeout(slowTimer);
+        clearTimeout(failTimer);
       }
     })();
     return () => {
       cancelled = true;
+      clearTimeout(slowTimer);
+      clearTimeout(failTimer);
     };
-  }, [accountId, backend, commit, save, syncNow]);
+  }, [accountId, backend, bootAttempt, commit, save, syncNow]);
 
   // Catch up whenever the app comes back to the front.
   useEffect(() => {
@@ -650,6 +755,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       ready: data.ready,
       country: data.country,
       countryCode: data.profile.countryCode,
+      boot,
+      bootDetail,
+      retryBoot,
       waves: visibleWaves,
       wavesKnown: data.wavesKnown,
       newWaves,
@@ -673,6 +781,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       data.country,
       data.profile.countryCode,
       data.profile.pushAsked,
+      boot,
+      bootDetail,
+      retryBoot,
       sentThisSession,
       data.wavesKnown,
       data.sync,

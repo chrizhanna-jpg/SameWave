@@ -201,7 +201,9 @@ export function createHttpBackend(options: HttpBackendOptions): Backend {
 
   return {
     async getCountry() {
-      const body = await call("GET", "/users/me", { repeatable: true });
+      // Boot calls this once after sign-in. One 25s attempt (Render wake) beats
+      // two stacked 45s retries that look like an infinite spinner in Expo Go.
+      const body = await call("GET", "/users/me", { timeoutMs: 25_000, repeatable: false });
       return normalizeCountryCode(body.countryCode as string | null);
     },
 

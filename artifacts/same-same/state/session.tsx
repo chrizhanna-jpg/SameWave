@@ -17,6 +17,7 @@ import React, {
 } from "react";
 
 import { apiOrigin, clerkProxyUrl, clerkPublishableKey } from "@/config/env";
+import { withTimeout } from "@/lib/timeout";
 
 export type SessionStatus = "loading" | "signedOut" | "signedIn" | "unavailable";
 
@@ -43,6 +44,8 @@ export function useSession(): Session {
 
 const SLOW_AFTER_MS = 8000;
 const SERVER_KEY_TIMEOUT_MS = 15000;
+/** Clerk's getToken can hang after setActive in Expo Go; never block the boot gate on it. */
+const TOKEN_TIMEOUT_MS = 12_000;
 
 /**
  * In a store build the server is the authority on which Clerk key is live.
@@ -94,8 +97,13 @@ function ClerkBridge({
 
   const getToken = useCallback(async (options?: { fresh?: boolean }) => {
     try {
-      return await authRef.current.getToken({ skipCache: options?.fresh === true });
-    } catch {
+      return await withTimeout(
+        authRef.current.getToken({ skipCache: options?.fresh === true }),
+        TOKEN_TIMEOUT_MS,
+        "Session token timed out",
+      );
+    } catch (error) {
+      if (__DEV__) console.warn("[session] getToken failed", error);
       return null;
     }
   }, []);
