@@ -69,7 +69,8 @@ function waveSide(raw: unknown): WaveSide | null {
   };
 }
 
-export function waveFromEchoCard(raw: unknown): Wave | null {
+/** Map one `/echoes/*` card (server wire name) into a Wave. */
+export function waveFromCard(raw: unknown): Wave | null {
   if (!raw || typeof raw !== "object") return null;
   const card = raw as Json;
   const id = card.id === undefined || card.id === null ? "" : String(card.id);
@@ -79,7 +80,8 @@ export function waveFromEchoCard(raw: unknown): Wave | null {
   return { id, formedAt: isoOrNull(card.mutualAt) ?? isoOrNull(card.createdAt), mine, theirs };
 }
 
-export function offerFromEchoCard(raw: unknown): Offer | null {
+/** Map one `/echoes/inbox` card (server wire name) into an Offer. */
+export function offerFromCard(raw: unknown): Offer | null {
   if (!raw || typeof raw !== "object") return null;
   const card = raw as Json;
   const id = card.id === undefined || card.id === null ? "" : String(card.id);
@@ -92,6 +94,21 @@ export function offerFromEchoCard(raw: unknown): Offer | null {
     theirPhotoId: theirs.id,
     createdAt: isoOrNull(card.createdAt),
   };
+}
+
+/**
+ * Vote response field `echo` on the live API — mutual → Wave, pending → waiting.
+ * Path and JSON keys stay server-shaped; the app speaks Wave/Ripple.
+ */
+function offerResultFromVote(body: Json): OfferResult {
+  // Wire: body.echo === "mutual" | "pending" | …
+  if (body.echo === "mutual") return "wave";
+  return body.echo === "pending" ? "waiting" : "skipped";
+}
+
+/** Wire array `echoes` on `/echoes/inbox` and `/echoes/mine`. */
+function cardsFromEchoesPayload(body: Json): unknown[] {
+  return Array.isArray(body.echoes) ? body.echoes : [];
 }
 
 export function candidateFromRow(raw: unknown): Candidate | null {
@@ -271,14 +288,15 @@ export function createHttpBackend(options: HttpBackendOptions): Backend {
         body: { verdict: "same", voterPhotoId: myPhotoId },
         repeatable: true,
       });
-      if (body.echo === "mutual") return "wave";
-      return body.echo === "pending" ? "waiting" : "skipped";
+      return offerResultFromVote(body);
     },
 
+    /** Pending matches waiting on the user — live path `/echoes/inbox`. */
     async listOffers(): Promise<Offer[]> {
       const body = await call("GET", "/echoes/inbox", { repeatable: true });
-      const rows = Array.isArray(body.echoes) ? body.echoes : [];
-      return rows.map(offerFromEchoCard).filter((o): o is Offer => o !== null);
+      return cardsFromEchoesPayload(body)
+        .map(offerFromCard)
+        .filter((o): o is Offer => o !== null);
     },
 
     async acceptOffer(offerId) {
@@ -288,10 +306,12 @@ export function createHttpBackend(options: HttpBackendOptions): Backend {
       });
     },
 
+    /** Completed Waves — live path `/echoes/mine`. */
     async listWaves(): Promise<Wave[]> {
       const body = await call("GET", "/echoes/mine", { repeatable: true });
-      const rows = Array.isArray(body.echoes) ? body.echoes : [];
-      return rows.map(waveFromEchoCard).filter((w): w is Wave => w !== null);
+      return cardsFromEchoesPayload(body)
+        .map(waveFromCard)
+        .filter((w): w is Wave => w !== null);
     },
 
     async getWaveDetail(wave: Wave): Promise<WaveDetail> {

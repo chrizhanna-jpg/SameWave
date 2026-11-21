@@ -63,6 +63,7 @@ function WaveArrivalHost() {
   const wave = newWaves[0] ?? null;
   const root = segments[0];
   const busy =
+    // echo-pair: legacy deep-link path from server push payloads (Wave pair).
     root === "wave" || root === "capture" || root === "compose" || root === "echo-pair";
 
   if (!wave || busy) return null;

@@ -1,6 +1,6 @@
 /**
  * The soft join between the two full-screen photographs on a Wave.
- * The curve echoes the SameWave logo: taller crest left, trough, lower crest right.
+ * The curve follows the SameWave logo: taller crest left, trough, lower crest right.
  */
 
 import { waveJoin } from "@/theme";

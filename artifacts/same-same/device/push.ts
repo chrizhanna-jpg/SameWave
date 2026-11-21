@@ -25,8 +25,11 @@ if (!IS_EXPO_GO && Platform.OS !== "web") {
   }
 }
 
-/** Channel id the server addresses on Android. Shown to the user as "Waves". */
-const CHANNEL_ID = "echoes";
+/**
+ * Android notification channel id the live server still addresses as "echoes".
+ * The user-visible channel name is "Waves" — do not change the id string.
+ */
+const ANDROID_WAVE_CHANNEL_ID = "echoes";
 
 export const pushSupported = notifications !== null;
 
@@ -67,7 +70,7 @@ async function pushAddress(): Promise<string | null> {
   if (!notifications) return null;
   if (Platform.OS === "android") {
     try {
-      await notifications.setNotificationChannelAsync(CHANNEL_ID, {
+      await notifications.setNotificationChannelAsync(ANDROID_WAVE_CHANNEL_ID, {
         name: "Waves",
         importance: notifications.AndroidImportance.DEFAULT,
         lightColor: colors.moon,

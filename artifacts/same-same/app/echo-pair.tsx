@@ -6,10 +6,11 @@ import { findWaveByPhotos } from "@/core/waves";
 import { useAppState } from "@/state/AppState";
 
 /**
- * Opens the Wave named by a push notification (`/echo-pair?a=&b=`). The
- * server still sends that path, so this route exists to land on the reveal.
+ * Opens the Wave named by a push notification.
+ * Route file stays `echo-pair` because the live server still deep-links
+ * `/echo-pair?a=&b=` — renaming the path would break older pushes.
  */
-export default function EchoPairScreen() {
+export default function WavePairScreen() {
   const { a, b } = useLocalSearchParams<{ a?: string; b?: string }>();
   const { waves, syncNow, sync, wavesKnown } = useAppState();
 

@@ -1,7 +1,15 @@
-import MaskedView from "@react-native-masked-view/masked-view";
-import React, { useMemo } from "react";
-import { StyleSheet, View } from "react-native";
+import MaskedViewImport from "@react-native-masked-view/masked-view";
+import React, { useMemo, type ComponentType } from "react";
+import { StyleSheet, View, type StyleProp, type ViewProps, type ViewStyle } from "react-native";
 import Svg, { Path } from "react-native-svg";
+
+/** RN 0.88 typings disagree with the MaskedView package; cast keeps JSX valid. */
+const MaskedView = MaskedViewImport as unknown as ComponentType<
+  ViewProps & {
+    style?: StyleProp<ViewStyle>;
+    maskElement?: React.ReactElement;
+  }
+>;
 
 import { Photo } from "@/components/Photo";
 import {

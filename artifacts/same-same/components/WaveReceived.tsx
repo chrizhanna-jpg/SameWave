@@ -70,7 +70,7 @@ export function WaveReceived({ wave, onContinue }: Props) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   chrome: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: "space-between",
     paddingHorizontal: space.lg,
   },
