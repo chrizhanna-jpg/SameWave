@@ -11,11 +11,13 @@ import { space } from "@/theme";
 
 /**
  * The quiet keepsake of past Waves. Threads on the map are the only list;
- * tapping one opens that Wave again. Nothing on the map is not yours.
+ * tapping one opens that Wave again. Only completed Waves appear here —
+ * unanswered Ripples stay on the Ripple tab's waiting state, never on the map.
  */
 export default function WavesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  /** Completed Waves only (from the API / local cache) — never travelling Ripples. */
   const { waves, wavesKnown, countryCode, sync } = useAppState();
   const [drawingIds, setDrawingIds] = useState<string[]>([]);
   const drawn = useRef(new Set<string>());
@@ -43,7 +45,10 @@ export default function WavesScreen() {
   const emptyCopy = useMemo(
     () =>
       empty
-        ? { title: "No Waves yet", body: "Your Ripple is out there. Good things take time." }
+        ? {
+            title: "No Waves yet",
+            body: "When a Ripple finds a match, it lands here on the map.",
+          }
         : unreachable
           ? { title: "Can't reach SameWave right now", body: null }
           : null,

@@ -4,16 +4,17 @@ import {
   Inter_500Medium,
   useFonts,
 } from "@expo-google-fonts/inter";
-import { Stack, useRouter } from "expo-router";
+import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
 import React, { useEffect, useState } from "react";
-import { View } from "react-native";
+import { Modal, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Waiting } from "@/components/Waiting";
+import { WaveReceived } from "@/components/WaveReceived";
 import { findWaveByPhotos } from "@/core/waves";
 import { prepareEffects } from "@/device/sound";
 import { AppStateProvider, useAppState } from "@/state/AppState";
@@ -47,6 +48,35 @@ function OpenWaveFromPush() {
   }, [pushTarget, waves, sync, clearPushTarget, router]);
 
   return null;
+}
+
+/**
+ * When a Wave has arrived since the last visit, show the full-screen arrival
+ * once, mark it seen locally, then open that Wave. Skips capture/compose/wave
+ * so it does not interrupt sending or replaying.
+ */
+function WaveArrivalHost() {
+  const router = useRouter();
+  const segments = useSegments();
+  const { newWaves, markWaveSeen } = useAppState();
+  const wave = newWaves[0] ?? null;
+  const root = segments[0];
+  const busy =
+    root === "wave" || root === "capture" || root === "compose" || root === "echo-pair";
+
+  if (!wave || busy) return null;
+
+  return (
+    <Modal visible animationType="fade" presentationStyle="fullScreen" statusBarTranslucent>
+      <WaveReceived
+        wave={wave}
+        onContinue={() => {
+          markWaveSeen(wave.id);
+          router.push({ pathname: "/wave/[id]", params: { id: wave.id } });
+        }}
+      />
+    </Modal>
+  );
 }
 
 function Routes() {
@@ -110,7 +140,12 @@ function Routes() {
         <Stack.Screen name="how-it-works" />
         <Stack.Screen name="+not-found" />
       </Stack>
-      {inApp ? <OpenWaveFromPush /> : null}
+      {inApp ? (
+        <>
+          <OpenWaveFromPush />
+          <WaveArrivalHost />
+        </>
+      ) : null}
     </>
   );
 }

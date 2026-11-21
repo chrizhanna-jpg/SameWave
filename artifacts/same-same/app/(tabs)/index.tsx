@@ -15,20 +15,18 @@ import { setDraftPhoto, setDraftTopic } from "@/state/draft";
 import { colors, layout, space } from "@/theme";
 
 /**
- * The Ripple screen is always one of three things:
- * a Wave has arrived, a Ripple is travelling, or it is time to send one.
- * The Daily topic sits quietly beside the main Ripple action.
+ * The Ripple screen: a Ripple is travelling, or it is time to send one.
+ * Newly arrived Waves open as a full-screen "Wave received" moment (see
+ * WaveArrivalHost) — they are not listed here. Waiting Ripples stay here only.
  * How it works and Account float in the top corners so the logo stays centred.
  */
 export default function RippleScreen() {
   const router = useRouter();
-  const { newWaves, travelling, sync, shouldAskForPushes, askForPushes } = useAppState();
+  const { travelling, sync, shouldAskForPushes, askForPushes } = useAppState();
   const [sendingAnother, setSendingAnother] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
-  const arrived = newWaves[0] ?? null;
-  const waiting = !arrived && travelling !== null && !sendingAnother;
-  const idle = !arrived && !waiting;
+  const waiting = travelling !== null && !sendingAnother;
   const today = dailyTopicFor();
 
   useEffect(() => {
@@ -98,19 +96,7 @@ export default function RippleScreen() {
       </View>
 
       <View style={styles.centre}>
-        {arrived ? (
-          <>
-            <RippleRings size={220} />
-            <Txt variant="title" center style={styles.title}>
-              Your moment found a match
-            </Txt>
-            <Button
-              label="Open your Wave"
-              onPress={() => router.push({ pathname: "/wave/[id]", params: { id: arrived.id } })}
-              style={styles.main}
-            />
-          </>
-        ) : waiting ? (
+        {waiting ? (
           <>
             <RippleRings size={240} />
             <Txt variant="title" center style={styles.title}>
