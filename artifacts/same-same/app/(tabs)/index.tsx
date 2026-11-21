@@ -1,9 +1,10 @@
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { Platform, StyleSheet, View } from "react-native";
+import { Platform, Pressable, StyleSheet, View } from "react-native";
 
 import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/Button";
+import { Icon } from "@/components/Icon";
 import { RippleRings } from "@/components/RippleRings";
 import { Screen } from "@/components/Screen";
 import { Txt } from "@/components/Txt";
@@ -11,12 +12,14 @@ import { dailyTopicFor } from "@/core/dailyTopic";
 import { chooseFromLibrary } from "@/device/photos";
 import { useAppState } from "@/state/AppState";
 import { setDraftPhoto, setDraftTopic } from "@/state/draft";
-import { space } from "@/theme";
+import { colors, layout, space } from "@/theme";
 
 /**
  * The Ripple screen is always one of three things:
  * a Wave has arrived, a Ripple is travelling, or it is time to send one.
  * The Daily topic sits quietly beside the main Ripple action.
+ * How it works and Account live as calm icons in the top corners — nothing
+ * sits between the content and the tab bar.
  */
 export default function RippleScreen() {
   const router = useRouter();
@@ -26,6 +29,7 @@ export default function RippleScreen() {
 
   const arrived = newWaves[0] ?? null;
   const waiting = !arrived && travelling !== null && !sendingAnother;
+  const idle = !arrived && !waiting;
   const today = dailyTopicFor();
 
   useEffect(() => {
@@ -73,6 +77,44 @@ export default function RippleScreen() {
 
   return (
     <Screen style={styles.screen}>
+      <View style={styles.top}>
+        <View style={styles.topLeft}>
+          {idle ? (
+            <>
+              <BrandMark size={144} withName style={styles.brand} />
+              <Pressable
+                onPress={() => router.push("/how-it-works")}
+                hitSlop={layout.hitSlop}
+                accessibilityRole="button"
+                accessibilityLabel="How it works"
+                style={[styles.iconBtn, styles.helpBesideLogo]}
+              >
+                <Icon name="help" size={22} color={colors.waterMuted} />
+              </Pressable>
+            </>
+          ) : (
+            <Pressable
+              onPress={() => router.push("/how-it-works")}
+              hitSlop={layout.hitSlop}
+              accessibilityRole="button"
+              accessibilityLabel="How it works"
+              style={styles.iconBtn}
+            >
+              <Icon name="help" size={22} color={colors.waterMuted} />
+            </Pressable>
+          )}
+        </View>
+        <Pressable
+          onPress={() => router.push("/account")}
+          hitSlop={layout.hitSlop}
+          accessibilityRole="button"
+          accessibilityLabel="Account"
+          style={styles.iconBtn}
+        >
+          <Icon name="account" size={22} color={colors.waterMuted} />
+        </Pressable>
+      </View>
+
       <View style={styles.centre}>
         {arrived ? (
           <>
@@ -107,7 +149,6 @@ export default function RippleScreen() {
           </>
         ) : (
           <>
-            <BrandMark size={144} withName />
             <Txt tone="secondary" center style={styles.line}>
               {travelling ? "Your last Ripple is still travelling." : "One photo of your day."}
             </Txt>
@@ -143,22 +184,39 @@ export default function RippleScreen() {
           </Txt>
         ) : null}
       </View>
-
-      <View style={styles.foot}>
-        <Button kind="quiet" label="How it works" onPress={() => router.push("/how-it-works")} />
-        <Button kind="quiet" label="Account" onPress={() => router.push("/account")} />
-      </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { justifyContent: "space-between" },
-  centre: { flex: 1, alignItems: "center", justifyContent: "center" },
+  screen: { justifyContent: "flex-start" },
+  top: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    width: "100%",
+    marginBottom: space.md,
+  },
+  topLeft: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingRight: space.sm,
+  },
+  brand: { alignItems: "flex-start" },
+  /** Sit the ? beside the icon face, not the wordmark. */
+  helpBesideLogo: { marginTop: (144 - layout.iconButtonSize) / 2, marginLeft: space.xs },
+  iconBtn: {
+    width: layout.iconButtonSize,
+    height: layout.iconButtonSize,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: layout.iconButtonSize / 2,
+  },
+  centre: { flex: 1, alignItems: "center", justifyContent: "center", width: "100%" },
   title: { marginTop: space.lg },
   line: { marginTop: space.md, maxWidth: 300 },
   main: { marginTop: space.xl, alignSelf: "stretch" },
   daily: { marginTop: space.md, alignSelf: "stretch" },
   quiet: { marginTop: space.md },
-  foot: { flexDirection: "row", justifyContent: "center", gap: space.lg },
 });

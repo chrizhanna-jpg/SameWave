@@ -12,7 +12,9 @@ export type IconName =
   | "stop"
   | "mic"
   | "check"
-  | "chevron";
+  | "chevron"
+  | "help"
+  | "account";
 
 interface Props {
   name: IconName;
@@ -56,6 +58,19 @@ export function Icon({ name, size = 24, color = colors.textPrimary }: Props) {
         <>
           <Rect x={9} y={3.5} width={6} height={11} rx={3} {...stroke} />
           <Path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5" {...stroke} />
+        </>
+      )}
+      {name === "help" && (
+        <>
+          <Circle cx={12} cy={12} r={9} {...stroke} />
+          <Path d="M9.5 9.5a2.5 2.5 0 1 1 3.6 2.25c-.7.4-1.1.9-1.1 1.75V14" {...stroke} />
+          <Circle cx={12} cy={17} r={0.9} fill={color} stroke="none" />
+        </>
+      )}
+      {name === "account" && (
+        <>
+          <Circle cx={12} cy={9} r={3.5} {...stroke} />
+          <Path d="M5.5 19.5c1.8-3.2 4-4.8 6.5-4.8s4.7 1.6 6.5 4.8" {...stroke} />
         </>
       )}
     </Svg>
