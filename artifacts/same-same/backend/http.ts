@@ -1,0 +1,310 @@
+/**
+ * The SameWave API, exactly as the server already exposes it.
+ * Nothing on the server was changed for this client.
+ */
+import { normalizeCountryCode } from "../data/countries";
+import type { Candidate, Offer, Wave, WaveSide } from "../core/types";
+import {
+  BackendError,
+  type Backend,
+  type CandidateQuery,
+  type ImageSource,
+  type OfferResult,
+  type RippleUpload,
+  type SentRipple,
+  type VibeDetail,
+  type WaveDetail,
+} from "./types";
+
+export interface HttpBackendOptions {
+  /** e.g. https://samewave.onrender.com */
+  origin: string;
+  /** The current session token. `fresh` asks for a new one rather than a cached one. */
+  getToken: (options?: { fresh?: boolean }) => Promise<string | null>;
+  /** Id the previous app sent, so photos from before sign-in stay with the account. */
+  getDeviceId?: () => Promise<string | null>;
+  fetchImpl?: typeof fetch;
+  /** The hosted API sleeps when idle and can take most of a minute to wake. */
+  timeoutMs?: number;
+  uploadTimeoutMs?: number;
+}
+
+interface RequestOptions {
+  body?: unknown;
+  timeoutMs?: number;
+  /** Safe to send twice. Retried once if the server is unreachable or fails. */
+  repeatable?: boolean;
+}
+
+type Json = Record<string, unknown>;
+
+function isoOrNull(value: unknown): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  const ms = value instanceof Date ? value.getTime() : Date.parse(String(value));
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+}
+
+/** The server builds data: URIs from database columns. Reject the empty ones. */
+function imageUriOrNull(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  return /^data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=\s]{64,}$/i.test(value) ? value : null;
+}
+
+function waveSide(raw: unknown): WaveSide | null {
+  if (!raw || typeof raw !== "object") return null;
+  const side = raw as Json;
+  const photoId = typeof side.id === "string" ? side.id : "";
+  if (!photoId) return null;
+  return {
+    photoId,
+    uri: imageUriOrNull(side.uri),
+    countryCode:
+      normalizeCountryCode(side.captureCountryCode as string | null) ??
+      normalizeCountryCode(side.countryCode as string | null),
+    takenAt: isoOrNull(side.capturedAt) ?? isoOrNull(side.createdAt),
+  };
+}
+
+export function waveFromEchoCard(raw: unknown): Wave | null {
+  if (!raw || typeof raw !== "object") return null;
+  const card = raw as Json;
+  const id = card.id === undefined || card.id === null ? "" : String(card.id);
+  const mine = waveSide(card.mine);
+  const theirs = waveSide(card.theirs);
+  if (!id || !mine || !theirs) return null;
+  return { id, formedAt: isoOrNull(card.mutualAt) ?? isoOrNull(card.createdAt), mine, theirs };
+}
+
+export function offerFromEchoCard(raw: unknown): Offer | null {
+  if (!raw || typeof raw !== "object") return null;
+  const card = raw as Json;
+  const id = card.id === undefined || card.id === null ? "" : String(card.id);
+  const mine = (card.mine ?? {}) as Json;
+  const theirs = (card.theirs ?? {}) as Json;
+  if (!id || typeof mine.id !== "string" || typeof theirs.id !== "string") return null;
+  return {
+    id,
+    myPhotoId: mine.id,
+    theirPhotoId: theirs.id,
+    createdAt: isoOrNull(card.createdAt),
+  };
+}
+
+export function candidateFromRow(raw: unknown): Candidate | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Json;
+  if (typeof row.id !== "string" || typeof row.uri !== "string") return null;
+  const score = Number(row.score);
+  return {
+    id: row.id,
+    uri: row.uri,
+    score: Number.isFinite(score) ? score : 0,
+    createdAt: isoOrNull(row.createdAt),
+  };
+}
+
+function vibeDetail(raw: unknown): VibeDetail {
+  const side = (raw && typeof raw === "object" ? raw : {}) as Json;
+  const audio = typeof side.customAudioBase64 === "string" ? side.customAudioBase64 : "";
+  const mime = typeof side.customAudioMime === "string" ? side.customAudioMime : "";
+  return {
+    vibe: typeof side.musicGenre === "string" && side.musicGenre ? side.musicGenre : null,
+    recordingUri: audio && mime.startsWith("audio/") ? `data:${mime};base64,${audio}` : null,
+  };
+}
+
+export function createHttpBackend(options: HttpBackendOptions): Backend {
+  const origin = options.origin.replace(/\/+$/, "");
+  const doFetch = options.fetchImpl ?? fetch;
+  const timeoutMs = options.timeoutMs ?? 45_000;
+  const uploadTimeoutMs = options.uploadTimeoutMs ?? 120_000;
+
+  async function headers(fresh: boolean): Promise<Record<string, string>> {
+    const token = await options.getToken({ fresh }).catch(() => null);
+    if (!token) throw new BackendError("signed-out", "No session");
+    const out: Record<string, string> = { Authorization: `Bearer ${token}` };
+    const deviceId = await options.getDeviceId?.().catch(() => null);
+    if (deviceId) out["X-Device-Id"] = deviceId;
+    return out;
+  }
+
+  async function once(
+    method: string,
+    path: string,
+    request: RequestOptions,
+    freshToken: boolean,
+  ): Promise<Json> {
+    const auth = await headers(freshToken);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), request.timeoutMs ?? timeoutMs);
+    let response: Response;
+    try {
+      response = await doFetch(`${origin}/api${path}`, {
+        method,
+        headers: {
+          ...auth,
+          Accept: "application/json",
+          ...(request.body === undefined ? {} : { "Content-Type": "application/json" }),
+        },
+        body: request.body === undefined ? undefined : JSON.stringify(request.body),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      throw new BackendError(
+        "unreachable",
+        error instanceof Error ? error.message : "Network request failed",
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+
+    let payload: Json = {};
+    try {
+      const parsed: unknown = await response.json();
+      if (parsed && typeof parsed === "object") payload = parsed as Json;
+    } catch {
+      if (response.ok) throw new BackendError("server", "Unreadable response", response.status);
+    }
+    if (response.ok) return payload;
+
+    const message = typeof payload.error === "string" ? payload.error : `HTTP ${response.status}`;
+    if (response.status === 401) throw new BackendError("signed-out", message, 401);
+    if (response.status === 404) throw new BackendError("not-found", message, 404);
+    if (response.status >= 500) throw new BackendError("server", message, response.status);
+    throw new BackendError("rejected", message, response.status);
+  }
+
+  async function call(method: string, path: string, request: RequestOptions = {}): Promise<Json> {
+    try {
+      return await once(method, path, request, false);
+    } catch (error) {
+      if (!(error instanceof BackendError)) throw error;
+      // Session tokens last about a minute, so a refused one is retried once with a new one.
+      if (error.kind === "signed-out" && error.status === 401) {
+        return once(method, path, request, true);
+      }
+      if (request.repeatable && (error.kind === "unreachable" || error.kind === "server")) {
+        return once(method, path, request, false);
+      }
+      throw error;
+    }
+  }
+
+  const id = (value: string) => encodeURIComponent(value);
+
+  return {
+    async getCountry() {
+      const body = await call("GET", "/users/me", { repeatable: true });
+      return normalizeCountryCode(body.countryCode as string | null);
+    },
+
+    async setCountry(countryCode) {
+      await call("PATCH", "/users/me", { body: { countryCode }, repeatable: true });
+    },
+
+    async sendRipple(upload: RippleUpload): Promise<SentRipple> {
+      const body = await call("POST", "/photos", {
+        timeoutMs: uploadTimeoutMs,
+        body: {
+          imageBase64: upload.displayBase64,
+          mimeType: "image/jpeg",
+          displayBase64: upload.displayBase64,
+          deckPreviewBase64: upload.previewBase64,
+          ...(upload.countryCode ? { countryCode: upload.countryCode } : {}),
+          ...(upload.captureCountryCode ? { captureCountryCode: upload.captureCountryCode } : {}),
+          ...(upload.capturedAt ? { capturedAt: upload.capturedAt } : {}),
+          ...(upload.vibe ? { musicGenre: upload.vibe } : {}),
+          ...(upload.recording
+            ? {
+                customAudioBase64: upload.recording.base64,
+                customAudioMime: upload.recording.mime,
+              }
+            : {}),
+        },
+      });
+      if (typeof body.id !== "string" || !body.id) {
+        throw new BackendError("server", "Upload returned no photo id");
+      }
+      return {
+        photoId: body.id,
+        theme: typeof body.theme === "string" ? body.theme : "",
+        tags: stringList(body.tags),
+        subjects: stringList(body.subjects),
+      };
+    },
+
+    async deletePhoto(photoId) {
+      await call("DELETE", `/photos/${id(photoId)}`, { repeatable: true });
+    },
+
+    async reportPhoto(photoId, reason) {
+      await call("POST", `/photos/${id(photoId)}/report`, { body: { reason }, repeatable: true });
+    },
+
+    async findCandidates(query: CandidateQuery): Promise<Candidate[]> {
+      const params = new URLSearchParams();
+      if (query.theme) params.set("theme", query.theme);
+      if (query.tags.length) params.set("tags", query.tags.join(","));
+      if (query.subjects.length) params.set("subjects", query.subjects.join(","));
+      params.set("limit", String(query.limit));
+      if (query.excludeIds.length) params.set("excludeIds", query.excludeIds.slice(-200).join(","));
+      const body = await call("GET", `/photos/candidates?${params.toString()}`, {
+        repeatable: true,
+      });
+      const rows = Array.isArray(body.photos) ? body.photos : [];
+      return rows.map(candidateFromRow).filter((c): c is Candidate => c !== null);
+    },
+
+    async offer(myPhotoId, theirPhotoId): Promise<OfferResult> {
+      const body = await call("POST", `/photos/${id(theirPhotoId)}/vote`, {
+        body: { verdict: "same", voterPhotoId: myPhotoId },
+        repeatable: true,
+      });
+      if (body.echo === "mutual") return "wave";
+      return body.echo === "pending" ? "waiting" : "skipped";
+    },
+
+    async listOffers(): Promise<Offer[]> {
+      const body = await call("GET", "/echoes/inbox", { repeatable: true });
+      const rows = Array.isArray(body.echoes) ? body.echoes : [];
+      return rows.map(offerFromEchoCard).filter((o): o is Offer => o !== null);
+    },
+
+    async acceptOffer(offerId) {
+      await call("POST", `/echoes/${id(offerId)}/respond`, {
+        body: { verdict: "same" },
+        repeatable: true,
+      });
+    },
+
+    async listWaves(): Promise<Wave[]> {
+      const body = await call("GET", "/echoes/mine", { repeatable: true });
+      const rows = Array.isArray(body.echoes) ? body.echoes : [];
+      return rows.map(waveFromEchoCard).filter((w): w is Wave => w !== null);
+    },
+
+    async getWaveDetail(wave: Wave): Promise<WaveDetail> {
+      const body = await call(
+        "GET",
+        `/echoes/pair?a=${id(wave.mine.photoId)}&b=${id(wave.theirs.photoId)}`,
+        { repeatable: true },
+      );
+      return { mine: vibeDetail(body.a), theirs: vibeDetail(body.b) };
+    },
+
+    async registerPushToken(token, platform) {
+      await call("POST", "/push-tokens", { body: { token, platform }, repeatable: true });
+    },
+
+    async photoSource(photoId): Promise<ImageSource> {
+      return {
+        uri: `${origin}/api/photos/${id(photoId)}/image`,
+        headers: await headers(false),
+      };
+    },
+  };
+}
