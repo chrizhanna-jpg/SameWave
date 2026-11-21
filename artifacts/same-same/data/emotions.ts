@@ -8,7 +8,7 @@
  * Every `id` is a value the server already accepts as `musicGenre`
  * (see artifacts/api-server/src/lib/allowedMusicGenres.ts).
  *
- * Awaiting Chris's approval — edit this file only.
+ * Approved by Chris — edit this file only when intentionally changing the list.
  */
 
 export interface Emotion {

@@ -9,7 +9,7 @@
  * keep their emotion for client matching. The chosen song vibe is what
  * travels as `musicGenre` so Wave playback uses that mood's clips.
  *
- * Awaiting Chris's approval with the emotion list.
+ * Approved by Chris with the emotion list.
  */
 
 import { EMOTION_IDS } from "./emotions";

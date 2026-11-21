@@ -2,7 +2,7 @@
   "expo": {
     "name": "SameWave",
     "slug": "same-same",
-    "version": "1.3.21",
+    "version": "1.3.23",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": [
@@ -30,7 +30,7 @@
     },
     "android": {
       "package": "echo.samewaveripple.app",
-      "versionCode": 51,
+      "versionCode": 53,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#F7F8F7"

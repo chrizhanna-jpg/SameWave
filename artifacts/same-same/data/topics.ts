@@ -12,7 +12,7 @@
  * Something I made, Hobby, Games, Outfit, Selfie, and similar fill-ins
  * at the same grain.
  *
- * Awaiting Chris's approval — edit this file only.
+ * Approved by Chris — edit this file only when intentionally changing the list.
  */
 
 export interface Topic {
