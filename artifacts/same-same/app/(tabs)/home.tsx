@@ -104,7 +104,6 @@ export default function HomeScreen() {
           setDraftTopic(null);
           return;
         }
-        void playOceanSound();
         setDraftPhoto(photo);
         router.replace("/ripple");
       } catch {
@@ -123,7 +122,6 @@ export default function HomeScreen() {
     try {
       const photo = await chooseFromLibrary();
       if (!photo) return;
-      void playOceanSound();
       setDraftPhoto(photo);
       router.replace("/ripple");
     } catch {

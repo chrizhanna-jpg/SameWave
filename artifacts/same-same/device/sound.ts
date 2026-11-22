@@ -1,8 +1,8 @@
 /**
  * The app's sounds: Wave-arrival chime, Match ripple / wave cues, and the
- * splash ocean swell. Upload moment is silent. Sound is never essential —
- * every function fails silently so a silent phone behaves the same as one
- * with audio.
+ * splash / Home ocean swell. Photo capture, library pick, and upload are
+ * silent. Sound is never essential — every function fails silently so a
+ * silent phone behaves the same as one with audio.
  */
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from "expo-audio";
 import { AppState, type NativeEventSubscription } from "react-native";
@@ -279,7 +279,7 @@ export async function playWaveSwoosh(options?: { fromLaunch?: boolean }): Promis
   }
 }
 
-/** Same swell as splash — used after photo pick / later Home returns. */
+/** Same swell as splash — used when Home comes back into focus. */
 export const playOceanSound = playWaveSwoosh;
 
 /**

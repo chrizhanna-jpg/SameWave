@@ -28,7 +28,6 @@ import {
 } from "@/core/cameraZoom";
 import { wavePhotoSlot } from "@/core/wavePhotoSlot";
 import { chooseFromLibrary, cropToWaveSlot } from "@/device/photos";
-import { playOceanSound } from "@/device/sound";
 import { setDraftPhoto, setDraftTopic } from "@/state/draft";
 import { colors, layout, radius, space } from "@/theme";
 
@@ -89,7 +88,6 @@ export default function CaptureScreen() {
     try {
       const photo = await chooseFromLibrary();
       if (!photo) return;
-      void playOceanSound();
       setDraftPhoto(photo);
       router.replace("/ripple");
     } catch {
@@ -110,7 +108,6 @@ export default function CaptureScreen() {
       });
       if (!shot?.uri) throw new Error("No photo was returned");
       const cropped = await cropToWaveSlot(shot.uri, slot.aspectRatio).catch(() => shot.uri);
-      void playOceanSound();
       setDraftPhoto({
         uri: cropped,
         takenAt: new Date().toISOString(),

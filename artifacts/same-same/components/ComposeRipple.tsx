@@ -24,7 +24,6 @@ import { sceneFor } from "@/data/scenes";
 import { defaultMusicForEmotion } from "@/data/emotionMusic";
 import { topicFor } from "@/data/topics";
 import { chooseFromLibrary } from "@/device/photos";
-import { playOceanSound } from "@/device/sound";
 import { useAppState } from "@/state/AppState";
 import {
   clearDraft,
@@ -123,7 +122,6 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
     try {
       const chosen = await chooseFromLibrary();
       if (!chosen) return;
-      void playOceanSound();
       setDraftPhoto(chosen);
     } catch {
       setProblem("That photo couldn't be opened. Try another.");
