@@ -27,8 +27,9 @@ import { useTabBarClearance } from "@/state/TabBarHeight";
 import { colors, space } from "@/theme";
 
 /**
- * Waves tab: inbox of incoming Ripples (tap opens full-screen Wave / Match)
- * plus mutual Wave history. Map of past Waves lives on the Map tab.
+ * Waves tab: "Ripples received" (pending inbound offers) and "Waves" (mutual).
+ * Tap a card for full-screen WaveJoin; SoftIconDisc X returns here.
+ * Map of past Waves lives on the Map tab.
  */
 export default function WavesScreen() {
   const router = useRouter();
@@ -42,20 +43,25 @@ export default function WavesScreen() {
     }, [syncNow]),
   );
 
-  const inbox = useMemo(() => withOptionalSampleOffers(offers), [offers]);
+  /** Pending only — drop any offer that already has a mutual Wave. */
+  const ripplesReceived = useMemo(() => {
+    return withOptionalSampleOffers(offers).filter(
+      (offer) => !findWaveByPhotos(waves, offer.myPhotoId, offer.theirPhotoId),
+    );
+  }, [offers, waves]);
 
-  const history = useMemo(() => waves, [waves]);
-  const loading = !offersKnown && sync === "syncing";
+  const mutualWaves = useMemo(() => waves, [waves]);
+  const loadingRipples = !offersKnown && sync === "syncing";
+  const loadingWaves = !wavesKnown && sync === "syncing";
 
   const openWave = (wave: Wave) => {
     router.push({ pathname: "/wave/[id]", params: { id: wave.id } });
   };
 
   /**
-   * Inbox tap → existing full-screen WaveJoin layout.
-   * Mutual pair → /wave/[id]. Preview fixture → sample Wave. Pending live
-   * offer (not yet mutual) → Match for your photo, where Offer a Wave / Pass
-   * already answer the inbound Ripple (no new buttons).
+   * Ripple card tap → full-screen WaveJoin.
+   * Mutual pair → /wave/[id]. Preview → sample Wave. Pending live → Match
+   * (Offer a Wave / Pass already answer; SoftIconDisc X returns here).
    */
   const openOffer = (offer: Offer) => {
     const mutual = findWaveByPhotos(waves, offer.myPhotoId, offer.theirPhotoId);
@@ -84,113 +90,125 @@ export default function WavesScreen() {
         Waves
       </Txt>
 
-      <Txt variant="heading" style={styles.section}>
-        Inbox
-      </Txt>
+      <View style={styles.sectionBlock} accessibilityLabel="Ripples received">
+        <Txt variant="heading" style={styles.sectionTitle}>
+          Ripples received
+        </Txt>
+        <Txt variant="quiet" tone="quiet" style={styles.sectionHint}>
+          Incoming — not mutual yet. Tap to open.
+        </Txt>
 
-      {loading ? (
-        <Frost kind="card" style={styles.card} contentStyle={styles.emptyPad}>
-          <ActivityIndicator color={colors.waterMid} />
-          <Txt tone="secondary" center style={styles.emptyBody}>
-            Checking for Ripples…
-          </Txt>
-        </Frost>
-      ) : inbox.length === 0 ? (
-        <Frost kind="card" style={styles.card} contentStyle={styles.emptyPad}>
-          <Txt tone="secondary" center>
-            No incoming Ripples
-          </Txt>
-          <Txt variant="quiet" tone="quiet" center style={styles.emptyBody}>
-            When someone waves at one of your photos, it lands here. Tap a card
-            to open it full screen.
-          </Txt>
-        </Frost>
-      ) : (
-        inbox.map((offer) => (
-          <InboxRow
-            key={offer.id}
-            offer={offer}
-            myLocalUri={
-              ripples.find((r) => r.photoId === offer.myPhotoId)?.localUri ?? null
-            }
-            onOpen={() => openOffer(offer)}
-          />
-        ))
-      )}
+        {loadingRipples ? (
+          <Frost kind="card" style={styles.card} contentStyle={styles.emptyPad}>
+            <ActivityIndicator color={colors.waterMid} />
+            <Txt tone="secondary" center style={styles.emptyBody}>
+              Checking for Ripples…
+            </Txt>
+          </Frost>
+        ) : ripplesReceived.length === 0 ? (
+          <Frost kind="card" style={styles.card} contentStyle={styles.emptyPad}>
+            <Txt tone="secondary" center>
+              No Ripples received
+            </Txt>
+            <Txt variant="quiet" tone="quiet" center style={styles.emptyBody}>
+              When someone waves at one of your photos, it lands here until you
+              answer full screen.
+            </Txt>
+          </Frost>
+        ) : (
+          ripplesReceived.map((offer) => (
+            <InboxRow
+              key={offer.id}
+              offer={offer}
+              myLocalUri={
+                ripples.find((r) => r.photoId === offer.myPhotoId)?.localUri ?? null
+              }
+              onOpen={() => openOffer(offer)}
+            />
+          ))
+        )}
+      </View>
 
-      <Txt variant="heading" style={styles.section}>
-        Your Waves
-      </Txt>
+      <View style={styles.divider} accessibilityRole="none" />
 
-      {!wavesKnown && sync === "syncing" ? (
-        <Frost kind="card" style={styles.card} contentStyle={styles.emptyPad}>
-          <ActivityIndicator color={colors.waterMid} />
-        </Frost>
-      ) : history.length === 0 ? (
-        <Frost kind="card" style={styles.card} contentStyle={styles.emptyPad}>
-          <Txt tone="secondary" center>
-            No Waves yet
-          </Txt>
-          <Txt variant="quiet" tone="quiet" center style={styles.emptyBody}>
-            Mutual Waves stay here. The map of where they happened is on the Map
-            tab.
-          </Txt>
-        </Frost>
-      ) : (
-        history.map((wave) => (
-          <Pressable
-            key={wave.id}
-            onPress={() => openWave(wave)}
-            accessibilityRole="button"
-            accessibilityLabel="Open Wave"
-            style={styles.historyHit}
-          >
-            <Frost kind="card" style={styles.card} contentStyle={styles.historyPad}>
-              <View style={styles.historyRow}>
-                <View style={styles.pair}>
-                  {wave.mine.uri ? (
-                    <Image
-                      source={{ uri: wave.mine.uri }}
-                      style={styles.thumb}
-                      contentFit="cover"
-                      accessibilityLabel="Your photo"
-                    />
-                  ) : (
-                    <View
-                      style={[styles.thumb, styles.thumbEmpty]}
-                      accessibilityLabel="Your photo"
-                    />
-                  )}
-                  {wave.theirs.uri ? (
-                    <Image
-                      source={{ uri: wave.theirs.uri }}
-                      style={styles.thumb}
-                      contentFit="cover"
-                      accessibilityLabel="Their photo"
-                    />
-                  ) : (
-                    <View
-                      style={[styles.thumb, styles.thumbEmpty]}
-                      accessibilityLabel="Their photo"
-                    />
-                  )}
+      <View style={styles.sectionBlock} accessibilityLabel="Waves section">
+        <Txt variant="heading" style={styles.sectionTitle}>
+          Waves
+        </Txt>
+        <Txt variant="quiet" tone="quiet" style={styles.sectionHint}>
+          Mutual matches. Tap to open.
+        </Txt>
+
+        {loadingWaves ? (
+          <Frost kind="card" style={styles.card} contentStyle={styles.emptyPad}>
+            <ActivityIndicator color={colors.waterMid} />
+          </Frost>
+        ) : mutualWaves.length === 0 ? (
+          <Frost kind="card" style={styles.card} contentStyle={styles.emptyPad}>
+            <Txt tone="secondary" center>
+              No Waves yet
+            </Txt>
+            <Txt variant="quiet" tone="quiet" center style={styles.emptyBody}>
+              When a Ripple becomes mutual, it stays here. The map of where they
+              happened is on the Map tab.
+            </Txt>
+          </Frost>
+        ) : (
+          mutualWaves.map((wave) => (
+            <Pressable
+              key={wave.id}
+              onPress={() => openWave(wave)}
+              accessibilityRole="button"
+              accessibilityLabel="Open Wave"
+              style={styles.historyHit}
+            >
+              <Frost kind="card" style={styles.card} contentStyle={styles.historyPad}>
+                <View style={styles.historyRow}>
+                  <View style={styles.pair}>
+                    {wave.mine.uri ? (
+                      <Image
+                        source={{ uri: wave.mine.uri }}
+                        style={styles.thumb}
+                        contentFit="cover"
+                        accessibilityLabel="Your photo"
+                      />
+                    ) : (
+                      <View
+                        style={[styles.thumb, styles.thumbEmpty]}
+                        accessibilityLabel="Your photo"
+                      />
+                    )}
+                    {wave.theirs.uri ? (
+                      <Image
+                        source={{ uri: wave.theirs.uri }}
+                        style={styles.thumb}
+                        contentFit="cover"
+                        accessibilityLabel="Their photo"
+                      />
+                    ) : (
+                      <View
+                        style={[styles.thumb, styles.thumbEmpty]}
+                        accessibilityLabel="Their photo"
+                      />
+                    )}
+                  </View>
+                  <View style={styles.historyMeta}>
+                    <Txt numberOfLines={1}>
+                      {waveListPlace({
+                        countryCode: wave.theirs.countryCode,
+                        countrySource: wave.theirs.countrySource,
+                      })}
+                    </Txt>
+                    <Txt variant="quiet" tone="quiet" numberOfLines={1}>
+                      {waveListWhen(wave.formedAt) ?? "Wave"}
+                    </Txt>
+                  </View>
                 </View>
-                <View style={styles.historyMeta}>
-                  <Txt numberOfLines={1}>
-                    {waveListPlace({
-                      countryCode: wave.theirs.countryCode,
-                      countrySource: wave.theirs.countrySource,
-                    })}
-                  </Txt>
-                  <Txt variant="quiet" tone="quiet" numberOfLines={1}>
-                    {waveListWhen(wave.formedAt) ?? "Wave"}
-                  </Txt>
-                </View>
-              </View>
-            </Frost>
-          </Pressable>
-        ))
-      )}
+              </Frost>
+            </Pressable>
+          ))
+        )}
+      </View>
     </Screen>
   );
 }
@@ -285,7 +303,15 @@ function InboxRow({
 const styles = StyleSheet.create({
   screen: { flexGrow: 1, justifyContent: "flex-start" },
   heading: { marginBottom: space.md },
-  section: { marginTop: space.lg, marginBottom: space.sm },
+  sectionBlock: { marginBottom: space.sm },
+  sectionTitle: { marginBottom: space.xs },
+  sectionHint: { marginBottom: space.md },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.line,
+    marginVertical: space.lg,
+    alignSelf: "stretch",
+  },
   card: { marginBottom: space.md },
   emptyPad: {
     paddingHorizontal: space.lg,

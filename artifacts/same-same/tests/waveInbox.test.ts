@@ -58,9 +58,14 @@ test("Wave inbox has no Wave back / Dismiss; tap opens full-screen Wave", () => 
   assert.doesNotMatch(waves, /label="Dismiss"/);
   assert.doesNotMatch(waves, /respondToOffer/);
   assert.doesNotMatch(waves, /onWaveBack|onDismiss/);
-  assert.match(waves, /Inbox/);
-  assert.match(waves, /Your Waves/);
+  assert.match(waves, /Ripples received/);
+  assert.match(waves, /No Ripples received|Checking for Ripples/);
+  assert.match(waves, /Waves/);
+  assert.match(waves, /No Waves yet/);
+  assert.match(waves, /styles\.divider|colors\.line/);
   assert.match(waves, /Open Wave/);
+  assert.doesNotMatch(waves, /\bInbox\b/);
+  assert.doesNotMatch(waves, /Your Waves/);
   assert.match(waves, /PREVIEW_OFFER_WAVE_ID|\/wave\/\[id\]/);
   assert.match(waves, /inboxOfferMyThumbSource/);
   assert.match(waves, /inboxOfferTheirThumbSource/);
