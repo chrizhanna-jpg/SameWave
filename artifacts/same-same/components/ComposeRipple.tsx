@@ -1,6 +1,6 @@
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import React, { useEffect, useState, useSyncExternalStore } from "react";
+import React, { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   Platform,
   StyleSheet,
@@ -12,7 +12,7 @@ import { Button } from "@/components/Button";
 import { EmotionPicker } from "@/components/EmotionPicker";
 import { Frost } from "@/components/Frost";
 import { Photo } from "@/components/Photo";
-import { Screen } from "@/components/Screen";
+import { Screen, type ScreenScroll } from "@/components/Screen";
 import { SongPicker } from "@/components/SongPicker";
 import { SoundRecorder } from "@/components/SoundRecorder";
 import { TopicPicker } from "@/components/TopicPicker";
@@ -24,6 +24,7 @@ import { sceneFor } from "@/data/scenes";
 import { defaultMusicForEmotion } from "@/data/emotionMusic";
 import { topicFor } from "@/data/topics";
 import { chooseFromLibrary } from "@/device/photos";
+import { onScrollY } from "@/hooks/useTypeAheadFit";
 import { useAppState } from "@/state/AppState";
 import {
   clearDraft,
@@ -70,6 +71,8 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
   const { sendRipple } = useAppState();
   const draft = useDraft();
   const tabClearance = useTabBarClearance(space.xl);
+  const scrollRef = useRef<ScreenScroll | null>(null);
+  const scrollYRef = useRef(0);
 
   const topicLocked = isDraftTopicLocked();
   const lockedTopicId = topicLocked ? draft.topic : null;
@@ -173,6 +176,8 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
   return (
     <Screen
       scroll
+      scrollRef={scrollRef}
+      onScroll={(event) => onScrollY(scrollYRef, event)}
       reserveBottom={embeddedInTab ? tabClearance : undefined}
       contentBottomPad={embeddedInTab ? undefined : 48}
       photoUri={photo?.uri ?? null}
@@ -223,12 +228,18 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
         )}
       </Frost>
 
-      <Frost kind="card" style={styles.card} contentStyle={styles.cardPad}>
+      <Frost kind="card" style={styles.card} contentStyle={styles.cardPad} clip={false}>
         <View>
           <Txt variant="heading" style={[styles.section, styles.sectionBold]}>
             This feels…
           </Txt>
-          <EmotionPicker value={draft.emotion} onChange={onEmotion} locked={pickerLocked} />
+          <EmotionPicker
+            value={draft.emotion}
+            onChange={onEmotion}
+            locked={pickerLocked}
+            scrollRef={scrollRef}
+            scrollYRef={scrollYRef}
+          />
         </View>
 
         <View>
@@ -243,7 +254,13 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
               <Txt>{lockedLabel}</Txt>
             </View>
           ) : (
-            <TopicPicker value={draft.topic} onChange={onTopicChange} locked={pickerLocked} />
+            <TopicPicker
+              value={draft.topic}
+              onChange={onTopicChange}
+              locked={pickerLocked}
+              scrollRef={scrollRef}
+              scrollYRef={scrollYRef}
+            />
           )}
         </View>
 
@@ -264,10 +281,7 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
             </View>
 
             <Txt variant="heading" style={styles.section}>
-              Or record your own (optional)
-            </Txt>
-            <Txt tone="secondary" style={styles.hint}>
-              A short sound of your own travels instead of the library song.
+              Record a sign, optional
             </Txt>
             <SoundRecorder value={draft.recording} onChange={setDraftRecording} />
           </>
