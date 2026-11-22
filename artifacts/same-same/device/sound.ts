@@ -5,6 +5,12 @@
  */
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from "expo-audio";
 
+import {
+  fadeVolumeAt,
+  SWOOSH_FADE_MS,
+  SWOOSH_FADE_STEPS,
+} from "@/core/volumeFade";
+
 const EFFECTS = {
   drop: require("../assets/sounds/drop.mp3") as number,
   chime: require("../assets/sounds/chime.mp3") as number,
@@ -59,6 +65,13 @@ let swooshGeneration = 0;
 let swooshPlaying = false;
 /** True after the launch splash has played the swell once this session. */
 let launchSwooshConsumed = false;
+let swooshFadeTimer: ReturnType<typeof setInterval> | null = null;
+
+function clearSwooshFade(): void {
+  if (swooshFadeTimer == null) return;
+  clearInterval(swooshFadeTimer);
+  swooshFadeTimer = null;
+}
 
 function ensureSwooshPlayer(): AudioPlayer {
   if (!swooshPlayer) {
@@ -155,6 +168,8 @@ export async function playEffect(effect: Effect): Promise<void> {
  * Pass `{ fromLaunch: true }` from the splash so Home can skip the immediate replay.
  */
 export async function playWaveSwoosh(options?: { fromLaunch?: boolean }): Promise<void> {
+  // Cancel any in-flight fade so a re-launch never leaves a stuck ramp.
+  clearSwooshFade();
   const generation = ++swooshGeneration;
   try {
     await setPlaybackMode();
@@ -201,27 +216,86 @@ export function shouldPlayHomeOceanOnFocus(): boolean {
   return !skip;
 }
 
+/**
+ * Fade the splash / ocean swell to silence (~1.5 s eased ramp), then pause.
+ * Visual splash timing is unchanged — callers fire this when the overlay goes
+ * away; audio tails off underneath Home. A newer play/stop cancels the ramp.
+ */
 export function stopWaveSwoosh(): void {
-  swooshGeneration += 1;
-  swooshPlaying = false;
+  clearSwooshFade();
+  const generation = ++swooshGeneration;
   const player = swooshPlayer;
-  if (!player) return;
+  if (!player) {
+    swooshPlaying = false;
+    return;
+  }
+
+  let from = WAVE_SWOOSH_VOLUME;
   try {
-    player.volume = 0;
-    player.pause();
+    const current = player.volume;
+    if (typeof current === "number" && Number.isFinite(current)) from = current;
   } catch {
     /* */
   }
-  try {
-    void player.seekTo(0).catch(() => undefined);
-  } catch {
-    /* */
+
+  // Already silent — just park the player for the next play.
+  if (from <= 0.001) {
+    swooshPlaying = false;
+    try {
+      player.pause();
+    } catch {
+      /* */
+    }
+    try {
+      void player.seekTo(0).catch(() => undefined);
+    } catch {
+      /* */
+    }
+    try {
+      player.volume = WAVE_SWOOSH_VOLUME;
+    } catch {
+      /* */
+    }
+    return;
   }
-  try {
-    player.volume = WAVE_SWOOSH_VOLUME;
-  } catch {
-    /* */
-  }
+
+  const steps = SWOOSH_FADE_STEPS;
+  const stepMs = SWOOSH_FADE_MS / steps;
+  let step = 0;
+  // Keep swooshPlaying true through the fade so Home's focus handler waits
+  // instead of starting a second swell.
+  swooshFadeTimer = setInterval(() => {
+    if (generation !== swooshGeneration) {
+      clearSwooshFade();
+      return;
+    }
+    step += 1;
+    const volume = fadeVolumeAt(step / steps, from, 0);
+    try {
+      player.volume = volume;
+    } catch {
+      /* */
+    }
+    if (step < steps) return;
+
+    clearSwooshFade();
+    swooshPlaying = false;
+    try {
+      player.pause();
+    } catch {
+      /* */
+    }
+    try {
+      void player.seekTo(0).catch(() => undefined);
+    } catch {
+      /* */
+    }
+    try {
+      player.volume = WAVE_SWOOSH_VOLUME;
+    } catch {
+      /* */
+    }
+  }, stepMs);
 }
 
 export function isWaveSwooshPlaying(): boolean {
