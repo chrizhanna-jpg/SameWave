@@ -2,10 +2,11 @@
  * Shapes for the Waves map. One line per Wave.
  *
  * Two distinct pins: a calm arc (or short straight) between them. Never a
- * self-loop. Near-zero pairs keep pins only. Pins always sit at their true
- * geographic positions; when they would overlap on screen they merge into a
- * cluster pin with a count, and lines attach to that cluster until zoom splits
- * them apart again.
+ * self-loop. Near-zero pairs keep pins only. Pins sit at true geographic
+ * positions — never spiderfied or fanned. Nearby pins (city-level, ~25 km)
+ * stay as one counted stack at every zoom; farther pins only merge when they
+ * overlap on screen and split again as you zoom in. Lines attach to the
+ * visible cluster pin.
  */
 import { normalizeCountryCode } from "../data/countries";
 import { centroidLonLatForCountry } from "../data/countryCentroids";
@@ -33,6 +34,8 @@ export interface MapMarker {
   side: "mine" | "theirs";
   photoId: string;
   point: Point;
+  /** Capture / centroid [lng, lat] when known — used for city-level stacking. */
+  lonLat?: [number, number];
 }
 
 export interface MapLine {
@@ -86,12 +89,17 @@ export interface MapGeometryOptions {
   /** Drop lines wider than this fraction of mapWidth. Default 0.5. */
   maxLineWidthFraction?: number;
   /**
-   * At/above this view scale, unresolved coincident clusters expand into a
-   * small tidy tappable group instead of staying as a forever-badge.
+   * @deprecated Ring expand removed — sticky city stacks stay as one badge.
+   * Kept so older callers still typecheck.
    */
   expandAboveScale?: number;
-  /** On-screen centre separation for the tidy expand ring (px). Default 30. */
+  /** @deprecated Ring expand removed. */
   expandScreenPx?: number;
+  /**
+   * Pins within this many kilometres stay stacked at every zoom (city-level).
+   * Default 25. Set 0 to disable sticky geo merge (screen clustering only).
+   */
+  cityMergeKm?: number;
 }
 
 /** A displayed pin: one photo, or several merged at the current zoom. */
@@ -347,12 +355,14 @@ export function buildMapGeometry(
       side: "mine",
       photoId: wave.id,
       point: mine.point,
+      ...(mine.lonLat ? { lonLat: mine.lonLat } : {}),
     });
     rawMarkers.push({
       waveId: wave.id,
       side: "theirs",
       photoId: wave.id,
       point: theirs.point,
+      ...(theirs.lonLat ? { lonLat: theirs.lonLat } : {}),
     });
     placedByWave.set(wave.id, { mine, theirs });
   }
@@ -453,8 +463,49 @@ export const CLUSTER_SCREEN_PX = 44;
 export const CLUSTER_BADGE_SIZE = 24;
 /** Drop lines whose projected width exceeds this share of the world. */
 export const MAX_LINE_WIDTH_FRACTION = 0.5;
-/** Tidy expand ring: on-screen separation between coincident pins at max zoom. */
+/**
+ * @deprecated Ring expand removed — kept so older imports don't break.
+ */
 export const EXPAND_SCREEN_PX = 30;
+/** City-level sticky stack radius (roughly right is enough). */
+export const CITY_MERGE_KM = 25;
+
+/** Great-circle distance in kilometres between [lng, lat] pairs. */
+export function haversineKm(a: [number, number], b: [number, number]): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const [lng1, lat1] = a;
+  const [lng2, lat2] = b;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const sin =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(sin)));
+}
+
+/**
+ * Pinch-zoom about a screen-space focal point for a top-left transform origin
+ * (`transformOrigin: "0 0"`, then translate then scale).
+ *
+ * `newTranslate = focal - (focal - translate) * (newScale / oldScale)`
+ */
+export function focalZoomTransform(
+  oldScale: number,
+  newScale: number,
+  translateX: number,
+  translateY: number,
+  focalX: number,
+  focalY: number,
+): { scale: number; x: number; y: number } {
+  const from = Math.max(oldScale, 1e-6);
+  const to = Math.max(newScale, 1e-6);
+  const ratio = to / from;
+  return {
+    scale: to,
+    x: focalX - (focalX - translateX) * ratio,
+    y: focalY - (focalY - translateY) * ratio,
+  };
+}
 
 function markerKey(m: MapMarker): string {
   return `${m.waveId}:${m.side}`;
@@ -500,15 +551,57 @@ export function isOverwideLine(
   return lineWidthSpan(line) > mapWidth * maxFraction;
 }
 
+function groupLonLat(members: readonly MapMarker[]): [number, number] | null {
+  let lng = 0;
+  let lat = 0;
+  let n = 0;
+  for (const m of members) {
+    if (!m.lonLat) continue;
+    lng += m.lonLat[0];
+    lat += m.lonLat[1];
+    n += 1;
+  }
+  return n > 0 ? [lng / n, lat / n] : null;
+}
+
 /**
- * Merge markers whose on-screen centres fall within `clusterScreenPx`.
- * Radius is always derived from screen pixels: `clusterScreenPx / viewScale`.
- * Cluster pin sits at the centroid of members' true positions.
+ * True when every member with coordinates sits inside the city-level stack
+ * radius — a sticky badge that must not ring-expand or split on zoom.
+ */
+export function isStickyStack(
+  cluster: Pick<MapCluster, "members">,
+  cityMergeKm = CITY_MERGE_KM,
+): boolean {
+  if (cluster.members.length <= 1) return false;
+  if (cityMergeKm <= 0) {
+    return membersTrueSpan(cluster.members) < 1e-6;
+  }
+  const withLl = cluster.members.filter((m) => m.lonLat);
+  if (withLl.length >= 2) {
+    for (let i = 0; i < withLl.length; i++) {
+      for (let j = i + 1; j < withLl.length; j++) {
+        if (haversineKm(withLl[i]!.lonLat!, withLl[j]!.lonLat!) > cityMergeKm) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+  // No lon/lat: treat near-identical map points as sticky.
+  return membersTrueSpan(cluster.members) < 1e-3;
+}
+
+/**
+ * Merge markers that either share a city (~`cityMergeKm`) or fall within
+ * `clusterScreenPx` on screen. Radius for the latter is always
+ * `clusterScreenPx / viewScale`. Cluster pin sits at the true centroid —
+ * never offset into a ring or fan.
  */
 export function clusterMarkers(
   markers: readonly MapMarker[],
   viewScale: number,
   clusterScreenPx = CLUSTER_SCREEN_PX,
+  cityMergeKm = CITY_MERGE_KM,
 ): MapCluster[] {
   const scale = Math.max(0.05, viewScale);
   // Screen pixels → map units (never treat clusterScreenPx as map units).
@@ -523,7 +616,16 @@ export function clusterMarkers(
       const n = g.members.length;
       const cx = g.sx / n;
       const cy = g.sy / n;
-      if (Math.hypot(marker.point.x - cx, marker.point.y - cy) <= radiusMap) {
+      const screenClose =
+        Math.hypot(marker.point.x - cx, marker.point.y - cy) <= radiusMap;
+      let cityClose = false;
+      if (cityMergeKm > 0 && marker.lonLat) {
+        const centre = groupLonLat(g.members);
+        if (centre) {
+          cityClose = haversineKm(marker.lonLat, centre) <= cityMergeKm;
+        }
+      }
+      if (screenClose || cityClose) {
         joined = i;
         break;
       }
@@ -553,57 +655,22 @@ export function clusterMarkers(
 }
 
 /**
- * When zoom is high enough that a multi-pin cluster still can't separate on
- * screen (shared / near-identical coordinates), expand into a small tidy ring
- * so every pin is tappable. Only used near max zoom — not the old Europe fan.
+ * @deprecated Artificial ring expand removed. Sticky city stacks stay as one
+ * counted pin; tap the badge for the list. Returns clusters unchanged.
  */
 export function expandUnresolvedClusters(
   clusters: readonly MapCluster[],
-  viewScale: number,
-  options: {
+  _viewScale?: number,
+  _options?: {
     expandAboveScale?: number;
     expandScreenPx?: number;
     clusterScreenPx?: number;
-  } = {},
+  },
 ): MapCluster[] {
-  const scale = Math.max(0.05, viewScale);
-  const above = options.expandAboveScale ?? 8;
-  if (scale < above) return [...clusters];
-  const sepScreen = options.expandScreenPx ?? EXPAND_SCREEN_PX;
-  const clusterPx = options.clusterScreenPx ?? CLUSTER_SCREEN_PX;
-  const out: MapCluster[] = [];
-
-  for (const cluster of clusters) {
-    if (cluster.count <= 1) {
-      out.push(cluster);
-      continue;
-    }
-    const trueSpanScreen = membersTrueSpan(cluster.members) * scale;
-    // Still overlapping on screen even at this zoom → tidy expand.
-    if (trueSpanScreen >= clusterPx) {
-      out.push(cluster);
-      continue;
-    }
-    const n = cluster.members.length;
-    const ring = sepScreen / scale / (2 * Math.sin(Math.PI / Math.max(n, 2)));
-    const cx = cluster.point.x;
-    const cy = cluster.point.y;
-    for (let k = 0; k < n; k++) {
-      const member = cluster.members[k]!;
-      const angle = -Math.PI / 2 + (k * 2 * Math.PI) / n;
-      const point = {
-        x: cx + ring * Math.cos(angle),
-        y: cy + ring * Math.sin(angle),
-      };
-      out.push({
-        id: `${markerKey(member)}:expand`,
-        point,
-        count: 1,
-        members: [{ ...member, point }],
-      });
-    }
-  }
-  return out;
+  return clusters.map((c) => ({
+    ...c,
+    members: c.members.map((m) => ({ ...m, point: { ...m.point } })),
+  }));
 }
 
 /**
@@ -677,9 +744,9 @@ export function attachLinesToClusters(
 }
 
 /**
- * Full clustered view for the current zoom: true-position markers, cluster
- * pins (expanded at high zoom when still coincident), and lines attached to
- * those pins — never ocean-spanning strokes.
+ * Full clustered view for the current zoom: true-position markers, city-level
+ * sticky stacks + screen-pixel clusters, and lines attached to those pins —
+ * never ocean-spanning strokes, never artificial ring offsets.
  */
 export function buildClusteredView(
   waves: readonly MapWaveInput[],
@@ -690,12 +757,8 @@ export function buildClusteredView(
   const { markers, lines: rawLines } = buildMapGeometry(waves, project, options, projectLonLat);
   const viewScale = Math.max(0.05, options.viewScale ?? 1);
   const clusterPx = options.clusterScreenPx ?? options.fanScreenPx ?? CLUSTER_SCREEN_PX;
-  const merged = clusterMarkers(markers, viewScale, clusterPx);
-  const clusters = expandUnresolvedClusters(merged, viewScale, {
-    expandAboveScale: options.expandAboveScale,
-    expandScreenPx: options.expandScreenPx,
-    clusterScreenPx: clusterPx,
-  });
+  const cityKm = options.cityMergeKm ?? CITY_MERGE_KM;
+  const clusters = clusterMarkers(markers, viewScale, clusterPx, cityKm);
   const mapWidth = options.mapWidth ?? 0;
   const maxFrac = options.maxLineWidthFraction ?? MAX_LINE_WIDTH_FRACTION;
   const filteredRaw =

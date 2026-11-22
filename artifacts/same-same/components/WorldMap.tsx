@@ -1,5 +1,6 @@
 import { geoEqualEarth, geoPath } from "d3-geo";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Image } from "expo-image";
 import {
   Animated,
   Modal,
@@ -29,11 +30,13 @@ import land110 from "world-atlas/land-110m.json";
 
 import {
   buildClusteredView,
+  CITY_MERGE_KM,
   CLUSTER_BADGE_SIZE,
   CLUSTER_SCREEN_PX,
-  EXPAND_SCREEN_PX,
+  focalZoomTransform,
   focusBounds,
   frameTransform,
+  isStickyStack,
   lineAt,
   type MapCluster,
   type MapLine,
@@ -63,9 +66,6 @@ const PIN_STROKE = 1.25;
 const BADGE_SIZE = CLUSTER_BADGE_SIZE ?? 24;
 /** @deprecated alias kept so any stale reference cannot crash the bundle. */
 const BADGE_R = BADGE_SIZE / 2;
-/** Expand coincident clusters once the view is this zoomed in. */
-const EXPAND_ABOVE_SCALE = 8;
-
 const MIN_SCALE = 1;
 const MAX_SCALE = 12;
 
@@ -132,7 +132,8 @@ export function WorldMap({
   const scale = useRef(new Animated.Value(1)).current;
   const translateX = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(0)).current;
-  const pinchScale0 = useRef(1);
+  /** Transform at pinch BEGAN — focal maths uses this baseline (not live). */
+  const pinch0 = useRef({ scale: 1, x: 0, y: 0 });
   const pan0 = useRef({ x: 0, y: 0 });
   const live = useRef({ scale: 1, x: 0, y: 0 });
   const framedFor = useRef<string>("");
@@ -179,8 +180,7 @@ export function WorldMap({
       viewScale: clusterScale,
       clusterScreenPx: CLUSTER_SCREEN_PX,
       mapWidth: map.width,
-      expandAboveScale: EXPAND_ABOVE_SCALE,
-      expandScreenPx: EXPAND_SCREEN_PX,
+      cityMergeKm: CITY_MERGE_KM,
     };
     const clustered = buildClusteredView(waveInputs, map.project, opts, map.projectLonLat);
     // Restore real photo ids on single-member clusters.
@@ -224,12 +224,7 @@ export function WorldMap({
         maxX: points[0]!.x + 20,
         maxY: points[0]!.y + 20,
       };
-      // Aim at least past expandAboveScale so coincident clusters resolve.
-      const floor = Math.max(
-        live.current.scale * minScaleBump,
-        EXPAND_ABOVE_SCALE,
-        MIN_SCALE,
-      );
+      const floor = Math.max(live.current.scale * minScaleBump, MIN_SCALE);
       const next = frameTransform(bounds, box, {
         padding: 56,
         minScale: Math.min(MAX_SCALE, floor),
@@ -257,8 +252,7 @@ export function WorldMap({
         viewScale: 2.5,
         clusterScreenPx: CLUSTER_SCREEN_PX,
         mapWidth: map.width,
-        expandAboveScale: EXPAND_ABOVE_SCALE,
-        expandScreenPx: EXPAND_SCREEN_PX,
+        cityMergeKm: CITY_MERGE_KM,
       },
       map.projectLonLat,
     );
@@ -288,20 +282,43 @@ export function WorldMap({
 
   const onPinchGestureEvent = useCallback(
     (event: PinchGestureHandlerGestureEvent) => {
-      const next = Math.min(
+      const { scale: pinchScale, focalX, focalY } = event.nativeEvent;
+      const nextScale = Math.min(
         MAX_SCALE,
-        Math.max(MIN_SCALE, pinchScale0.current * event.nativeEvent.scale),
+        Math.max(MIN_SCALE, pinch0.current.scale * pinchScale),
       );
-      const pan = clampPan(next, live.current.x, live.current.y);
-      publishView({ scale: next, x: pan.x, y: pan.y });
+      // Top-left origin: keep the map point under the fingers fixed.
+      const zoomed = focalZoomTransform(
+        pinch0.current.scale,
+        nextScale,
+        pinch0.current.x,
+        pinch0.current.y,
+        focalX,
+        focalY,
+      );
+      const pan = clampPan(zoomed.scale, zoomed.x, zoomed.y);
+      publishView({ scale: zoomed.scale, x: pan.x, y: pan.y });
     },
     [clampPan, publishView],
   );
 
   const onPinchStateChange = useCallback(
     (event: HandlerStateChangeEvent<PinchGestureHandlerEventPayload>) => {
-      if (event.nativeEvent.state === State.BEGAN) {
-        pinchScale0.current = live.current.scale;
+      const { state } = event.nativeEvent;
+      if (state === State.BEGAN || state === State.ACTIVE) {
+        // Capture baseline once at the start of the pinch.
+        if (state === State.BEGAN) {
+          pinch0.current = { ...live.current };
+        }
+      }
+      // When a finger lifts, re-baseline pan from the live transform so the
+      // remaining finger can drag without a jump.
+      if (
+        state === State.END ||
+        state === State.CANCELLED ||
+        state === State.FAILED
+      ) {
+        pan0.current = { x: live.current.x, y: live.current.y };
       }
     },
     [],
@@ -336,9 +353,8 @@ export function WorldMap({
         const sy = cluster.point.y * s + live.current.y;
         if (Math.hypot(sx - screenX, sy - screenY) > MARKER_HIT_R) continue;
         if (cluster.count > 1) {
-          // Already at expand zoom and still merged → list. Otherwise zoom in
-          // until the tidy group resolves.
-          if (s >= EXPAND_ABOVE_SCALE) {
+          // City-level sticky stack → list. Zoom-only merge → zoom in to split.
+          if (isStickyStack(cluster, CITY_MERGE_KM)) {
             setClusterList(cluster);
           } else {
             zoomToBounds(cluster.members.map((m) => m.point));
@@ -450,9 +466,10 @@ export function WorldMap({
             </Text>
             {clusterList?.members.map((m) => {
               const wave = waves.find((w) => w.id === m.waveId);
-              const label = wave
-                ? `${wave.mine.countryCode ?? "?"} → ${wave.theirs.countryCode ?? "?"}`
-                : m.waveId;
+              const side = wave ? (m.side === "mine" ? wave.mine : wave.theirs) : null;
+              const place = side?.countryCode ?? "Somewhere";
+              const when = formatWaveTime(side?.takenAt ?? wave?.formedAt);
+              const thumb = side?.uri ?? null;
               return (
                 <Pressable
                   key={`${m.waveId}-${m.side}`}
@@ -462,7 +479,17 @@ export function WorldMap({
                     onOpenWave(m.waveId);
                   }}
                 >
-                  <Text style={styles.listRowText}>{label}</Text>
+                  <View style={styles.listThumb}>
+                    {thumb ? (
+                      <Image source={{ uri: thumb }} style={styles.listThumbImg} contentFit="cover" />
+                    ) : (
+                      <View style={styles.listThumbEmpty} />
+                    )}
+                  </View>
+                  <View style={styles.listMeta}>
+                    <Text style={styles.listRowText}>{place}</Text>
+                    {when ? <Text style={styles.listRowSub}>{when}</Text> : null}
+                  </View>
                 </Pressable>
               );
             })}
@@ -474,6 +501,22 @@ export function WorldMap({
       </Modal>
     </GestureHandlerRootView>
   );
+}
+
+function formatWaveTime(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  try {
+    return d.toLocaleString(undefined, {
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso.slice(0, 16).replace("T", " ");
+  }
 }
 
 function ClusterPin({ left, top, count }: { left: number; top: number; count: number }) {
@@ -647,13 +690,30 @@ const styles = StyleSheet.create({
     marginBottom: space.xs,
   },
   listRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.md,
     paddingVertical: space.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "rgba(63,74,75,0.15)",
   },
+  listThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    overflow: "hidden",
+    backgroundColor: "rgba(63,74,75,0.08)",
+  },
+  listThumbImg: { width: 44, height: 44 },
+  listThumbEmpty: { flex: 1, backgroundColor: colors.waterMuted, opacity: 0.35 },
+  listMeta: { flex: 1, gap: 2 },
   listRowText: {
     ...typeStyle.body,
     color: colors.slate,
+  },
+  listRowSub: {
+    ...typeStyle.label,
+    color: colors.waterMuted,
   },
   listClose: {
     marginTop: space.md,

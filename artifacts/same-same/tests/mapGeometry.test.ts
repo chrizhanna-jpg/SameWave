@@ -9,15 +9,19 @@ import {
   buildMapGeometry,
   buildMapLines,
   buildMapMarkers,
+  CITY_MERGE_KM,
   CLUSTER_BADGE_SIZE,
   CLUSTER_SCREEN_PX,
   clusterMarkers,
   expandUnresolvedClusters,
+  focalZoomTransform,
   focusBounds,
   frameTransform,
   geodesicArcPath,
   geodesicLonLat,
+  haversineKm,
   isOverwideLine,
+  isStickyStack,
   lineAt,
   lineWidthSpan,
   markerAt,
@@ -284,29 +288,65 @@ test("cluster radius is screen pixels divided by viewScale (not raw map units)",
   assert.deepEqual(split[1]!.point, { x: 130, y: 100 });
 });
 
-test("coincident clusters expand into a tidy tappable group at high zoom", () => {
+test("city-level pins stay one stacked badge at every zoom — never a ring", () => {
+  const londonA: [number, number] = [-0.1278, 51.5074];
+  const londonB: [number, number] = [-0.12, 51.515]; // ~1 km away
+  const paris: [number, number] = [2.3522, 48.8566];
+  assert.ok(haversineKm(londonA, londonB) < CITY_MERGE_KM);
+  assert.ok(haversineKm(londonA, paris) > CITY_MERGE_KM);
+
   const stacked: MapMarker[] = [
-    { waveId: "a", side: "mine", photoId: "p1", point: { x: 100, y: 100 } },
-    { waveId: "b", side: "mine", photoId: "p2", point: { x: 100, y: 100 } },
-    { waveId: "c", side: "mine", photoId: "p3", point: { x: 100.01, y: 100 } },
+    { waveId: "a", side: "mine", photoId: "p1", point: { x: 100, y: 100 }, lonLat: londonA },
+    { waveId: "b", side: "mine", photoId: "p2", point: { x: 100.2, y: 100.1 }, lonLat: londonB },
+    { waveId: "c", side: "mine", photoId: "p3", point: { x: 100.05, y: 100 }, lonLat: londonA },
+    {
+      waveId: "d",
+      side: "theirs",
+      photoId: "p4",
+      // Far in map units so screen clustering alone would split at high zoom.
+      point: { x: 400, y: 280 },
+      lonLat: paris,
+    },
   ];
-  const merged = clusterMarkers(stacked, 9, 44);
-  assert.equal(merged.length, 1);
-  assert.equal(merged[0]!.count, 3);
-  assert.ok(membersTrueSpan(merged[0]!.members) < 1);
-  const expanded = expandUnresolvedClusters(merged, 9, {
-    expandAboveScale: 8,
-    expandScreenPx: 30,
-    clusterScreenPx: 44,
-  });
-  assert.equal(expanded.length, 3);
-  assert.ok(expanded.every((c) => c.count === 1));
-  // Distinct display positions, still near the true centroid.
-  const keys = new Set(expanded.map((c) => `${c.point.x.toFixed(2)},${c.point.y.toFixed(2)}`));
-  assert.equal(keys.size, 3);
-  for (const c of expanded) {
-    assert.ok(Math.hypot(c.point.x - 100, c.point.y - 100) < 5);
+  for (const scale of [1, 4, 9, 12]) {
+    const clusters = clusterMarkers(stacked, scale, 44, CITY_MERGE_KM);
+    const london = clusters.filter((c) =>
+      c.members.some((m) => m.lonLat && haversineKm(m.lonLat, londonA) < CITY_MERGE_KM),
+    );
+    assert.equal(london.length, 1, `London must stay one pin at scale ${scale}`);
+    assert.equal(london[0]!.count, 3);
+    assert.ok(isStickyStack(london[0]!, CITY_MERGE_KM));
+    // No artificial offsets — display point is the true centroid.
+    const cx = london[0]!.members.reduce((s, m) => s + m.point.x, 0) / 3;
+    const cy = london[0]!.members.reduce((s, m) => s + m.point.y, 0) / 3;
+    assert.ok(Math.abs(london[0]!.point.x - cx) < 1e-9);
+    assert.ok(Math.abs(london[0]!.point.y - cy) < 1e-9);
   }
+  // Ring expand is a no-op.
+  const high = clusterMarkers(stacked, 12, 44, CITY_MERGE_KM);
+  const after = expandUnresolvedClusters(high, 12);
+  assert.equal(after.length, high.length);
+  assert.ok(after.some((c) => c.count === 3));
+});
+
+test("focal zoom keeps the map point under the fingers fixed (top-left origin)", () => {
+  const oldScale = 2;
+  const newScale = 4;
+  const translateX = -40;
+  const translateY = -80;
+  const focalX = 120;
+  const focalY = 200;
+  const next = focalZoomTransform(oldScale, newScale, translateX, translateY, focalX, focalY);
+  assert.equal(next.scale, 4);
+  // Map coords under the focal before zoom…
+  const mapX = (focalX - translateX) / oldScale;
+  const mapY = (focalY - translateY) / oldScale;
+  // …must land under the same screen focal after zoom.
+  assert.ok(Math.abs(mapX * next.scale + next.x - focalX) < 1e-9);
+  assert.ok(Math.abs(mapY * next.scale + next.y - focalY) < 1e-9);
+  // Matches the stated formula.
+  assert.equal(next.x, focalX - (focalX - translateX) * (newScale / oldScale));
+  assert.equal(next.y, focalY - (focalY - translateY) * (newScale / oldScale));
 });
 
 test("no drawn segment spans most of the map width", () => {
