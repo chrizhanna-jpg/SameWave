@@ -320,9 +320,9 @@ test("no drawn segment spans most of the map width", () => {
     {
       id: "short",
       mine: "GB",
-      theirs: "FR",
+      theirs: "DE",
       mineLonLat: [-0.12, 51.5] as [number, number],
-      theirsLonLat: [2.35, 48.85] as [number, number],
+      theirsLonLat: [13.4, 52.52] as [number, number],
     },
     {
       id: "ocean",
@@ -337,14 +337,16 @@ test("no drawn segment spans most of the map width", () => {
     project,
     {
       ...options,
-      viewScale: 2,
+      // High enough that GB/DE stay separate pins, ocean chord still over-wide.
+      viewScale: 5,
       clusterScreenPx: CLUSTER_SCREEN_PX,
       mapWidth,
       maxLineWidthFraction: MAX_LINE_WIDTH_FRACTION,
+      expandAboveScale: 99,
     },
     projectLonLat,
   );
-  assert.ok(view.lines.some((l) => l.waveId === "short"));
+  assert.ok(view.lines.some((l) => l.waveId === "short"), "regional chord kept");
   assert.ok(!view.lines.some((l) => l.waveId === "ocean"), "US→JP ocean stroke dropped");
   for (const line of view.lines) {
     assert.ok(
