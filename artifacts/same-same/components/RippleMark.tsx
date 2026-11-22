@@ -38,8 +38,8 @@ export function RippleMark({
 
   useEffect(() => {
     if (!animated || reduced) {
-      // Staggered still frames so the mark still reads as spreading rings.
-      values.forEach((value, index) => value.setValue(0.28 + index * 0.18));
+      // Still frames near full span so the mark fills the well when motion is off.
+      values.forEach((value, index) => value.setValue(0.55 + index * 0.12));
       return;
     }
     const duration = Math.max(1600, motion.ring * 0.85);
@@ -101,9 +101,11 @@ export function RippleMark({
               stroke={`url(#${gradId})`}
               strokeWidth={strokeW}
               fill="none"
+              // Peak opacity once the ring is large (~55% of max), not at birth —
+              // otherwise the glyph reads tiny even though maxRx is correct.
               opacity={value.interpolate({
-                inputRange: [0, 0.12, 0.55, 1],
-                outputRange: [0, 0.92 * ringGain, 0.45 * ringGain, 0],
+                inputRange: [0, 0.2, 0.55, 0.85, 1],
+                outputRange: [0, 0.35 * ringGain, 0.95 * ringGain, 0.4 * ringGain, 0],
               })}
             />
           );
@@ -113,12 +115,12 @@ export function RippleMark({
         <Ellipse
           cx={cx}
           cy={cy}
-          rx={2.4}
-          ry={2.4 * ELLIPSE_ASPECT}
+          rx={2.6}
+          ry={2.6 * ELLIPSE_ASPECT}
           fill={color}
           opacity={0.95}
         />
-        <Circle cx={cx} cy={cy - 2.6} r={1.2} fill={color} opacity={0.9} />
+        <Circle cx={cx} cy={cy - 2.8} r={1.25} fill={color} opacity={0.9} />
       </Svg>
     </View>
   );

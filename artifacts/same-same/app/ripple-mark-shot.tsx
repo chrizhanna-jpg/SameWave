@@ -22,12 +22,12 @@ export default function RippleMarkShotScreen() {
       <Txt style={styles.label}>Match · Offer a Ripple</Txt>
       <View style={[styles.actions, { paddingBottom: Math.max(insets.bottom, space.md) + space.sm }]}>
         <FrostIconWell style={styles.well}>
-          <RippleMark size={56} />
+          <RippleMark size={56} animated={false} />
         </FrostIconWell>
       </View>
       <View style={styles.closeUp}>
         <FrostIconWell style={styles.wellLarge}>
-          <RippleMark size={96} />
+          <RippleMark size={140} animated={false} />
         </FrostIconWell>
       </View>
     </View>
@@ -63,9 +63,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   wellLarge: {
-    width: 160,
-    height: 160,
-    borderRadius: 80,
+    width: 168,
+    height: 168,
+    borderRadius: 84,
     alignItems: "center",
     justifyContent: "center",
   },
