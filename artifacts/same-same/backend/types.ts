@@ -80,6 +80,11 @@ export interface CandidateQuery {
   limit: number;
   /** Photos already looked at in this search. */
   excludeIds: string[];
+  /**
+   * The voter's own Ripple photo id — used so the server can flag candidates
+   * who already have a pending offer aimed at this photo (`wavedAtYou`).
+   */
+  voterPhotoId?: string | null;
 }
 
 export type OfferResult = "waiting" | "wave" | "skipped";

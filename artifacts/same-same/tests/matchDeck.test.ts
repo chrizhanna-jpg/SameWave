@@ -85,6 +85,19 @@ test("own photos and exclude ids are dropped", () => {
   );
 });
 
+test("inbound wavedAtYou candidates sort ahead of equal-tier peers", () => {
+  const mine = { emotion: "joy", topic: "pets" };
+  const inbound: Candidate = { ...real("inbound", 5, "pets", "joy"), wavedAtYou: true };
+  const ranked = rankMatchCandidates(
+    [real("local", 40, "pets", "joy"), inbound],
+    mine,
+  );
+  assert.deepEqual(
+    ranked.map((c) => c.id),
+    ["inbound", "local"],
+  );
+});
+
 test("bucket helper matches Chris's tiers", () => {
   assert.equal(matchRankBucket({ emotion: "joy", topic: "pets" }, { emotion: "joy", topic: "pets" }).bucket, "topic+emotion");
   assert.equal(matchRankBucket({ emotion: "joy", topic: "pets" }, { emotion: "anger", topic: "pets" }).bucket, "topic");

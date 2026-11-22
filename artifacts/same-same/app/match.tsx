@@ -190,6 +190,7 @@ export default function MatchScreen() {
           tags: ripple.tags,
           subjects: ripple.subjects,
           emotion,
+          voterPhotoId: myPhotoId || null,
           limit: MATCH.pageSize,
           excludeIds: [...excludeBase, ...seenRef.current, ...looked].slice(-200),
         });
@@ -281,6 +282,7 @@ export default function MatchScreen() {
             tags: ripple?.tags ?? [],
             subjects: ripple?.subjects ?? [],
             emotion,
+            voterPhotoId: myPhotoId || null,
             limit: MATCH.pageSize,
             excludeIds: [...excludeBase, ...seenRef.current].slice(-200),
           });

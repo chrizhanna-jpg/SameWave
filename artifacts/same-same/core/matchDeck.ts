@@ -65,6 +65,8 @@ export function rankMatchCandidates(
     })
     .sort(
       (a, b) =>
+        // Inbound pending offers first (still must pass later strong-card rules).
+        Number(Boolean(b.c.wavedAtYou)) - Number(Boolean(a.c.wavedAtYou)) ||
         b.rank.tier - a.rank.tier ||
         b.rank.emotion - a.rank.emotion ||
         b.c.score - a.c.score ||

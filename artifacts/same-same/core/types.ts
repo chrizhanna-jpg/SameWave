@@ -81,6 +81,11 @@ export interface Candidate {
   takenAt?: string | null;
   /** Optional capture country — used by Match bonuses / sample fixtures. */
   countryCode?: string | null;
+  /**
+   * True when this candidate's owner already has a pending "same" offer
+   * aimed at the voter's Ripple photo (`voterPhotoId` on findCandidates).
+   */
+  wavedAtYou?: boolean;
 }
 
 /** Someone else's Ripple reached one of the user's photos. */

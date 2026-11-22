@@ -132,6 +132,14 @@ export function candidateFromRow(raw: unknown): Candidate | null {
     theme: typeof row.theme === "string" && row.theme ? row.theme : null,
     // Feeling only — never fall back to musicGenre (song / vibe clip).
     emotion: typeof row.emotion === "string" && row.emotion ? row.emotion : null,
+    countryCode:
+      typeof row.captureCountryCode === "string" && row.captureCountryCode
+        ? row.captureCountryCode
+        : typeof row.countryCode === "string" && row.countryCode
+          ? row.countryCode
+          : null,
+    takenAt: isoOrNull(row.capturedAt) ?? isoOrNull(row.createdAt),
+    wavedAtYou: row.wavedAtYou === true || row.wavedAtYou === "t" || row.wavedAtYou === 1,
   };
 }
 
@@ -291,6 +299,7 @@ export function createHttpBackend(options: HttpBackendOptions): Backend {
       if (query.tags.length) params.set("tags", query.tags.join(","));
       if (query.subjects.length) params.set("subjects", query.subjects.join(","));
       if (query.emotion) params.set("musicGenre", query.emotion);
+      if (query.voterPhotoId) params.set("voterPhotoId", query.voterPhotoId);
       params.set("limit", String(query.limit));
       if (query.excludeIds.length) params.set("excludeIds", query.excludeIds.slice(-200).join(","));
       const body = await call("GET", `/photos/candidates?${params.toString()}`, {

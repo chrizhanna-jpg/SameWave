@@ -326,6 +326,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           tags: ripple.tags,
           subjects: ripple.subjects,
           emotion,
+          voterPhotoId: ripple.photoId,
           limit: MATCH.pageSize,
           excludeIds: [...ripple.reach.offeredIds, ...looked].slice(-MAX_EXCLUDE_IDS),
         });

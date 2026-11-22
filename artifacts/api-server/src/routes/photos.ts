@@ -701,6 +701,11 @@ router.get("/photos/candidates", async (req, res) => {
       typeof req.query.musicGenre === "string"
         ? req.query.musicGenre.trim()
         : "";
+    // Voter's own Ripple photo — used to flag inbound pending offers (wavedAtYou).
+    const voterPhotoIdRaw =
+      typeof req.query.voterPhotoId === "string" ? req.query.voterPhotoId.trim() : "";
+    const voterPhotoId =
+      voterPhotoIdRaw.length > 0 && voterPhotoIdRaw.length <= 64 ? voterPhotoIdRaw : "";
     const limit = Math.min(
       Math.max(parseInt(String(req.query.limit ?? "24"), 10) || 24, 1),
       50,
@@ -795,6 +800,21 @@ router.get("/photos/candidates", async (req, res) => {
           -- carried no capture metadata. The client uses this as the temporal
           -- match basis and falls back to created_at (share time) when null.
           p.captured_at AS "capturedAt",
+          -- Inbound pending "same" aimed at the voter's Ripple photo.
+          CASE
+            WHEN ${voterPhotoId} = '' THEN false
+            ELSE EXISTS (
+              SELECT 1
+              FROM echoes e
+              WHERE e.state = 'pending'
+                AND e.pending_from_user_id IS NOT NULL
+                AND e.pending_from_user_id <> ${user.id}
+                AND (
+                  (e.photo_low_id = ${voterPhotoId} AND e.photo_high_id = p.id)
+                  OR (e.photo_high_id = ${voterPhotoId} AND e.photo_low_id = p.id)
+                )
+            )
+          END AS "wavedAtYou",
           -- Dedup key only. We intentionally do NOT select p.bytes_base64:
           -- the multi-MB base64 column was previously pulled back for every
           -- candidate from the remote DB but never read in JS (images stream
@@ -925,10 +945,10 @@ router.get("/photos/candidates", async (req, res) => {
       deduped AS (
         SELECT DISTINCT ON (content_hash) *
         FROM scored
-        ORDER BY content_hash, rank_score DESC, "createdAt" DESC
+        ORDER BY content_hash, "wavedAtYou" DESC, rank_score DESC, "createdAt" DESC
       )
       SELECT * FROM deduped
-      ORDER BY rank_score DESC, "createdAt" DESC
+      ORDER BY "wavedAtYou" DESC, rank_score DESC, "createdAt" DESC
       LIMIT ${limit}
     `);
 
@@ -951,6 +971,7 @@ router.get("/photos/candidates", async (req, res) => {
         captureCountryCode: (r.captureCountryCode as string | null) ?? null,
         emotion: (r.emotion as string | null) ?? null,
         musicGenre: (r.musicGenre as string | null) ?? null,
+        wavedAtYou: Boolean(r.wavedAtYou),
         customAudioUrl,
         // Stock pool: Unsplash CDN (instant on mobile). User uploads: authed stream.
         uri: cdnUri ?? `/api/photos/${encodeURIComponent(id)}/image`,
