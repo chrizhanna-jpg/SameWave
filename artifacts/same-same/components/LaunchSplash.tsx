@@ -27,7 +27,7 @@ interface Props {
  */
 export function LaunchSplash({ playSound = true, onLayoutReady }: Props) {
   useEffect(() => {
-    if (playSound) void playWaveSwoosh();
+    if (playSound) void playWaveSwoosh({ fromLaunch: true });
   }, [playSound]);
 
   return (

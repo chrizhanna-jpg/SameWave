@@ -1,16 +1,13 @@
 wave-swoosh.mp3
 ================
 
-Source:  "small waves crash on beach.wav" by aninaninanina
-URL:     https://freesound.org/people/aninaninanina/sounds/610297/
-Licence: Creative Commons 0 (CC0 / public domain) — commercial use, no attribution required
-         https://creativecommons.org/publicdomain/zero/1.0/
+Source:  Synthesised in-house with ffmpeg (no third-party recording).
+Licence: SameWave project — original work.
 
-Processing (ffmpeg):
-  - Took a field-recording HQ MP3 preview of the above
-  - Trim: start at 2.0s, length 2.2s (~2.25s output)
-  - Bake-in fades: afade in 0.25s from start; afade out over the last 0.9s
-    (afade=t=in:st=0:d=0.25,afade=t=out:st=1.3:d=0.9)
-  - Encode: mono 44.1 kHz MP3 @ 96 kb/s (~27 KB)
-
-Sound: a gentle real ocean-wave swoosh — soft foam crash, not synthetic.
+Recipe (ffmpeg lavfi):
+  - Brown-noise body, band-passed 70–480 Hz
+  - White-noise foam, band-passed 700–4200 Hz, delayed 0.28 s
+  - Shared 4.545 s swell envelope peaking ~2.05 s (sin(π·t/4.1)²)
+  - Cosine-like fades: afade in 0.95 s (qsin), out 1.25 s from 3.295 s
+  - loudnorm I=-18 LUFS, TP=-3 dBFS
+  - Encode: mono 44.1 kHz MP3 @ 192 kb/s
