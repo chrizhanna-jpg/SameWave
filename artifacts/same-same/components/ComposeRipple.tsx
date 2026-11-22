@@ -27,7 +27,7 @@ import { sceneFor } from "@/data/scenes";
 import { defaultMusicForEmotion } from "@/data/emotionMusic";
 import { topicFor } from "@/data/topics";
 import { chooseFromLibrary } from "@/device/photos";
-import { playEffect, playOceanSound } from "@/device/sound";
+import { playOceanSound } from "@/device/sound";
 import { useAppState } from "@/state/AppState";
 import {
   clearDraft,
@@ -154,8 +154,7 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
     });
     setSending(true);
     setProblem(null);
-    // Upload moment keeps the existing drop cue for now.
-    void playEffect("drop");
+    // Upload moment is silent — Match owns ripple/wave cues; splash owns the swell.
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
 
     try {

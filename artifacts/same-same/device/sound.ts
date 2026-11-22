@@ -1,7 +1,8 @@
 /**
- * The app's sounds: upload drop, Wave-arrival chime, Match ripple / wave cues,
- * and the splash ocean swell. Sound is never essential — every function fails
- * silently so a silent phone behaves the same as one with audio.
+ * The app's sounds: Wave-arrival chime, Match ripple / wave cues, and the
+ * splash ocean swell. Upload moment is silent. Sound is never essential —
+ * every function fails silently so a silent phone behaves the same as one
+ * with audio.
  */
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from "expo-audio";
 import { AppState, type NativeEventSubscription } from "react-native";
@@ -14,12 +15,11 @@ import {
 } from "@/core/volumeFade";
 
 const EFFECTS = {
-  drop: require("../assets/sounds/drop.mp3") as number,
   chime: require("../assets/sounds/chime.mp3") as number,
 };
 export type Effect = keyof typeof EFFECTS;
 
-const EFFECT_VOLUME: Record<Effect, number> = { drop: 0.7, chime: 0.8 };
+const EFFECT_VOLUME: Record<Effect, number> = { chime: 0.8 };
 
 /** Synthesised ocean swell — see assets/sounds/wave-swoosh.LICENSE.txt. */
 const WAVE_SWOOSH = require("../assets/sounds/wave-swoosh.mp3") as number;
@@ -216,7 +216,6 @@ function ensureWavePlayer(): AudioPlayer {
 export function prepareEffects(): void {
   try {
     void setPlaybackMode();
-    effectPlayer("drop");
     effectPlayer("chime");
     ensureSwooshPlayer();
     ensureRipplePlayer();
