@@ -11,7 +11,8 @@ Processing (ffmpeg):
   - Trim: start ~0.35 s, length ~0.95 s (hand moving through water)
   - highpass 100 Hz, lowpass 6500 Hz
   - Soft fades: in 0.08 s, out 0.25 s (qsin)
-  - loudnorm I=-23 LUFS, TP=-3 dBFS
+  - Gain +7.5 dB then alimiter to true peak ≤ −3 dBFS
+  - Target loudness ≈ −22 to −24 LUFS (short-clip integrated ≈ −22.6)
   - Encode: mono 44.1 kHz MP3 @ 128 kb/s
 
 Used only for Match "Offer a Ripple" (right-hand button).
