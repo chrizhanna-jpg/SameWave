@@ -210,6 +210,7 @@ function Routes() {
         <Stack.Screen name="match-blur-shot" />
         <Stack.Screen name="waves-list-shot" />
         <Stack.Screen name="wave-sheet-shot" />
+        <Stack.Screen name="picker-collapse-shot" />
         {/* __DEV__ / preview location authenticity diagnostic (stubbed in prod). */}
         <Stack.Screen name="location-diag" />
         <Stack.Screen name="+not-found" />

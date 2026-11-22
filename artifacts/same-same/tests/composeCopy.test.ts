@@ -23,3 +23,17 @@ test("Home capture button wording unchanged in home.tsx", () => {
   const home = readFileSync(path.join(here, "../app/(tabs)/home.tsx"), "utf8");
   assert.match(home, /Capture a moment/);
 });
+
+test("Topic waits on Feeling: disabled until emotion, Today gated the same way", () => {
+  assert.match(composeSrc, /disabled=\{!feelingReady\}/);
+  assert.match(composeSrc, /Choose a feeling first/);
+  assert.match(composeSrc, /feelingReady \? \(/);
+  assert.match(composeSrc, /topicFocusToken/);
+});
+
+test("shared TypeAheadPicker collapses to the selected label only", () => {
+  const picker = readFileSync(path.join(here, "../components/TypeAheadPicker.tsx"), "utf8");
+  assert.match(picker, /Tap to change/);
+  assert.doesNotMatch(picker, />\s*Change\s*</);
+  assert.match(picker, /Keyboard\.dismiss/);
+});
