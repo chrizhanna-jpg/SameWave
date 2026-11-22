@@ -17,6 +17,7 @@ import React, {
 } from "react";
 
 import { apiOrigin, clerkProxyUrl, clerkPublishableKey } from "@/config/env";
+import { uiShotsBuildEnabled } from "@/core/uiShots";
 import { withTimeout } from "@/lib/timeout";
 
 export type SessionStatus = "loading" | "signedOut" | "signedIn" | "unavailable";
@@ -195,7 +196,8 @@ function UiShotSessionProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
-  if (process.env.EXPO_PUBLIC_UI_SHOTS === "1") {
+  // Compile-time: __DEV__ is false in production/EAS — bypass never ships hot.
+  if (uiShotsBuildEnabled()) {
     return <UiShotSessionProvider>{children}</UiShotSessionProvider>;
   }
   return <ClerkSessionProvider>{children}</ClerkSessionProvider>;

@@ -51,6 +51,7 @@ if (!testPhotosOn) {
       name.includes("test-photos/LocationDiagPanel") ||
       name.includes("test-photos/LocationDiagScreen") ||
       name.includes("test-photos/LocationDiagAccountRow") ||
+      name.includes("test-photos/shots/") ||
       /test-photos\/\d{2}-[^/]+\.jpe?g$/i.test(name)
     ) {
       // Never stub the stub itself (avoid recursion).

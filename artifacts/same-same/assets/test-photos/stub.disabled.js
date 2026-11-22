@@ -38,6 +38,19 @@ function buildLocationDiagRows() {
   return [];
 }
 
+function RippleMarkShotInner() {
+  return null;
+}
+function MatchBlurShotInner() {
+  return null;
+}
+function WavesListShotInner() {
+  return null;
+}
+function WaveSheetShotInner() {
+  return null;
+}
+
 module.exports = {
   getTestPhotoCandidates: emptyList,
   getSampleWaves: emptyList,
@@ -46,6 +59,10 @@ module.exports = {
   LocationDiagScreenInner,
   LocationDiagAccountRow,
   buildLocationDiagRows,
+  RippleMarkShotInner,
+  MatchBlurShotInner,
+  WavesListShotInner,
+  WaveSheetShotInner,
   isSamplePhotoId,
   isSampleWaveId,
   SAMPLE_PHOTO_ID_PREFIX: "",

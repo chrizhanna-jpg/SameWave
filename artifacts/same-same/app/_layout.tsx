@@ -16,6 +16,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { LaunchSplash } from "@/components/LaunchSplash";
 import { Waiting } from "@/components/Waiting";
+import { uiShotsBuildEnabled } from "@/core/uiShots";
 import { findWaveByPhotos } from "@/core/waves";
 import { prepareEffects, stopWaveSwoosh } from "@/device/sound";
 import { AppStateProvider, useAppState } from "@/state/AppState";
@@ -163,7 +164,8 @@ function Routes() {
     );
   }
 
-  const uiShots = process.env.EXPO_PUBLIC_UI_SHOTS === "1";
+  // Compile-time gated (__DEV__ && EXPO_PUBLIC_UI_SHOTS) — never hot in production.
+  const uiShots = uiShotsBuildEnabled();
   const signedIn = session.status === "signedIn";
   const starting = !uiShots && signedIn && (!app.ready || app.country === "checking");
   // UI shot builds treat the preview account as fully in-app so shot routes render.
