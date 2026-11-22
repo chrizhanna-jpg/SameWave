@@ -13,7 +13,7 @@ import { space } from "@/theme";
 const STEPS = [
   {
     title: "Capture a moment",
-    body: "One photo of your day, an emotion, and a Topic. Or tap Today for the shared Daily topic. Matching leans on the emotion and Topic together with the photo.",
+    body: "One photo of your day, an emotion, and a Topic. Or tap Today for the shared Daily topic.",
   },
   {
     title: "Wait",
