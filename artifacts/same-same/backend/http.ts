@@ -108,17 +108,19 @@ export function offerFromCard(raw: unknown): Offer | null {
       : null;
   const home =
     typeof theirs.countryCode === "string" && theirs.countryCode ? theirs.countryCode : null;
-  const rawUri = typeof theirs.uri === "string" ? theirs.uri : null;
+  const rawTheirUri = typeof theirs.uri === "string" ? theirs.uri : null;
+  const rawMyUri = typeof mine.uri === "string" ? mine.uri : null;
   // Inbox cards are usually data: URIs from the server; also accept https /api paths.
-  const theirUri =
-    imageUriOrNull(rawUri) ??
-    (rawUri && /^(https?:\/\/|\/api\/photos\/)/i.test(rawUri) ? rawUri : null);
+  const sideUri = (raw: string | null) =>
+    imageUriOrNull(raw) ??
+    (raw && /^(https?:\/\/|\/api\/photos\/)/i.test(raw) ? raw : null);
   return {
     id,
     myPhotoId: mine.id,
     theirPhotoId: theirs.id,
     createdAt: isoOrNull(card.createdAt),
-    theirUri,
+    myUri: sideUri(rawMyUri),
+    theirUri: sideUri(rawTheirUri),
     theirEmotion:
       typeof theirs.emotion === "string" && theirs.emotion ? theirs.emotion : null,
     theirTopic,

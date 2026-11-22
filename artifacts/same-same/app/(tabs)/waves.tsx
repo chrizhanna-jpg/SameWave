@@ -1,48 +1,40 @@
 import { Image } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 
-import { Button } from "@/components/Button";
 import { Frost } from "@/components/Frost";
+import { Photo } from "@/components/Photo";
 import { PhotoMetaChip } from "@/components/PhotoMetaChip";
 import { Screen } from "@/components/Screen";
 import { Txt } from "@/components/Txt";
 import {
-  inboxOfferThumbSource,
+  inboxOfferMyThumbSource,
+  inboxOfferTheirThumbSource,
   isPreviewOfferId,
+  PREVIEW_OFFER_WAVE_ID,
   withOptionalSampleOffers,
 } from "@/core/sampleOffers";
+import { testPhotosBuildEnabled } from "@/core/testPhotos";
 import type { Offer, Wave } from "@/core/types";
+import { findWaveByPhotos } from "@/core/waves";
 import { waveListPlace, waveListWhen } from "@/core/waveListMeta";
 import { emotionFor } from "@/data/emotions";
 import { topicFor } from "@/data/topics";
 import { sceneFor } from "@/data/scenes";
-import { errorKind } from "@/backend/types";
 import { useAppState } from "@/state/AppState";
 import { useTabBarClearance } from "@/state/TabBarHeight";
 import { colors, space } from "@/theme";
 
 /**
- * Waves tab: inbox of incoming Ripples (Wave back / Dismiss) plus mutual Wave history.
- * Map of past Waves lives on the Map tab.
+ * Waves tab: inbox of incoming Ripples (tap opens full-screen Wave / Match)
+ * plus mutual Wave history. Map of past Waves lives on the Map tab.
  */
 export default function WavesScreen() {
   const router = useRouter();
-  const {
-    offers,
-    offersKnown,
-    waves,
-    wavesKnown,
-    sync,
-    respondToOffer,
-    syncNow,
-  } = useAppState();
+  const { offers, offersKnown, waves, wavesKnown, sync, syncNow, ripples } =
+    useAppState();
   const tabClearance = useTabBarClearance(space.md);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-  /** Local preview dismissals so Maestro can exercise Dismiss without a server. */
-  const [hiddenPreviewIds, setHiddenPreviewIds] = useState<string[]>([]);
 
   useFocusEffect(
     useCallback(() => {
@@ -50,65 +42,32 @@ export default function WavesScreen() {
     }, [syncNow]),
   );
 
-  const inbox = useMemo(() => {
-    const live = withOptionalSampleOffers(offers).filter(
-      (o) => !hiddenPreviewIds.includes(o.id),
-    );
-    return live;
-  }, [offers, hiddenPreviewIds]);
+  const inbox = useMemo(() => withOptionalSampleOffers(offers), [offers]);
 
   const history = useMemo(() => waves, [waves]);
   const loading = !offersKnown && sync === "syncing";
 
-  const flash = (message: string) => {
-    setToast(message);
-    setTimeout(() => setToast(null), 3200);
-  };
-
-  const onWaveBack = async (offer: Offer) => {
-    if (busyId) return;
-    setBusyId(offer.id);
-    try {
-      if (isPreviewOfferId(offer.id)) {
-        setHiddenPreviewIds((ids) => [...ids, offer.id]);
-        flash("Wave formed (preview).");
-        return;
-      }
-      await respondToOffer(offer.id, "same");
-      flash("You waved back.");
-    } catch (error) {
-      flash(
-        errorKind(error) === "unreachable"
-          ? "Can't reach SameWave. Try again."
-          : "That Wave couldn't be sent. Try again.",
-      );
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const onDismiss = async (offer: Offer) => {
-    if (busyId) return;
-    setBusyId(offer.id);
-    try {
-      if (isPreviewOfferId(offer.id)) {
-        setHiddenPreviewIds((ids) => [...ids, offer.id]);
-        return;
-      }
-      await respondToOffer(offer.id, "different");
-    } catch (error) {
-      flash(
-        errorKind(error) === "unreachable"
-          ? "Can't reach SameWave. Try again."
-          : "That couldn't be dismissed. Try again.",
-      );
-    } finally {
-      setBusyId(null);
-    }
-  };
-
   const openWave = (wave: Wave) => {
     router.push({ pathname: "/wave/[id]", params: { id: wave.id } });
+  };
+
+  /**
+   * Inbox tap → existing full-screen WaveJoin layout.
+   * Mutual pair → /wave/[id]. Preview fixture → sample Wave. Pending live
+   * offer (not yet mutual) → Match for your photo, where Offer a Wave / Pass
+   * already answer the inbound Ripple (no new buttons).
+   */
+  const openOffer = (offer: Offer) => {
+    const mutual = findWaveByPhotos(waves, offer.myPhotoId, offer.theirPhotoId);
+    if (mutual) {
+      openWave(mutual);
+      return;
+    }
+    if (isPreviewOfferId(offer.id) && testPhotosBuildEnabled()) {
+      router.push({ pathname: "/wave/[id]", params: { id: PREVIEW_OFFER_WAVE_ID } });
+      return;
+    }
+    router.push({ pathname: "/match", params: { photoId: offer.myPhotoId } });
   };
 
   return (
@@ -121,14 +80,6 @@ export default function WavesScreen() {
       <Txt variant="title" style={styles.heading} accessibilityLabel="Waves">
         Waves
       </Txt>
-
-      {toast ? (
-        <Frost kind="card" style={styles.toast} contentStyle={styles.toastPad}>
-          <Txt tone="secondary" center>
-            {toast}
-          </Txt>
-        </Frost>
-      ) : null}
 
       <Txt variant="heading" style={styles.section}>
         Inbox
@@ -147,8 +98,8 @@ export default function WavesScreen() {
             No incoming Ripples
           </Txt>
           <Txt variant="quiet" tone="quiet" center style={styles.emptyBody}>
-            When someone waves at one of your photos, it lands here for you to
-            Wave back or Dismiss.
+            When someone waves at one of your photos, it lands here. Tap a card
+            to open it full screen.
           </Txt>
         </Frost>
       ) : (
@@ -156,9 +107,10 @@ export default function WavesScreen() {
           <InboxRow
             key={offer.id}
             offer={offer}
-            busy={busyId === offer.id}
-            onWaveBack={() => void onWaveBack(offer)}
-            onDismiss={() => void onDismiss(offer)}
+            myLocalUri={
+              ripples.find((r) => r.photoId === offer.myPhotoId)?.localUri ?? null
+            }
+            onOpen={() => openOffer(offer)}
           />
         ))
       )}
@@ -192,15 +144,34 @@ export default function WavesScreen() {
           >
             <Frost kind="card" style={styles.card} contentStyle={styles.historyPad}>
               <View style={styles.historyRow}>
-                {wave.theirs.uri ? (
-                  <Image
-                    source={{ uri: wave.theirs.uri }}
-                    style={styles.thumb}
-                    contentFit="cover"
-                  />
-                ) : (
-                  <View style={[styles.thumb, styles.thumbEmpty]} />
-                )}
+                <View style={styles.pair}>
+                  {wave.mine.uri ? (
+                    <Image
+                      source={{ uri: wave.mine.uri }}
+                      style={styles.thumb}
+                      contentFit="cover"
+                      accessibilityLabel="Your photo"
+                    />
+                  ) : (
+                    <View
+                      style={[styles.thumb, styles.thumbEmpty]}
+                      accessibilityLabel="Your photo"
+                    />
+                  )}
+                  {wave.theirs.uri ? (
+                    <Image
+                      source={{ uri: wave.theirs.uri }}
+                      style={styles.thumb}
+                      contentFit="cover"
+                      accessibilityLabel="Their photo"
+                    />
+                  ) : (
+                    <View
+                      style={[styles.thumb, styles.thumbEmpty]}
+                      accessibilityLabel="Their photo"
+                    />
+                  )}
+                </View>
                 <View style={styles.historyMeta}>
                   <Txt numberOfLines={1}>
                     {waveListPlace({
@@ -223,69 +194,88 @@ export default function WavesScreen() {
 
 function InboxRow({
   offer,
-  busy,
-  onWaveBack,
-  onDismiss,
+  myLocalUri,
+  onOpen,
 }: {
   offer: Offer;
-  busy: boolean;
-  onWaveBack: () => void;
-  onDismiss: () => void;
+  myLocalUri: string | null;
+  onOpen: () => void;
 }) {
   const feeling = emotionFor(offer.theirEmotion)?.label ?? null;
   const topic = topicFor(offer.theirTopic)?.label ?? offer.theirTopic;
   const place = waveListPlace({ countryCode: offer.theirCountryCode });
   const when = waveListWhen(offer.createdAt);
 
-  const thumb = inboxOfferThumbSource(offer);
+  const mineSource =
+    (myLocalUri ? { uri: myLocalUri } : null) ?? inboxOfferMyThumbSource(offer);
+  const theirSource = inboxOfferTheirThumbSource(offer);
+  const mineUri =
+    mineSource && typeof mineSource === "object" && "uri" in mineSource
+      ? (mineSource.uri as string)
+      : null;
+  const theirUri =
+    theirSource && typeof theirSource === "object" && "uri" in theirSource
+      ? (theirSource.uri as string)
+      : null;
 
   return (
-    <Frost kind="card" style={styles.card} contentStyle={styles.inboxPad}>
-      <View style={styles.inboxTop}>
-        {thumb ? (
-          <Image
-            source={thumb}
-            style={styles.thumb}
-            contentFit="cover"
-            accessibilityLabel="Their photo"
-          />
-        ) : (
-          <View
-            style={[styles.thumb, styles.thumbEmpty]}
-            accessibilityLabel="Their photo"
-          />
-        )}
-        <View style={styles.inboxMeta}>
-          <PhotoMetaChip emotion={offer.theirEmotion} topic={offer.theirTopic} />
-          {!feeling && !topic ? (
-            <Txt variant="quiet" tone="quiet">
-              Incoming Ripple
+    <Pressable
+      onPress={onOpen}
+      accessibilityRole="button"
+      accessibilityLabel="Open Wave"
+      accessibilityHint="Opens the full-screen Wave layout for this pair"
+      style={styles.historyHit}
+    >
+      <Frost kind="card" style={styles.card} contentStyle={styles.inboxPad}>
+        <View style={styles.inboxTop}>
+          <View style={styles.pair}>
+            {mineSource && !mineUri ? (
+              <Image
+                source={mineSource}
+                style={styles.thumb}
+                contentFit="cover"
+                accessibilityLabel="Your photo"
+              />
+            ) : (
+              <Photo
+                uri={mineUri}
+                ownPhotoId={mineUri ? undefined : offer.myPhotoId}
+                quiet
+                style={styles.thumb}
+                accessibilityLabel="Your photo"
+              />
+            )}
+            {theirSource && !theirUri ? (
+              <Image
+                source={theirSource}
+                style={styles.thumb}
+                contentFit="cover"
+                accessibilityLabel="Their photo"
+              />
+            ) : (
+              <Photo
+                uri={theirUri}
+                ownPhotoId={theirUri ? undefined : offer.theirPhotoId}
+                quiet
+                style={styles.thumb}
+                accessibilityLabel="Their photo"
+              />
+            )}
+          </View>
+          <View style={styles.inboxMeta}>
+            <PhotoMetaChip emotion={offer.theirEmotion} topic={offer.theirTopic} />
+            {!feeling && !topic ? (
+              <Txt variant="quiet" tone="quiet">
+                Incoming Ripple
+              </Txt>
+            ) : null}
+            <Txt variant="quiet" tone="secondary" numberOfLines={1}>
+              {[place, when].filter(Boolean).join(" · ")}
             </Txt>
-          ) : null}
-          <Txt variant="quiet" tone="secondary" numberOfLines={1}>
-            {[place, when].filter(Boolean).join(" · ")}
-          </Txt>
+          </View>
         </View>
-      </View>
-      <View style={styles.actions}>
-        <Button
-          label="Wave back"
-          onPress={onWaveBack}
-          busy={busy}
-          disabled={busy}
-          style={styles.actionBtn}
-          accessibilityHint="Forms a mutual Wave"
-        />
-        <Button
-          kind="soft"
-          label="Dismiss"
-          onPress={onDismiss}
-          disabled={busy}
-          style={styles.actionBtn}
-          accessibilityHint="Removes this Ripple from your inbox"
-        />
-      </View>
-    </Frost>
+      </Frost>
+    </Pressable>
   );
 }
 
@@ -301,15 +291,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   emptyBody: { maxWidth: 300 },
-  toast: { marginBottom: space.md },
-  toastPad: { paddingHorizontal: space.md, paddingVertical: space.sm },
   inboxPad: {
     paddingHorizontal: space.md,
     paddingVertical: space.md,
-    gap: space.md,
   },
   inboxTop: { flexDirection: "row", gap: space.md, alignItems: "center" },
   inboxMeta: { flex: 1, gap: space.xs, minWidth: 0 },
+  pair: { flexDirection: "row", gap: space.xs },
   thumb: {
     width: 72,
     height: 72,
@@ -317,8 +305,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   thumbEmpty: { borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
-  actions: { flexDirection: "row", gap: space.sm },
-  actionBtn: { flex: 1, alignSelf: "stretch" },
   historyHit: { alignSelf: "stretch" },
   historyPad: { paddingHorizontal: space.md, paddingVertical: space.md },
   historyRow: { flexDirection: "row", gap: space.md, alignItems: "center" },

@@ -340,6 +340,7 @@ test("incoming offers are read from the inbox and accepted with 'same'", async (
       myPhotoId: "mine-1",
       theirPhotoId: "theirs-9",
       createdAt: "2026-10-03T00:00:00.000Z",
+      myUri: null,
       theirUri: null,
       theirEmotion: null,
       theirTopic: null,

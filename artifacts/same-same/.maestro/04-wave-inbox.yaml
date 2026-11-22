@@ -1,4 +1,4 @@
-# Wave inbox: incoming Ripple with Wave back / Dismiss (preview sample offer when TEST_PHOTOS=1).
+# Wave inbox: incoming Ripple card (both photos); tap opens full-screen Wave.
 appId: echo.samewaveripple.app
 ---
 - launchApp
@@ -8,13 +8,12 @@ appId: echo.samewaveripple.app
 - tapOn: "Waves"
 - extendedWaitUntil:
     visible:
-      text: "Inbox|No incoming Ripples|Wave back"
+      text: "Inbox|No incoming Ripples|Open Wave|Happy"
     timeout: 30000
 - takeScreenshot: wave-inbox
 - runFlow:
     when:
-      visible: "Wave back"
+      visible: "Open Wave"
     commands:
-      - assertVisible: "Dismiss"
-      - tapOn: "Dismiss"
-      - takeScreenshot: wave-inbox-after-dismiss
+      - tapOn: "Open Wave"
+      - takeScreenshot: wave-inbox-fullscreen
