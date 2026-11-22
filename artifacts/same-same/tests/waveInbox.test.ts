@@ -5,7 +5,11 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { offerFromCard } from "../backend/http";
-import { isPreviewOfferId, withOptionalSampleOffers } from "../core/sampleOffers";
+import {
+  inboxOfferThumbSource,
+  isPreviewOfferId,
+  withOptionalSampleOffers,
+} from "../core/sampleOffers";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, "..");
@@ -36,6 +40,8 @@ test("preview sample offer is gated and identifiable", () => {
   if (process.env.EXPO_PUBLIC_TEST_PHOTOS === "1") {
     assert.equal(seeded.length, 1);
     assert.equal(seeded[0]!.id, "preview-inbox-offer-1");
+    // Bundled JPEG source even when Image.resolveAssetSource is missing (node).
+    assert.ok(inboxOfferThumbSource(seeded[0]!), "preview offer needs a thumb source");
   } else {
     assert.deepEqual(seeded, []);
   }

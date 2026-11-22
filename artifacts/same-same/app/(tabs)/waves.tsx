@@ -8,7 +8,11 @@ import { Frost } from "@/components/Frost";
 import { PhotoMetaChip } from "@/components/PhotoMetaChip";
 import { Screen } from "@/components/Screen";
 import { Txt } from "@/components/Txt";
-import { isPreviewOfferId, withOptionalSampleOffers } from "@/core/sampleOffers";
+import {
+  inboxOfferThumbSource,
+  isPreviewOfferId,
+  withOptionalSampleOffers,
+} from "@/core/sampleOffers";
 import type { Offer, Wave } from "@/core/types";
 import { waveListPlace, waveListWhen } from "@/core/waveListMeta";
 import { emotionFor } from "@/data/emotions";
@@ -233,12 +237,14 @@ function InboxRow({
   const place = waveListPlace({ countryCode: offer.theirCountryCode });
   const when = waveListWhen(offer.createdAt);
 
+  const thumb = inboxOfferThumbSource(offer);
+
   return (
     <Frost kind="card" style={styles.card} contentStyle={styles.inboxPad}>
       <View style={styles.inboxTop}>
-        {offer.theirUri ? (
+        {thumb ? (
           <Image
-            source={{ uri: offer.theirUri }}
+            source={thumb}
             style={styles.thumb}
             contentFit="cover"
             accessibilityLabel="Their photo"
