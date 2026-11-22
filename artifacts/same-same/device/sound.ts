@@ -67,6 +67,11 @@ let swooshGeneration = 0;
 let swooshPlaying = false;
 /** True after the launch splash has played the swell once this session. */
 let launchSwooshConsumed = false;
+/**
+ * Home may play the swell at most once per cold start, and only when the
+ * splash did not already play it. Returns to Home / background stay silent.
+ */
+let homeOceanStillAllowed = true;
 let swooshFadeTimer: ReturnType<typeof setInterval> | null = null;
 let swooshAppStateSub: NativeEventSubscription | null = null;
 
@@ -283,15 +288,17 @@ export async function playWaveSwoosh(options?: { fromLaunch?: boolean }): Promis
 export const playOceanSound = playWaveSwoosh;
 
 /**
- * Home focus should play the swell only when returning later — not right after
- * the launch splash already played it.
+ * Home focus: at most once per cold start, and never if the splash already
+ * played the swell. Later Home focuses / resume from background stay silent.
  */
 export function shouldPlayHomeOceanOnFocus(): boolean {
-  if (!launchSwooshConsumed) return true;
-  // First Home focus after splash: skip. Later focuses: play.
-  const skip = launchSwooshConsumed;
-  launchSwooshConsumed = false;
-  return !skip;
+  if (launchSwooshConsumed) {
+    homeOceanStillAllowed = false;
+    return false;
+  }
+  if (!homeOceanStillAllowed) return false;
+  homeOceanStillAllowed = false;
+  return true;
 }
 
 /**

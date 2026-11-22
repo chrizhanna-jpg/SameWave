@@ -23,8 +23,9 @@ import { colors, layout, space } from "@/theme";
 
 /**
  * Home tab: brand, topic, send actions, Account. Default launch tab.
- * Ocean swell: once on launch (splash), then on later Home returns — never
- * straight after the splash. Post-send waiting shows once after upload.
+ * Ocean swell: once per cold start (splash, or Home once if splash skipped it).
+ * Returning to Home from tabs / background stays silent. Post-send waiting
+ * shows once after upload.
  */
 export default function HomeScreen() {
   const router = useRouter();
