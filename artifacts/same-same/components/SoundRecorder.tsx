@@ -155,11 +155,11 @@ export function SoundRecorder({ value, onChange }: Props) {
       <Pressable
         onPress={() => void start()}
         accessibilityRole="button"
-        accessibilityLabel="Record a sign"
+        accessibilityLabel="Record a sound"
         style={styles.row}
       >
         <Icon name="mic" size={20} />
-        <Txt style={styles.label}>Record a sign</Txt>
+        <Txt style={styles.label}>Record a sound</Txt>
         <Txt variant="quiet" tone="secondary">
           {`Up to ${MAX_SECONDS} seconds`}
         </Txt>
