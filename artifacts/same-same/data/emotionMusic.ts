@@ -16,7 +16,10 @@
 import { EMOTION_IDS } from "./emotions";
 import { VIBES } from "./vibes";
 
-/** Feeling ids that are not themselves a vibe id → default vibe. */
+/**
+ * Feeling ids that are not themselves a vibe id → default vibe.
+ * Tired uses the existing gentle `tired` vibe via identity (no override).
+ */
 const EMOTION_MUSIC_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
   awe: "wonder",
 });

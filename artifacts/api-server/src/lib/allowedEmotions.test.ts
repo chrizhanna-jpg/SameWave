@@ -9,6 +9,8 @@ test("normalizeEmotion accepts canonical feeling ids", () => {
   assert.equal(normalizeEmotion(" Gratitude "), "gratitude");
   assert.equal(normalizeEmotion("awe"), "awe");
   assert.equal(normalizeEmotion("WONDER"), "wonder");
+  assert.equal(normalizeEmotion("tired"), "tired");
+  assert.equal(normalizeEmotion("TIRED"), "tired");
 });
 
 test("normalizeEmotion returns null for unknown or missing", () => {

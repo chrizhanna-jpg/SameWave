@@ -15,6 +15,9 @@ export const ALLOWED_EMOTIONS = new Set([
   "wonder",
   "awe",
   "calm",
+  // tired: accepted here once this rebuild reaches main / the API deploys;
+  // until then live POST /photos still drops unknown emotions (same as awe).
+  "tired",
   "sad",
   "lonely",
   "grief",
