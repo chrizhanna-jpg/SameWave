@@ -29,7 +29,11 @@ test("Feeling and Topic open in any order — no gating copy", () => {
   assert.doesNotMatch(composeSrc, /Choose a feeling first/);
   assert.doesNotMatch(composeSrc, /topicWaiting/);
   assert.doesNotMatch(composeSrc, /topicFocusToken/);
-  assert.doesNotMatch(composeSrc, /TopicPicker[\s\S]*disabled=/);
+  // TopicPicker call site — no disabled prop (Button may still use disabled).
+  assert.match(
+    composeSrc,
+    /<TopicPicker\s+value=\{draft\.topic\}\s+onChange=\{onTopicChange\}\s+locked=\{pickerLocked\}\s+scrollRef=\{scrollRef\}/,
+  );
 });
 
 test("shared TypeAheadPicker collapses to the selected label only", () => {
