@@ -1,20 +1,28 @@
-import React, { useEffect, useMemo } from "react";
-import { Animated, Easing, StyleSheet, View } from "react-native";
+import React, { useEffect, useId, useMemo } from "react";
+import { Animated, Easing, View } from "react-native";
+import Svg, { Circle, Defs, Ellipse, LinearGradient, Stop } from "react-native-svg";
 
 import { RIPPLE_RING_INK } from "@/components/RippleRings";
-import { NATIVE_DRIVER, useReducedMotion } from "@/device/motion";
+import { useReducedMotion } from "@/device/motion";
 import { colors, motion } from "@/theme";
+
+const AnimatedEllipse = Animated.createAnimatedComponent(Ellipse);
 
 interface Props {
   size?: number;
   color?: string;
-  /** When false, show a still pebble + rings (reduced-motion / tests). Default true. */
+  /** When false, show a still angled ripple (reduced-motion / tests). Default true. */
   animated?: boolean;
 }
 
+/** Vertical squash — water surface seen at roughly ~20°. */
+const ELLIPSE_ASPECT = 0.32;
+const RING_COUNT = 4;
+
 /**
- * Match "Offer a Ripple" glyph: a pebble and concentric circles spreading
- * outward — same language as `RippleRings`, sized for the frosted action well.
+ * Match "Offer a Ripple" glyph: concentric ellipses in oblique view
+ * (pebble dropped on water, seen at an angle). Front (lower) arcs are
+ * thicker / more opaque; outer rings stay fainter.
  */
 export function RippleMark({
   size = 32,
@@ -22,26 +30,28 @@ export function RippleMark({
   animated = true,
 }: Props) {
   const reduced = useReducedMotion();
-  const rings = 3;
+  const gradId = `rippleDepth-${useId().replace(/:/g, "")}`;
   const values = useMemo(
-    () => Array.from({ length: rings }, () => new Animated.Value(0)),
+    () => Array.from({ length: RING_COUNT }, () => new Animated.Value(0)),
     [],
   );
 
   useEffect(() => {
     if (!animated || reduced) {
-      values.forEach((value, index) => value.setValue(0.35 + index * 0.18));
+      // Staggered still frames so the mark still reads as spreading rings.
+      values.forEach((value, index) => value.setValue(0.28 + index * 0.18));
       return;
     }
-    const duration = Math.max(1400, motion.ring * 0.75);
-    const gap = duration / rings;
+    const duration = Math.max(1600, motion.ring * 0.85);
+    const gap = duration / RING_COUNT;
     const spreads = values.map((value, index) => {
       value.setValue(0);
       const spread = Animated.timing(value, {
         toValue: 1,
         duration,
         easing: Easing.out(Easing.quad),
-        useNativeDriver: NATIVE_DRIVER,
+        // SVG stroke attrs are not native-driver friendly.
+        useNativeDriver: false,
       });
       return Animated.sequence([Animated.delay(index * gap), Animated.loop(spread)]);
     });
@@ -50,56 +60,67 @@ export function RippleMark({
     return () => all.stop();
   }, [animated, reduced, values]);
 
-  const stroke = Math.max(1.75, size * 0.055);
-  const pebble = Math.max(3.5, size * 0.16);
+  const vb = 48;
+  const cx = 24;
+  const cy = 27; // slightly low so the “front” sits in the well
+  const maxRx = 20;
+  const minRx = 3.2;
 
   return (
-    <View
-      style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}
-      accessibilityLabel="Ripple"
-    >
-      {values.map((value, index) => (
-        <Animated.View
-          key={index}
-          pointerEvents="none"
-          style={[
-            styles.ring,
-            {
-              width: size,
-              height: size,
-              borderRadius: size / 2,
-              borderWidth: stroke,
-              borderColor: color,
-              opacity: value.interpolate({
-                inputRange: [0, 0.14, 0.55, 1],
-                outputRange: [0, 0.88, 0.4, 0],
-              }),
-              transform: [
-                { scale: value.interpolate({ inputRange: [0, 1], outputRange: [0.18, 1] }) },
-              ],
-            },
-          ]}
+    <View style={{ width: size, height: size }} accessibilityLabel="Ripple">
+      <Svg width={size} height={size} viewBox={`0 0 ${vb} ${vb}`}>
+        <Defs>
+          <LinearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            {/* Back (upper) arc fades; front (lower) arc holds ink for depth. */}
+            <Stop offset="0" stopColor={color} stopOpacity="0.12" />
+            <Stop offset="0.4" stopColor={color} stopOpacity="0.42" />
+            <Stop offset="0.72" stopColor={color} stopOpacity="0.78" />
+            <Stop offset="1" stopColor={color} stopOpacity="1" />
+          </LinearGradient>
+        </Defs>
+
+        {values.map((value, index) => {
+          // Outer rings (higher index starts later) stay a touch fainter overall.
+          const ringGain = 1 - index * 0.12;
+          const strokeW = 2.35 - index * 0.28;
+          return (
+            <AnimatedEllipse
+              key={index}
+              cx={cx}
+              cy={cy}
+              rx={value.interpolate({
+                inputRange: [0, 1],
+                outputRange: [minRx, maxRx],
+              })}
+              ry={value.interpolate({
+                inputRange: [0, 1],
+                outputRange: [minRx * ELLIPSE_ASPECT, maxRx * ELLIPSE_ASPECT],
+              })}
+              stroke={`url(#${gradId})`}
+              strokeWidth={strokeW}
+              fill="none"
+              opacity={value.interpolate({
+                inputRange: [0, 0.12, 0.55, 1],
+                outputRange: [0, 0.92 * ringGain, 0.45 * ringGain, 0],
+              })}
+            />
+          );
+        })}
+
+        {/* Tiny splash / drop at the origin. */}
+        <Ellipse
+          cx={cx}
+          cy={cy}
+          rx={2.2}
+          ry={2.2 * ELLIPSE_ASPECT}
+          fill={color}
+          opacity={0.95}
         />
-      ))}
-      <View
-        style={{
-          width: pebble,
-          height: pebble,
-          borderRadius: pebble / 2,
-          backgroundColor: color,
-        }}
-      />
+        <Circle cx={cx} cy={cy - 3.2} r={1.15} fill={color} opacity={0.9} />
+      </Svg>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  ring: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-  },
-});
 
 /** @deprecated Prefer RIPPLE_RING_INK — kept so older imports keep compiling. */
 export const rippleMarkDefaultColor = colors.waterMid;
