@@ -2,7 +2,7 @@
   "expo": {
     "name": "SameWave",
     "slug": "same-same",
-    "version": "1.3.22",
+    "version": "1.3.23",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": [
@@ -30,7 +30,7 @@
     },
     "android": {
       "package": "echo.samewaveripple.app",
-      "versionCode": 53,
+      "versionCode": 54,
       "softwareKeyboardLayoutMode": "resize",
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
