@@ -3,10 +3,14 @@ import { test } from "node:test";
 
 import {
   arcBow,
+  attachLinesToClusters,
   boundsOf,
+  buildClusteredView,
   buildMapGeometry,
   buildMapLines,
   buildMapMarkers,
+  CLUSTER_SCREEN_PX,
+  clusterMarkers,
   focusBounds,
   frameTransform,
   geodesicArcPath,
@@ -15,7 +19,6 @@ import {
   markerAt,
   MIN_LINE_LENGTH,
   pathFromPoints,
-  spreadCoincidentMarkers,
   STRAIGHT_BELOW,
   type MapMarker,
   type Point,
@@ -110,16 +113,40 @@ test("arc bow is capped and shrinks for short chords", () => {
   assert.ok(arcBow(0, 100) > 0 && arcBow(1, 100) < 0);
 });
 
-test("several Waves between the same two countries fan out", () => {
+test("several Waves between the same two countries get distinct bows", () => {
+  const projectLonLat = (lonLat: [number, number]): Point => ({
+    x: (lonLat[0] + 180) * 40,
+    y: (90 - lonLat[1]) * 40,
+  });
   const lines = buildMapLines(
     [
-      { id: "a", mine: "GB", theirs: "FR" },
-      { id: "b", mine: "FR", theirs: "GB" },
-      { id: "c", mine: "GB", theirs: "FR" },
+      {
+        id: "a",
+        mine: "GB",
+        theirs: "FR",
+        mineLonLat: [-0.12, 51.5],
+        theirsLonLat: [2.35, 48.85],
+      },
+      {
+        id: "b",
+        mine: "FR",
+        theirs: "GB",
+        mineLonLat: [2.35, 48.85],
+        theirsLonLat: [-0.12, 51.5],
+      },
+      {
+        id: "c",
+        mine: "GB",
+        theirs: "FR",
+        mineLonLat: [-0.12, 51.5],
+        theirsLonLat: [2.35, 48.85],
+      },
     ],
     project,
     options,
+    projectLonLat,
   );
+  assert.equal(lines.length, 3);
   assert.equal(new Set(lines.map((l) => l.d)).size, 3);
 });
 
@@ -223,69 +250,85 @@ test("precise lon/lat endpoints draw an arc and expose both markers", () => {
   assert.ok(markers.find((m) => m.side === "theirs"));
 });
 
-test("coincident mine markers fan out so each stays tappable", () => {
+test("overlapping pins merge into one cluster with a count at the true spot", () => {
   const stacked: MapMarker[] = [
     { waveId: "a", side: "mine", photoId: "p1", point: { x: 100, y: 100 } },
-    { waveId: "b", side: "mine", photoId: "p1", point: { x: 100, y: 100 } },
-    { waveId: "c", side: "mine", photoId: "p1", point: { x: 100, y: 100 } },
+    { waveId: "b", side: "mine", photoId: "p2", point: { x: 100, y: 100 } },
+    { waveId: "c", side: "mine", photoId: "p3", point: { x: 101, y: 100 } },
   ];
-  const spread = spreadCoincidentMarkers(stacked, 12);
-  assert.equal(spread.length, 3);
-  const keys = new Set(spread.map((m) => `${m.point.x.toFixed(1)},${m.point.y.toFixed(1)}`));
-  assert.equal(keys.size, 3);
-  // Ring keeps adjacent centres ≥ minSeparation apart.
-  const d01 = Math.hypot(
-    spread[0]!.point.x - spread[1]!.point.x,
-    spread[0]!.point.y - spread[1]!.point.y,
-  );
-  assert.ok(d01 >= 11.5);
-  for (const marker of spread) {
-    assert.equal(markerAt(spread, marker.point, 6)?.waveId, marker.waveId);
-  }
+  const clusters = clusterMarkers(stacked, 1, 44);
+  assert.equal(clusters.length, 1);
+  assert.equal(clusters[0]!.count, 3);
+  assert.ok(Math.abs(clusters[0]!.point.x - 100.333) < 0.1);
+  assert.equal(clusters[0]!.point.y, 100);
 });
 
-test("spreadCoincidentMarkers clusters near-coincident Europe pins", () => {
-  const clustered = spreadCoincidentMarkers(
-    [
-      { waveId: "a", side: "mine", photoId: "pa", point: { x: 100, y: 100 } },
-      { waveId: "b", side: "mine", photoId: "pb", point: { x: 105, y: 102 } },
-      { waveId: "c", side: "mine", photoId: "pc", point: { x: 108, y: 99 } },
-    ],
-    10,
-    8,
-  );
-  const keys = new Set(clustered.map((m) => `${m.point.x.toFixed(1)},${m.point.y.toFixed(1)}`));
-  assert.equal(keys.size, 3);
-  assert.ok(
-    Math.hypot(
-      clustered[1]!.point.x - clustered[0]!.point.x,
-      clustered[1]!.point.y - clustered[0]!.point.y,
-    ) >= 9.5,
-  );
+test("zooming in splits nearby pins that no longer overlap on screen", () => {
+  const nearby: MapMarker[] = [
+    { waveId: "a", side: "mine", photoId: "pa", point: { x: 100, y: 100 } },
+    { waveId: "b", side: "theirs", photoId: "pb", point: { x: 130, y: 100 } },
+  ];
+  // At scale 1, 30 map units = 30 screen px < 44 → one cluster.
+  assert.equal(clusterMarkers(nearby, 1, 44).length, 1);
+  // At scale 2, 30 map units = 60 screen px > 44 → two pins.
+  const split = clusterMarkers(nearby, 2, 44);
+  assert.equal(split.length, 2);
+  assert.ok(split.every((c) => c.count === 1));
+  assert.deepEqual(split[0]!.point, { x: 100, y: 100 });
+  assert.deepEqual(split[1]!.point, { x: 130, y: 100 });
 });
 
-test("viewScale fans pins farther apart when zoomed out", () => {
+test("lines attach to cluster pins and drop when both ends share a cluster", () => {
   const projectLonLat = (lonLat: [number, number]): Point => ({
     x: (lonLat[0] + 180) * 40,
     y: (90 - lonLat[1]) * 40,
   });
   const waves = [
-    { id: "a", mine: "GB", theirs: "FR", mineLonLat: [-0.12, 51.5] as [number, number], theirsLonLat: [2.35, 48.85] as [number, number] },
-    { id: "b", mine: "GB", theirs: "DE", mineLonLat: [-0.12, 51.5] as [number, number], theirsLonLat: [13.4, 52.52] as [number, number] },
-    { id: "c", mine: "GB", theirs: "IT", mineLonLat: [-0.12, 51.5] as [number, number], theirsLonLat: [12.5, 41.9] as [number, number] },
+    {
+      id: "a",
+      mine: "GB",
+      theirs: "FR",
+      mineLonLat: [-0.12, 51.5] as [number, number],
+      theirsLonLat: [2.35, 48.85] as [number, number],
+    },
+    {
+      id: "b",
+      mine: "GB",
+      theirs: "DE",
+      mineLonLat: [-0.12, 51.5] as [number, number],
+      theirsLonLat: [13.4, 52.52] as [number, number],
+    },
   ];
-  const far = buildMapGeometry(waves, project, { ...options, viewScale: 1, fanScreenPx: 16 }, projectLonLat);
-  const near = buildMapGeometry(waves, project, { ...options, viewScale: 4, fanScreenPx: 16 }, projectLonLat);
-  const minesFar = far.markers.filter((m) => m.side === "mine");
-  const minesNear = near.markers.filter((m) => m.side === "mine");
-  const span = (ms: typeof minesFar) => {
-    const xs = ms.map((m) => m.point.x);
-    return Math.max(...xs) - Math.min(...xs);
-  };
-  assert.ok(span(minesFar) > span(minesNear), "zoom-out should spiderfy more in map units");
+  const zoomedOut = buildClusteredView(
+    waves,
+    project,
+    { ...options, viewScale: 1, clusterScreenPx: CLUSTER_SCREEN_PX },
+    projectLonLat,
+  );
+  assert.ok(zoomedOut.clusters.some((c) => c.count >= 2), "London mines should merge");
+  for (const line of zoomedOut.lines) {
+    const start = line.points[0]!;
+    const end = line.points[line.points.length - 1]!;
+    const hitStart = zoomedOut.clusters.some(
+      (c) => Math.hypot(c.point.x - start.x, c.point.y - start.y) < 0.5,
+    );
+    const hitEnd = zoomedOut.clusters.some(
+      (c) => Math.hypot(c.point.x - end.x, c.point.y - end.y) < 0.5,
+    );
+    assert.ok(hitStart && hitEnd, "line ends on cluster pins");
+  }
+
+  // Same-city pair with no geographic chord stays lineless inside one cluster.
+  const same = buildMapGeometry(
+    [{ id: "home", mine: "GB", theirs: "GB" }],
+    project,
+    options,
+  );
+  const clusters = clusterMarkers(same.markers, 1, 44);
+  assert.equal(attachLinesToClusters(same.lines, same.markers, clusters).length, 0);
 });
 
-test("buildMapMarkers spreads shared London sample endpoints", () => {
+test("buildMapMarkers keeps shared London endpoints at the true spot", () => {
   const projectLonLat = (lonLat: [number, number]): Point => ({
     x: (lonLat[0] + 180) * 2,
     y: (90 - lonLat[1]) * 2,
@@ -306,10 +349,14 @@ test("buildMapMarkers spreads shared London sample endpoints", () => {
     (m) => m.side === "mine",
   );
   assert.equal(markers.length, 2);
-  assert.notEqual(
+  // True positions — no spiderfy offset.
+  assert.equal(
     `${markers[0]!.point.x},${markers[0]!.point.y}`,
     `${markers[1]!.point.x},${markers[1]!.point.y}`,
   );
+  const clustered = clusterMarkers(markers, 1, 44);
+  assert.equal(clustered.length, 1);
+  assert.equal(clustered[0]!.count, 2);
 });
 
 test("pathFromPoints rejects chords shorter than MIN_LINE_LENGTH", () => {

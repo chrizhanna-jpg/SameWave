@@ -2,8 +2,10 @@
  * Shapes for the Waves map. One line per Wave.
  *
  * Two distinct pins: a calm arc (or short straight) between them. Never a
- * self-loop. Near-zero pairs keep pins only. Several Waves that share an
- * endpoint fan their pins so each stays tappable; lines always run pin-to-pin.
+ * self-loop. Near-zero pairs keep pins only. Pins always sit at their true
+ * geographic positions; when they would overlap on screen they merge into a
+ * cluster pin with a count, and lines attach to that cluster until zoom splits
+ * them apart again.
  */
 import { normalizeCountryCode } from "../data/countries";
 import { centroidLonLatForCountry } from "../data/countryCentroids";
@@ -46,8 +48,8 @@ export interface MapLine {
 
 export interface MapGeometryOptions {
   /**
-   * Legacy size hint (used as a fallback fan when viewScale is unset).
-   * Loops are gone — kept so callers that already pass `loopSize` keep compiling.
+   * Legacy size hint. Loops/fan are gone — kept so callers that already pass
+   * `loopSize` keep compiling.
    */
   loopSize: number;
   /** Used when neither photo has a country. Usually the user's home country. */
@@ -64,13 +66,26 @@ export interface MapGeometryOptions {
    */
   straightBelow?: number;
   /**
-   * Current map view scale (screen px per map unit). When set with
-   * `fanScreenPx`, overlapping pins fan so their on-screen centres stay
-   * at least that many pixels apart — and ease back toward truth as you zoom.
+   * Current map view scale (screen px per map unit). Used with
+   * `clusterScreenPx` to merge overlapping pins into count badges.
    */
   viewScale?: number;
-  /** Minimum on-screen separation between pin centres (px). Default 16. */
+  /**
+   * Pins closer than this many screen pixels merge into one cluster.
+   * Default 44 (matches the minimum hit target).
+   */
+  clusterScreenPx?: number;
+  /** @deprecated Use clusterScreenPx. */
   fanScreenPx?: number;
+}
+
+/** A displayed pin: one photo, or several merged at the current zoom. */
+export interface MapCluster {
+  id: string;
+  /** True geographic position (centroid of members — no spiderfy offset). */
+  point: Point;
+  count: number;
+  members: readonly MapMarker[];
 }
 
 /** Where a Wave is drawn when no country is known: open water in the Atlantic. */
@@ -327,17 +342,8 @@ export function buildMapGeometry(
     placedByWave.set(wave.id, { mine, theirs });
   }
 
-  // Fan overlapping pins in screen space so none hides another. Map-unit
-  // separation shrinks as you zoom in (pins ease back toward true spots).
-  const viewScale = Math.max(0.05, options.viewScale ?? 1);
-  const fanScreen = options.fanScreenPx ?? 16;
-  const minSepMap =
-    options.viewScale != null
-      ? fanScreen / viewScale
-      : Math.max(8, Math.min(12, options.loopSize * 0.18));
-  const clusterMap =
-    options.viewScale != null ? Math.max(minSepMap * 0.9, 2 / viewScale) : Math.min(8, minSepMap);
-  const markers = spreadCoincidentMarkers(rawMarkers, minSepMap, clusterMap);
+  // Pins stay at true geographic positions — clustering is a separate pass.
+  const markers = rawMarkers;
 
   const arcCounts = new Map<string, number>();
   const lines: MapLine[] = [];
@@ -348,14 +354,11 @@ export function buildMapGeometry(
     if (!mineMark || !theirsMark) continue;
 
     const placed = placedByWave.get(wave.id);
-    // Decide from geography *before* pin fan — fanning coincident ends apart
-    // must not create short stub lines that look like UK/France curls.
     const geoA = placed?.mine.point ?? mineMark.point;
     const geoB = placed?.theirs.point ?? theirsMark.point;
     const geoChord = Math.hypot(geoA.x - geoB.x, geoA.y - geoB.y);
     if (geoChord < minLine) continue; // pins only — never a loop or stub
 
-    // Strokes always end on the (possibly fanned) visible pins.
     const a = mineMark.point;
     const b = theirsMark.point;
     const chord = Math.hypot(a.x - b.x, a.y - b.y);
@@ -379,13 +382,10 @@ export function buildMapGeometry(
     }
 
     const bow = arcBow(index, chord);
-    // Prefer geodesic when both lon/lats are known; otherwise bow in screen space
-    // between the (already fanned) pin positions so the stroke ends on the pins.
     let shape: Shape | null = null;
     const mineLon = placed?.mine.lonLat ?? null;
     const theirsLon = placed?.theirs.lonLat ?? null;
     if (mineLon && theirsLon && projectLonLat && index === 0) {
-      // First of a pair: geographic arc, then nudge ends onto the fanned pins.
       const geo = geodesicArcPath(mineLon, theirsLon, projectLonLat, bow, minLine);
       if (geo && geo.points.length >= 2) {
         const mid = geo.points.slice(1, -1);
@@ -432,82 +432,137 @@ export function buildMapMarkers(
   });
 }
 
+/** Default on-screen merge distance (also the minimum pin hit target). */
+export const CLUSTER_SCREEN_PX = 44;
+
+function markerKey(m: MapMarker): string {
+  return `${m.waveId}:${m.side}`;
+}
+
 /**
- * Nudge markers that sit on the same (or nearly the same) map point onto a
- * ring so centres stay at least `minSeparation` map units apart. Groups by
- * proximity across both sides — a London mine and London theirs fan together.
- * `clusterWithin` merges points closer than that many map units into one ring.
+ * Merge markers whose on-screen centres fall within `clusterScreenPx`.
+ * Cluster pin sits at the centroid of members' true positions — never offset.
+ * Zooming in (larger viewScale) shrinks the map-unit threshold so clusters split.
+ */
+export function clusterMarkers(
+  markers: readonly MapMarker[],
+  viewScale: number,
+  clusterScreenPx = CLUSTER_SCREEN_PX,
+): MapCluster[] {
+  const scale = Math.max(0.05, viewScale);
+  const radiusMap = clusterScreenPx / scale;
+  type Acc = { members: MapMarker[]; sx: number; sy: number };
+  const groups: Acc[] = [];
+
+  for (const marker of markers) {
+    let joined = -1;
+    for (let i = 0; i < groups.length; i++) {
+      const g = groups[i]!;
+      const n = g.members.length;
+      const cx = g.sx / n;
+      const cy = g.sy / n;
+      if (Math.hypot(marker.point.x - cx, marker.point.y - cy) <= radiusMap) {
+        joined = i;
+        break;
+      }
+    }
+    if (joined < 0) {
+      groups.push({ members: [marker], sx: marker.point.x, sy: marker.point.y });
+    } else {
+      const g = groups[joined]!;
+      g.members.push(marker);
+      g.sx += marker.point.x;
+      g.sy += marker.point.y;
+    }
+  }
+
+  return groups.map((g, i) => {
+    const n = g.members.length;
+    const point = { x: g.sx / n, y: g.sy / n };
+    const id =
+      n === 1
+        ? markerKey(g.members[0]!)
+        : `cluster:${i}:${g.members
+            .map(markerKey)
+            .sort()
+            .join("|")}`;
+    return { id, point, count: n, members: g.members };
+  });
+}
+
+/**
+ * Redraw lines so each end sits on the visible cluster pin for that endpoint.
+ * Drops a line when both ends collapse into the same cluster.
+ */
+export function attachLinesToClusters(
+  lines: readonly MapLine[],
+  markers: readonly MapMarker[],
+  clusters: readonly MapCluster[],
+  options: Pick<MapGeometryOptions, "minLineLength" | "minArcLength" | "straightBelow"> = {},
+): MapLine[] {
+  const minLine = minLineFor(options as MapGeometryOptions);
+  const straightBelow = straightBelowFor(options as MapGeometryOptions);
+  const byKey = new Map<string, MapCluster>();
+  for (const cluster of clusters) {
+    for (const m of cluster.members) byKey.set(markerKey(m), cluster);
+  }
+  const findCluster = (waveId: string, side: "mine" | "theirs") => {
+    const marker = markers.find((m) => m.waveId === waveId && m.side === side);
+    if (!marker) return null;
+    return byKey.get(markerKey(marker)) ?? null;
+  };
+
+  const out: MapLine[] = [];
+  const pairCounts = new Map<string, number>();
+  for (const line of lines) {
+    const mine = findCluster(line.waveId, "mine");
+    const theirs = findCluster(line.waveId, "theirs");
+    if (!mine || !theirs) continue;
+    if (mine.id === theirs.id) continue; // both ends in one pin — no stroke
+    const a = mine.point;
+    const b = theirs.point;
+    const chord = Math.hypot(a.x - b.x, a.y - b.y);
+    if (chord < minLine) continue;
+    const pairKey = mine.id < theirs.id ? `${mine.id}|${theirs.id}` : `${theirs.id}|${mine.id}`;
+    const index = pairCounts.get(pairKey) ?? 0;
+    pairCounts.set(pairKey, index + 1);
+    const shape =
+      chord < straightBelow
+        ? straightPath(a, b, minLine)
+        : arcPath(a, b, arcBow(index, chord), minLine);
+    if (shape) out.push({ waveId: line.waveId, kind: chord < straightBelow ? "straight" : "arc", ...shape });
+  }
+  return out;
+}
+
+/**
+ * Full clustered view for the current zoom: true-position markers, cluster
+ * pins, and lines attached to those pins.
+ */
+export function buildClusteredView(
+  waves: readonly MapWaveInput[],
+  project: ProjectCountry,
+  options: MapGeometryOptions,
+  projectLonLat?: ProjectLonLat,
+): { markers: MapMarker[]; clusters: MapCluster[]; lines: MapLine[] } {
+  const { markers, lines: rawLines } = buildMapGeometry(waves, project, options, projectLonLat);
+  const viewScale = Math.max(0.05, options.viewScale ?? 1);
+  const clusterPx = options.clusterScreenPx ?? options.fanScreenPx ?? CLUSTER_SCREEN_PX;
+  const clusters = clusterMarkers(markers, viewScale, clusterPx);
+  const lines = attachLinesToClusters(rawLines, markers, clusters, options);
+  return { markers, clusters, lines };
+}
+
+/**
+ * @deprecated Spiderfy removed — returns markers unchanged (true positions).
+ * Prefer `clusterMarkers`.
  */
 export function spreadCoincidentMarkers(
   markers: readonly MapMarker[],
-  minSeparation: number,
-  clusterWithin = 0,
+  _minSeparation?: number,
+  _clusterWithin?: number,
 ): MapMarker[] {
-  const anchors: Point[] = [];
-  const groupIds: number[] = [];
-  for (const marker of markers) {
-    let gid = -1;
-    if (clusterWithin <= 0) {
-      const exact = `${marker.point.x.toFixed(1)},${marker.point.y.toFixed(1)}`;
-      for (let i = 0; i < anchors.length; i++) {
-        const a = anchors[i]!;
-        if (`${a.x.toFixed(1)},${a.y.toFixed(1)}` === exact) {
-          gid = i;
-          break;
-        }
-      }
-    } else {
-      for (let i = 0; i < anchors.length; i++) {
-        const a = anchors[i]!;
-        if (Math.hypot(a.x - marker.point.x, a.y - marker.point.y) <= clusterWithin) {
-          gid = i;
-          break;
-        }
-      }
-    }
-    if (gid < 0) {
-      gid = anchors.length;
-      anchors.push({ ...marker.point });
-    }
-    groupIds.push(gid);
-  }
-
-  const groups = new Map<number, number[]>();
-  for (let i = 0; i < markers.length; i++) {
-    const gid = groupIds[i]!;
-    const list = groups.get(gid) ?? [];
-    list.push(i);
-    groups.set(gid, list);
-  }
-
-  const out = markers.map((m) => ({ ...m, point: { ...m.point } }));
-  for (const indices of groups.values()) {
-    const n = indices.length;
-    if (n <= 1) continue;
-    // Ring radius so adjacent centres are ≥ minSeparation apart.
-    const ring = minSeparation / (2 * Math.sin(Math.PI / n));
-    // Anchor at the cluster centroid (stable as membership grows).
-    let cx = 0;
-    let cy = 0;
-    for (const i of indices) {
-      cx += markers[i]!.point.x;
-      cy += markers[i]!.point.y;
-    }
-    cx /= n;
-    cy /= n;
-    for (let k = 0; k < n; k++) {
-      const i = indices[k]!;
-      const angle = -Math.PI / 2 + (k * 2 * Math.PI) / n;
-      out[i] = {
-        ...out[i]!,
-        point: {
-          x: cx + ring * Math.cos(angle),
-          y: cy + ring * Math.sin(angle),
-        },
-      };
-    }
-  }
-  return out;
+  return markers.map((m) => ({ ...m, point: { ...m.point } }));
 }
 
 /** Axis-aligned bounds of points, or null when empty. */
@@ -611,6 +666,25 @@ export function markerAt(
       (d === bestDist && marker.waveId < best.waveId)
     ) {
       best = marker;
+      bestDist = d;
+    }
+  }
+  return best;
+}
+
+/** Nearest cluster within `reach` (map units), or null. */
+export function clusterAt(
+  clusters: readonly MapCluster[],
+  point: Point,
+  reach: number,
+): MapCluster | null {
+  let best: MapCluster | null = null;
+  let bestDist = Infinity;
+  for (const cluster of clusters) {
+    const d = Math.hypot(point.x - cluster.point.x, point.y - cluster.point.y);
+    if (d > reach) continue;
+    if (!best || d < bestDist || (d === bestDist && cluster.id < best.id)) {
+      best = cluster;
       bestDist = d;
     }
   }

@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Animated,
   StyleSheet,
+  Text,
   View,
   type LayoutChangeEvent,
 } from "react-native";
@@ -25,40 +26,39 @@ import type { GeometryCollection, Topology } from "topojson-specification";
 import land110 from "world-atlas/land-110m.json";
 
 import {
-  buildMapGeometry,
-  buildMapMarkers,
+  buildClusteredView,
+  CLUSTER_SCREEN_PX,
   focusBounds,
   frameTransform,
   lineAt,
+  type MapCluster,
   type MapLine,
-  type MapMarker,
   type Point,
 } from "@/core/mapGeometry";
 import type { Wave } from "@/core/types";
 import { centroidLonLatForCountry } from "@/data/countryCentroids";
 import { useReducedMotion } from "@/device/motion";
-import { colors, motion } from "@/theme";
+import { colors, motion, type as typeStyle } from "@/theme";
 
 const topology = land110 as unknown as Topology;
 const land = feature(topology, topology.objects.land as GeometryCollection);
 
 /** Width of the Equal Earth world divided by its height. */
 const WORLD_ASPECT = 2.054;
-/** How close a touch has to be to a line (map units) — scaled by view. */
+/** How close a touch has to be to a line (screen px). */
 const LINE_TOUCH_SCREEN = 18;
-/** Finger hit radius for pins in screen pixels (visual pin is smaller). */
-const MARKER_TOUCH_SCREEN = 14;
+/** Minimum pin hit target (screen px diameter → radius). */
+const MARKER_HIT_R = CLUSTER_SCREEN_PX / 2;
 /** Invisible mid-path hit target in screen pixels. */
 const MIDPOINT_HIT_SCREEN = 14;
-/** Visual pin — half the old r=7, constant on screen while the map zooms. */
-const PIN_OUTER_R = 3.5;
-const PIN_CORE_R = 1.25;
-const PIN_STROKE = 1;
-/** Keep fanned pin centres at least this many screen px apart. */
-const FAN_SCREEN_PX = 22;
+/** Visual pin — screen-fixed, smaller than the 44px hit area. */
+const PIN_OUTER_R = 5;
+const PIN_CORE_R = 1.75;
+const PIN_STROKE = 1.25;
+const BADGE_R = 7;
 
 const MIN_SCALE = 1;
-const MAX_SCALE = 5;
+const MAX_SCALE = 12;
 
 interface Props {
   waves: readonly Wave[];
@@ -74,8 +74,8 @@ interface Props {
 
 /**
  * Keepsake map: fills the tab, frames the first view on wave pins, pinch-zoom
- * and pan via react-native-gesture-handler (no react-native-maps).
- * Pins stay a constant on-screen size and fan so none hides another.
+ * and pan. Pins stay screen-fixed; overlapping ones merge into a count badge
+ * at their true geographic spot and split apart as you zoom in.
  */
 export function WorldMap({
   waves,
@@ -96,7 +96,6 @@ export function WorldMap({
 
   const map = useMemo(() => {
     if (!box) return null;
-    // World canvas is at least as tall as the tab and wide enough for Equal Earth.
     const height = Math.max(box.height, 220);
     const width = Math.max(box.width, Math.round(height * WORLD_ASPECT));
     const fittedHeight = Math.max(box.height, Math.round(width / WORLD_ASPECT));
@@ -128,45 +127,63 @@ export function WorldMap({
   const pan0 = useRef({ x: 0, y: 0 });
   const live = useRef({ scale: 1, x: 0, y: 0 });
   const framedFor = useRef<string>("");
-  /** Screen-space view used for pin overlay + fan (synced from gestures). */
   const [view, setView] = useState({ scale: 1, x: 0, y: 0 });
 
-  const publishView = useCallback((next: { scale: number; x: number; y: number }) => {
-    live.current = next;
-    scale.setValue(next.scale);
-    translateX.setValue(next.x);
-    translateY.setValue(next.y);
-    setView(next);
-  }, [scale, translateX, translateY]);
+  const publishView = useCallback(
+    (next: { scale: number; x: number; y: number }) => {
+      live.current = next;
+      scale.setValue(next.scale);
+      translateX.setValue(next.x);
+      translateY.setValue(next.y);
+      setView(next);
+    },
+    [scale, translateX, translateY],
+  );
 
-  // Quantise scale so fan/lines rebuild ~10× per zoom step, not every pan frame.
-  const fanScale = Math.round(view.scale * 10) / 10;
+  const waveInputs = useMemo(
+    () =>
+      waves.map((wave) => ({
+        id: wave.id,
+        mine: wave.mine.countryCode,
+        theirs: wave.theirs.countryCode,
+        mineLonLat:
+          wave.mine.lng != null && wave.mine.lat != null
+            ? ([wave.mine.lng, wave.mine.lat] as [number, number])
+            : null,
+        theirsLonLat:
+          wave.theirs.lng != null && wave.theirs.lat != null
+            ? ([wave.theirs.lng, wave.theirs.lat] as [number, number])
+            : null,
+      })),
+    [waves],
+  );
+
+  // Quantise scale so clusters rebuild ~10× per zoom step, not every pan frame.
+  const clusterScale = Math.round(view.scale * 10) / 10;
 
   const geometry = useMemo(() => {
-    if (!map) return { lines: [] as MapLine[], markers: [] as MapMarker[] };
+    if (!map) return { lines: [] as MapLine[], clusters: [] as MapCluster[] };
     const opts = {
       loopSize: map.loopSize,
       fallbackCountry: homeCountry,
-      viewScale: fanScale,
-      fanScreenPx: FAN_SCREEN_PX,
+      viewScale: clusterScale,
+      clusterScreenPx: CLUSTER_SCREEN_PX,
     };
-    const inputs = waves.map((wave) => ({
-      id: wave.id,
-      mine: wave.mine.countryCode,
-      theirs: wave.theirs.countryCode,
-      mineLonLat:
-        wave.mine.lng != null && wave.mine.lat != null
-          ? ([wave.mine.lng, wave.mine.lat] as [number, number])
-          : null,
-      theirsLonLat:
-        wave.theirs.lng != null && wave.theirs.lat != null
-          ? ([wave.theirs.lng, wave.theirs.lat] as [number, number])
-          : null,
-    }));
-    const { lines } = buildMapGeometry(inputs, map.project, opts, map.projectLonLat);
-    const markers = buildMapMarkers(waves, map.project, opts, map.projectLonLat);
-    return { lines, markers };
-  }, [map, waves, homeCountry, fanScale]);
+    const clustered = buildClusteredView(waveInputs, map.project, opts, map.projectLonLat);
+    // Restore real photo ids on single-member clusters.
+    const clusters = clustered.clusters.map((c) => {
+      if (c.count !== 1) return c;
+      const m = c.members[0]!;
+      const wave = waves.find((w) => w.id === m.waveId);
+      if (!wave) return c;
+      const photoId = m.side === "mine" ? wave.mine.photoId : wave.theirs.photoId;
+      return {
+        ...c,
+        members: [{ ...m, photoId }],
+      };
+    });
+    return { lines: clustered.lines, clusters };
+  }, [map, waveInputs, homeCountry, clusterScale, waves]);
 
   const clampPan = useCallback(
     (s: number, x: number, y: number) => {
@@ -185,45 +202,54 @@ export function WorldMap({
     [map, box],
   );
 
-  // Frame the first view on wave pins (or home country) so the tab has no dead band.
+  const zoomToBounds = useCallback(
+    (points: readonly Point[], minScaleBump = 1.35) => {
+      if (!map || !box || points.length === 0) return;
+      const bounds = focusBounds([...points], points[0] ?? null, 1) ?? {
+        minX: points[0]!.x - 20,
+        minY: points[0]!.y - 20,
+        maxX: points[0]!.x + 20,
+        maxY: points[0]!.y + 20,
+      };
+      const next = frameTransform(bounds, box, {
+        padding: 56,
+        minScale: Math.min(MAX_SCALE, Math.max(live.current.scale * minScaleBump, MIN_SCALE)),
+        maxScale: MAX_SCALE,
+      });
+      const clamped = clampPan(next.scale, next.x, next.y);
+      publishView({ scale: next.scale, x: clamped.x, y: clamped.y });
+    },
+    [map, box, clampPan, publishView],
+  );
+
+  // Frame the first view on the local wave cluster (Europe when home is GB).
   useEffect(() => {
     if (!map || !box) return;
     const key = `${map.width}x${map.height}:${waves.map((w) => w.id).sort().join(",")}`;
     if (framedFor.current === key) return;
     framedFor.current = key;
 
-    // Seed fan at a mid zoom so the first layout is already readable.
-    const seedScale = 2.5;
-    const seedOpts = {
-      loopSize: map.loopSize,
-      fallbackCountry: homeCountry,
-      viewScale: seedScale,
-      fanScreenPx: FAN_SCREEN_PX,
-    };
-    const inputs = waves.map((wave) => ({
-      id: wave.id,
-      mine: wave.mine.countryCode,
-      theirs: wave.theirs.countryCode,
-      mineLonLat:
-        wave.mine.lng != null && wave.mine.lat != null
-          ? ([wave.mine.lng, wave.mine.lat] as [number, number])
-          : null,
-      theirsLonLat:
-        wave.theirs.lng != null && wave.theirs.lat != null
-          ? ([wave.theirs.lng, wave.theirs.lat] as [number, number])
-          : null,
-    }));
-    const seeded = buildMapGeometry(inputs, map.project, seedOpts, map.projectLonLat);
+    const seed = buildClusteredView(
+      waveInputs,
+      map.project,
+      {
+        loopSize: map.loopSize,
+        fallbackCountry: homeCountry,
+        viewScale: 2.5,
+        clusterScreenPx: CLUSTER_SCREEN_PX,
+      },
+      map.projectLonLat,
+    );
     const home = homeCountry ? map.project(homeCountry) : null;
-    const pinPoints = seeded.markers.map((m) => m.point);
-    const lineTips = seeded.lines.map((l) => l.tip);
+    const pinPoints = seed.clusters.map((c) => c.point);
+    const lineTips = seed.lines.map((l) => l.tip);
     const bounds = focusBounds([...pinPoints, ...lineTips], home);
     let next: { scale: number; x: number; y: number };
     if (bounds) {
       next = frameTransform(bounds, box, {
         padding: 48,
         minScale: MIN_SCALE,
-        maxScale: MAX_SCALE,
+        maxScale: 5,
       });
     } else {
       const centreX = home ? home.x : map.width / 2;
@@ -236,7 +262,7 @@ export function WorldMap({
     }
     const clamped = clampPan(next.scale, next.x, next.y);
     publishView({ scale: next.scale, x: clamped.x, y: clamped.y });
-  }, [map, box, waves, homeCountry, clampPan, publishView]);
+  }, [map, box, waves, waveInputs, homeCountry, clampPan, publishView]);
 
   const onPinchGestureEvent = useCallback(
     (event: PinchGestureHandlerGestureEvent) => {
@@ -283,24 +309,26 @@ export function WorldMap({
   const onMapPress = useCallback(
     (screenX: number, screenY: number) => {
       const s = live.current.scale || 1;
-      // Pins are hit in screen space (constant size overlay).
-      for (const marker of geometry.markers) {
-        const sx = marker.point.x * s + live.current.x;
-        const sy = marker.point.y * s + live.current.y;
-        if (Math.hypot(sx - screenX, sy - screenY) <= MARKER_TOUCH_SCREEN) {
-          onOpenPhoto(marker.waveId, marker.photoId);
+      for (const cluster of geometry.clusters) {
+        const sx = cluster.point.x * s + live.current.x;
+        const sy = cluster.point.y * s + live.current.y;
+        if (Math.hypot(sx - screenX, sy - screenY) > MARKER_HIT_R) continue;
+        if (cluster.count > 1) {
+          zoomToBounds(cluster.members.map((m) => m.point));
           return;
         }
+        const only = cluster.members[0]!;
+        onOpenPhoto(only.waveId, only.photoId);
+        return;
       }
       const mapPoint = {
         x: (screenX - live.current.x) / s,
         y: (screenY - live.current.y) / s,
       };
-      const lineReach = LINE_TOUCH_SCREEN / s;
-      const line = lineAt(geometry.lines, mapPoint, lineReach);
+      const line = lineAt(geometry.lines, mapPoint, LINE_TOUCH_SCREEN / s);
       if (line) onOpenWave(line.waveId);
     },
-    [geometry.lines, geometry.markers, onOpenPhoto, onOpenWave],
+    [geometry.lines, geometry.clusters, onOpenPhoto, onOpenWave, zoomToBounds],
   );
 
   return (
@@ -359,18 +387,16 @@ export function WorldMap({
                       </Svg>
                     </Animated.View>
 
-                    {/* Pins live in screen space so they stay a constant size. */}
                     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-                      {geometry.markers.map((marker) => {
-                        const left =
-                          marker.point.x * view.scale + view.x - PIN_OUTER_R - PIN_STROKE;
-                        const top =
-                          marker.point.y * view.scale + view.y - PIN_OUTER_R - PIN_STROKE;
+                      {geometry.clusters.map((cluster) => {
+                        const left = cluster.point.x * view.scale + view.x - MARKER_HIT_R;
+                        const top = cluster.point.y * view.scale + view.y - MARKER_HIT_R;
                         return (
-                          <PhotoPin
-                            key={`${marker.waveId}-${marker.side}-${marker.photoId}`}
+                          <ClusterPin
+                            key={cluster.id}
                             left={left}
                             top={top}
+                            count={cluster.count}
                           />
                         );
                       })}
@@ -386,31 +412,36 @@ export function WorldMap({
   );
 }
 
-function PhotoPin({ left, top }: { left: number; top: number }) {
-  const size = (PIN_OUTER_R + PIN_STROKE) * 2;
+function ClusterPin({ left, top, count }: { left: number; top: number; count: number }) {
+  const hit = CLUSTER_SCREEN_PX;
+  const pin = (PIN_OUTER_R + PIN_STROKE) * 2;
   return (
-    <View
-      pointerEvents="none"
-      style={[
-        styles.pin,
-        {
-          left,
-          top,
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          borderWidth: PIN_STROKE,
-        },
-      ]}
-    >
+    <View pointerEvents="none" style={[styles.hit, { left, top, width: hit, height: hit }]}>
       <View
-        style={{
-          width: PIN_CORE_R * 2,
-          height: PIN_CORE_R * 2,
-          borderRadius: PIN_CORE_R,
-          backgroundColor: colors.waterMid,
-        }}
-      />
+        style={[
+          styles.pin,
+          {
+            width: pin,
+            height: pin,
+            borderRadius: pin / 2,
+            borderWidth: PIN_STROKE,
+          },
+        ]}
+      >
+        <View
+          style={{
+            width: PIN_CORE_R * 2,
+            height: PIN_CORE_R * 2,
+            borderRadius: PIN_CORE_R,
+            backgroundColor: colors.waterMid,
+          }}
+        />
+      </View>
+      {count > 1 ? (
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>{count > 9 ? "9+" : String(count)}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -499,12 +530,35 @@ function pathLength(points: Point[]): number {
 const styles = StyleSheet.create({
   fill: { flex: 1, alignSelf: "stretch", backgroundColor: colors.background, overflow: "hidden" },
   stage: {},
-  pin: {
+  hit: {
     position: "absolute",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pin: {
     backgroundColor: colors.white,
     borderColor: colors.waterMid,
     alignItems: "center",
     justifyContent: "center",
     opacity: 0.95,
+  },
+  badge: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    minWidth: BADGE_R * 2,
+    height: BADGE_R * 2,
+    borderRadius: BADGE_R,
+    backgroundColor: colors.waterMid,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 3,
+  },
+  badgeText: {
+    ...typeStyle.caption,
+    fontSize: 10,
+    lineHeight: 12,
+    color: colors.white,
+    fontWeight: "700",
   },
 });
