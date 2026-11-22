@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   isMatchableCandidate,
   isStockOrDemoCandidate,
+  isStrongMatchCard,
   matchRankBucket,
   rankMatchCandidates,
 } from "../core/matchDeck";
@@ -31,28 +32,14 @@ test("stock CDN and stock_/atlas_global_seed_ ids are filtered out", () => {
     }),
     true,
   );
-  assert.equal(
-    isStockOrDemoCandidate({
-      id: "atlas_global_seed_1",
-      uri: "/api/photos/atlas_global_seed_1/image",
-    }),
-    true,
-  );
-  assert.equal(
-    isStockOrDemoCandidate({
-      id: "live-9",
-      uri: "https://images.unsplash.com/photo-x?w=960",
-    }),
-    true,
-  );
   assert.equal(isMatchableCandidate(real("live-1", 12, "pets", "joy")), true);
 });
 
-test("ranking prefers same feeling first, then related, then other", () => {
+test("strong cards only — neither feeling nor topic is dropped", () => {
   const mine = { emotion: "joy", topic: "pets" };
   const ranked = rankMatchCandidates(
     [
-      real("related-feeling", 40, "dinner", "hope"), // hope related to joy
+      real("related-feeling", 40, "dinner", "hope"),
       real("topic-only", 30, "pets", "anger"),
       real("same-feeling-topic", 10, "pets", "joy"),
       real("same-feeling", 12, "travel", "joy"),
@@ -68,11 +55,11 @@ test("ranking prefers same feeling first, then related, then other", () => {
     ],
     mine,
   );
-  // topic-only (anger+pets) and neither both land in `other`; higher server score first.
   assert.deepEqual(
     ranked.map((c) => c.id),
-    ["same-feeling-topic", "same-feeling", "related-feeling", "neither", "topic-only"],
+    ["same-feeling-topic", "same-feeling", "related-feeling", "topic-only"],
   );
+  assert.equal(ranked.some((c) => c.id === "neither"), false);
 });
 
 test("own photos and exclude ids are dropped", () => {
@@ -100,25 +87,33 @@ test("inbound wavedAtYou candidates sort ahead of equal-tier peers", () => {
   );
 });
 
-test("bucket helper is feeling-first", () => {
+test("bucket helper is feeling-first; null when neither feeling nor topic", () => {
   assert.equal(
-    matchRankBucket({ emotion: "joy", topic: "pets" }, { emotion: "joy", topic: "pets" }).bucket,
+    matchRankBucket({ emotion: "joy", topic: "pets" }, { emotion: "joy", topic: "pets" })?.bucket,
     "same-feeling+topic",
   );
   assert.equal(
-    matchRankBucket({ emotion: "joy", topic: "pets" }, { emotion: "joy", topic: "dinner" }).bucket,
+    matchRankBucket({ emotion: "joy", topic: "pets" }, { emotion: "joy", topic: "dinner" })?.bucket,
     "same-feeling",
   );
   assert.equal(
-    matchRankBucket({ emotion: "joy", topic: "pets" }, { emotion: "hope", topic: "pets" }).bucket,
+    matchRankBucket({ emotion: "joy", topic: "pets" }, { emotion: "hope", topic: "pets" })?.bucket,
     "related-feeling+topic",
   );
   assert.equal(
-    matchRankBucket({ emotion: "joy", topic: "pets" }, { emotion: "hope", topic: "dinner" }).bucket,
+    matchRankBucket({ emotion: "joy", topic: "pets" }, { emotion: "hope", topic: "dinner" })?.bucket,
     "related-feeling",
   );
   assert.equal(
-    matchRankBucket({ emotion: "joy", topic: "pets" }, { emotion: "anger", topic: "dinner" }).bucket,
-    "other",
+    matchRankBucket({ emotion: "joy", topic: "pets" }, { emotion: "anger", topic: "pets" })?.bucket,
+    "topic-only",
+  );
+  assert.equal(
+    matchRankBucket({ emotion: "joy", topic: "pets" }, { emotion: "anger", topic: "dinner" }),
+    null,
+  );
+  assert.equal(
+    isStrongMatchCard({ emotion: "joy", topic: "pets" }, { emotion: "anger", topic: "dinner" }),
+    false,
   );
 });

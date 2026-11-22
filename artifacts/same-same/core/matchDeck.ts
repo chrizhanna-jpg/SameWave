@@ -25,19 +25,32 @@ export function isMatchableCandidate(candidate: Pick<Candidate, "id" | "uri">): 
   return !isStockOrDemoCandidate(candidate);
 }
 
-/** Feeling-first buckets (higher = better). `other` kept until strong-card cut. */
+/**
+ * Feeling-first strong buckets. Topic-only (no feeling affinity) is still a
+ * strong card; true "other" (neither feeling nor topic) is dropped.
+ */
 export type MatchRankBucket =
   | "same-feeling+topic"
   | "same-feeling"
   | "related-feeling+topic"
   | "related-feeling"
-  | "other";
+  | "topic-only";
 
-/** Ranking bucket — feeling first. */
+export type MatchRank = {
+  bucket: MatchRankBucket;
+  tier: number;
+  emotion: number;
+  topic: number;
+};
+
+/**
+ * Feeling-first ranking. Returns null when neither shared feeling
+ * (exact/related) nor shared topic — those cards are dropped.
+ */
 export function matchRankBucket(
   mine: { emotion: string | null; topic: string | null },
   theirs: { emotion: string | null; topic: string | null },
-): { bucket: MatchRankBucket; tier: number; emotion: number; topic: number } {
+): MatchRank | null {
   const emotion = emotionAffinity(mine.emotion, theirs.emotion);
   const topic = topicAffinity(mine.topic, theirs.topic);
   if (emotion === 1 && topic === 1) {
@@ -52,12 +65,23 @@ export function matchRankBucket(
   if (emotion > 0) {
     return { bucket: "related-feeling", tier: 1, emotion, topic };
   }
-  return { bucket: "other", tier: 0, emotion, topic };
+  if (topic === 1) {
+    return { bucket: "topic-only", tier: 0, emotion, topic };
+  }
+  return null;
+}
+
+/** True when the candidate shares feeling (exact/related) or topic. */
+export function isStrongMatchCard(
+  mine: { emotion: string | null; topic: string | null },
+  theirs: { emotion: string | null; topic: string | null },
+): boolean {
+  return matchRankBucket(mine, theirs) !== null;
 }
 
 /**
- * Live candidates only, ranked feeling-first. Inbound `wavedAtYou` first;
- * within a tier: emotion affinity, then server score, then recency.
+ * Live strong cards only, ranked feeling-first. Inbound `wavedAtYou` first.
+ * Deck may be short (~5) — no padding with unrelated "other" photos.
  */
 export function rankMatchCandidates(
   candidates: readonly Candidate[],
@@ -69,13 +93,14 @@ export function rankMatchCandidates(
   return candidates
     .filter((c) => {
       if (excluded.has(c.id) || own.has(c.id)) return false;
-      return isMatchableCandidate(c);
+      if (!isMatchableCandidate(c)) return false;
+      return isStrongMatchCard(mine, { emotion: c.emotion, topic: c.theme });
     })
     .map((c) => {
       const rank = matchRankBucket(mine, {
         emotion: c.emotion,
         topic: c.theme,
-      });
+      })!;
       return { c, rank };
     })
     .sort(
