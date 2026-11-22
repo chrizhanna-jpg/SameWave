@@ -27,6 +27,8 @@ interface PhotoSide {
   accessibilityLabel?: string;
   /** Soft→sharp load (Wave reveal / Match candidate). */
   blurIn?: boolean;
+  /** Static soft focus for this side only (overrides blurIn once set). */
+  blurRadius?: number;
 }
 
 interface Props {
@@ -62,8 +64,12 @@ export function WaveJoin({ width, height, top, bottom, blurRadius }: Props) {
   if (width <= 0 || height <= 0) return null;
 
   // SVG clip can't animate blurIn / static blur — MaskedView + Photo does.
-  const bottomNeedsPhoto = Boolean(blurRadius || bottom.blurIn || bottom.ownPhotoId || !bottom.uri);
-  const topNeedsPhoto = Boolean(blurRadius || top.blurIn || top.ownPhotoId || !top.uri);
+  const bottomNeedsPhoto = Boolean(
+    blurRadius || bottom.blurRadius || bottom.blurIn || bottom.ownPhotoId || !bottom.uri,
+  );
+  const topNeedsPhoto = Boolean(
+    blurRadius || top.blurRadius || top.blurIn || top.ownPhotoId || !top.uri,
+  );
 
   return (
     <View style={[styles.root, { width, height, backgroundColor: colors.background }]} pointerEvents="box-none">
@@ -82,8 +88,8 @@ export function WaveJoin({ width, height, top, bottom, blurRadius }: Props) {
             <Photo
               uri={bottom.uri}
               ownPhotoId={bottom.ownPhotoId}
-              blurRadius={blurRadius}
-              blurIn={bottom.blurIn}
+              blurRadius={bottom.blurRadius ?? blurRadius}
+              blurIn={bottom.blurRadius != null ? false : bottom.blurIn}
               style={styles.photo}
               accessibilityLabel={bottom.accessibilityLabel}
             />
@@ -106,8 +112,8 @@ export function WaveJoin({ width, height, top, bottom, blurRadius }: Props) {
             <Photo
               uri={top.uri}
               ownPhotoId={top.ownPhotoId}
-              blurRadius={blurRadius}
-              blurIn={top.blurIn}
+              blurRadius={top.blurRadius ?? blurRadius}
+              blurIn={top.blurRadius != null ? false : top.blurIn}
               style={styles.photo}
               accessibilityLabel={top.accessibilityLabel}
             />
