@@ -17,11 +17,15 @@ import {
 describe("photo upload limits", () => {
   it("names the caps Chris asked for", () => {
     assert.equal(MAX_PHOTO_BYTES, 5 * 1024 * 1024);
-    assert.equal(MAX_PHOTOS_PER_DAY, 10);
+    assert.equal(MAX_PHOTOS_PER_DAY, 30);
     assert.equal(PHOTO_TOO_LARGE_ERROR, "Photo is too large (max 5 MB).");
     assert.equal(
       PHOTO_DAILY_CAP_ERROR,
-      "You can send up to 10 photos a day. Try again later.",
+      `You can send up to ${MAX_PHOTOS_PER_DAY} photos a day. Try again later.`,
+    );
+    assert.equal(
+      PHOTO_DAILY_CAP_ERROR,
+      "You can send up to 30 photos a day. Try again later.",
     );
   });
 
