@@ -2,7 +2,8 @@ import { Image, type ImageSource as ExpoImageSource } from "expo-image";
 import React, { useEffect, useRef, useState } from "react";
 import { Platform, StyleSheet, View, type ImageStyle, type StyleProp } from "react-native";
 
-import { PHOTO_BLUR_IN_MS, PHOTO_BLUR_IN_RADIUS, blurInRadiusAt } from "@/core/photoBlurIn";
+import { Txt } from "@/components/Txt";
+import { PHOTO_BLUR_IN_MS, blurInRadiusAt } from "@/core/photoBlurIn";
 import { useAppState } from "@/state/AppState";
 import { colors, motion } from "@/theme";
 
@@ -18,19 +19,22 @@ interface Props {
    * the image loads — same feel as the Waves / Wave reveal ceremony.
    */
   blurIn?: boolean;
+  /** Called when the image cannot be shown (broken local file / server 404). */
+  onUnavailable?: () => void;
   style?: StyleProp<ImageStyle>;
   accessibilityLabel?: string;
 }
 
 /**
- * One way to show a photo. It always fills its box, and shows calm empty
- * water instead of a broken-image mark when there is nothing to show.
+ * One way to show a photo. It always fills its box. Broken or missing images
+ * show a quiet "Unavailable" label instead of a blank white tile.
  */
 export function Photo({
   uri,
   ownPhotoId,
   blurRadius,
   blurIn = false,
+  onUnavailable,
   style,
   accessibilityLabel,
 }: Props) {
@@ -38,12 +42,16 @@ export function Photo({
   const [remote, setRemote] = useState<ExpoImageSource | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [failed, setFailed] = useState(false);
+  const [useRemoteFallback, setUseRemoteFallback] = useState(false);
   const [blurElapsed, setBlurElapsed] = useState(blurIn ? -1 : PHOTO_BLUR_IN_MS);
   const sharpenTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const unavailableNotified = useRef(false);
 
   useEffect(() => {
     setFailed(false);
     setAttempt(0);
+    setUseRemoteFallback(false);
+    unavailableNotified.current = false;
     if (blurIn) setBlurElapsed(-1);
   }, [uri, ownPhotoId, blurIn]);
 
@@ -54,7 +62,8 @@ export function Photo({
   }, []);
 
   useEffect(() => {
-    if (uri || !ownPhotoId) {
+    const wantRemote = Boolean(ownPhotoId) && (!uri || useRemoteFallback);
+    if (!wantRemote || !ownPhotoId) {
       setRemote(null);
       return;
     }
@@ -70,9 +79,16 @@ export function Photo({
     return () => {
       cancelled = true;
     };
-  }, [uri, ownPhotoId, backend, attempt]);
+  }, [uri, ownPhotoId, backend, attempt, useRemoteFallback]);
 
-  const source: ExpoImageSource | null = uri ? { uri } : remote;
+  useEffect(() => {
+    if (!failed || unavailableNotified.current) return;
+    unavailableNotified.current = true;
+    onUnavailable?.();
+  }, [failed, onUnavailable]);
+
+  const source: ExpoImageSource | null =
+    uri && !useRemoteFallback ? { uri } : remote;
   const effectiveBlur = blurIn
     ? blurInRadiusAt(blurElapsed)
     : (blurRadius ?? 0);
@@ -85,6 +101,22 @@ export function Photo({
       setBlurElapsed(PHOTO_BLUR_IN_MS);
       sharpenTimer.current = null;
     }, PHOTO_BLUR_IN_MS);
+  };
+
+  const markFailed = () => {
+    // Local file gone → try the server once when we have an id.
+    if (uri && !useRemoteFallback && ownPhotoId) {
+      setUseRemoteFallback(true);
+      setAttempt(0);
+      setFailed(false);
+      return;
+    }
+    // Server signed URL can expire; ask once more for a fresh link.
+    if ((!uri || useRemoteFallback) && ownPhotoId && attempt === 0) {
+      setAttempt(1);
+      return;
+    }
+    setFailed(true);
   };
 
   return (
@@ -105,17 +137,26 @@ export function Photo({
           cachePolicy="memory-disk"
           accessibilityLabel={accessibilityLabel}
           onLoad={beginSharpen}
-          onError={() => {
-            // The server's photo link is signed for about a minute; ask once more for a new one.
-            if (!uri && ownPhotoId && attempt === 0) setAttempt(1);
-            else setFailed(true);
-          }}
+          onError={markFailed}
         />
-      ) : null}
+      ) : (
+        <View style={styles.missing} accessibilityLabel="Photo unavailable">
+          <Txt variant="quiet" tone="secondary" center>
+            Unavailable
+          </Txt>
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   box: { overflow: "hidden", backgroundColor: colors.surface },
+  missing: {
+    ...StyleSheet.absoluteFill,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6,
+    backgroundColor: colors.surface,
+  },
 });

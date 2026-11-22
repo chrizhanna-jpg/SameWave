@@ -158,13 +158,25 @@ export function listenForPushes(handlers: {
  * the full-screen reveal can be tested without a remote push / EAS build.
  * Returns the notification id, or null if unsupported.
  */
+export async function cancelScheduledLocalNotifications(): Promise<void> {
+  if (!notifications) return;
+  try {
+    await notifications.cancelAllScheduledNotificationsAsync();
+  } catch {
+    /* */
+  }
+}
+
 export async function scheduleLocalWaveNotification(options: {
   waveId: string;
   delaySeconds?: number;
   title?: string;
   body?: string;
+  /** When false, do not schedule (in-app notifications Off). */
+  allowed?: boolean;
 }): Promise<string | null> {
   if (!notifications) return null;
+  if (options.allowed === false) return null;
   try {
     let permission = await notifications.getPermissionsAsync();
     if (!permission.granted && permission.canAskAgain) {

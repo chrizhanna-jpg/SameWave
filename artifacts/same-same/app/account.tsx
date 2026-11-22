@@ -1,25 +1,31 @@
 import * as ExpoLinking from "expo-linking";
+import { useFocusEffect } from "expo-router";
 import { Alert, Linking, Platform, Pressable, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 
 import { Button } from "@/components/Button";
 import { Frost } from "@/components/Frost";
 import { Header } from "@/components/Header";
+import { MusicCreditsExpand } from "@/components/MusicCreditsExpand";
 import { Photo } from "@/components/Photo";
 import { Screen } from "@/components/Screen";
 import { Txt } from "@/components/Txt";
 import { apiOrigin, appVersionLabel, LEGAL_LINKS } from "@/config/env";
 import { flagFor, nameFor } from "@/data/countries";
 import { sceneFor } from "@/data/scenes";
-import { MUSIC_CREDIT, MUSIC_TRACK_CREDITS } from "@/data/vibes";
 import {
+  cancelScheduledLocalNotifications,
   enablePushes,
   pushPermission,
   remotePushUnavailable,
   scheduleLocalWaveNotification,
   type PushPermission,
 } from "@/device/push";
+import {
+  readNotificationsEnabled,
+  writeNotificationsEnabled,
+} from "@/device/notificationPrefs";
 import { readSamplePhotosToggle, testPhotosBuildEnabled } from "@/core/testPhotos";
 import { useAppState } from "@/state/AppState";
 import { useSession } from "@/state/session";
@@ -66,14 +72,27 @@ export default function AccountScreen() {
     backend,
   } = useAppState();
   const [permission, setPermission] = useState<PushPermission | null>(null);
+  const [inAppOn, setInAppOn] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [testPushBusy, setTestPushBusy] = useState(false);
+  const [notifBusy, setNotifBusy] = useState(false);
   const [samplePhotos, setSamplePhotos] = useState(false);
   const samplesAvailable = testPhotosBuildEnabled();
 
-  React.useEffect(() => {
-    void pushPermission().then(setPermission);
+  const refreshNotificationState = useCallback(async () => {
+    const [perm, enabled] = await Promise.all([
+      pushPermission(),
+      readNotificationsEnabled(),
+    ]);
+    setPermission(perm);
+    setInAppOn(enabled);
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshNotificationState();
+    }, [refreshNotificationState]),
+  );
 
   React.useEffect(() => {
     if (!samplesAvailable) return;
@@ -89,7 +108,12 @@ export default function AccountScreen() {
         onPress: () => {
           setBusyId(photoId);
           void deletePhoto(photoId)
-            .catch(() => undefined)
+            .catch(() => {
+              Alert.alert(
+                "Couldn't delete",
+                "Try again in a moment. If the photo already looks blank, it may already be gone on the server.",
+              );
+            })
             .finally(() => setBusyId(null));
         },
       },
@@ -97,10 +121,42 @@ export default function AccountScreen() {
   };
 
   const notificationsLabel = () => {
-    if (permission === "unsupported") return "Not available here";
+    if (!inAppOn) return "Off";
+    if (permission === "unsupported") return "On — not available on this device";
     if (permission === "granted") return "On";
-    if (permission === "denied") return "Off — open Settings to change";
-    return shouldAskForPushes ? "Ask after your next Ripple" : "Tap to turn on";
+    if (permission === "denied") return "On — open Settings to allow";
+    return shouldAskForPushes ? "On — ask after your next Ripple" : "On — tap to allow";
+  };
+
+  const setNotifications = async (next: boolean) => {
+    if (notifBusy) return;
+    setNotifBusy(true);
+    try {
+      await writeNotificationsEnabled(next);
+      setInAppOn(next);
+      if (!next) {
+        await cancelScheduledLocalNotifications();
+        const address = await enablePushes({ ask: false });
+        if (address) {
+          await backend.unregisterPushToken(address).catch(() => undefined);
+        }
+      } else if (permission === "granted") {
+        const address = await enablePushes({ ask: false });
+        if (address) {
+          await backend
+            .registerPushToken(address, Platform.OS === "ios" ? "ios" : "android")
+            .catch(() => undefined);
+        }
+      } else if (permission === "undetermined") {
+        const nextPerm = await askForPushes();
+        setPermission(nextPerm);
+      } else if (permission === "denied") {
+        void Linking.openSettings();
+      }
+      await refreshNotificationState();
+    } finally {
+      setNotifBusy(false);
+    }
   };
 
   return (
@@ -118,34 +174,84 @@ export default function AccountScreen() {
           </Txt>
         ) : (
           <View style={styles.grid}>
-            {history.map((photo) => (
-              <Pressable
-                key={photo.photoId}
-                onLongPress={() => onDelete(photo.photoId)}
-                accessibilityLabel="Ripple. Long press to delete."
-                style={styles.tile}
-              >
-                <Photo
-                  uri={photo.uri}
-                  ownPhotoId={photo.uri ? undefined : photo.photoId}
-                  style={styles.tilePhoto}
-                />
-                {busyId === photo.photoId ? (
-                  <View style={styles.tileBusy}>
-                    <Txt variant="quiet" tone="primary">
-                      …
-                    </Txt>
-                  </View>
-                ) : null}
-              </Pressable>
-            ))}
+            {history.map((photo) => {
+              const paired = waves.find(
+                (w) => w.mine.photoId === photo.photoId || w.theirs.photoId === photo.photoId,
+              );
+              return (
+                <Pressable
+                  key={photo.photoId}
+                  onPress={() => {
+                    if (paired) {
+                      router.push({ pathname: "/wave/[id]", params: { id: paired.id } });
+                    }
+                  }}
+                  onLongPress={() => onDelete(photo.photoId)}
+                  accessibilityLabel={
+                    paired
+                      ? "Ripple with a Wave. Tap to open the pair. Long press to delete."
+                      : "Ripple. Long press to delete."
+                  }
+                  style={styles.tile}
+                >
+                  <Photo
+                    uri={photo.uri}
+                    ownPhotoId={photo.photoId}
+                    onUnavailable={() => {
+                      /* Unavailable label is enough; long-press still deletes. */
+                    }}
+                    style={styles.tilePhoto}
+                  />
+                  {busyId === photo.photoId ? (
+                    <View style={styles.tileBusy}>
+                      <Txt variant="quiet" tone="primary">
+                        …
+                      </Txt>
+                    </View>
+                  ) : null}
+                </Pressable>
+              );
+            })}
           </View>
         )}
         {history.length > 0 ? (
           <Txt variant="quiet" tone="secondary" style={styles.hint}>
-            Long press a photo to delete it.
+            Long press a photo to delete it. Tap one with a Wave to open the pair.
           </Txt>
         ) : null}
+
+        <Txt variant="heading" style={styles.section}>
+          Your Waves
+        </Txt>
+        {waves.length === 0 ? (
+          <Txt tone="secondary" style={styles.empty}>
+            When a Ripple finds a match, the pair lives here.
+          </Txt>
+        ) : (
+          <View style={styles.waveList}>
+            {waves.map((wave) => (
+              <Pressable
+                key={wave.id}
+                onPress={() => router.push({ pathname: "/wave/[id]", params: { id: wave.id } })}
+                accessibilityRole="button"
+                accessibilityLabel="Open Wave pair"
+                style={styles.waveRow}
+              >
+                <View style={styles.waveThumbs}>
+                  <Photo
+                    uri={wave.mine.uri}
+                    ownPhotoId={wave.mine.photoId}
+                    style={styles.waveThumb}
+                  />
+                  <Photo uri={wave.theirs.uri} style={styles.waveThumb} />
+                </View>
+                <Txt tone="secondary" style={styles.waveOpen}>
+                  Open
+                </Txt>
+              </Pressable>
+            ))}
+          </View>
+        )}
       </Frost>
 
       <Frost kind="card" style={styles.card} contentStyle={styles.cardPad}>
@@ -181,38 +287,12 @@ export default function AccountScreen() {
             </Txt>
             <Txt>{notificationsLabel()}</Txt>
           </View>
-          {permission === "undetermined" || permission === "denied" ? (
-            <Button
-              kind="quiet"
-              label={permission === "denied" ? "Settings" : "Turn on"}
-              onPress={() => {
-                if (permission === "denied") {
-                  void Linking.openSettings();
-                  return;
-                }
-                void askForPushes().then(setPermission);
-              }}
-            />
-          ) : permission === "granted" ? (
-            <Button
-              kind="quiet"
-              label="Refresh"
-              onPress={() => {
-                void (async () => {
-                  const address = await enablePushes({ ask: false });
-                  if (address) {
-                    await backend
-                      .registerPushToken(
-                        address,
-                        Platform.OS === "ios" ? "ios" : "android",
-                      )
-                      .catch(() => undefined);
-                  }
-                  setPermission(await pushPermission());
-                })();
-              }}
-            />
-          ) : null}
+          <Button
+            kind="quiet"
+            label={notifBusy ? "…" : inAppOn ? "Turn off" : "Turn on"}
+            busy={notifBusy}
+            onPress={() => void setNotifications(!inAppOn)}
+          />
         </View>
 
         {samplesAvailable ? <SamplePhotosAccountRow on={samplePhotos} setOn={setSamplePhotos} /> : null}
@@ -235,6 +315,10 @@ export default function AccountScreen() {
             label={testPushBusy ? "…" : "Try"}
             busy={testPushBusy}
             onPress={() => {
+              if (!inAppOn) {
+                Alert.alert("Notifications are Off", "Turn them on in Account first.");
+                return;
+              }
               const sample = waves[0];
               if (!sample) {
                 Alert.alert(
@@ -244,7 +328,11 @@ export default function AccountScreen() {
                 return;
               }
               setTestPushBusy(true);
-              void scheduleLocalWaveNotification({ waveId: sample.id, delaySeconds: 3 })
+              void scheduleLocalWaveNotification({
+                waveId: sample.id,
+                delaySeconds: 3,
+                allowed: inAppOn,
+              })
                 .then((id) => {
                   if (!id) {
                     Alert.alert(
@@ -281,14 +369,7 @@ export default function AccountScreen() {
           />
         </View>
 
-        <Txt variant="quiet" tone="secondary" center style={styles.credit}>
-          {MUSIC_CREDIT}
-        </Txt>
-        {MUSIC_TRACK_CREDITS.map((line) => (
-          <Txt key={line} variant="quiet" tone="secondary" center style={styles.trackCredit}>
-            {line}
-          </Txt>
-        ))}
+        <MusicCreditsExpand />
         <Txt variant="quiet" tone="secondary" center>
           {appVersionLabel()}
         </Txt>
@@ -321,6 +402,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.line,
   },
   sectionFirst: { marginTop: space.lg },
+  section: { marginTop: space.xl },
   empty: { marginTop: space.md },
   grid: {
     marginTop: space.md,
@@ -347,6 +429,22 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   hint: { marginTop: space.sm },
+  waveList: { marginTop: space.md, gap: space.sm },
+  waveRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.md,
+    paddingVertical: space.sm,
+  },
+  waveThumbs: { flexDirection: "row", gap: space.xs },
+  waveThumb: {
+    width: 56,
+    height: 56,
+    borderRadius: radius.sm,
+    overflow: "hidden",
+    backgroundColor: colors.surface,
+  },
+  waveOpen: { marginLeft: "auto" },
   legal: {
     marginTop: space.xl,
     flexDirection: "row",
@@ -354,8 +452,6 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: space.sm,
   },
-  credit: { marginTop: space.lg },
-  trackCredit: { marginTop: space.xs, paddingHorizontal: space.md },
   copyright: { marginTop: space.sm },
   signOut: { marginTop: space.xl, marginBottom: space.sm },
 });

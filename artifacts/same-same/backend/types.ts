@@ -129,6 +129,12 @@ export interface Backend {
   getWaveDetail(wave: Wave): Promise<WaveDetail>;
 
   registerPushToken(token: string, platform: "ios" | "android" | "web"): Promise<void>;
+  /**
+   * Remove this device token so the server stops pushing.
+   * Older servers may not expose DELETE — callers should treat failure as
+   * "local off only" and still stop registering.
+   */
+  unregisterPushToken(token: string): Promise<void>;
 
   /** How to load one of the user's own photos straight from the server. */
   photoSource(photoId: string): Promise<ImageSource>;

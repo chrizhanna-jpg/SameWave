@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db, pushTokensTable } from "@workspace/db";
 import { resolveUserFromRequest } from "../lib/users";
 
@@ -55,6 +55,35 @@ router.post("/push-tokens", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "push token register failed");
     res.status(500).json({ error: "register failed" });
+  }
+});
+
+// ---- DELETE /api/push-tokens ----------------------------------------------
+// Body: { token: string }
+// Removes this device token so the server stops pushing to it. Idempotent:
+// unknown tokens still return ok (the phone is already unsubscribed).
+router.delete("/push-tokens", async (req, res) => {
+  try {
+    const user = await resolveUserFromRequest(req);
+    if (!user) {
+      res.status(401).json({ error: "authentication required" });
+      return;
+    }
+    const body = (req.body ?? {}) as { token?: unknown };
+    const token = typeof body.token === "string" ? body.token.trim() : "";
+    if (!EXPO_TOKEN_RE.test(token)) {
+      res.status(400).json({ error: "invalid Expo push token" });
+      return;
+    }
+
+    await db
+      .delete(pushTokensTable)
+      .where(and(eq(pushTokensTable.expoToken, token), eq(pushTokensTable.userId, user.id)));
+
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "push token unregister failed");
+    res.status(500).json({ error: "unregister failed" });
   }
 });
 

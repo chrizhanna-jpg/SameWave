@@ -351,6 +351,13 @@ export function createHttpBackend(options: HttpBackendOptions): Backend {
       await call("POST", "/push-tokens", { body: { token, platform }, repeatable: true });
     },
 
+    async unregisterPushToken(token) {
+      await call("DELETE", "/push-tokens", {
+        body: { token },
+        repeatable: true,
+      });
+    },
+
     async photoSource(photoId): Promise<ImageSource> {
       return {
         uri: `${origin}/api/photos/${id(photoId)}/image`,

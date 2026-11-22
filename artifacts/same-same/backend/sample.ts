@@ -312,6 +312,7 @@ export function createSampleBackend(
     },
 
     async registerPushToken() {},
+    async unregisterPushToken() {},
 
     async photoSource(photoId) {
       const ripple = (await load()).ripples.find((r) => r.photoId === photoId);
