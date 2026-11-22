@@ -17,7 +17,6 @@ import { PhotoMetaChip } from "@/components/PhotoMetaChip";
 import { RippleMark } from "@/components/RippleMark";
 import { WaveJoin } from "@/components/WaveJoin";
 import { PHOTO_BLUR_IN_RADIUS } from "@/core/photoBlurIn";
-import { waveLayoutMetrics } from "@/device/waveLayoutMetrics";
 import { colors, space } from "@/theme";
 
 /**
@@ -25,11 +24,7 @@ import { colors, space } from "@/theme";
  * `/match-blur-shot?phase=mid` | `phase=done` | `phase=fade`
  */
 export function MatchBlurShotInner() {
-  const windowDims = useWindowDimensions();
-  const { width, height } = useMemo(
-    () => waveLayoutMetrics(),
-    [windowDims.width, windowDims.height],
-  );
+  const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { phase: raw } = useLocalSearchParams<{ phase?: string }>();
   const phase = raw === "done" ? "done" : raw === "fade" ? "fade" : "mid";

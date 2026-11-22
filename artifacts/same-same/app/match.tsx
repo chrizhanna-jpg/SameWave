@@ -70,11 +70,17 @@ export default function MatchScreen() {
   const photoId = typeof rawId === "string" ? rawId : Array.isArray(rawId) ? rawId[0] : "";
   const stage = parseMatchStage(rawStage);
   const windowDims = useWindowDimensions();
-  // Same metrics as capture/library crop — full drawable incl. system-bar territory.
-  const { width, height } = useMemo(
+  // Prefer live layout size so WaveJoin always fills the Match root (no bottom gap).
+  // Seed from waveLayoutMetrics so the first paint matches capture crop aspect.
+  const metrics = useMemo(
     () => waveLayoutMetrics(),
     [windowDims.width, windowDims.height],
   );
+  const [bleedSize, setBleedSize] = useState(metrics);
+  useEffect(() => {
+    setBleedSize(metrics);
+  }, [metrics]);
+  const { width, height } = bleedSize;
   const insets = useSafeAreaInsets();
   const {
     ripples,
@@ -451,7 +457,14 @@ export default function MatchScreen() {
   const actionPadBottom = Math.max(insets.bottom, space.md) + space.sm;
 
   return (
-    <View style={styles.root}>
+    <View
+      style={styles.root}
+      onLayout={(event) => {
+        const { width: w, height: h } = event.nativeEvent.layout;
+        if (w < 1 || h < 1) return;
+        setBleedSize((prev) => (prev.width === w && prev.height === h ? prev : { width: w, height: h }));
+      }}
+    >
       <StatusBar style="light" />
       <Animated.View style={[styles.bleed, { opacity: enterOpacity }]} pointerEvents="none">
         <WaveJoin
