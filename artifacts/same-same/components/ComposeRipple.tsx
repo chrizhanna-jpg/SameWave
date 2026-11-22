@@ -1,20 +1,17 @@
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import React, { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import React, { useEffect, useState, useSyncExternalStore } from "react";
 import {
   Platform,
   StyleSheet,
   useWindowDimensions,
   View,
-  type GestureResponderEvent,
-  type LayoutChangeEvent,
 } from "react-native";
 
 import { Button } from "@/components/Button";
 import { EmotionPicker } from "@/components/EmotionPicker";
 import { Frost } from "@/components/Frost";
 import { Photo } from "@/components/Photo";
-import { RippleRings } from "@/components/RippleRings";
 import { Screen } from "@/components/Screen";
 import { SongPicker } from "@/components/SongPicker";
 import { SoundRecorder } from "@/components/SoundRecorder";
@@ -54,7 +51,7 @@ function missingHint(photo: boolean, emotion: boolean, topic: boolean): string {
   const missing: string[] = [];
   if (!photo) missing.push("a photo");
   if (!emotion) missing.push("a feeling");
-  if (!topic) missing.push("a moment");
+  if (!topic) missing.push("a topic");
   if (missing.length === 0) return "";
   if (missing.length === 1) return `Add ${missing[0]} to upload.`;
   if (missing.length === 2) return `Add ${missing[0]} and ${missing[1]} to upload.`;
@@ -64,7 +61,7 @@ function missingHint(photo: boolean, emotion: boolean, topic: boolean): string {
 /**
  * Shared compose UI for the Ripple tab (and the legacy /compose redirect).
  * Photo can be missing — Add a photo / Change photo reuse capture + library.
- * Feeling and moment are always available; sound follows the feeling.
+ * Feeling and topic are always available; sound follows the feeling.
  */
 export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolean }) {
   const router = useRouter();
@@ -82,9 +79,7 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  const [tap, setTap] = useState<{ x: number; y: number } | null>(null);
   const [picking, setPicking] = useState(false);
-  const box = useRef({ width: 0, height: 0 });
 
   // Keep locked Daily topic pinned.
   useEffect(() => {
@@ -137,21 +132,9 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
     }
   };
 
-  const onLayout = (event: LayoutChangeEvent) => {
-    box.current = {
-      width: event.nativeEvent.layout.width,
-      height: event.nativeEvent.layout.height,
-    };
-  };
-
-  const send = async (event: GestureResponderEvent) => {
+  const send = async () => {
     const topicToSend = topicLocked ? dailyTopicFor().id : draft.topic;
     if (!canSend || !photo || !draft.emotion || !topicToSend || !draft.song) return;
-    const { locationX, locationY } = event.nativeEvent;
-    setTap({
-      x: Number.isFinite(locationX) ? locationX : box.current.width / 2,
-      y: Number.isFinite(locationY) ? locationY : box.current.height / 2,
-    });
     setSending(true);
     setProblem(null);
     // Upload moment is silent — Match owns ripple/wave cues; splash owns the swell.
@@ -177,7 +160,6 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
       );
     } catch (error) {
       setSending(false);
-      setTap(null);
       const kind = errorKind(error);
       setProblem(
         kind === "unreachable"
@@ -198,8 +180,8 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
       scene={sceneFor.composeFallback}
     >
       {/*
-        Stable order: photo (or Add a photo), then feeling / moment / sound.
-        Feeling and moment stay available with no photo so selections survive
+        Stable order: photo (or Add a photo), then feeling / topic / sound.
+        Feeling and topic stay available with no photo so selections survive
         a trip to the camera.
       */}
       <Frost kind="card" style={styles.photoCard} contentStyle={styles.photoCardPad}>
@@ -226,7 +208,7 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
               Add a photo
             </Txt>
             <Txt tone="secondary" center style={styles.addHint}>
-              Camera or your library — feeling and moment can wait, or come first.
+              Camera or your library — feeling and topic can wait, or come first.
             </Txt>
             {Platform.OS !== "web" ? (
               <Button label="Open camera" onPress={addPhotoCamera} style={styles.addBtn} />
@@ -252,7 +234,7 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
 
         <View>
           <Txt variant="heading" style={[styles.section, styles.sectionBold]}>
-            What&apos;s the moment?
+            What&apos;s the topic?
           </Txt>
           {topicLocked ? (
             <View style={styles.lockedChip} accessibilityLabel={`Today's topic: ${lockedLabel}`}>
@@ -294,10 +276,10 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
       </Frost>
 
       {/* Outside the frost card so a hairline never strikes through the label. */}
-      <View style={styles.send} onLayout={onLayout}>
+      <View style={styles.send}>
         <Button
           label={sending || sent ? "Uploading…" : "Upload moment"}
-          onPress={send}
+          onPress={() => void send()}
           busy={sending && !sent}
           disabled={!canSend}
           accessibilityHint={canSend ? "Uploads this moment to SameWave" : hint}
@@ -306,11 +288,6 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
           <Txt variant="quiet" tone="secondary" center style={styles.missing}>
             {hint}
           </Txt>
-        ) : null}
-        {tap ? (
-          <View pointerEvents="none" style={[styles.rings, { left: tap.x - 140, top: tap.y - 140 }]}>
-            <RippleRings size={280} loop={false} duration={motion.rippleSend} rings={4} />
-          </View>
         ) : null}
       </View>
 
@@ -358,11 +335,8 @@ const styles = StyleSheet.create({
   send: {
     marginTop: space.md,
     marginBottom: space.sm,
-    position: "relative",
-    overflow: "visible",
     paddingHorizontal: space.lg,
   },
   missing: { marginTop: space.sm },
-  rings: { position: "absolute", width: 280, height: 280 },
   problem: { marginTop: space.md, marginBottom: space.lg, paddingHorizontal: space.lg },
 });
