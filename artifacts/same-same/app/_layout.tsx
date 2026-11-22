@@ -202,6 +202,8 @@ function Routes() {
         <Stack.Protected guard={!signedIn}>
           <Stack.Screen name="sign-in" />
         </Stack.Protected>
+        {/* OAuth return path — must stay outside Protected so deep links resolve. */}
+        <Stack.Screen name="callback" />
         <Stack.Screen name="how-it-works" />
         {/* Preview-only UI shot routes (TEST_PHOTOS / UI_SHOTS builds). */}
         <Stack.Screen name="ripple-mark-shot" />
