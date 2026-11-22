@@ -25,6 +25,8 @@ interface PhotoSide {
   uri: string | null;
   ownPhotoId?: string;
   accessibilityLabel?: string;
+  /** Soft→sharp load (Wave reveal / Match candidate). */
+  blurIn?: boolean;
 }
 
 interface Props {
@@ -59,12 +61,14 @@ export function WaveJoin({ width, height, top, bottom, blurRadius }: Props) {
 
   if (width <= 0 || height <= 0) return null;
 
-  const useSvgClip = !blurRadius;
+  // SVG clip can't animate blurIn / static blur — MaskedView + Photo does.
+  const bottomNeedsPhoto = Boolean(blurRadius || bottom.blurIn || bottom.ownPhotoId || !bottom.uri);
+  const topNeedsPhoto = Boolean(blurRadius || top.blurIn || top.ownPhotoId || !top.uri);
 
   return (
     <View style={[styles.root, { width, height, backgroundColor: colors.background }]} pointerEvents="box-none">
       <View style={[styles.bottomBox, { height: bottomBox }]}>
-        {useSvgClip && bottom.uri ? (
+        {!bottomNeedsPhoto && bottom.uri ? (
           <ClippedSvgPhoto
             uri={bottom.uri}
             width={width}
@@ -77,7 +81,9 @@ export function WaveJoin({ width, height, top, bottom, blurRadius }: Props) {
           <MaskedClip width={width} height={bottomBox} clipD={below}>
             <Photo
               uri={bottom.uri}
+              ownPhotoId={bottom.ownPhotoId}
               blurRadius={blurRadius}
+              blurIn={bottom.blurIn}
               style={styles.photo}
               accessibilityLabel={bottom.accessibilityLabel}
             />
@@ -86,7 +92,7 @@ export function WaveJoin({ width, height, top, bottom, blurRadius }: Props) {
       </View>
 
       <View style={[styles.topBox, { height: topBox }]}>
-        {useSvgClip && top.uri ? (
+        {!topNeedsPhoto && top.uri ? (
           <ClippedSvgPhoto
             uri={top.uri}
             width={width}
@@ -101,6 +107,7 @@ export function WaveJoin({ width, height, top, bottom, blurRadius }: Props) {
               uri={top.uri}
               ownPhotoId={top.ownPhotoId}
               blurRadius={blurRadius}
+              blurIn={top.blurIn}
               style={styles.photo}
               accessibilityLabel={top.accessibilityLabel}
             />

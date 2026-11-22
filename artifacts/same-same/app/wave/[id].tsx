@@ -19,6 +19,7 @@ import { RippleRings } from "@/components/RippleRings";
 import { Scrim } from "@/components/Scrim";
 import { Txt } from "@/components/Txt";
 import { WaveJoin } from "@/components/WaveJoin";
+import { WaveSimilarityLine } from "@/components/WaveSimilarityLine";
 import type { WaveDetail } from "@/backend/types";
 import { describeGap, matchBonuses } from "@/core/bonuses";
 import { clipUrlFor, vibeFor } from "@/core/vibes";
@@ -387,13 +388,7 @@ export default function WaveScreen() {
           </View>
 
           <Animated.View style={{ opacity: headline }}>
-            {bonuses?.headline ? (
-              <Scrim style={styles.headline}>
-                <Txt tone="white" center overPhoto>
-                  {bonuses.headline}
-                </Txt>
-              </Scrim>
-            ) : null}
+            <WaveSimilarityLine headline={bonuses?.headline} surface="photo" />
             <Scrim kind="light" style={styles.hint}>
               <View style={styles.up}>
                 <Icon name="chevron" size={16} color={colors.textSecondary} />
@@ -426,6 +421,11 @@ export default function WaveScreen() {
           <Frost kind="card" style={styles.panelFrost} contentStyle={styles.panelInner}>
             <Pressable onPress={() => setDetails(false)}>
               <View style={styles.panelHandle} accessibilityLabel="Hide details" />
+              <WaveSimilarityLine
+                headline={bonuses?.headline}
+                surface="sheet"
+                style={styles.sheetHeadline}
+              />
               <Side
                 label="You"
                 country={wave.mine.countryCode}
@@ -526,7 +526,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.lg,
   },
   topRow: { marginHorizontal: -space.sm },
-  headline: { marginBottom: space.sm },
+  sheetHeadline: { marginTop: space.xs, marginBottom: space.md },
   hint: {
     flexDirection: "row",
     alignItems: "center",

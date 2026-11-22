@@ -1,6 +1,5 @@
 import { geoEqualEarth, geoPath } from "d3-geo";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image } from "expo-image";
 import {
   Animated,
   Modal,
@@ -42,10 +41,17 @@ import {
   type MapLine,
   type Point,
 } from "@/core/mapGeometry";
+import { Photo } from "@/components/Photo";
 import type { Wave } from "@/core/types";
+import { emotionFor } from "@/data/emotions";
 import { centroidLonLatForCountry } from "@/data/countryCentroids";
+import { topicFor } from "@/data/topics";
 import { useReducedMotion } from "@/device/motion";
+import { useAppState } from "@/state/AppState";
 import { colors, motion, space, type as typeStyle } from "@/theme";
+
+/** Side-by-side thumb size for the city-stack pull-up list. */
+const LIST_THUMB = 64;
 
 const topology = land110 as unknown as Topology;
 const land = feature(topology, topology.objects.land as GeometryCollection);
@@ -94,6 +100,7 @@ export function WorldMap({
   onOpenPhoto,
 }: Props) {
   const reduced = useReducedMotion();
+  const { ripples } = useAppState();
   const [box, setBox] = useState<{ width: number; height: number } | null>(null);
   const onLayout = (event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
@@ -461,6 +468,7 @@ export function WorldMap({
       >
         <Pressable style={styles.listScrim} onPress={() => setClusterList(null)}>
           <Pressable style={styles.listCard} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.listHandle} accessibilityLabel="Wave list" />
             <Text style={styles.listTitle}>
               {clusterList ? `${clusterList.count} Waves here` : ""}
             </Text>
@@ -469,7 +477,13 @@ export function WorldMap({
               const side = wave ? (m.side === "mine" ? wave.mine : wave.theirs) : null;
               const place = side?.countryCode ?? "Somewhere";
               const when = formatWaveTime(side?.takenAt ?? wave?.formedAt);
-              const thumb = side?.uri ?? null;
+              const ripple = wave
+                ? ripples.find((r) => r.photoId === wave.mine.photoId) ?? null
+                : null;
+              const feeling =
+                emotionFor(ripple?.emotion ?? ripple?.vibe)?.label ?? null;
+              const topic = topicFor(ripple?.topic ?? ripple?.theme)?.label ?? null;
+              const feelingOrTopic = feeling ?? topic;
               return (
                 <Pressable
                   key={`${m.waveId}-${m.side}`}
@@ -479,15 +493,39 @@ export function WorldMap({
                     onOpenWave(m.waveId);
                   }}
                 >
-                  <View style={styles.listThumb}>
-                    {thumb ? (
-                      <Image source={{ uri: thumb }} style={styles.listThumbImg} contentFit="cover" />
-                    ) : (
-                      <View style={styles.listThumbEmpty} />
-                    )}
+                  <View style={styles.listPair}>
+                    <View style={styles.listThumb}>
+                      {wave ? (
+                        <Photo
+                          uri={wave.mine.uri}
+                          ownPhotoId={wave.mine.uri ? undefined : wave.mine.photoId}
+                          blurIn
+                          style={styles.listThumbImg}
+                          accessibilityLabel="Your photo"
+                        />
+                      ) : (
+                        <View style={styles.listThumbEmpty} />
+                      )}
+                    </View>
+                    <View style={styles.listThumb}>
+                      {wave ? (
+                        <Photo
+                          uri={wave.theirs.uri}
+                          ownPhotoId={wave.theirs.uri ? undefined : wave.theirs.photoId}
+                          blurIn
+                          style={styles.listThumbImg}
+                          accessibilityLabel="Their photo"
+                        />
+                      ) : (
+                        <View style={styles.listThumbEmpty} />
+                      )}
+                    </View>
                   </View>
                   <View style={styles.listMeta}>
                     <Text style={styles.listRowText}>{place}</Text>
+                    {feelingOrTopic ? (
+                      <Text style={styles.listRowSub}>{feelingOrTopic}</Text>
+                    ) : null}
                     {when ? <Text style={styles.listRowSub}>{when}</Text> : null}
                   </View>
                 </Pressable>
@@ -680,9 +718,17 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     paddingHorizontal: space.lg,
-    paddingTop: space.lg,
+    paddingTop: space.md,
     paddingBottom: space.xl,
     gap: space.sm,
+  },
+  listHandle: {
+    alignSelf: "center",
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.line,
+    marginBottom: space.md,
   },
   listTitle: {
     ...typeStyle.heading,
@@ -694,19 +740,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: space.md,
     paddingVertical: space.md,
+    minHeight: LIST_THUMB + space.md * 2,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "rgba(63,74,75,0.15)",
   },
+  listPair: {
+    flexDirection: "row",
+    gap: 6,
+  },
   listThumb: {
-    width: 44,
-    height: 44,
+    width: LIST_THUMB,
+    height: LIST_THUMB,
     borderRadius: 8,
     overflow: "hidden",
     backgroundColor: "rgba(63,74,75,0.08)",
   },
-  listThumbImg: { width: 44, height: 44 },
+  listThumbImg: { width: LIST_THUMB, height: LIST_THUMB },
   listThumbEmpty: { flex: 1, backgroundColor: colors.waterMuted, opacity: 0.35 },
-  listMeta: { flex: 1, gap: 2 },
+  listMeta: { flex: 1, gap: 2, justifyContent: "center" },
   listRowText: {
     ...typeStyle.body,
     color: colors.slate,

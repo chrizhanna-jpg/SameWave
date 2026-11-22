@@ -442,12 +442,14 @@ export default function MatchScreen() {
             ? candidate.uri && isSample(candidate.id)
               ? {
                   uri: candidate.uri,
+                  blurIn: true,
                   accessibilityLabel: "Sample photo",
                 }
               : {
                   // Relative /api/… URIs need auth — Photo fetches by id.
                   uri: null,
                   ownPhotoId: candidate.id,
+                  blurIn: true,
                   accessibilityLabel: "Their photo",
                 }
             : {
@@ -470,34 +472,37 @@ export default function MatchScreen() {
           ]}
           pointerEvents="box-none"
         >
-          <Scrim kind="light" style={styles.emptyScrim}>
-            {load === "loading" ? (
-              <ActivityIndicator color={colors.textPrimary} />
-            ) : load === "error" && problem ? (
-              <Txt center style={styles.emptyText}>
-                {problem}
-              </Txt>
-            ) : (
-              <>
+          {load === "loading" ? (
+            // Spinner alone over the backdrop — no white Scrim card.
+            <ActivityIndicator color={colors.textPrimary} />
+          ) : (
+            <Scrim kind="light" style={styles.emptyScrim}>
+              {load === "error" && problem ? (
                 <Txt center style={styles.emptyText}>
-                  {EMPTY_COPY}
+                  {problem}
                 </Txt>
-                {empty && testPhotosBuildEnabled() && useSamples === false ? (
-                  <Txt center variant="quiet" tone="secondary" style={styles.emptyHint}>
-                    Turn on Sample photos in Account to test
+              ) : (
+                <>
+                  <Txt center style={styles.emptyText}>
+                    {EMPTY_COPY}
                   </Txt>
-                ) : null}
-                {empty ? (
-                  <Button
-                    kind="soft"
-                    label="Back home"
-                    onPress={() => void close()}
-                    style={styles.emptyDone}
-                  />
-                ) : null}
-              </>
-            )}
-          </Scrim>
+                  {empty && testPhotosBuildEnabled() && useSamples === false ? (
+                    <Txt center variant="quiet" tone="secondary" style={styles.emptyHint}>
+                      Turn on Sample photos in Account to test
+                    </Txt>
+                  ) : null}
+                  {empty ? (
+                    <Button
+                      kind="soft"
+                      label="Back home"
+                      onPress={() => void close()}
+                      style={styles.emptyDone}
+                    />
+                  ) : null}
+                </>
+              )}
+            </Scrim>
+          )}
         </View>
       ) : null}
 
