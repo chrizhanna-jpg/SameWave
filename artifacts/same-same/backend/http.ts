@@ -320,7 +320,9 @@ export function createHttpBackend(options: HttpBackendOptions): Backend {
       if (query.theme) params.set("theme", query.theme);
       if (query.tags.length) params.set("tags", query.tags.join(","));
       if (query.subjects.length) params.set("subjects", query.subjects.join(","));
-      if (query.emotion) params.set("musicGenre", query.emotion);
+      // Feeling and song are separate query params — never map emotion → musicGenre.
+      if (query.emotion) params.set("emotion", query.emotion);
+      if (query.musicGenre) params.set("musicGenre", query.musicGenre);
       if (query.voterPhotoId) params.set("voterPhotoId", query.voterPhotoId);
       params.set("limit", String(query.limit));
       if (query.excludeIds.length) params.set("excludeIds", query.excludeIds.slice(-200).join(","));

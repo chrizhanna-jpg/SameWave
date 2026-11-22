@@ -332,12 +332,14 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       let targets: Candidate[] = [];
       for (let page = 0; page < MATCH.maxPages && targets.length === 0; page++) {
         const topic = ripple.topic ?? ripple.theme ?? null;
-        const emotion = ripple.emotion ?? ripple.vibe ?? null;
+        const emotion = ripple.emotion ?? null;
+        const musicGenre = ripple.vibe ?? null;
         const candidates = await backend.findCandidates({
           theme: topic ?? ripple.theme,
           tags: ripple.tags,
           subjects: ripple.subjects,
           emotion,
+          musicGenre,
           voterPhotoId: ripple.photoId,
           limit: MATCH.pageSize,
           excludeIds: [...ripple.reach.offeredIds, ...looked].slice(-MAX_EXCLUDE_IDS),

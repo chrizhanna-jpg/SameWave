@@ -264,7 +264,7 @@ test("missing captureCountrySource from the server is treated as fallback", asyn
   assert.equal(waves[0]?.theirs.countrySource, "gps");
 });
 
-test("looking for matches sends the photo's labels and never its feeling", async () => {
+test("looking for matches sends emotion separately from musicGenre", async () => {
   const { backend, calls } = fakeServer(() => ({
     status: 200,
     body: {
@@ -280,6 +280,7 @@ test("looking for matches sends the photo's labels and never its feeling", async
     tags: ["morning", "cozy"],
     subjects: ["cup"],
     emotion: "calm",
+    musicGenre: "chilling",
     limit: 50,
     excludeIds: ["x1", "x2"],
   });
@@ -290,7 +291,8 @@ test("looking for matches sends the photo's labels and never its feeling", async
   assert.equal(url.searchParams.get("tags"), "morning,cozy");
   assert.equal(url.searchParams.get("subjects"), "cup");
   assert.equal(url.searchParams.get("excludeIds"), "x1,x2");
-  assert.equal(url.searchParams.get("musicGenre"), "calm");
+  assert.equal(url.searchParams.get("emotion"), "calm");
+  assert.equal(url.searchParams.get("musicGenre"), "chilling");
 });
 
 test("an offer is a 'same' vote made on behalf of my photo", async () => {

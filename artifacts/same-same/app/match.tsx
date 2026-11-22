@@ -181,7 +181,8 @@ export default function MatchScreen() {
     setProblem(null);
     const samplesOn = useSamples;
     try {
-      const emotion = ripple.emotion ?? ripple.vibe ?? null;
+      const emotion = ripple.emotion ?? null;
+      const musicGenre = ripple.vibe ?? null;
       const topic = ripple.topic ?? ripple.theme ?? null;
       const looked: string[] = [];
       let ranked: Candidate[] = [];
@@ -191,6 +192,7 @@ export default function MatchScreen() {
           tags: ripple.tags,
           subjects: ripple.subjects,
           emotion,
+          musicGenre,
           voterPhotoId: myPhotoId || null,
           limit: MATCH.pageSize,
           excludeIds: [...excludeBase, ...seenRef.current, ...looked].slice(-200),
@@ -277,13 +279,15 @@ export default function MatchScreen() {
         const gen = ++loadGen.current;
         const samplesOn = useSamples === true;
         try {
-          const emotion = ripple?.emotion ?? ripple?.vibe ?? null;
+          const emotion = ripple?.emotion ?? null;
+          const musicGenre = ripple?.vibe ?? null;
           const topic = ripple?.topic ?? ripple?.theme ?? null;
           const pageRows = await backend.findCandidates({
             theme: topic ?? ripple?.theme ?? "",
             tags: ripple?.tags ?? [],
             subjects: ripple?.subjects ?? [],
             emotion,
+            musicGenre,
             voterPhotoId: myPhotoId || null,
             limit: MATCH.pageSize,
             excludeIds: [...excludeBase, ...seenRef.current].slice(-200),

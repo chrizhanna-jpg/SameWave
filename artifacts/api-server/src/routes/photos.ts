@@ -591,7 +591,7 @@ router.post("/photos", async (req, res) => {
 
 // ---- GET /api/photos/candidates -------------------------------------------
 // Query: ?theme=&tags=tag1,tag2&shapes=circles,vertical&subjects=apple,sculpture
-//        &musicGenre=lofi&limit=24
+//        &emotion=joy&musicGenre=lofi&limit=24
 // Header: X-Device-Id (required).
 //
 // Scoring (computed in SQL). Subject overlap is the heaviest single
@@ -612,6 +612,7 @@ router.post("/photos", async (req, res) => {
 //                 still a strong signal in the primary deck.
 //   shape_score = least(shape_overlap, 5) * 2 → 0..10. Visual-form
 //                 (circles, vertical, layered…) overlap.
+//   emotion_score = 8 if same feeling (`emotion` query vs p.emotion).
 //   music_score = 5 if same musicGenre as the requester's photo, else 0.
 //   jitter      = tiny random factor (0..0.3) so two consecutive calls
 //                 don't return the exact same ordering.
@@ -694,6 +695,8 @@ router.get("/photos/candidates", async (req, res) => {
       .filter((t) => t.length > 0 && t.length <= 32)
       .slice(0, 12);
     const subjects = expandSubjectsForQuery(subjectsRaw, 48);
+    // Feeling id (canonical allow-list). Distinct from musicGenre (song).
+    const emotion = normalizeEmotion(req.query.emotion) ?? "";
     // Music vibe is whitelisted in /photos POST, so it's safe to trust
     // the value the client echoes back here. Empty string disables the
     // bonus for callers (e.g. subject-matter match) that don't send it.
@@ -835,6 +838,11 @@ router.get("/photos/candidates", async (req, res) => {
             ELSE 0
           END AS theme_score,
           CASE
+            WHEN ${emotion} = '' THEN 0
+            WHEN lower(trim(coalesce(p.emotion, ''))) = ${emotion} THEN 8
+            ELSE 0
+          END AS emotion_score,
+          CASE
             WHEN ${musicGenre} = '' THEN 0
             WHEN p.music_genre = ${musicGenre} THEN 5
             ELSE 0
@@ -891,6 +899,11 @@ router.get("/photos/candidates", async (req, res) => {
                   cardinality(ARRAY(SELECT unnest(p.shape_tags) INTERSECT SELECT unnest(${shapesExpr}))),
                   5
                 ) * 2
+              END
+            + CASE
+                WHEN ${emotion} = '' THEN 0
+                WHEN lower(trim(coalesce(p.emotion, ''))) = ${emotion} THEN 8
+                ELSE 0
               END
             + CASE
                 WHEN ${musicGenre} = '' THEN 0

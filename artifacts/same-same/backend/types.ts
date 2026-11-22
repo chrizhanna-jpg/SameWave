@@ -75,8 +75,10 @@ export interface CandidateQuery {
   theme: string;
   tags: string[];
   subjects: string[];
-  /** Emotion id → musicGenre query on the server. */
+  /** Feeling id → `emotion` query on the server (never sent as musicGenre). */
   emotion: string | null;
+  /** Real song / vibe clip id when known — optional `musicGenre` query. */
+  musicGenre?: string | null;
   limit: number;
   /** Photos already looked at in this search. */
   excludeIds: string[];
