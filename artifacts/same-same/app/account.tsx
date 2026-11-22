@@ -293,7 +293,7 @@ export default function AccountScreen() {
           {appVersionLabel()}
         </Txt>
         <Txt variant="quiet" tone="secondary" center style={styles.copyright}>
-          © 2026 Samewave Studios. All rights reserved.
+          © 2026 SameWave Studios. All rights reserved.
         </Txt>
 
         <Button
