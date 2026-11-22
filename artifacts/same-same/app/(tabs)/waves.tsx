@@ -109,8 +109,8 @@ const WAVE_SECTIONS: {
   icon: "ripple" | "wave-glyph" | "globe";
 }[] = [
   { id: "sent", chip: "sectionSentChip", icon: "ripple" },
-  { id: "caught", chip: "sectionCaughtChip", icon: "wave-glyph" },
   { id: "received", chip: "sectionReceivedChip", icon: "ripple" },
+  { id: "caught", chip: "sectionCaughtChip", icon: "wave-glyph" },
   { id: "world", chip: "sectionWorldChip", icon: "globe" },
 ];
 
