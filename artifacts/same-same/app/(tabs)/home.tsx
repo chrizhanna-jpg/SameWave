@@ -1,6 +1,6 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useContext, useEffect, useState } from "react";
-import { Platform, Pressable, StyleSheet, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { AccountAvatar } from "@/components/AccountAvatar";
 import { BrandMark } from "@/components/BrandMark";
@@ -26,6 +26,10 @@ import { colors, font, layout, space } from "@/theme";
  * Ocean swell: once per cold start (splash, or Home once if splash skipped it).
  * Returning to Home from tabs / background stays silent. Post-send waiting
  * shows once after upload.
+ *
+ * The two Frost cards sit in a pinned footer above the absolute tab bar so
+ * they never scroll under it (gesture or 3-button nav). Only the toolbar /
+ * upper area may scroll, and that ScrollView ends above the footer.
  */
 export default function HomeScreen() {
   const router = useRouter();
@@ -47,7 +51,7 @@ export default function HomeScreen() {
     sendingAnother,
   });
   const today = dailyTopicFor();
-  // Clear the absolute frosted tab bar + Android nav/gesture inset (incl. mark).
+  // Measured tab bar height (incl. safe-area pad) + gap — Android gesture / 3-button.
   const tabClearance = useTabBarClearance(space.lg);
 
   useEffect(() => {
@@ -135,114 +139,133 @@ export default function HomeScreen() {
     <Screen
       scene={sceneFor.home}
       style={styles.screen}
-      scroll
-      reserveBottom={tabClearance}
+      // Cards are pinned in the footer; Screen itself must not scroll them.
+      reserveBottom={0}
     >
-      <View style={styles.toolbar}>
-        <Pressable
-          onPress={() => router.push("/how-it-works")}
-          hitSlop={layout.hitSlop}
-          accessibilityRole="button"
-          accessibilityLabel="How it works"
+      <View style={styles.body}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          // Scroll region ends above the pinned cards — never draws under them.
+          bounces={false}
         >
-          <FrostIconWell>
-            <Icon name="help" size={22} color={colors.waterMuted} />
-          </FrostIconWell>
-        </Pressable>
-        <AccountAvatar onPress={() => router.push("/account")} />
-      </View>
-
-      <Frost kind="card" style={styles.brandCard} contentStyle={styles.brand}>
-        {waiting ? (
-          <>
-            <RippleRings size={160} />
-            <Txt variant="title" center style={styles.brandTitle}>
-              Your Ripple is out there
-            </Txt>
-            <Txt tone="secondary" center style={styles.tagline}>
-              We&apos;ll tell you when someone shares your moment.
-            </Txt>
-            <Txt
-              variant="quiet"
-              tone="quiet"
-              center
-              style={styles.caption}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.85}
+          <View style={styles.toolbar}>
+            <Pressable
+              onPress={() => router.push("/how-it-works")}
+              hitSlop={layout.hitSlop}
+              accessibilityRole="button"
+              accessibilityLabel="How it works"
             >
-              Waves usually arrive within a few days.
-            </Txt>
-          </>
-        ) : (
-          <>
-            <BrandMark size={120} withName />
-            <Txt tone="secondary" center style={styles.tagline}>
-              Someone, somewhere is having a similar moment.
-            </Txt>
-            <Txt tone="secondary" center style={styles.brandLine}>
-              Send a Ripple, Catch a Wave
-            </Txt>
-          </>
-        )}
-      </Frost>
+              <FrostIconWell>
+                <Icon name="help" size={22} color={colors.waterMuted} />
+              </FrostIconWell>
+            </Pressable>
+            <AccountAvatar onPress={() => router.push("/account")} />
+          </View>
+        </ScrollView>
 
-      <Frost kind="card" style={styles.actionsCard} contentStyle={styles.actions}>
-        {waiting ? (
-          <Button
-            kind="soft"
-            label="Send another"
-            onPress={() => {
-              setSendingAnother(true);
-              dismissPostSendWaiting();
-            }}
-            style={styles.actionGap}
-          />
-        ) : (
-          <>
-            <Button
-              label="Capture a moment"
-              onPress={() => void beginCompose(null, false)}
-              style={styles.actionGap}
-              accessibilityHint="Opens the camera, then the Ripple tab to upload"
-            />
-            <Button
-              kind="soft"
-              label="Today's topic"
-              detail={today.label}
-              detailTone="moon"
-              onPress={() => void beginCompose(today.id, true)}
-              style={styles.actionGap}
-              accessibilityHint="Starts a Ripple locked to today's topic"
-            />
-            {Platform.OS !== "web" ? (
+        <View
+          style={[styles.pinned, { paddingBottom: tabClearance }]}
+          accessibilityLabel="Home cards"
+        >
+          <Frost kind="card" style={styles.brandCard} contentStyle={styles.brand}>
+            {waiting ? (
+              <>
+                <RippleRings size={160} />
+                <Txt variant="title" center style={styles.brandTitle}>
+                  Your Ripple is out there
+                </Txt>
+                <Txt tone="secondary" center style={styles.tagline}>
+                  We&apos;ll tell you when someone shares your moment.
+                </Txt>
+                <Txt
+                  variant="quiet"
+                  tone="quiet"
+                  center
+                  style={styles.caption}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.85}
+                >
+                  Waves usually arrive within a few days.
+                </Txt>
+              </>
+            ) : (
+              <>
+                <BrandMark size={120} withName />
+                <Txt tone="secondary" center style={styles.tagline}>
+                  Someone, somewhere is having a similar moment.
+                </Txt>
+                <Txt tone="secondary" center style={styles.brandLine}>
+                  Send a Ripple, Catch a Wave
+                </Txt>
+              </>
+            )}
+          </Frost>
+
+          <Frost kind="card" style={styles.actionsCard} contentStyle={styles.actions}>
+            {waiting ? (
               <Button
-                kind="quiet"
-                label="Choose from your photos"
-                onPress={() => void pickFromLibrary()}
+                kind="soft"
+                label="Send another"
+                onPress={() => {
+                  setSendingAnother(true);
+                  dismissPostSendWaiting();
+                }}
                 style={styles.actionGap}
               />
-            ) : null}
-          </>
-        )}
+            ) : (
+              <>
+                <Button
+                  label="Capture a moment"
+                  onPress={() => void beginCompose(null, false)}
+                  style={styles.actionGap}
+                  accessibilityHint="Opens the camera, then the Ripple tab to upload"
+                />
+                <Button
+                  kind="soft"
+                  label="Today's topic"
+                  detail={today.label}
+                  detailTone="moon"
+                  onPress={() => void beginCompose(today.id, true)}
+                  style={styles.actionGap}
+                  accessibilityHint="Starts a Ripple locked to today's topic"
+                />
+                {Platform.OS !== "web" ? (
+                  <Button
+                    kind="quiet"
+                    label="Choose from your photos"
+                    onPress={() => void pickFromLibrary()}
+                    style={styles.actionGap}
+                  />
+                ) : null}
+              </>
+            )}
 
-        {problem ? (
-          <Txt variant="quiet" tone="ember" center style={styles.actionGap}>
-            {problem}
-          </Txt>
-        ) : null}
-        {sync === "offline" ? (
-          <Txt variant="quiet" tone="secondary" center style={styles.actionGap}>
-            Can&apos;t reach SameWave right now. It will keep trying.
-          </Txt>
-        ) : null}
-      </Frost>
+            {problem ? (
+              <Txt variant="quiet" tone="ember" center style={styles.actionGap}>
+                {problem}
+              </Txt>
+            ) : null}
+            {sync === "offline" ? (
+              <Txt variant="quiet" tone="secondary" center style={styles.actionGap}>
+                Can&apos;t reach SameWave right now. It will keep trying.
+              </Txt>
+            ) : null}
+          </Frost>
+        </View>
+      </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flexGrow: 1, justifyContent: "flex-start" },
+  screen: { flex: 1 },
+  body: { flex: 1, width: "100%" },
+  scroll: { flex: 1, minHeight: 0 },
+  scrollContent: { flexGrow: 1 },
   toolbar: {
     marginTop: layout.homeToolbarOffset,
     marginBottom: space.md,
@@ -251,12 +274,16 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     minHeight: layout.iconButtonSize,
   },
+  /** Non-scrolling footer: both cards sit just above the absolute tab bar. */
+  pinned: {
+    flexShrink: 0,
+    width: "100%",
+    gap: space.md,
+  },
   brandCard: {
-    flexGrow: 1,
-    marginBottom: space.md,
+    width: "100%",
   },
   brand: {
-    flexGrow: 1,
     alignItems: "center",
     justifyContent: "center",
     width: "100%",
@@ -271,8 +298,7 @@ const styles = StyleSheet.create({
   brandLine: { maxWidth: 300, fontFamily: font.bold },
   caption: { alignSelf: "stretch", maxWidth: 320, paddingHorizontal: space.sm },
   actionsCard: {
-    // Extra gap above tab-bar overlay so frosted chrome / wells never sit on the bar.
-    marginBottom: space.md,
+    width: "100%",
   },
   actions: {
     width: "100%",

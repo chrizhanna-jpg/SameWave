@@ -16,7 +16,13 @@ test("Home keeps the existing tagline and adds bold Catch a Wave line under it",
   assert.ok(existing >= 0 && brand > existing);
 });
 
-test("Home clears the absolute tab bar with useTabBarClearance", () => {
+test("Home pins the two cards above the tab bar (no scroll under the bar)", () => {
   assert.match(home, /useTabBarClearance/);
-  assert.match(home, /reserveBottom=\{tabClearance\}/);
+  // Clearance lives on the pinned footer, not as Screen scroll padding.
+  assert.match(home, /styles\.pinned/);
+  assert.match(home, /paddingBottom:\s*tabClearance/);
+  assert.match(home, /accessibilityLabel="Home cards"/);
+  // Screen must not scroll the cards into the tab bar.
+  assert.doesNotMatch(home, /\bscroll\s*=\s*\{?true\}?/);
+  assert.match(home, /reserveBottom=\{0\}/);
 });
