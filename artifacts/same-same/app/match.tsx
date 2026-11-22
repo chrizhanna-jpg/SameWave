@@ -5,9 +5,7 @@ import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Animated,
-  Easing,
   Pressable,
   StyleSheet,
   useWindowDimensions,
@@ -16,9 +14,9 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Button } from "@/components/Button";
-import { FrostIconWell, SoftIconDisc } from "@/components/Frost";
+import { SoftIconDisc } from "@/components/Frost";
 import { Icon } from "@/components/Icon";
-import { RippleMark } from "@/components/RippleMark";
+import { MATCH_RIPPLE_INK, RippleMark } from "@/components/RippleMark";
 import { PhotoMetaChip } from "@/components/PhotoMetaChip";
 import { Scrim } from "@/components/Scrim";
 import { Txt } from "@/components/Txt";
@@ -37,7 +35,7 @@ import {
 } from "@/core/testPhotos";
 import type { Candidate } from "@/core/types";
 import { findWaveByPhotos } from "@/core/waves";
-import { NATIVE_DRIVER, useReducedMotion } from "@/device/motion";
+import { NATIVE_DRIVER } from "@/device/motion";
 import { waveLayoutMetrics } from "@/device/waveLayoutMetrics";
 import { playRipple, playWave } from "@/device/sound";
 import { useAppState } from "@/state/AppState";
@@ -51,8 +49,8 @@ const EMPTY_COPY =
   "You're meant to match a photo here, but there are no photos to match right now. Please come back later.";
 
 const ACTION_SIZE = 64;
-/** Soft opacity fade for the full-bleed pair on first paint (no spin / scale). */
-const MATCH_ENTER_MS = 500;
+/** Top-left close disc — same SoftIconDisc fill as the bottom actions. */
+const CLOSE_SIZE = layout.iconButtonSize;
 
 type LoadState = "loading" | "ready" | "empty" | "error";
 
@@ -149,8 +147,6 @@ export default function MatchScreen() {
   const finishedRef = useRef(false);
   const loadGen = useRef(0);
   const bottomPulse = useRef(new Animated.Value(1)).current;
-  const enterOpacity = useRef(new Animated.Value(0)).current;
-  const reducedMotion = useReducedMotion();
 
   const pulseBottom = useCallback(() => {
     bottomPulse.setValue(0.92);
@@ -160,17 +156,6 @@ export default function MatchScreen() {
       useNativeDriver: NATIVE_DRIVER,
     }).start();
   }, [bottomPulse]);
-
-  // One soft fade-in of the photo pair — no rotation / scale entrance.
-  useEffect(() => {
-    enterOpacity.setValue(0);
-    Animated.timing(enterOpacity, {
-      toValue: 1,
-      duration: reducedMotion ? motion.reducedFade : MATCH_ENTER_MS,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: NATIVE_DRIVER,
-    }).start();
-  }, [enterOpacity, reducedMotion, myPhotoId]);
 
   const ownIds = useMemo(() => ripples.map((r) => r.photoId), [ripples]);
   const offeredIds = ripple?.reach.offeredIds;
@@ -452,8 +437,7 @@ export default function MatchScreen() {
     );
   }
 
-  // Full-bleed pair: photos fill the window edge-to-edge (under status / home).
-  // Chrome + SoftIconDisc actions float above; bottom wash keeps labels readable.
+  // Full-bleed pair: photos fill the root edge-to-edge; SoftIconDisc chrome floats over.
   const actionPadBottom = Math.max(insets.bottom, space.md) + space.sm;
 
   return (
@@ -466,13 +450,14 @@ export default function MatchScreen() {
       }}
     >
       <StatusBar style="light" />
-      <Animated.View style={[styles.bleed, { opacity: enterOpacity }]} pointerEvents="none">
+      <View style={styles.bleed} pointerEvents="none">
         <WaveJoin
           width={width}
           height={height}
           top={{
             uri: ripple?.localUri ?? null,
             ownPhotoId: myPhotoId || undefined,
+            quiet: true,
             accessibilityLabel: "Your photo",
           }}
           bottom={
@@ -481,6 +466,7 @@ export default function MatchScreen() {
                 ? {
                     uri: candidate.uri,
                     blurIn: true,
+                    quiet: true,
                     accessibilityLabel: "Sample photo",
                   }
                 : {
@@ -488,15 +474,17 @@ export default function MatchScreen() {
                     uri: null,
                     ownPhotoId: candidate.id,
                     blurIn: true,
+                    quiet: true,
                     accessibilityLabel: "Their photo",
                   }
               : {
                   uri: null,
+                  quiet: true,
                   accessibilityLabel: "No photo to match",
                 }
           }
         />
-      </Animated.View>
+      </View>
 
       <LinearGradient
         pointerEvents="none"
@@ -505,7 +493,7 @@ export default function MatchScreen() {
         style={styles.bottomWash}
       />
 
-      {empty || load === "loading" || load === "error" ? (
+      {empty || load === "error" ? (
         <View
           style={[
             styles.emptyWrap,
@@ -518,53 +506,32 @@ export default function MatchScreen() {
           ]}
           pointerEvents="box-none"
         >
-          {load === "loading" ? (
-            // Spinner alone over the backdrop — no white Scrim card.
-            <ActivityIndicator color={colors.textPrimary} />
-          ) : (
-            <Scrim kind="light" style={styles.emptyScrim}>
-              {load === "error" && problem ? (
+          <Scrim kind="light" style={styles.emptyScrim}>
+            {load === "error" && problem ? (
+              <Txt center style={styles.emptyText}>
+                {problem}
+              </Txt>
+            ) : (
+              <>
                 <Txt center style={styles.emptyText}>
-                  {problem}
+                  {EMPTY_COPY}
                 </Txt>
-              ) : (
-                <>
-                  <Txt center style={styles.emptyText}>
-                    {EMPTY_COPY}
+                {empty && testPhotosBuildEnabled() && useSamples === false ? (
+                  <Txt center variant="quiet" tone="secondary" style={styles.emptyHint}>
+                    Turn on Sample photos in Account to test
                   </Txt>
-                  {empty && testPhotosBuildEnabled() && useSamples === false ? (
-                    <Txt center variant="quiet" tone="secondary" style={styles.emptyHint}>
-                      Turn on Sample photos in Account to test
-                    </Txt>
-                  ) : null}
-                  {empty ? (
-                    <Button
-                      kind="soft"
-                      label="Back home"
-                      onPress={() => void close()}
-                      style={styles.emptyDone}
-                    />
-                  ) : null}
-                </>
-              )}
-            </Scrim>
-          )}
-        </View>
-      ) : null}
-
-      {candidate && showActions ? (
-        <View
-          style={[
-            styles.metaChip,
-            {
-              // Lower half, clear of the seam and the action row.
-              top: height / 2 + space.lg,
-              bottom: Math.max(insets.bottom, space.md) + ACTION_SIZE + space.lg,
-            },
-          ]}
-          pointerEvents="none"
-        >
-          <PhotoMetaChip emotion={candidate.emotion} topic={candidate.theme} />
+                ) : null}
+                {empty ? (
+                  <Button
+                    kind="soft"
+                    label="Back home"
+                    onPress={() => void close()}
+                    style={styles.emptyDone}
+                  />
+                ) : null}
+              </>
+            )}
+          </Scrim>
         </View>
       ) : null}
 
@@ -588,9 +555,9 @@ export default function MatchScreen() {
           accessibilityRole="button"
           accessibilityLabel="Close"
         >
-          <FrostIconWell>
-            <Icon name="close" color={colors.textPrimary} />
-          </FrostIconWell>
+          <SoftIconDisc size={CLOSE_SIZE}>
+            <Icon name="close" color={colors.slate} />
+          </SoftIconDisc>
         </Pressable>
       </View>
 
@@ -614,9 +581,19 @@ export default function MatchScreen() {
             style={({ pressed }) => [styles.actionHit, pressed && styles.actionPressed]}
           >
             <SoftIconDisc size={ACTION_SIZE}>
-              <Icon name="close" size={28} color={colors.textPrimary} />
+              <Icon name="close" size={28} color={colors.slate} />
             </SoftIconDisc>
           </Pressable>
+
+          {candidate ? (
+            <PhotoMetaChip
+              compact
+              emotion={candidate.emotion}
+              topic={candidate.theme}
+            />
+          ) : (
+            <View style={styles.metaSpacer} />
+          )}
 
           <Pressable
             onPress={() => void onMatch()}
@@ -634,7 +611,7 @@ export default function MatchScreen() {
               {stage === "wave" ? (
                 <WaveMark width={44} />
               ) : (
-                <RippleMark size={48} />
+                <RippleMark size={48} color={MATCH_RIPPLE_INK} />
               )}
             </SoftIconDisc>
           </Pressable>
@@ -702,14 +679,7 @@ const styles = StyleSheet.create({
   actionHit: { borderRadius: ACTION_SIZE / 2 },
   actionPressed: { opacity: 0.85, transform: [{ scale: 0.94 }] },
   emptyDone: { marginTop: space.lg, alignSelf: "stretch" },
-  metaChip: {
-    position: "absolute",
-    left: space.lg,
-    right: space.lg,
-    zIndex: 3,
-    justifyContent: "flex-end",
-    alignItems: "center",
-  },
+  metaSpacer: { flex: 1, minWidth: 0 },
   missing: { marginHorizontal: space.lg, marginTop: space.xxl },
   missingBtn: { alignSelf: "center", marginTop: space.lg, padding: space.md },
 });

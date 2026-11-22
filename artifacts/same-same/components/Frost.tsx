@@ -100,6 +100,12 @@ export function FrostIconWell({
 }
 
 /**
+ * Shared Match chrome disc fill — close (X) and bottom Pass / Ripple / Wave
+ * buttons must use this exact value so they read as one family.
+ */
+export const SOFT_ICON_DISC_FILL = "rgba(255, 255, 255, 0.32)";
+
+/**
  * Soft translucent white disc for Match action buttons over photos.
  * Perfect circle: square size, borderRadius = size/2, overflow hidden.
  * No hairline, no BlurView, no elevation (Android elevation shadows read as
@@ -123,7 +129,7 @@ export function SoftIconDisc({
           width: diameter,
           height: diameter,
           borderRadius: diameter / 2,
-          backgroundColor: "rgba(255, 255, 255, 0.32)",
+          backgroundColor: SOFT_ICON_DISC_FILL,
           overflow: "hidden",
           alignItems: "center",
           justifyContent: "center",

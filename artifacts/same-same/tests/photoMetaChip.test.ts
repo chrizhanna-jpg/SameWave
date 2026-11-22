@@ -24,6 +24,7 @@ test("Match never renders candidate country or Sample · CC on screen", () => {
   assert.doesNotMatch(matchSrc, /Sample · \$\{candidate\.countryCode\}/);
   assert.doesNotMatch(matchSrc, /candidate\.countryCode/);
   assert.match(matchSrc, /PhotoMetaChip/);
+  assert.match(matchSrc, /compact/);
   assert.match(matchSrc, /emotion=\{candidate\.emotion\}/);
   assert.match(matchSrc, /topic=\{candidate\.theme\}/);
 });

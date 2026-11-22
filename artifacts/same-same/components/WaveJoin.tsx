@@ -1,5 +1,5 @@
 import MaskedViewImport from "@react-native-masked-view/masked-view";
-import React, { useId, useMemo, type ComponentType } from "react";
+import React, { useEffect, useId, useMemo, useState, type ComponentType } from "react";
 import {
   Platform,
   StyleSheet,
@@ -36,12 +36,14 @@ interface PhotoSide {
   blurIn?: boolean;
   /** Static soft focus for this side only (overrides blurIn once set). */
   blurRadius?: number;
+  /** Suppress "Unavailable" — Match uses quiet dark placeholders. */
+  quiet?: boolean;
 }
 
 interface Props {
-  /** Full screen width in points. */
+  /** Full screen width in points (seed; live size comes from onLayout). */
   width: number;
-  /** Full screen height in points. */
+  /** Full screen height in points (seed; live size comes from onLayout). */
   height: number;
   /** Top photograph (yours). */
   top: PhotoSide;
@@ -51,12 +53,21 @@ interface Props {
 }
 
 /**
- * Two photographs meet on one shared logo curve. Clips and the stroke are
- * derived from the same path in screen space (pixel `top`, never `50%`), so
- * they stay aligned on every phone size — including tall 412×915 screens.
+ * Two photographs meet on one shared logo curve. Absolute-fills the parent and
+ * measures itself so a short Dimensions height cannot leave a black band under
+ * the photos — clips and stroke stay aligned to the live box.
  */
-export function WaveJoin({ width, height, top, bottom, blurRadius }: Props) {
+export function WaveJoin({ width: widthProp, height: heightProp, top, bottom, blurRadius }: Props) {
   const reactId = useId().replace(/:/g, "");
+  const [box, setBox] = useState({ width: widthProp, height: heightProp });
+  useEffect(() => {
+    setBox((prev) =>
+      prev.width === widthProp && prev.height === heightProp
+        ? prev
+        : { width: widthProp, height: heightProp },
+    );
+  }, [widthProp, heightProp]);
+  const { width, height } = box;
   const band = joinBandHeight(width);
   const mid = seamMidY(height);
   const topBox = mid + band / 2;
@@ -68,7 +79,18 @@ export function WaveJoin({ width, height, top, bottom, blurRadius }: Props) {
   // Full-screen stroke path — identical curve the clips hug.
   const stroke = useMemo(() => seamStrokePath(width, height, band), [width, height, band]);
 
-  if (width <= 0 || height <= 0) return null;
+  if (width <= 0 || height <= 0) {
+    return (
+      <View
+        style={[styles.root, styles.fill, { backgroundColor: "#000000" }]}
+        onLayout={(event) => {
+          const { width: w, height: h } = event.nativeEvent.layout;
+          if (w < 1 || h < 1) return;
+          setBox((prev) => (prev.width === w && prev.height === h ? prev : { width: w, height: h }));
+        }}
+      />
+    );
+  }
 
   // SVG clip can't animate blurIn / static blur — MaskedView + Photo does.
   const bottomNeedsPhoto = Boolean(
@@ -79,7 +101,15 @@ export function WaveJoin({ width, height, top, bottom, blurRadius }: Props) {
   );
 
   return (
-    <View style={[styles.root, { width, height, backgroundColor: "#000000" }]} pointerEvents="box-none">
+    <View
+      style={[styles.root, styles.fill, { backgroundColor: "#000000" }]}
+      pointerEvents="box-none"
+      onLayout={(event) => {
+        const { width: w, height: h } = event.nativeEvent.layout;
+        if (w < 1 || h < 1) return;
+        setBox((prev) => (prev.width === w && prev.height === h ? prev : { width: w, height: h }));
+      }}
+    >
       <View style={[styles.bottomBox, { height: bottomBox }]}>
         {!bottomNeedsPhoto && bottom.uri ? (
           <ClippedSvgPhoto
@@ -97,6 +127,7 @@ export function WaveJoin({ width, height, top, bottom, blurRadius }: Props) {
               ownPhotoId={bottom.ownPhotoId}
               blurRadius={bottom.blurRadius ?? blurRadius}
               blurIn={bottom.blurRadius != null ? false : bottom.blurIn}
+              quiet={bottom.quiet}
               style={styles.photo}
               accessibilityLabel={bottom.accessibilityLabel}
             />
@@ -121,6 +152,7 @@ export function WaveJoin({ width, height, top, bottom, blurRadius }: Props) {
               ownPhotoId={top.ownPhotoId}
               blurRadius={top.blurRadius ?? blurRadius}
               blurIn={top.blurRadius != null ? false : top.blurIn}
+              quiet={top.quiet}
               style={styles.photo}
               accessibilityLabel={top.accessibilityLabel}
             />
@@ -227,6 +259,9 @@ function MaskedClip({
 
 const styles = StyleSheet.create({
   root: { overflow: "hidden" },
+  fill: {
+    ...StyleSheet.absoluteFill,
+  },
   photo: { width: "100%", height: "100%", borderRadius: 0 },
   topBox: {
     position: "absolute",

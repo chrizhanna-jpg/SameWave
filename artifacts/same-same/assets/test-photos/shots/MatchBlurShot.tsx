@@ -1,10 +1,7 @@
-import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams } from "expo-router";
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
-  Platform,
   StyleSheet,
   useWindowDimensions,
   View,
@@ -14,20 +11,34 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { SoftIconDisc } from "@/components/Frost";
 import { Icon } from "@/components/Icon";
 import { PhotoMetaChip } from "@/components/PhotoMetaChip";
-import { RippleMark } from "@/components/RippleMark";
+import { MATCH_RIPPLE_INK, RippleMark } from "@/components/RippleMark";
 import { WaveJoin } from "@/components/WaveJoin";
 import { PHOTO_BLUR_IN_RADIUS } from "@/core/photoBlurIn";
-import { colors, space } from "@/theme";
+import { waveLayoutMetrics } from "@/device/waveLayoutMetrics";
+import { colors, layout, space } from "@/theme";
+
+const ACTION_SIZE = 64;
+const CLOSE_SIZE = layout.iconButtonSize;
 
 /**
- * Preview-only: Match full-bleed mid-load (blur) vs sharp + soft circular discs.
- * `/match-blur-shot?phase=mid` | `phase=done` | `phase=fade`
+ * Preview-only: Match full-bleed mid-load (blur, no spinner/copy) vs sharp + soft discs.
+ * `/match-blur-shot?phase=mid` | `phase=done` | `phase=fade` (fade kept as mid alias).
  */
 export function MatchBlurShotInner() {
-  const { width, height } = useWindowDimensions();
+  const windowDims = useWindowDimensions();
+  const metrics = useMemo(
+    () => waveLayoutMetrics(),
+    [windowDims.width, windowDims.height],
+  );
+  const [bleedSize, setBleedSize] = useState(metrics);
+  useEffect(() => {
+    setBleedSize(metrics);
+  }, [metrics]);
+  const { width, height } = bleedSize;
   const insets = useSafeAreaInsets();
   const { phase: raw } = useLocalSearchParams<{ phase?: string }>();
-  const phase = raw === "done" ? "done" : raw === "fade" ? "fade" : "mid";
+  // "fade" kept as a URL alias of mid — Chris removed the entrance fade.
+  const phase = raw === "done" ? "done" : "mid";
 
   const sample = useMemo(() => {
     if (process.env.EXPO_PUBLIC_TEST_PHOTOS !== "1") return null;
@@ -47,29 +58,34 @@ export function MatchBlurShotInner() {
     return <View style={styles.root} />;
   }
 
-  const opacity = phase === "fade" ? 0.45 : 1;
+  const bottomSoft = phase !== "done";
 
   return (
     <View
       style={styles.root}
       accessibilityLabel={
-        phase === "mid"
-          ? "Match mid-load shot"
-          : phase === "fade"
-            ? "Match fade-in shot"
-            : "Match after-load shot"
+        phase === "mid" ? "Match mid-load shot" : "Match after-load shot"
       }
+      onLayout={(event) => {
+        const { width: w, height: h } = event.nativeEvent.layout;
+        if (w < 1 || h < 1) return;
+        setBleedSize((prev) => (prev.width === w && prev.height === h ? prev : { width: w, height: h }));
+      }}
     >
-      <View style={[StyleSheet.absoluteFill, { opacity }]} pointerEvents="none">
+      <View style={styles.bleed} pointerEvents="none">
         <WaveJoin
           width={width}
           height={height}
           top={{
             uri: sample.top.uri,
+            quiet: true,
             accessibilityLabel: "Your photo",
           }}
           bottom={{
             uri: sample.bottom.uri,
+            quiet: true,
+            // Soft from frame 1 while loading; sharp once "done".
+            blurRadius: bottomSoft ? PHOTO_BLUR_IN_RADIUS : undefined,
             accessibilityLabel: "Their photo",
           }}
         />
@@ -82,63 +98,43 @@ export function MatchBlurShotInner() {
         style={styles.bottomWash}
       />
 
-      {phase === "mid" || phase === "fade" ? (
+      <View
+        style={[styles.chrome, { paddingTop: insets.top + space.sm }]}
+        pointerEvents="none"
+      >
+        <SoftIconDisc size={CLOSE_SIZE}>
+          <Icon name="close" color={colors.slate} />
+        </SoftIconDisc>
+      </View>
+
+      {phase === "done" ? (
         <View
-          style={[styles.emptyWrap, { top: height / 2, bottom: 0 }]}
+          style={[
+            styles.actions,
+            { paddingBottom: Math.max(insets.bottom, space.md) + space.sm },
+          ]}
           pointerEvents="none"
         >
-          <Image
-            source={{ uri: sample.bottom.uri }}
-            style={[
-              StyleSheet.absoluteFill,
-              Platform.OS === "web"
-                ? ({ filter: `blur(${PHOTO_BLUR_IN_RADIUS}px)` } as object)
-                : null,
-            ]}
-            contentFit="cover"
-            blurRadius={Platform.OS === "web" ? 0 : PHOTO_BLUR_IN_RADIUS}
-            transition={0}
+          <SoftIconDisc size={ACTION_SIZE}>
+            <Icon name="close" size={28} color={colors.slate} />
+          </SoftIconDisc>
+          <PhotoMetaChip
+            compact
+            emotion={sample.bottom.emotion}
+            topic={sample.bottom.theme}
           />
-          {phase === "mid" ? (
-            <ActivityIndicator color={colors.textPrimary} style={styles.spinner} />
-          ) : null}
+          <SoftIconDisc size={ACTION_SIZE}>
+            <RippleMark size={48} color={MATCH_RIPPLE_INK} animated={false} />
+          </SoftIconDisc>
         </View>
-      ) : (
-        <>
-          <View
-            style={[
-              styles.metaChip,
-              {
-                top: height / 2 + space.lg,
-                bottom: Math.max(insets.bottom, space.md) + 64 + space.lg,
-              },
-            ]}
-            pointerEvents="none"
-          >
-            <PhotoMetaChip emotion={sample.bottom.emotion} topic={sample.bottom.theme} />
-          </View>
-          <View
-            style={[
-              styles.actions,
-              { paddingBottom: Math.max(insets.bottom, space.md) + space.sm },
-            ]}
-            pointerEvents="none"
-          >
-            <SoftIconDisc size={64}>
-              <Icon name="close" size={28} color={colors.textPrimary} />
-            </SoftIconDisc>
-            <SoftIconDisc size={64}>
-              <RippleMark size={48} animated={false} />
-            </SoftIconDisc>
-          </View>
-        </>
-      )}
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#000000" },
+  bleed: { ...StyleSheet.absoluteFill },
   bottomWash: {
     position: "absolute",
     left: 0,
@@ -147,23 +143,12 @@ const styles = StyleSheet.create({
     height: 200,
     zIndex: 2,
   },
-  emptyWrap: {
+  chrome: {
     position: "absolute",
-    left: 0,
-    right: 0,
-    justifyContent: "center",
-    alignItems: "center",
-    zIndex: 3,
-    overflow: "hidden",
-  },
-  spinner: { zIndex: 4 },
-  metaChip: {
-    position: "absolute",
-    left: space.lg,
-    right: space.lg,
-    zIndex: 3,
-    justifyContent: "flex-end",
-    alignItems: "center",
+    left: space.md,
+    right: space.md,
+    top: 0,
+    zIndex: 4,
   },
   actions: {
     position: "absolute",

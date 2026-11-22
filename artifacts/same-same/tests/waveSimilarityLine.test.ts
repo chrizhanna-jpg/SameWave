@@ -15,39 +15,56 @@ test("WaveSimilarityLine is reused on chrome and Discover sheet", () => {
   assert.equal((waveSrc.match(/WaveSimilarityLine/g) ?? []).length >= 2, true);
 });
 
-test("Match bottom photo uses blurIn and loading spinner has no Scrim", () => {
+test("Match bottom photo uses blurIn, quiet placeholders, no spinner", () => {
   const matchSrc = readFileSync(join(root, "app/match.tsx"), "utf8");
   assert.match(matchSrc, /blurIn:\s*true/);
-  assert.match(matchSrc, /Spinner alone over the backdrop/);
-  assert.match(matchSrc, /load === "loading"[\s\S]*ActivityIndicator/);
+  assert.match(matchSrc, /quiet:\s*true/);
+  assert.doesNotMatch(matchSrc, /ActivityIndicator/);
+  assert.doesNotMatch(matchSrc, /Unavailable/);
 });
 
-test("Match is full-bleed with soft circular discs and fade entrance", () => {
+test("Match is full-bleed with soft circular discs and no entrance fade", () => {
   const matchSrc = readFileSync(join(root, "app/match.tsx"), "utf8");
   assert.match(matchSrc, /SoftIconDisc/);
   assert.match(matchSrc, /size=\{ACTION_SIZE\}/);
   assert.match(matchSrc, /styles\.bleed/);
   assert.match(matchSrc, /waveLayoutMetrics/);
-  assert.match(matchSrc, /MATCH_ENTER_MS/);
-  assert.match(matchSrc, /enterOpacity/);
   assert.match(matchSrc, /SystemUI\.setBackgroundColorAsync\(MATCH_CHROME\)/);
+  assert.doesNotMatch(matchSrc, /MATCH_ENTER_MS/);
+  assert.doesNotMatch(matchSrc, /enterOpacity/);
   assert.doesNotMatch(matchSrc, /transform:\s*\[\s*\{\s*rotate/);
   assert.doesNotMatch(matchSrc, /MATCH_SPIN|spinIn|spinEntrance/i);
 });
 
-test("Photo blurIn settles once — no fade transition, arm once per source", () => {
-  const photoSrc = readFileSync(join(root, "components/Photo.tsx"), "utf8");
-  assert.match(photoSrc, /sharpenArmed/);
-  assert.match(photoSrc, /transition=\{blurIn \? 0 : motion\.fadeQuick\}/);
+test("Match meta chip sits on the action row between discs", () => {
+  const matchSrc = readFileSync(join(root, "app/match.tsx"), "utf8");
+  assert.match(matchSrc, /PhotoMetaChip[\s\S]*compact/);
+  assert.match(matchSrc, /styles\.actions[\s\S]*PhotoMetaChip|PhotoMetaChip[\s\S]*styles\.actions/);
 });
 
-test("SoftIconDisc is a perfect circle without elevation hexagon", () => {
+test("Photo blurIn reveals only after soft load — transition 0, quiet placeholder", () => {
+  const photoSrc = readFileSync(join(root, "components/Photo.tsx"), "utf8");
+  assert.match(photoSrc, /sharpenArmed/);
+  assert.match(photoSrc, /transition=\{0\}/);
+  assert.match(photoSrc, /quiet/);
+  assert.match(photoSrc, /waitingForRemote/);
+  assert.match(photoSrc, /setRevealed\(true\)/);
+});
+
+test("SoftIconDisc shares one fill constant without elevation hexagon", () => {
   const frostSrc = readFileSync(join(root, "components/Frost.tsx"), "utf8");
+  assert.match(frostSrc, /SOFT_ICON_DISC_FILL\s*=\s*"rgba\(255, 255, 255, 0\.32\)"/);
   assert.match(frostSrc, /function SoftIconDisc/);
-  assert.match(frostSrc, /rgba\(255, 255, 255, 0\.32\)/);
+  assert.match(frostSrc, /backgroundColor:\s*SOFT_ICON_DISC_FILL/);
   assert.match(frostSrc, /borderRadius:\s*diameter \/ 2/);
   assert.match(frostSrc, /overflow:\s*"hidden"/);
   const softBlock = frostSrc.slice(frostSrc.indexOf("function SoftIconDisc"));
   assert.doesNotMatch(softBlock.slice(0, 900), /BlurView/);
   assert.doesNotMatch(softBlock.slice(0, 900), /elevation/);
+});
+
+test("Match RippleMark uses deep slate ink for disc contrast", () => {
+  const markSrc = readFileSync(join(root, "components/RippleMark.tsx"), "utf8");
+  assert.match(markSrc, /MATCH_RIPPLE_INK\s*=\s*colors\.slate/);
+  assert.match(markSrc, /strokeW = 3\.35/);
 });

@@ -2,7 +2,6 @@ import React, { useEffect, useId, useMemo } from "react";
 import { Animated, Easing, View } from "react-native";
 import Svg, { Circle, Defs, Ellipse, LinearGradient, Stop } from "react-native-svg";
 
-import { RIPPLE_RING_INK } from "@/components/RippleRings";
 import { useReducedMotion } from "@/device/motion";
 import { colors, motion } from "@/theme";
 
@@ -24,9 +23,12 @@ const RING_COUNT = 4;
  * (pebble dropped on water, seen at an angle). Front (lower) arcs are
  * thicker / more opaque; outer rings stay fainter.
  */
+/** Match-disc ink — deep slate for ≥4.5:1 on SOFT_ICON_DISC_FILL over light/dark photos. */
+export const MATCH_RIPPLE_INK = colors.slate;
+
 export function RippleMark({
   size = 32,
-  color = RIPPLE_RING_INK,
+  color = MATCH_RIPPLE_INK,
   animated = true,
 }: Props) {
   const reduced = useReducedMotion();
@@ -73,18 +75,19 @@ export function RippleMark({
       <Svg width={size} height={size} viewBox={`0 0 ${vb} ${vb}`}>
         <Defs>
           <LinearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-            {/* Back (upper) arc fades; front (lower) arc holds ink for depth. */}
-            <Stop offset="0" stopColor={color} stopOpacity="0.12" />
-            <Stop offset="0.4" stopColor={color} stopOpacity="0.42" />
-            <Stop offset="0.72" stopColor={color} stopOpacity="0.78" />
+            {/* Near-opaque throughout so rings stay readable on soft white discs. */}
+            <Stop offset="0" stopColor={color} stopOpacity="0.55" />
+            <Stop offset="0.4" stopColor={color} stopOpacity="0.82" />
+            <Stop offset="0.72" stopColor={color} stopOpacity="0.95" />
             <Stop offset="1" stopColor={color} stopOpacity="1" />
           </LinearGradient>
         </Defs>
 
         {values.map((value, index) => {
           // Outer rings (higher index starts later) stay a touch fainter overall.
-          const ringGain = 1 - index * 0.12;
-          const strokeW = 2.55 - index * 0.3;
+          const ringGain = 1 - index * 0.1;
+          // Thicker strokes so the glyph holds ≥4.5:1 on the translucent disc.
+          const strokeW = 3.35 - index * 0.28;
           return (
             <AnimatedEllipse
               key={index}
@@ -105,7 +108,7 @@ export function RippleMark({
               // otherwise the glyph reads tiny even though maxRx is correct.
               opacity={value.interpolate({
                 inputRange: [0, 0.2, 0.55, 0.85, 1],
-                outputRange: [0, 0.35 * ringGain, 0.95 * ringGain, 0.4 * ringGain, 0],
+                outputRange: [0, 0.45 * ringGain, 1 * ringGain, 0.55 * ringGain, 0],
               })}
             />
           );
@@ -115,16 +118,16 @@ export function RippleMark({
         <Ellipse
           cx={cx}
           cy={cy}
-          rx={2.6}
-          ry={2.6 * ELLIPSE_ASPECT}
+          rx={2.8}
+          ry={2.8 * ELLIPSE_ASPECT}
           fill={color}
-          opacity={0.95}
+          opacity={1}
         />
-        <Circle cx={cx} cy={cy - 2.8} r={1.25} fill={color} opacity={0.9} />
+        <Circle cx={cx} cy={cy - 2.8} r={1.35} fill={color} opacity={1} />
       </Svg>
     </View>
   );
 }
 
-/** @deprecated Prefer RIPPLE_RING_INK — kept so older imports keep compiling. */
-export const rippleMarkDefaultColor = colors.waterMid;
+/** @deprecated Prefer MATCH_RIPPLE_INK — kept so older imports keep compiling. */
+export const rippleMarkDefaultColor = MATCH_RIPPLE_INK;
