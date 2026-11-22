@@ -9,6 +9,7 @@ import { AppState, type NativeEventSubscription } from "react-native";
 import {
   fadeVolumeAt,
   SWOOSH_FADE_MS,
+  SWOOSH_FADE_STEP_MS,
   SWOOSH_FADE_STEPS,
 } from "@/core/volumeFade";
 
@@ -79,6 +80,11 @@ function clearSwooshFade(): void {
 function parkSwooshPlayer(player: AudioPlayer): void {
   swooshPlaying = false;
   try {
+    player.loop = false;
+  } catch {
+    /* */
+  }
+  try {
     player.pause();
   } catch {
     /* */
@@ -90,6 +96,37 @@ function parkSwooshPlayer(player: AudioPlayer): void {
   }
   try {
     player.volume = WAVE_SWOOSH_VOLUME;
+  } catch {
+    /* */
+  }
+}
+
+/**
+ * Keep audio flowing through a long fade: the swell file is shorter than
+ * splash-min + 3.5 s fade when splash runs long, so loop (and nudge play)
+ * until volume reaches zero.
+ */
+function keepSwooshAudibleDuringFade(player: AudioPlayer): void {
+  try {
+    player.loop = true;
+  } catch {
+    /* */
+  }
+  try {
+    // If the native player already finished before loop engaged, restart.
+    const nearEnd =
+      typeof player.duration === "number" &&
+      player.duration > 0 &&
+      typeof player.currentTime === "number" &&
+      player.currentTime >= Math.max(0, player.duration - 0.08);
+    if (nearEnd || player.duration === 0) {
+      void player.seekTo(0.35).catch(() => undefined); // skip the soft attack
+    }
+  } catch {
+    /* */
+  }
+  try {
+    if (!player.playing) player.play();
   } catch {
     /* */
   }
@@ -212,6 +249,11 @@ export async function playWaveSwoosh(options?: { fromLaunch?: boolean }): Promis
     await setPlaybackMode();
     if (generation !== swooshGeneration) return;
     const player = ensureSwooshPlayer();
+    try {
+      player.loop = false;
+    } catch {
+      /* */
+    }
     player.volume = WAVE_SWOOSH_VOLUME;
     const loaded = await waitUntilLoaded(player);
     if (generation !== swooshGeneration) return;
@@ -254,9 +296,11 @@ export function shouldPlayHomeOceanOnFocus(): boolean {
 }
 
 /**
- * Fade the splash / ocean swell to silence (~1.5 s eased ramp), then pause.
+ * Fade the splash / ocean swell to silence (~3.5 s perceptual ramp), then pause.
  * Visual splash timing is unchanged — callers fire this when the overlay goes
- * away; audio tails off underneath Home. A newer play/stop cancels the ramp.
+ * away; audio tails off underneath Home. The swell file (~4.86 s) may end
+ * before a late splash dismiss + 3.5 s fade, so we loop for the ramp only.
+ * A newer play/stop cancels the ramp.
  */
 export function stopWaveSwoosh(): void {
   clearSwooshFade();
@@ -282,8 +326,10 @@ export function stopWaveSwoosh(): void {
   }
 
   ensureSwooshFadeAppStateGuard();
+  keepSwooshAudibleDuringFade(player);
+
   const steps = SWOOSH_FADE_STEPS;
-  const stepMs = SWOOSH_FADE_MS / steps;
+  const stepMs = SWOOSH_FADE_STEP_MS;
   let step = 0;
   // Keep swooshPlaying true through the fade so Home's focus handler waits
   // instead of starting a second swell.
@@ -293,6 +339,7 @@ export function stopWaveSwoosh(): void {
       return;
     }
     step += 1;
+    keepSwooshAudibleDuringFade(player);
     const volume = fadeVolumeAt(step / steps, from, 0);
     try {
       player.volume = volume;
