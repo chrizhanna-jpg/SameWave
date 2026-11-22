@@ -2,6 +2,7 @@ import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
+  InteractionManager,
   Platform,
   StyleSheet,
   useWindowDimensions,
@@ -38,7 +39,7 @@ import {
   subscribeDraft,
 } from "@/state/draft";
 import { useTabBarClearance } from "@/state/TabBarHeight";
-import { colors, font, motion, radius, space } from "@/theme";
+import { colors, font, radius, space } from "@/theme";
 
 /** Fixed preview width (pt). Height comes from match-screen slotAspect. */
 const PREVIEW_WIDTH = 128;
@@ -150,16 +151,16 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
         song: draft.song,
         recording: draft.recording,
       });
+      // Keep draft + "Uploading…" painted until Match is on screen — clearing
+      // first flashed an empty Ripple tab under the old rippleSend delay.
       setSent(true);
-      clearDraft();
-      setTimeout(
-        () =>
-          router.replace({
-            pathname: "/match",
-            params: { photoId: uploaded.photoId },
-          }),
-        motion.rippleSend,
-      );
+      router.replace({
+        pathname: "/match",
+        params: { photoId: uploaded.photoId },
+      });
+      InteractionManager.runAfterInteractions(() => {
+        clearDraft();
+      });
     } catch (error) {
       setSending(false);
       const kind = errorKind(error);

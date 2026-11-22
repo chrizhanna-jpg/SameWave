@@ -43,3 +43,15 @@ test("shared TypeAheadPicker collapses to the selected label only", () => {
   assert.match(picker, /Keyboard\.dismiss/);
   assert.doesNotMatch(picker, /Choose a feeling first/);
 });
+
+test("upload navigates to match before clearing draft (no empty Ripple flash)", () => {
+  assert.match(composeSrc, /router\.replace\(\{/);
+  assert.match(composeSrc, /pathname:\s*"\/match"/);
+  assert.match(composeSrc, /InteractionManager\.runAfterInteractions/);
+  assert.match(composeSrc, /clearDraft\(\)/);
+  // Must not clear before replace, and must not wait on the old RippleRings delay.
+  const sendStart = composeSrc.indexOf("const send = async");
+  const sendBody = composeSrc.slice(sendStart, sendStart + 1200);
+  assert.ok(sendBody.indexOf("router.replace") < sendBody.indexOf("clearDraft"));
+  assert.doesNotMatch(sendBody, /motion\.rippleSend/);
+});
