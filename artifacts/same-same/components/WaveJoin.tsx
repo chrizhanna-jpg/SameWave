@@ -14,7 +14,8 @@ const MaskedView = MaskedViewImport as unknown as ComponentType<
 import { Photo } from "@/components/Photo";
 import {
   joinBandHeight,
-  logoWavePath,
+  seamMidY,
+  seamStrokePath,
   waveClipAbove,
   waveClipBelow,
 } from "@/core/waveJoin";
@@ -39,30 +40,29 @@ interface Props {
 }
 
 /**
- * The two Wave photographs meet along the logo ribbon: each photo is clipped
- * to the shared curve, and a thin warm-white stroke sits exactly on that seam.
- *
- * Prefer SVG `ClipPath` when we have a plain `uri` (works in Expo Go + web).
- * Fall back to MaskedView + `Photo` when we need signed headers / blur.
+ * Two photographs meet on one shared logo curve. Clips and the stroke are
+ * derived from the same path in screen space (pixel `top`, never `50%`), so
+ * they stay aligned on every phone size — including tall 412×915 screens.
  */
 export function WaveJoin({ width, height, top, bottom, blurRadius }: Props) {
   const reactId = useId().replace(/:/g, "");
   const band = joinBandHeight(width);
-  const half = height / 2;
-  const topBox = half + band / 2;
-  const bottomBox = half + band / 2;
+  const mid = seamMidY(height);
+  const topBox = mid + band / 2;
+  const bottomBox = mid + band / 2;
+  const strokeTop = mid - band / 2;
 
   const above = useMemo(() => waveClipAbove(width, topBox, band), [width, topBox, band]);
   const below = useMemo(() => waveClipBelow(width, bottomBox, band), [width, bottomBox, band]);
-  const stroke = useMemo(() => logoWavePath(width, band), [width, band]);
+  // Full-screen stroke path — identical curve the clips hug.
+  const stroke = useMemo(() => seamStrokePath(width, height, band), [width, height, band]);
 
   if (width <= 0 || height <= 0) return null;
 
-  // Plain URIs: SVG ClipPath (reliable in Expo Go + web). Blur / signed own-photo: MaskedView.
   const useSvgClip = !blurRadius;
 
   return (
-    <View style={[styles.root, { backgroundColor: colors.background }]} pointerEvents="box-none">
+    <View style={[styles.root, { width, height, backgroundColor: colors.background }]} pointerEvents="box-none">
       <View style={[styles.bottomBox, { height: bottomBox }]}>
         {useSvgClip && bottom.uri ? (
           <ClippedSvgPhoto
@@ -108,12 +108,9 @@ export function WaveJoin({ width, height, top, bottom, blurRadius }: Props) {
         )}
       </View>
 
-      {/* Stroke sits on the shared curve — not a separate band beside the photos. */}
-      <View
-        style={[styles.strokeWrap, { height: band, marginTop: -band / 2 }]}
-        pointerEvents="none"
-      >
-        <Svg width={width} height={band}>
+      {/* Stroke in the same screen coords as the shared seam path. */}
+      <View style={[styles.strokeWrap, { top: strokeTop, height: band }]} pointerEvents="none">
+        <Svg width={width} height={height} style={{ position: "absolute", top: -strokeTop, left: 0 }}>
           <Path
             d={stroke}
             fill="none"
@@ -177,7 +174,6 @@ function ClippedSvgPhoto({
   );
 }
 
-/** MaskedView fallback: explicit pixel size + non-collapsible mask (Android). */
 function MaskedClip({
   width,
   height,
@@ -193,10 +189,7 @@ function MaskedClip({
     <MaskedView
       style={{ width, height }}
       maskElement={
-        <View
-          collapsable={false}
-          style={{ width, height, backgroundColor: "transparent" }}
-        >
+        <View collapsable={false} style={{ width, height, backgroundColor: "transparent" }}>
           <Svg width={width} height={height}>
             <Path d={clipD} fill="#FFFFFF" />
           </Svg>
@@ -209,7 +202,7 @@ function MaskedClip({
 }
 
 const styles = StyleSheet.create({
-  root: { ...StyleSheet.absoluteFill },
+  root: { overflow: "hidden" },
   photo: { width: "100%", height: "100%", borderRadius: 0 },
   topBox: {
     position: "absolute",
@@ -229,9 +222,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     right: 0,
-    top: "50%",
     zIndex: 3,
-    alignItems: "center",
-    justifyContent: "center",
+    overflow: "visible",
   },
 });

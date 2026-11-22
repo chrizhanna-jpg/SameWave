@@ -32,7 +32,7 @@ import {
 } from "@/core/testPhotos";
 import type { Candidate } from "@/core/types";
 import { findWaveByPhotos } from "@/core/waves";
-import { playEffect } from "@/device/sound";
+import { playRipple, playWave } from "@/device/sound";
 import { useAppState } from "@/state/AppState";
 import { colors, layout, motion, space } from "@/theme";
 
@@ -45,7 +45,7 @@ const ACTION_SIZE = 64;
 type LoadState = "loading" | "ready" | "empty" | "error";
 
 /**
- * After Send Ripple: your photo on top, a live candidate below, joined by the
+ * After uploading a moment: your photo on top, a live candidate below, joined by the
  * Wave seam. Full-bleed overlay: X + RippleMark (ripple stage) or X + WaveMark
  * (wave stage). Any action tap advances the bottom photo.
  */
@@ -342,7 +342,9 @@ export default function MatchScreen() {
     const current = deck[index];
     if (!current || busy || load !== "ready" || !myPhotoId) return;
     setBusy(true);
-    void playEffect("drop");
+    // Ripple = offer; Wave = match-back. No drop beep; no arrival chime here.
+    if (stage === "wave") void playWave();
+    else void playRipple();
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
 
     // Sample fixtures: advance only (no server offer).
@@ -480,6 +482,11 @@ export default function MatchScreen() {
                 <Txt center style={styles.emptyText}>
                   {EMPTY_COPY}
                 </Txt>
+                {empty && testPhotosBuildEnabled() && useSamples === false ? (
+                  <Txt center variant="quiet" tone="secondary" style={styles.emptyHint}>
+                    Turn on Sample photos in Account to test
+                  </Txt>
+                ) : null}
                 {empty ? (
                   <Button
                     kind="soft"
@@ -608,6 +615,7 @@ const styles = StyleSheet.create({
     paddingVertical: space.lg,
   },
   emptyText: { color: colors.textPrimary },
+  emptyHint: { marginTop: space.md },
   toast: {
     position: "absolute",
     left: space.lg,

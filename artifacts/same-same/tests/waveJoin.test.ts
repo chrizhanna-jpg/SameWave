@@ -4,6 +4,8 @@ import { test } from "node:test";
 import {
   joinBandHeight,
   logoWavePath,
+  seamMidY,
+  seamStrokePath,
   waveClipAbove,
   waveClipBelow,
 } from "../core/waveJoin";
@@ -51,4 +53,24 @@ test("the shared seam sits in the bottom band of the top box (not a mid rectangl
   const above = waveClipAbove(width, topBox, band);
   assert.ok(above.includes(`L ${width} 0`));
   assert.match(above, /Z$/);
+});
+
+test("seam stroke and clips share mid-line maths on tall and standard phones", () => {
+  for (const [w, h] of [
+    [390, 844],
+    [412, 915],
+  ] as const) {
+    const band = joinBandHeight(w);
+    const mid = seamMidY(h);
+    const topBox = mid + band / 2;
+    const stroke = seamStrokePath(w, h, band);
+    const above = waveClipAbove(w, topBox, band);
+    assert.equal(mid, h / 2);
+    assert.match(stroke, /^M /);
+    assert.equal((stroke.match(/C /g) ?? []).length, 4);
+    assert.equal((above.match(/C /g) ?? []).length, 4);
+    // Stroke is in screen space: first M y is near mid (band mid ± amp).
+    const y0 = Number(stroke.split(" ")[2]);
+    assert.ok(Math.abs(y0 - mid) < band, `stroke y0 ${y0} vs mid ${mid} band ${band}`);
+  }
 });

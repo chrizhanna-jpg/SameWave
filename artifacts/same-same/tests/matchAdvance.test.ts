@@ -61,19 +61,17 @@ test("withOptionalTestPhotos stays empty when the build flag is off or toggle is
   }
 });
 
-test("preferTopic keeps only coffee samples when any match (Coffee & tea)", () => {
+test("preferTopic leads with coffee then keeps the rest (never exclusive)", () => {
   const coffee = preferTopicSamples(TEST_PHOTO_META, "coffee");
-  assert.ok(coffee.length >= 1, "expected at least one coffee sample");
-  assert.ok(
-    coffee.every((c) => c.theme === "coffee"),
-    `Coffee & tea deck leaked other themes: ${coffee.map((c) => c.theme).join(",")}`,
-  );
+  assert.ok(coffee.length === TEST_PHOTO_META.length, "all samples stay available");
+  assert.equal(coffee[0]?.theme, "coffee");
   assert.equal(coffee[0]?.file, "02-coffee-hands.jpg");
+  assert.ok(coffee.some((c) => c.theme !== "coffee"), "non-topic samples follow");
+  const weekend = preferTopicSamples(TEST_PHOTO_META, "weekend");
+  assert.equal(weekend.length, TEST_PHOTO_META.length, "unknown topic → full list");
   const mountains = preferTopicSamples(TEST_PHOTO_META, "mountains");
-  assert.ok(mountains.every((c) => c.theme === "mountains"));
-  assert.ok(mountains.some((c) => c.file.includes("mountain")));
-  const unknown = preferTopicSamples(TEST_PHOTO_META, "no-such-topic");
-  assert.equal(unknown.length, TEST_PHOTO_META.length);
+  assert.equal(mountains[0]?.theme, "mountains");
+  assert.equal(mountains.length, TEST_PHOTO_META.length);
 });
 
 test("sample toggle cache publishes to subscribers without remount", async () => {

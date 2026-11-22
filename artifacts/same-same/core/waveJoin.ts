@@ -1,6 +1,7 @@
 /**
- * The soft join between the two full-screen photographs on a Wave.
- * The curve follows the SameWave logo: taller crest left, trough, lower crest right.
+ * The soft join between the two full-screen photographs on a Wave / Match.
+ * One shared curve in screen space drives both photo clips and the stroke,
+ * so they stay aligned at every size (including tall phones).
  */
 
 import { waveJoin } from "@/theme";
@@ -64,14 +65,32 @@ function reverseStroke(curve: WaveCurve): string {
   return parts.join(" ");
 }
 
-/** Approximates the logo's ribbon as one continuous cubic path (band-local). */
+/** Screen-space Y of the seam mid-line (shared by clips + stroke). */
+export function seamMidY(screenHeight: number): number {
+  return screenHeight / 2;
+}
+
+/** Band-local ribbon path (legacy helper). Prefer `seamStrokePath`. */
 export function logoWavePath(width: number, height: number): string {
   return strokePath(logoWaveCurve(width, height));
 }
 
 /**
+ * Stroke path in full-screen coordinates — same curve the clips hug.
+ * The band is centred on `seamMidY(screenHeight)`.
+ */
+export function seamStrokePath(
+  width: number,
+  screenHeight: number,
+  bandHeight = joinBandHeight(width),
+): string {
+  const top = seamMidY(screenHeight) - bandHeight / 2;
+  return strokePath(lift(logoWaveCurve(width, bandHeight), top));
+}
+
+/**
  * Closed path covering everything above the wave inside a top photo box.
- * The wave band sits on the bottom `bandHeight` of `boxHeight`.
+ * `boxHeight` must be `seamMidY + bandHeight/2` so the shared seam lands on mid.
  */
 export function waveClipAbove(width: number, boxHeight: number, bandHeight: number): string {
   const curve = lift(logoWaveCurve(width, bandHeight), boxHeight - bandHeight);

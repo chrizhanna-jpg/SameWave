@@ -38,9 +38,9 @@ export function loadSampleWaves(): Wave[] {
 }
 
 /**
- * When `preferTopic` is set and any sample shares that theme id, keep only
- * those — otherwise fall back to the full sample list. Pure helper so unit
- * tests never pull React Native via the asset catalog.
+ * Topic-matched samples first, then the rest — never an empty deck when any
+ * samples exist. Pure helper so unit tests never pull React Native via the
+ * asset catalog.
  */
 export function preferTopicSamples<T extends { theme?: string | null }>(
   all: readonly T[],
@@ -49,14 +49,15 @@ export function preferTopicSamples<T extends { theme?: string | null }>(
   const topic = preferTopic?.trim() || null;
   if (!topic) return [...all];
   const matched = all.filter((c) => c.theme === topic);
-  return matched.length > 0 ? matched : [...all];
+  const rest = all.filter((c) => c.theme !== topic);
+  // Always keep every sample; topic matches lead so Coffee opens on coffee.
+  return matched.length > 0 ? [...matched, ...rest] : [...all];
 }
 
 /**
  * Merge live ranked candidates with optional local test samples.
- * Samples are only appended when the build includes them AND the user toggle is on.
- * When `preferTopic` is set, topic-tagged samples come first — and if any match,
- * non-matching samples are held back (fall back only when none match).
+ * Samples append when the build includes them AND the user toggle is on.
+ * Topic-matched samples lead; other samples always follow (never zero when on).
  */
 export function withOptionalTestPhotos(
   live: readonly Candidate[],
@@ -73,7 +74,6 @@ export function withOptionalTestPhotos(
   const all = loadTestPhotoCandidates().filter((c) => !excluded.has(c.id) && Boolean(c.uri));
   const samples = preferTopicSamples(all, opts.preferTopic);
   const liveIds = new Set(live.map((c) => c.id));
-  // Topic-matched samples lead the deck so Coffee & tea never opens on a mountain.
   return [...samples.filter((c) => !liveIds.has(c.id)), ...live];
 }
 
@@ -113,11 +113,19 @@ function publishToggle(on: boolean): void {
 export async function readSamplePhotosToggle(): Promise<boolean> {
   if (!testPhotosBuildEnabled()) return false;
   try {
-    const on = (await AsyncStorage.getItem(TOGGLE_KEY)) === "1";
+    const raw = await AsyncStorage.getItem(TOGGLE_KEY);
+    // First launch in a sample-enabled preview: default ON so Match never
+    // opens empty after Metro/ngrok restarts with EXPO_PUBLIC_TEST_PHOTOS=1.
+    if (raw === null) {
+      publishToggle(true);
+      await AsyncStorage.setItem(TOGGLE_KEY, "1");
+      return true;
+    }
+    const on = raw === "1";
     cachedToggle = on;
     return on;
   } catch {
-    return cachedToggle === true;
+    return cachedToggle !== false;
   }
 }
 
