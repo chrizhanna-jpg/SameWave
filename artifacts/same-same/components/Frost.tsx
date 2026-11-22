@@ -99,6 +99,43 @@ export function FrostIconWell({
   );
 }
 
+/**
+ * Soft translucent white disc for Match action buttons over photos.
+ * Perfect circle: square size, borderRadius = size/2, overflow hidden.
+ * No hairline, no BlurView, no elevation (Android elevation shadows read as
+ * solid polygonal / hexagon halos behind the disc).
+ */
+export function SoftIconDisc({
+  children,
+  size = 64,
+  style,
+}: {
+  children: React.ReactNode;
+  /** Outer diameter in points — width, height, and radius all derive from this. */
+  size?: number;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const diameter = Math.max(1, size);
+  return (
+    <View
+      style={[
+        {
+          width: diameter,
+          height: diameter,
+          borderRadius: diameter / 2,
+          backgroundColor: "rgba(255, 255, 255, 0.32)",
+          overflow: "hidden",
+          alignItems: "center",
+          justifyContent: "center",
+        },
+        style,
+      ]}
+    >
+      {children}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   clip: { overflow: "hidden" },
   noClip: { overflow: "visible" },

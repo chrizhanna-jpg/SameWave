@@ -1,8 +1,7 @@
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import React, { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
-  InteractionManager,
   Platform,
   StyleSheet,
   useWindowDimensions,
@@ -21,6 +20,7 @@ import { Txt } from "@/components/Txt";
 import { errorKind } from "@/backend/types";
 import { dailyTopicFor } from "@/core/dailyTopic";
 import { wavePhotoSlot } from "@/core/wavePhotoSlot";
+import { waveLayoutMetrics } from "@/device/waveLayoutMetrics";
 import { sceneFor } from "@/data/scenes";
 import { defaultMusicForEmotion } from "@/data/emotionMusic";
 import { topicFor } from "@/data/topics";
@@ -66,8 +66,12 @@ function missingHint(photo: boolean, emotion: boolean, topic: boolean): string {
  */
 export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolean }) {
   const router = useRouter();
-  const { width, height } = useWindowDimensions();
-  const slotAspect = wavePhotoSlot(width, height).aspectRatio;
+  const windowDims = useWindowDimensions();
+  const metrics = useMemo(
+    () => waveLayoutMetrics(),
+    [windowDims.width, windowDims.height],
+  );
+  const slotAspect = wavePhotoSlot(metrics.width, metrics.height).aspectRatio;
   const previewHeight = Math.max(1, Math.round(PREVIEW_WIDTH / slotAspect));
   const { sendRipple } = useAppState();
   const draft = useDraft();
@@ -158,9 +162,8 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
         pathname: "/match",
         params: { photoId: uploaded.photoId },
       });
-      InteractionManager.runAfterInteractions(() => {
-        clearDraft();
-      });
+      // After Match is on the stack — never clear before replace (empty Ripple flash).
+      setTimeout(() => clearDraft(), 0);
     } catch (error) {
       setSending(false);
       const kind = errorKind(error);

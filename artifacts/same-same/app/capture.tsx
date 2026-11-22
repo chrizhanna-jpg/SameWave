@@ -2,7 +2,7 @@ import { CameraView, useCameraPermissions, type CameraType } from "expo-camera";
 import { useFocusEffect, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Linking, Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import {
   GestureHandlerRootView,
@@ -28,6 +28,7 @@ import {
 } from "@/core/cameraZoom";
 import { wavePhotoSlot } from "@/core/wavePhotoSlot";
 import { chooseFromLibrary, cropToWaveSlot } from "@/device/photos";
+import { waveLayoutMetrics } from "@/device/waveLayoutMetrics";
 import { setDraftPhoto, setDraftTopic } from "@/state/draft";
 import { colors, layout, radius, space } from "@/theme";
 
@@ -40,7 +41,7 @@ const CAMERA_CHROME = "#1A2425";
 export default function CaptureScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
+  const windowDims = useWindowDimensions();
   const [permission, requestPermission] = useCameraPermissions();
   const camera = useRef<CameraView | null>(null);
 
@@ -58,7 +59,13 @@ export default function CaptureScreen() {
   /** CameraView zoom at the moment the pinch becomes ACTIVE (scale resets to 1). */
   const pinchStartZoomRef = useRef(ZOOM_1X);
 
-  const slot = wavePhotoSlot(width, height);
+  // Same metrics as Match WaveJoin — full-bleed slot aspect.
+  const metrics = useMemo(
+    () => waveLayoutMetrics(),
+    [windowDims.width, windowDims.height],
+  );
+  const slot = wavePhotoSlot(metrics.width, metrics.height);
+  const { width, height } = metrics;
 
   useFocusEffect(
     useCallback(() => {

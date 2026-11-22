@@ -1,9 +1,13 @@
 import * as Haptics from "expo-haptics";
+import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import * as SystemUI from "expo-system-ui";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
+  Easing,
   Pressable,
   StyleSheet,
   useWindowDimensions,
@@ -12,7 +16,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Button } from "@/components/Button";
-import { FrostIconWell } from "@/components/Frost";
+import { FrostIconWell, SoftIconDisc } from "@/components/Frost";
 import { Icon } from "@/components/Icon";
 import { RippleMark } from "@/components/RippleMark";
 import { PhotoMetaChip } from "@/components/PhotoMetaChip";
@@ -33,15 +37,22 @@ import {
 } from "@/core/testPhotos";
 import type { Candidate } from "@/core/types";
 import { findWaveByPhotos } from "@/core/waves";
+import { NATIVE_DRIVER, useReducedMotion } from "@/device/motion";
+import { waveLayoutMetrics } from "@/device/waveLayoutMetrics";
 import { playRipple, playWave } from "@/device/sound";
 import { useAppState } from "@/state/AppState";
 import { colors, layout, motion, space } from "@/theme";
+
+/** Hide the light Android nav/root band while Match is full-bleed. */
+const MATCH_CHROME = "#000000";
 
 /** Exact empty copy Chris asked for — do not paraphrase. */
 const EMPTY_COPY =
   "You're meant to match a photo here, but there are no photos to match right now. Please come back later.";
 
 const ACTION_SIZE = 64;
+/** Soft opacity fade for the full-bleed pair on first paint (no spin / scale). */
+const MATCH_ENTER_MS = 500;
 
 type LoadState = "loading" | "ready" | "empty" | "error";
 
@@ -58,7 +69,12 @@ export default function MatchScreen() {
   }>();
   const photoId = typeof rawId === "string" ? rawId : Array.isArray(rawId) ? rawId[0] : "";
   const stage = parseMatchStage(rawStage);
-  const { width, height } = useWindowDimensions();
+  const windowDims = useWindowDimensions();
+  // Same metrics as capture/library crop — full drawable incl. system-bar territory.
+  const { width, height } = useMemo(
+    () => waveLayoutMetrics(),
+    [windowDims.width, windowDims.height],
+  );
   const insets = useSafeAreaInsets();
   const {
     ripples,
@@ -101,11 +117,17 @@ export default function MatchScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (!testPhotosBuildEnabled()) return;
-      void readSamplePhotosToggle().then((on) => {
-        setUseSamples(on);
-        setSamplesReady(true);
-      });
+      // Kill the baby-blue SystemUI / nav band under the photos.
+      void SystemUI.setBackgroundColorAsync(MATCH_CHROME).catch(() => undefined);
+      if (testPhotosBuildEnabled()) {
+        void readSamplePhotosToggle().then((on) => {
+          setUseSamples(on);
+          setSamplesReady(true);
+        });
+      }
+      return () => {
+        void SystemUI.setBackgroundColorAsync(colors.background).catch(() => undefined);
+      };
     }, []),
   );
 
@@ -121,15 +143,28 @@ export default function MatchScreen() {
   const finishedRef = useRef(false);
   const loadGen = useRef(0);
   const bottomPulse = useRef(new Animated.Value(1)).current;
+  const enterOpacity = useRef(new Animated.Value(0)).current;
+  const reducedMotion = useReducedMotion();
 
   const pulseBottom = useCallback(() => {
     bottomPulse.setValue(0.92);
     Animated.timing(bottomPulse, {
       toValue: 1,
       duration: motion.fadeQuick,
-      useNativeDriver: true,
+      useNativeDriver: NATIVE_DRIVER,
     }).start();
   }, [bottomPulse]);
+
+  // One soft fade-in of the photo pair — no rotation / scale entrance.
+  useEffect(() => {
+    enterOpacity.setValue(0);
+    Animated.timing(enterOpacity, {
+      toValue: 1,
+      duration: reducedMotion ? motion.reducedFade : MATCH_ENTER_MS,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: NATIVE_DRIVER,
+    }).start();
+  }, [enterOpacity, reducedMotion, myPhotoId]);
 
   const ownIds = useMemo(() => ripples.map((r) => r.photoId), [ripples]);
   const offeredIds = ripple?.reach.offeredIds;
@@ -411,36 +446,50 @@ export default function MatchScreen() {
     );
   }
 
+  // Full-bleed pair: photos fill the window edge-to-edge (under status / home).
+  // Chrome + SoftIconDisc actions float above; bottom wash keeps labels readable.
+  const actionPadBottom = Math.max(insets.bottom, space.md) + space.sm;
+
   return (
     <View style={styles.root}>
-      <WaveJoin
-        width={width}
-        height={height}
-        top={{
-          uri: ripple?.localUri ?? null,
-          ownPhotoId: myPhotoId || undefined,
-          accessibilityLabel: "Your photo",
-        }}
-        bottom={
-          candidate
-            ? candidate.uri && isSample(candidate.id)
-              ? {
-                  uri: candidate.uri,
-                  blurIn: true,
-                  accessibilityLabel: "Sample photo",
-                }
+      <StatusBar style="light" />
+      <Animated.View style={[styles.bleed, { opacity: enterOpacity }]} pointerEvents="none">
+        <WaveJoin
+          width={width}
+          height={height}
+          top={{
+            uri: ripple?.localUri ?? null,
+            ownPhotoId: myPhotoId || undefined,
+            accessibilityLabel: "Your photo",
+          }}
+          bottom={
+            candidate
+              ? candidate.uri && isSample(candidate.id)
+                ? {
+                    uri: candidate.uri,
+                    blurIn: true,
+                    accessibilityLabel: "Sample photo",
+                  }
+                : {
+                    // Relative /api/… URIs need auth — Photo fetches by id.
+                    uri: null,
+                    ownPhotoId: candidate.id,
+                    blurIn: true,
+                    accessibilityLabel: "Their photo",
+                  }
               : {
-                  // Relative /api/… URIs need auth — Photo fetches by id.
                   uri: null,
-                  ownPhotoId: candidate.id,
-                  blurIn: true,
-                  accessibilityLabel: "Their photo",
+                  accessibilityLabel: "No photo to match",
                 }
-            : {
-                uri: null,
-                accessibilityLabel: "No photo to match",
-              }
-        }
+          }
+        />
+      </Animated.View>
+
+      <LinearGradient
+        pointerEvents="none"
+        colors={["rgba(25, 34, 36, 0)", "rgba(25, 34, 36, 0.32)"]}
+        locations={[0.35, 1]}
+        style={styles.bottomWash}
       />
 
       {empty || load === "loading" || load === "error" ? (
@@ -537,7 +586,7 @@ export default function MatchScreen() {
           style={[
             styles.actions,
             {
-              paddingBottom: Math.max(insets.bottom, space.md) + space.sm,
+              paddingBottom: actionPadBottom,
               transform: [{ scale: bottomPulse }],
             },
           ]}
@@ -551,9 +600,9 @@ export default function MatchScreen() {
             accessibilityState={{ disabled: busy }}
             style={({ pressed }) => [styles.actionHit, pressed && styles.actionPressed]}
           >
-            <FrostIconWell style={styles.actionWell}>
+            <SoftIconDisc size={ACTION_SIZE}>
               <Icon name="close" size={28} color={colors.textPrimary} />
-            </FrostIconWell>
+            </SoftIconDisc>
           </Pressable>
 
           <Pressable
@@ -567,14 +616,14 @@ export default function MatchScreen() {
             accessibilityState={{ disabled: busy }}
             style={({ pressed }) => [styles.actionHit, pressed && styles.actionPressed]}
           >
-            {/* Frosted well so stage glyphs stay legible on the photo. */}
-            <FrostIconWell style={styles.actionWell}>
+            {/* Soft circular disc only — no Frost / elevation hexagon behind. */}
+            <SoftIconDisc size={ACTION_SIZE}>
               {stage === "wave" ? (
                 <WaveMark width={44} />
               ) : (
                 <RippleMark size={48} />
               )}
-            </FrostIconWell>
+            </SoftIconDisc>
           </Pressable>
         </Animated.View>
       ) : null}
@@ -583,7 +632,19 @@ export default function MatchScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.background },
+  // Black fill so any residual system-bar strip isn't baby-blue / white.
+  root: { flex: 1, backgroundColor: MATCH_CHROME },
+  bleed: {
+    ...StyleSheet.absoluteFill,
+  },
+  bottomWash: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 200,
+    zIndex: 2,
+  },
   chrome: {
     position: "absolute",
     left: space.md,
@@ -598,7 +659,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: space.lg,
-    zIndex: 2,
+    zIndex: 3,
   },
   emptyScrim: {
     maxWidth: layout.maxContentWidth,
@@ -626,11 +687,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   actionHit: { borderRadius: ACTION_SIZE / 2 },
-  actionWell: {
-    width: ACTION_SIZE,
-    height: ACTION_SIZE,
-    borderRadius: ACTION_SIZE / 2,
-  },
   actionPressed: { opacity: 0.85, transform: [{ scale: 0.94 }] },
   emptyDone: { marginTop: space.lg, alignSelf: "stretch" },
   metaChip: {

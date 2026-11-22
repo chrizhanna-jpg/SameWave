@@ -1,6 +1,13 @@
 import MaskedViewImport from "@react-native-masked-view/masked-view";
 import React, { useId, useMemo, type ComponentType } from "react";
-import { StyleSheet, View, type StyleProp, type ViewProps, type ViewStyle } from "react-native";
+import {
+  Platform,
+  StyleSheet,
+  View,
+  type StyleProp,
+  type ViewProps,
+  type ViewStyle,
+} from "react-native";
 import Svg, { ClipPath, Defs, Image as SvgImage, Path } from "react-native-svg";
 
 /** RN 0.88 typings disagree with the MaskedView package; cast keeps JSX valid. */
@@ -19,7 +26,7 @@ import {
   waveClipAbove,
   waveClipBelow,
 } from "@/core/waveJoin";
-import { colors, waveJoin } from "@/theme";
+import { waveJoin } from "@/theme";
 
 interface PhotoSide {
   uri: string | null;
@@ -72,7 +79,7 @@ export function WaveJoin({ width, height, top, bottom, blurRadius }: Props) {
   );
 
   return (
-    <View style={[styles.root, { width, height, backgroundColor: colors.background }]} pointerEvents="box-none">
+    <View style={[styles.root, { width, height, backgroundColor: "#000000" }]} pointerEvents="box-none">
       <View style={[styles.bottomBox, { height: bottomBox }]}>
         {!bottomNeedsPhoto && bottom.uri ? (
           <ClippedSvgPhoto
@@ -202,7 +209,11 @@ function MaskedClip({
     <MaskedView
       style={{ width, height }}
       maskElement={
-        <View collapsable={false} style={{ width, height, backgroundColor: "transparent" }}>
+        <View
+          // Android needs collapsable={false} for MaskedView; on web it becomes an invalid DOM attr.
+          {...(Platform.OS === "web" ? null : { collapsable: false })}
+          style={{ width, height, backgroundColor: "transparent" }}
+        >
           <Svg width={width} height={height}>
             <Path d={clipD} fill="#FFFFFF" />
           </Svg>

@@ -31,6 +31,8 @@ import { colors, motion } from "@/theme";
 LogBox.ignoreLogs([
   "ROUTE_NAMES_CHANGED",
   "Linking did not produce an initial navigation state",
+  "Received `false` for a non-boolean attribute",
+  "Received 'false' for a non-boolean attribute",
 ]);
 if (typeof console !== "undefined" && typeof console.error === "function") {
   const originalError = console.error.bind(console);
@@ -38,6 +40,7 @@ if (typeof console !== "undefined" && typeof console.error === "function") {
     const text = args.map((a) => (typeof a === "string" ? a : "")).join(" ");
     if (text.includes("ROUTE_NAMES_CHANGED")) return;
     if (text.includes("Linking did not produce an initial navigation state")) return;
+    if (text.includes("non-boolean attribute")) return;
     originalError(...args);
   };
 }
@@ -187,7 +190,10 @@ function Routes() {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="capture" />
           <Stack.Screen name="compose" />
-          <Stack.Screen name="match" />
+          <Stack.Screen
+            name="match"
+            options={{ contentStyle: { backgroundColor: "#000000" } }}
+          />
           <Stack.Screen name="wave/[id]" />
           <Stack.Screen name="account" />
           <Stack.Screen name="change-country" />

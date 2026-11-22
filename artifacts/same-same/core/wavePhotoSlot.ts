@@ -2,6 +2,9 @@
  * Geometry of one Wave photograph slot (top or bottom half, including the
  * shared wave-seam band). Camera capture and gallery picks crop to this
  * aspect so the match screen can show the frame without further surprise crop.
+ *
+ * Pure math — call with `waveLayoutMetrics()` width/height so Match and crop
+ * share the same full-bleed dimensions.
  */
 import { joinBandHeight } from "@/core/waveJoin";
 

@@ -1,5 +1,5 @@
 import { Image, type ImageSource as ExpoImageSource } from "expo-image";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Platform, StyleSheet, View, type ImageStyle, type StyleProp } from "react-native";
 
 import { Txt } from "@/components/Txt";
@@ -45,6 +45,8 @@ export function Photo({
   const [useRemoteFallback, setUseRemoteFallback] = useState(false);
   const [blurElapsed, setBlurElapsed] = useState(blurIn ? -1 : PHOTO_BLUR_IN_MS);
   const sharpenTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Prevents onLoad → blurRadius change → onLoad loops that flicker soft↔sharp. */
+  const sharpenArmed = useRef(false);
   const unavailableNotified = useRef(false);
 
   useEffect(() => {
@@ -52,7 +54,14 @@ export function Photo({
     setAttempt(0);
     setUseRemoteFallback(false);
     unavailableNotified.current = false;
-    if (blurIn) setBlurElapsed(-1);
+    if (blurIn) {
+      setBlurElapsed(-1);
+      sharpenArmed.current = false;
+      if (sharpenTimer.current) {
+        clearTimeout(sharpenTimer.current);
+        sharpenTimer.current = null;
+      }
+    }
   }, [uri, ownPhotoId, blurIn]);
 
   useEffect(() => {
@@ -87,14 +96,20 @@ export function Photo({
     onUnavailable?.();
   }, [failed, onUnavailable]);
 
-  const source: ExpoImageSource | null =
-    uri && !useRemoteFallback ? { uri } : remote;
+  const source: ExpoImageSource | null = useMemo(() => {
+    if (uri && !useRemoteFallback) return { uri };
+    return remote;
+  }, [uri, useRemoteFallback, remote]);
+
   const effectiveBlur = blurIn
     ? blurInRadiusAt(blurElapsed)
     : (blurRadius ?? 0);
 
   const beginSharpen = () => {
     if (!blurIn) return;
+    // expo-image often re-fires onLoad when blurRadius changes; arm once per source.
+    if (sharpenArmed.current) return;
+    sharpenArmed.current = true;
     if (sharpenTimer.current) clearTimeout(sharpenTimer.current);
     setBlurElapsed(0);
     sharpenTimer.current = setTimeout(() => {
@@ -133,7 +148,8 @@ export function Photo({
           ]}
           contentFit="cover"
           blurRadius={Platform.OS === "web" ? 0 : effectiveBlur}
-          transition={motion.fadeQuick}
+          // Fade transitions on blurRadius changes look like soft↔sharp flicker.
+          transition={blurIn ? 0 : motion.fadeQuick}
           cachePolicy="memory-disk"
           accessibilityLabel={accessibilityLabel}
           onLoad={beginSharpen}

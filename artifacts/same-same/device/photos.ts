@@ -6,9 +6,10 @@
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
-import { Dimensions, Platform } from "react-native";
+import { Platform } from "react-native";
 
 import { wavePhotoSlot } from "@/core/wavePhotoSlot";
+import { waveLayoutMetrics } from "@/device/waveLayoutMetrics";
 
 export interface ChosenPhoto {
   uri: string;
@@ -58,7 +59,7 @@ export async function encodeForUpload(uri: string): Promise<EncodedPhoto> {
  * keeps faces/subjects above the wave seam that clips the bottom of the top photo.
  */
 export async function cropToWaveSlot(uri: string, aspectRatio?: number): Promise<string> {
-  const { width: sw, height: sh } = Dimensions.get("window");
+  const { width: sw, height: sh } = waveLayoutMetrics();
   const target = aspectRatio ?? wavePhotoSlot(sw, sh).aspectRatio;
   if (!Number.isFinite(target) || target <= 0) return uri;
 
@@ -257,7 +258,7 @@ export function coordsFromExif(
 
 /** Opens the system photo picker. Returns null when the user backs out. */
 export async function chooseFromLibrary(): Promise<ChosenPhoto | null> {
-  const { width: sw, height: sh } = Dimensions.get("window");
+  const { width: sw, height: sh } = waveLayoutMetrics();
   const slot = wavePhotoSlot(sw, sh);
   const result = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ["images"],
