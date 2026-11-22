@@ -30,13 +30,13 @@ export function perceptualFadeGain(t: number): number {
   const x = clamp01(t);
   if (x <= 0) return 1;
   if (x >= 1) return 0;
+  // Soft hold: at most a 3% dip, then equal-power cosine from that level to 0.
+  const holdEnd = 0.97;
   if (x <= SWOOSH_FADE_HOLD) {
-    // Soft hold: at most a 3% dip so the ear doesn't hear a flat plateau snap.
-    return 1 - 0.03 * (x / SWOOSH_FADE_HOLD);
+    return 1 - (1 - holdEnd) * (x / SWOOSH_FADE_HOLD);
   }
   const u = (x - SWOOSH_FADE_HOLD) / (1 - SWOOSH_FADE_HOLD);
-  // Equal-power / cosine ease-out — same family as (1-u)² but smoother mid-fade.
-  const gain = Math.cos((Math.PI / 2) * u) ** 2;
+  const gain = holdEnd * Math.cos((Math.PI / 2) * u) ** 2;
   return gain < 1e-6 ? 0 : gain;
 }
 
