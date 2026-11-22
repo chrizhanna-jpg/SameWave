@@ -43,10 +43,10 @@ import {
   type Point,
 } from "@/core/mapGeometry";
 import { Photo } from "@/components/Photo";
+import { PhotoMetaChip } from "@/components/PhotoMetaChip";
 import type { Wave } from "@/core/types";
-import { emotionFor } from "@/data/emotions";
+import { waveListPlace, waveListWhen } from "@/core/waveListMeta";
 import { centroidLonLatForCountry } from "@/data/countryCentroids";
-import { topicFor } from "@/data/topics";
 import { useReducedMotion } from "@/device/motion";
 import { useAppState } from "@/state/AppState";
 import { colors, motion, space, type as typeStyle } from "@/theme";
@@ -469,15 +469,27 @@ export function WorldMap({
             {clusterList?.members.map((m) => {
               const wave = waves.find((w) => w.id === m.waveId);
               const side = wave ? (m.side === "mine" ? wave.mine : wave.theirs) : null;
-              const place = side?.countryCode ?? "Somewhere";
-              const when = formatWaveTime(side?.takenAt ?? wave?.formedAt);
+              const place = waveListPlace({ countryCode: side?.countryCode });
+              const when = waveListWhen(side?.takenAt ?? wave?.formedAt);
               const ripple = wave
                 ? ripples.find((r) => r.photoId === wave.mine.photoId) ?? null
                 : null;
-              const feeling =
-                emotionFor(ripple?.emotion ?? ripple?.vibe)?.label ?? null;
-              const topic = topicFor(ripple?.topic ?? ripple?.theme)?.label ?? null;
-              const feelingOrTopic = feeling ?? topic;
+              // Sample fixtures carry emotion/theme on the photo id when no ripple.
+              let sampleEmotion: string | null = null;
+              let sampleTopic: string | null = null;
+              if (wave && process.env.EXPO_PUBLIC_TEST_PHOTOS === "1") {
+                // eslint-disable-next-line @typescript-eslint/no-require-imports
+                const { TEST_PHOTO_META } = require("../assets/test-photos/fixtures") as {
+                  TEST_PHOTO_META: readonly { id: string; theme: string; emotion: string }[];
+                };
+                const meta =
+                  TEST_PHOTO_META.find((row) => row.id === (side?.photoId ?? wave.mine.photoId)) ??
+                  null;
+                sampleEmotion = meta?.emotion ?? null;
+                sampleTopic = meta?.theme ?? null;
+              }
+              const emotion = ripple?.emotion ?? ripple?.vibe ?? sampleEmotion;
+              const topic = ripple?.topic ?? ripple?.theme ?? sampleTopic;
               return (
                 <Pressable
                   key={`${m.waveId}-${m.side}`}
@@ -516,11 +528,19 @@ export function WorldMap({
                     </View>
                   </View>
                   <View style={styles.listMeta}>
-                    <Text style={styles.listRowText}>{place}</Text>
-                    {feelingOrTopic ? (
-                      <Text style={styles.listRowSub}>{feelingOrTopic}</Text>
+                    <Text style={styles.listRowText} numberOfLines={1}>
+                      {place}
+                    </Text>
+                    <PhotoMetaChip
+                      emotion={emotion}
+                      topic={topic}
+                      style={styles.listChip}
+                    />
+                    {when ? (
+                      <Text style={styles.listRowSub} numberOfLines={1}>
+                        {when}
+                      </Text>
                     ) : null}
-                    {when ? <Text style={styles.listRowSub}>{when}</Text> : null}
                   </View>
                 </Pressable>
               );
@@ -533,22 +553,6 @@ export function WorldMap({
       </Modal>
     </GestureHandlerRootView>
   );
-}
-
-function formatWaveTime(iso: string | null | undefined): string | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  try {
-    return d.toLocaleString(undefined, {
-      day: "numeric",
-      month: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return iso.slice(0, 16).replace("T", " ");
-  }
 }
 
 function ClusterPin({ left, top, count }: { left: number; top: number; count: number }) {
@@ -751,7 +755,8 @@ const styles = StyleSheet.create({
   },
   listThumbImg: { width: LIST_THUMB, height: LIST_THUMB },
   listThumbEmpty: { flex: 1, backgroundColor: colors.waterMuted, opacity: 0.35 },
-  listMeta: { flex: 1, gap: 2, justifyContent: "center" },
+  listMeta: { flex: 1, gap: 2, justifyContent: "center", minWidth: 0 },
+  listChip: { alignItems: "flex-start", marginTop: 1, marginBottom: 1 },
   listRowText: {
     ...typeStyle.body,
     color: colors.slate,

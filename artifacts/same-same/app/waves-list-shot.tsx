@@ -4,23 +4,41 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Photo } from "@/components/Photo";
+import { PhotoMetaChip } from "@/components/PhotoMetaChip";
 import type { Wave } from "@/core/types";
+import { waveListPlace, waveListWhen } from "@/core/waveListMeta";
 import { colors, space, type as typeStyle } from "@/theme";
 
 const LIST_THUMB = 64;
 
 /**
- * Preview-only: city-stack pull-up with paired thumbs (blur-in) + place/time.
+ * Preview-only: city-stack pull-up with paired thumbs, place name, meta chip, locale time.
  */
 export default function WavesListShotScreen() {
   const insets = useSafeAreaInsets();
-  const waves = useMemo((): Wave[] => {
+  const rows = useMemo(() => {
     if (process.env.EXPO_PUBLIC_TEST_PHOTOS !== "1") return [];
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { loadSampleWaves } = require("@/core/testPhotos") as {
       loadSampleWaves: () => Wave[];
     };
-    return loadSampleWaves().slice(0, 4);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { TEST_PHOTO_META } = require("../assets/test-photos/fixtures") as {
+      TEST_PHOTO_META: readonly { id: string; theme: string; emotion: string }[];
+    };
+    return loadSampleWaves()
+      .slice(0, 4)
+      .map((wave) => {
+        const side = wave.theirs;
+        const meta = TEST_PHOTO_META.find((m) => m.id === side.photoId) ?? null;
+        return {
+          wave,
+          place: waveListPlace({ countryCode: side.countryCode }),
+          when: waveListWhen(side.takenAt ?? wave.formedAt, "en-GB"),
+          emotion: meta?.emotion ?? null,
+          topic: meta?.theme ?? null,
+        };
+      });
   }, []);
 
   if (process.env.EXPO_PUBLIC_TEST_PHOTOS !== "1") {
@@ -31,44 +49,40 @@ export default function WavesListShotScreen() {
     <View style={[styles.root, { paddingBottom: insets.bottom + space.lg }]} accessibilityLabel="Waves list shot">
       <View style={styles.listCard}>
         <View style={styles.listHandle} />
-        <Text style={styles.listTitle}>{waves.length} Waves here</Text>
-        {waves.map((wave) => {
-          const place = wave.theirs.countryCode ?? wave.mine.countryCode ?? "Somewhere";
-          const when = wave.formedAt
-            ? new Date(wave.formedAt).toLocaleString(undefined, {
-                day: "numeric",
-                month: "short",
-                hour: "2-digit",
-                minute: "2-digit",
-              })
-            : null;
-          return (
-            <Pressable key={wave.id} style={styles.listRow}>
-              <View style={styles.listPair}>
-                <View style={styles.listThumb}>
-                  <Photo
-                    uri={wave.mine.uri}
-                    blurIn
-                    style={styles.listThumbImg}
-                    accessibilityLabel="Your photo"
-                  />
-                </View>
-                <View style={styles.listThumb}>
-                  <Photo
-                    uri={wave.theirs.uri}
-                    blurIn
-                    style={styles.listThumbImg}
-                    accessibilityLabel="Their photo"
-                  />
-                </View>
+        <Text style={styles.listTitle}>{rows.length} Waves here</Text>
+        {rows.map(({ wave, place, when, emotion, topic }) => (
+          <Pressable key={wave.id} style={styles.listRow}>
+            <View style={styles.listPair}>
+              <View style={styles.listThumb}>
+                <Photo
+                  uri={wave.mine.uri}
+                  blurIn
+                  style={styles.listThumbImg}
+                  accessibilityLabel="Your photo"
+                />
               </View>
-              <View style={styles.listMeta}>
-                <Text style={styles.listRowText}>{place}</Text>
-                {when ? <Text style={styles.listRowSub}>{when}</Text> : null}
+              <View style={styles.listThumb}>
+                <Photo
+                  uri={wave.theirs.uri}
+                  blurIn
+                  style={styles.listThumbImg}
+                  accessibilityLabel="Their photo"
+                />
               </View>
-            </Pressable>
-          );
-        })}
+            </View>
+            <View style={styles.listMeta}>
+              <Text style={styles.listRowText} numberOfLines={1}>
+                {place}
+              </Text>
+              <PhotoMetaChip emotion={emotion} topic={topic} style={styles.listChip} />
+              {when ? (
+                <Text style={styles.listRowSub} numberOfLines={1}>
+                  {when}
+                </Text>
+              ) : null}
+            </View>
+          </Pressable>
+        ))}
       </View>
     </View>
   );
@@ -120,7 +134,8 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(63,74,75,0.08)",
   },
   listThumbImg: { width: LIST_THUMB, height: LIST_THUMB },
-  listMeta: { flex: 1, gap: 2, justifyContent: "center" },
+  listMeta: { flex: 1, gap: 2, justifyContent: "center", minWidth: 0 },
+  listChip: { alignItems: "flex-start", marginTop: 1, marginBottom: 1 },
   listRowText: { ...typeStyle.body, color: colors.slate },
   listRowSub: { ...typeStyle.label, color: colors.waterMuted },
 });
