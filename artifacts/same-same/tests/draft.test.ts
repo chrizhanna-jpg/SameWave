@@ -70,10 +70,11 @@ describe("draft getSnapshot stability (useSyncExternalStore)", () => {
   });
 
   /**
-   * Stand-in for React's useSyncExternalStore: if getSnapshot returns a new
-   * object every read, a subscriber that always "updates" would loop forever.
+   * Stand-in for React's useSyncExternalStore on the Ripple tab
+   * (`ComposeRipple` → `useDraft()`). If getSnapshot returns a new object
+   * every read, mounting the tab loops into Maximum update depth exceeded.
    */
-  it("subscriber loop detector stays bounded with stable snapshots", () => {
+  it("Ripple-tab useDraft snapshot stays stable across repeated reads", () => {
     clearDraft();
     let renders = 0;
     let snapshot = getDraft();
@@ -83,15 +84,16 @@ describe("draft getSnapshot stability (useSyncExternalStore)", () => {
       if (!Object.is(next, snapshot)) {
         snapshot = next;
         renders += 1;
-        if (renders > 20) throw new Error("update depth exceeded");
+        if (renders > 20) throw new Error("Maximum update depth exceeded");
       }
     });
-    // Poll getSnapshot the way a mounted ComposeRipple would on each render.
+    // Simulate tapping the Ripple tab: many getSnapshot reads, no writes.
     for (let i = 0; i < 100; i += 1) {
       const next = getDraft();
       if (!Object.is(next, snapshot)) {
         snapshot = next;
         renders += 1;
+        if (renders > 20) throw new Error("Maximum update depth exceeded");
       }
     }
     assert.equal(renders, 0);
