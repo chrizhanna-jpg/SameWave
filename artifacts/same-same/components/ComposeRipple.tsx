@@ -17,7 +17,7 @@ import { SongPicker } from "@/components/SongPicker";
 import { SoundRecorder } from "@/components/SoundRecorder";
 import { TopicPicker } from "@/components/TopicPicker";
 import { Txt } from "@/components/Txt";
-import { errorKind } from "@/backend/types";
+import { BackendError, errorKind } from "@/backend/types";
 import { dailyTopicFor } from "@/core/dailyTopic";
 import { wavePhotoSlot } from "@/core/wavePhotoSlot";
 import { waveLayoutMetrics } from "@/device/waveLayoutMetrics";
@@ -167,12 +167,17 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
     } catch (error) {
       setSending(false);
       const kind = errorKind(error);
+      const status = error instanceof BackendError ? error.status : null;
+      const serverMessage =
+        error instanceof BackendError && error.message.trim() ? error.message.trim() : null;
       setProblem(
         kind === "unreachable"
           ? "Can't reach SameWave right now. Your photo is still here — try again in a moment."
           : kind === "signed-out"
             ? "Your session ended. Sign in again, then upload."
-            : "That moment didn't upload. Please try again.",
+            : status === 429
+              ? (serverMessage ?? "You can send up to 30 photos a day. Try again later.")
+              : "That moment didn't upload. Please try again.",
       );
     }
   };
