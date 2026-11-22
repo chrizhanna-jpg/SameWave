@@ -22,4 +22,5 @@ For each step record **PASS/FAIL**, exactly what was seen on screen, and a scree
 ## Afterward
 
 - Clean up any test rows created on the Neon test branch.
-- Do **not** push to `main`, upload to Play, or merge PRs.
+- Do **not** push to `main` or merge PRs.
+- After the AAB builds and this walkthrough finishes with **no unresolved critical bugs**, upload that AAB to the **existing closed testing** track for `echo.samewaveripple.app` only (no production / open / internal, no new tracks, no listing or tester changes). If Play credentials are missing on the VM, stop and report the AAB path instead.
