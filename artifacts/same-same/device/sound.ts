@@ -4,6 +4,7 @@
  * silently so a silent phone behaves the same as one with audio.
  */
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from "expo-audio";
+import { AppState, type NativeEventSubscription } from "react-native";
 
 import {
   fadeVolumeAt,
@@ -66,11 +67,47 @@ let swooshPlaying = false;
 /** True after the launch splash has played the swell once this session. */
 let launchSwooshConsumed = false;
 let swooshFadeTimer: ReturnType<typeof setInterval> | null = null;
+let swooshAppStateSub: NativeEventSubscription | null = null;
 
 function clearSwooshFade(): void {
   if (swooshFadeTimer == null) return;
   clearInterval(swooshFadeTimer);
   swooshFadeTimer = null;
+}
+
+/** Park the player at full volume after a fade (or aborted fade). */
+function parkSwooshPlayer(player: AudioPlayer): void {
+  swooshPlaying = false;
+  try {
+    player.pause();
+  } catch {
+    /* */
+  }
+  try {
+    void player.seekTo(0).catch(() => undefined);
+  } catch {
+    /* */
+  }
+  try {
+    player.volume = WAVE_SWOOSH_VOLUME;
+  } catch {
+    /* */
+  }
+}
+
+/**
+ * Backgrounding mid-fade must not leave a timer or a half-muted player.
+ * Finish (pause + reset volume) as soon as the app leaves the foreground.
+ */
+function ensureSwooshFadeAppStateGuard(): void {
+  if (swooshAppStateSub) return;
+  swooshAppStateSub = AppState.addEventListener("change", (next) => {
+    if (next === "active") return;
+    if (swooshFadeTimer == null) return;
+    clearSwooshFade();
+    swooshGeneration += 1;
+    if (swooshPlayer) parkSwooshPlayer(swooshPlayer);
+  });
 }
 
 function ensureSwooshPlayer(): AudioPlayer {
@@ -240,25 +277,11 @@ export function stopWaveSwoosh(): void {
 
   // Already silent — just park the player for the next play.
   if (from <= 0.001) {
-    swooshPlaying = false;
-    try {
-      player.pause();
-    } catch {
-      /* */
-    }
-    try {
-      void player.seekTo(0).catch(() => undefined);
-    } catch {
-      /* */
-    }
-    try {
-      player.volume = WAVE_SWOOSH_VOLUME;
-    } catch {
-      /* */
-    }
+    parkSwooshPlayer(player);
     return;
   }
 
+  ensureSwooshFadeAppStateGuard();
   const steps = SWOOSH_FADE_STEPS;
   const stepMs = SWOOSH_FADE_MS / steps;
   let step = 0;
@@ -279,22 +302,7 @@ export function stopWaveSwoosh(): void {
     if (step < steps) return;
 
     clearSwooshFade();
-    swooshPlaying = false;
-    try {
-      player.pause();
-    } catch {
-      /* */
-    }
-    try {
-      void player.seekTo(0).catch(() => undefined);
-    } catch {
-      /* */
-    }
-    try {
-      player.volume = WAVE_SWOOSH_VOLUME;
-    } catch {
-      /* */
-    }
+    parkSwooshPlayer(player);
   }, stepMs);
 }
 
