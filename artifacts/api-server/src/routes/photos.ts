@@ -55,6 +55,14 @@ import {
 } from "../lib/challengeTheme";
 import { expandSubjectsForQuery } from "../lib/subjectMatch";
 import { parseCaptureCountrySource } from "../lib/captureCountrySource";
+import {
+  MAX_PHOTOS_PER_DAY,
+  PHOTO_DAILY_CAP_ERROR,
+  PHOTO_TOO_LARGE_ERROR,
+  PhotoDailyCapError,
+  isPhotoDailyCapError,
+  photoExceedsByteCap,
+} from "../lib/photoLimits";
 
 const bannedPrefixMd5Expr =
   BANNED_PHOTO_PREFIX_MD5.length > 0
@@ -66,9 +74,6 @@ const bannedPrefixMd5Expr =
 
 const router: IRouter = Router();
 
-// Hard cap on a single base64-encoded photo. The express body-parser limit
-// is 12 MB; we conservatively cap binary at 8 MB (≈ 11 MB base64).
-const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 // Hard cap on the user-recorded vibe clip. ~10s at low-bitrate AAC is
 // roughly 80 KB; we allow 1 MB binary (≈ 1.4 MB base64) to be generous
 // even if the encoder picks a higher bitrate or the user records a
@@ -221,6 +226,35 @@ function approxBase64Bytes(b64: string): number {
   return Math.floor((stripped.length * 3) / 4);
 }
 
+/**
+ * Rolling 24h send count. Live rows plus deletes still count via
+ * photo_send_log (no FK to photos). Stock / atlas seeds are excluded.
+ */
+async function countUserPhotoSends(
+  executor: Pick<typeof db, "execute">,
+  userId: string,
+): Promise<number> {
+  const rows = await executor.execute(sql`
+    SELECT (
+      SELECT count(*)::int
+      FROM photos p
+      WHERE p.user_id = ${userId}
+        AND p.created_at > now() - interval '24 hours'
+        AND p.id NOT LIKE 'stock_%'
+        AND p.id NOT LIKE 'atlas_global_seed_%'
+    ) + (
+      SELECT count(*)::int
+      FROM photo_send_log l
+      WHERE l.user_id = ${userId}
+        AND l.created_at > now() - interval '24 hours'
+        AND NOT EXISTS (SELECT 1 FROM photos p WHERE p.id = l.photo_id)
+    ) AS c
+  `);
+  const raw = (rows.rows[0] as { c?: unknown } | undefined)?.c;
+  const count = Number(raw ?? 0);
+  return Number.isFinite(count) ? count : 0;
+}
+
 // ---- POST /api/photos -----------------------------------------------------
 // Body: { imageBase64, mimeType?, countryCode?, captureCountryCode?,
 //         captureCountrySource?, emotion?, musicGenre?, capturedAt?,
@@ -253,8 +287,8 @@ router.post("/photos", async (req, res) => {
       res.status(400).json({ error: "imageBase64 required" });
       return;
     }
-    if (approxBase64Bytes(b64) > MAX_IMAGE_BYTES) {
-      res.status(413).json({ error: "image too large" });
+    if (photoExceedsByteCap(b64)) {
+      res.status(413).json({ error: PHOTO_TOO_LARGE_ERROR });
       return;
     }
     const mimeType =
@@ -295,6 +329,10 @@ router.post("/photos", async (req, res) => {
     const user = await resolveUserFromRequest(req, { countryCode });
     if (!user) {
       res.status(401).json({ error: "authentication required" });
+      return;
+    }
+    if ((await countUserPhotoSends(db, user.id)) >= MAX_PHOTOS_PER_DAY) {
+      res.status(429).json({ error: PHOTO_DAILY_CAP_ERROR });
       return;
     }
 
@@ -434,41 +472,77 @@ router.post("/photos", async (req, res) => {
       }
     }
 
-    const [row] = await db
-      .insert(photosTable)
-      .values({
-        userId: user.id,
-        bytesBase64: stripped,
-        mimeType,
-        theme,
-        tags,
-        shapeTags: shapes,
-        subjects,
-        countryCode: effectiveCountryCode,
-        captureCountryCode,
-        captureCountrySource,
-        capturedAt,
-        emotion,
-        musicGenre,
-        customAudioBase64,
-        customAudioMime,
-        displayBytesBase64: deckEncoded?.displayB64,
-        displayMime: deckEncoded?.displayMime,
-        deckPreviewBase64: deckEncoded?.previewB64,
-        deckPreviewMime: deckEncoded?.previewMime,
-        status: "active",
-        expiresAt: new Date(Date.now() + getPhotoRetentionMs()),
-      })
-      .returning({
-        id: photosTable.id,
-        theme: photosTable.theme,
-        tags: photosTable.tags,
-        subjects: photosTable.subjects,
-        emotion: photosTable.emotion,
-        musicGenre: photosTable.musicGenre,
-        createdAt: photosTable.createdAt,
-        expiresAt: photosTable.expiresAt,
+    let row: {
+      id: string;
+      theme: string;
+      tags: string[];
+      subjects: string[] | null;
+      emotion: string | null;
+      musicGenre: string | null;
+      createdAt: Date;
+      expiresAt: Date | null;
+    };
+    try {
+      row = await db.transaction(async (tx) => {
+        await tx.execute(sql`
+          SELECT pg_advisory_xact_lock(
+            hashtext('samewave-photo-send'),
+            hashtext(${user.id})
+          )
+        `);
+        if ((await countUserPhotoSends(tx, user.id)) >= MAX_PHOTOS_PER_DAY) {
+          throw new PhotoDailyCapError();
+        }
+        const inserted = await tx
+          .insert(photosTable)
+          .values({
+            userId: user.id,
+            bytesBase64: stripped,
+            mimeType,
+            theme,
+            tags,
+            shapeTags: shapes,
+            subjects,
+            countryCode: effectiveCountryCode,
+            captureCountryCode,
+            captureCountrySource,
+            capturedAt,
+            emotion,
+            musicGenre,
+            customAudioBase64,
+            customAudioMime,
+            displayBytesBase64: deckEncoded?.displayB64,
+            displayMime: deckEncoded?.displayMime,
+            deckPreviewBase64: deckEncoded?.previewB64,
+            deckPreviewMime: deckEncoded?.previewMime,
+            status: "active",
+            expiresAt: new Date(Date.now() + getPhotoRetentionMs()),
+          })
+          .returning({
+            id: photosTable.id,
+            theme: photosTable.theme,
+            tags: photosTable.tags,
+            subjects: photosTable.subjects,
+            emotion: photosTable.emotion,
+            musicGenre: photosTable.musicGenre,
+            createdAt: photosTable.createdAt,
+            expiresAt: photosTable.expiresAt,
+          });
+        const created = inserted[0];
+        if (!created) throw new Error("photo insert returned no row");
+        await tx.execute(sql`
+          INSERT INTO photo_send_log (user_id, photo_id)
+          VALUES (${user.id}, ${created.id})
+        `);
+        return created;
       });
+    } catch (insertErr) {
+      if (isPhotoDailyCapError(insertErr)) {
+        res.status(429).json({ error: PHOTO_DAILY_CAP_ERROR });
+        return;
+      }
+      throw insertErr;
+    }
 
     // A fresh upload is a "new chance" moment: this new photo may
     // match against candidates the user has already been shown for
@@ -506,6 +580,10 @@ router.post("/photos", async (req, res) => {
       ...(suggestedTags?.length ? { suggestedTags } : {}),
     });
   } catch (err) {
+    if (isPhotoDailyCapError(err)) {
+      res.status(429).json({ error: PHOTO_DAILY_CAP_ERROR });
+      return;
+    }
     req.log.error({ err }, "photo upload failed");
     res.status(500).json({ error: "upload failed" });
   }
