@@ -14,7 +14,7 @@ import { dailyTopicFor } from "@/core/dailyTopic";
 import { shouldShowHomeWaiting } from "@/core/homeWaiting";
 import { sceneFor } from "@/data/scenes";
 import { chooseFromLibrary } from "@/device/photos";
-import { isWaveSwooshPlaying, playOceanSound } from "@/device/sound";
+import { isWaveSwooshPlaying, playOceanSound, shouldPlayHomeOceanOnFocus } from "@/device/sound";
 import { useAppState } from "@/state/AppState";
 import { SplashReadyContext } from "@/state/SplashReady";
 import { setDraftPhoto, setDraftTopic } from "@/state/draft";
@@ -23,8 +23,8 @@ import { colors, layout, space } from "@/theme";
 
 /**
  * Home tab: brand, topic, send actions, Account. Default launch tab.
- * Ocean sound plays on every focus after splash (no overlap with launch swoosh).
- * Post-send waiting shows once after send; leaving the tab dismisses it.
+ * Ocean swell: once on launch (splash), then on later Home returns — never
+ * straight after the splash. Post-send waiting shows once after upload.
  */
 export default function HomeScreen() {
   const router = useRouter();
@@ -78,6 +78,8 @@ export default function HomeScreen() {
           return;
         }
         playedForFocus.current = true;
+        // Skip the first Home focus right after splash — swell already played.
+        if (!shouldPlayHomeOceanOnFocus()) return;
         void playOceanSound();
       };
       tryPlay();
@@ -104,13 +106,14 @@ export default function HomeScreen() {
         }
         void playOceanSound();
         setDraftPhoto(photo);
-        router.push("/compose");
+        router.replace("/ripple");
       } catch {
         setDraftTopic(null);
         setProblem("That photo couldn't be opened. Try another.");
       }
       return;
     }
+    // Camera first; capture replaces into the Ripple tab with the photo.
     router.push("/capture");
   };
 
@@ -122,7 +125,7 @@ export default function HomeScreen() {
       if (!photo) return;
       void playOceanSound();
       setDraftPhoto(photo);
-      router.push("/compose");
+      router.replace("/ripple");
     } catch {
       setProblem("That photo couldn't be opened. Try another.");
     }
@@ -195,9 +198,10 @@ export default function HomeScreen() {
         ) : (
           <>
             <Button
-              label="Send a Ripple"
+              label="Capture a moment"
               onPress={() => void beginCompose(null, false)}
               style={styles.actionGap}
+              accessibilityHint="Opens the camera, then the Ripple tab to upload"
             />
             <Button
               kind="soft"

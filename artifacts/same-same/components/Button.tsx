@@ -106,7 +106,7 @@ export function Button({
           </Txt>
         </View>
       ) : (
-        <Txt variant="button" tone="primary" center>
+        <Txt variant="button" tone="primary" center style={styles.label}>
           {label}
         </Txt>
       )}
@@ -141,4 +141,6 @@ const styles = StyleSheet.create({
   detail: { flexShrink: 1, fontSize: 14, lineHeight: 20 },
   pressed: { opacity: 0.85 },
   dim: { opacity: 0.5 },
+  // Avoid Android/font artifacts that look like a strikethrough through the label.
+  label: { textDecorationLine: "none", includeFontPadding: false },
 });

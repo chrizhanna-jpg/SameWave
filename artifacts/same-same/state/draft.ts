@@ -1,24 +1,58 @@
 /**
- * The photo (and optional pre-selected Topic) for the next Ripple, held in
- * memory on the way from the home / camera / library screen to compose.
- * Photo URIs can be very long and do not belong in a navigation link.
+ * Shared draft for the next Ripple — one source of truth for Home → camera
+ * and the Ripple tab compose screen. Photo URIs stay out of navigation links.
  *
  * When the Daily topic button starts the flow, the topic is locked for the
- * whole capture → compose → send path and cannot be changed or swapped via
- * deep-link params (compose never reads topic from the URL).
+ * whole capture → compose → send path.
  */
 import type { ChosenPhoto } from "@/device/photos";
+import type { Recording } from "@/components/SoundRecorder";
 
-let draftPhoto: ChosenPhoto | null = null;
-let draftTopic: string | null = null;
-let draftTopicLocked = false;
+export type RippleComposeDraft = {
+  photo: ChosenPhoto | null;
+  emotion: string | null;
+  topic: string | null;
+  topicLocked: boolean;
+  song: string | null;
+  songTouched: boolean;
+  recording: Recording | null;
+};
+
+let draft: RippleComposeDraft = {
+  photo: null,
+  emotion: null,
+  topic: null,
+  topicLocked: false,
+  song: null,
+  songTouched: false,
+  recording: null,
+};
+
+const listeners = new Set<() => void>();
+
+function publish(): void {
+  for (const listener of listeners) listener();
+}
+
+/** Subscribe to draft changes (photo / feeling / moment / sound). */
+export function subscribeDraft(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+export function getDraft(): RippleComposeDraft {
+  return { ...draft, recording: draft.recording };
+}
 
 export function setDraftPhoto(photo: ChosenPhoto | null): void {
-  draftPhoto = photo;
+  draft = { ...draft, photo };
+  publish();
 }
 
 export function getDraftPhoto(): ChosenPhoto | null {
-  return draftPhoto;
+  return draft.photo;
 }
 
 /**
@@ -26,21 +60,68 @@ export function getDraftPhoto(): ChosenPhoto | null {
  * compose hides the picker and always sends that topic.
  */
 export function setDraftTopic(topicId: string | null, options?: { locked?: boolean }): void {
-  draftTopic = topicId;
-  draftTopicLocked = topicId !== null && options?.locked === true;
+  draft = {
+    ...draft,
+    topic: topicId,
+    topicLocked: topicId !== null && options?.locked === true,
+  };
+  publish();
 }
 
 export function getDraftTopic(): string | null {
-  return draftTopic;
+  return draft.topic;
 }
 
 /** True when the Daily button started this Ripple — topic must not change. */
 export function isDraftTopicLocked(): boolean {
-  return draftTopicLocked && draftTopic !== null;
+  return draft.topicLocked && draft.topic !== null;
 }
 
+export function setDraftEmotion(emotion: string | null): void {
+  draft = { ...draft, emotion };
+  publish();
+}
+
+export function getDraftEmotion(): string | null {
+  return draft.emotion;
+}
+
+export function setDraftSong(song: string | null, options?: { touched?: boolean }): void {
+  draft = {
+    ...draft,
+    song,
+    songTouched: options?.touched === true ? true : draft.songTouched,
+  };
+  publish();
+}
+
+export function getDraftSong(): string | null {
+  return draft.song;
+}
+
+export function isDraftSongTouched(): boolean {
+  return draft.songTouched;
+}
+
+export function setDraftRecording(recording: Recording | null): void {
+  draft = { ...draft, recording };
+  publish();
+}
+
+export function getDraftRecording(): Recording | null {
+  return draft.recording;
+}
+
+/** After a successful send (or an explicit abandon of the whole draft). */
 export function clearDraft(): void {
-  draftPhoto = null;
-  draftTopic = null;
-  draftTopicLocked = false;
+  draft = {
+    photo: null,
+    emotion: null,
+    topic: null,
+    topicLocked: false,
+    song: null,
+    songTouched: false,
+    recording: null,
+  };
+  publish();
 }

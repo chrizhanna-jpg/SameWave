@@ -123,7 +123,7 @@ if grep -q "sample-hour-country" "$BUNDLE_FILE"; then
   fail "bundle still contains seeded sample Wave ids"
 fi
 ok "bundle has no seeded sample Wave ids"
-grep -q "Send a Ripple" "$BUNDLE_FILE" || fail "bundle is missing the Ripple send screen"
+grep -q "Capture a moment" "$BUNDLE_FILE" || fail "bundle is missing the Home capture button"
 ok "bundle has the Ripple send screen"
 grep -q "Your Ripple is out there" "$BUNDLE_FILE" || fail "bundle is missing the waiting screen"
 ok "bundle has the waiting screen"

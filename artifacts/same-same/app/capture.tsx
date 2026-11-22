@@ -91,7 +91,7 @@ export default function CaptureScreen() {
       if (!photo) return;
       void playOceanSound();
       setDraftPhoto(photo);
-      router.replace("/compose");
+      router.replace("/ripple");
     } catch {
       setProblem("That photo couldn't be opened. Try another.");
     }
@@ -117,7 +117,7 @@ export default function CaptureScreen() {
         coords: null,
         source: "camera",
       });
-      router.replace("/compose");
+      router.replace("/ripple");
     } catch {
       setProblem("The photo didn't take. Try once more.");
       setBusy(false);
