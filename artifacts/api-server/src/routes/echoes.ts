@@ -336,6 +336,7 @@ type EchoCard = {
     uri: string;
     countryCode: string | null;
     captureCountryCode: string | null;
+    captureCountrySource: string | null;
     capturedAt: string | null;
     createdAt: string | null;
     theme: string;
@@ -345,6 +346,7 @@ type EchoCard = {
     uri: string;
     countryCode: string | null;
     captureCountryCode: string | null;
+    captureCountrySource: string | null;
     capturedAt: string | null;
     createdAt: string | null;
     theme: string;
@@ -367,12 +369,14 @@ function photoSideFromRow(
   uri: string;
   countryCode: string | null;
   captureCountryCode: string | null;
+  captureCountrySource: string | null;
   capturedAt: string | null;
   createdAt: string | null;
   theme: string;
 } {
   const captureRaw = row[`${side}CaptureCountry`] as string | null;
   const declaredRaw = row[`${side}Country`] as string | null;
+  const sourceRaw = row[`${side}CaptureCountrySource`] as string | null;
   const capture =
     typeof captureRaw === "string" && captureRaw.trim().length === 2
       ? captureRaw.trim().toUpperCase()
@@ -381,11 +385,17 @@ function photoSideFromRow(
     typeof declaredRaw === "string" && declaredRaw.trim().length === 2
       ? declaredRaw.trim().toUpperCase()
       : null;
+  const source =
+    typeof sourceRaw === "string" &&
+    ["gps", "photo", "fallback"].includes(sourceRaw.trim().toLowerCase())
+      ? sourceRaw.trim().toLowerCase()
+      : null;
   return {
     id: String(row[`photo${side === "low" ? "Low" : "High"}Id`]),
     uri: `data:${String(row[`${side}Mime`])};base64,${String(row[`${side}Bytes`])}`,
     countryCode: capture ?? declared,
     captureCountryCode: capture,
+    captureCountrySource: source,
     // Real capture instant of this side's photo; null falls back to its
     // upload/share time (createdAt) for the temporal tier on the client.
     capturedAt: isoOrNull(row[`${side}CapturedAt`]),
@@ -444,6 +454,7 @@ router.get("/echoes/inbox", async (req, res) => {
         pl.mime_type AS "lowMime",
         pl.country_code AS "lowCountry",
         pl.capture_country_code AS "lowCaptureCountry",
+        pl.capture_country_source AS "lowCaptureCountrySource",
         pl.captured_at AS "lowCapturedAt",
         pl.created_at AS "lowCreatedAt",
         pl.theme AS "lowTheme",
@@ -451,6 +462,7 @@ router.get("/echoes/inbox", async (req, res) => {
         ph.mime_type AS "highMime",
         ph.country_code AS "highCountry",
         ph.capture_country_code AS "highCaptureCountry",
+        ph.capture_country_source AS "highCaptureCountrySource",
         ph.captured_at AS "highCapturedAt",
         ph.created_at AS "highCreatedAt",
         ph.theme AS "highTheme"
@@ -497,6 +509,7 @@ router.get("/echoes/mine", async (req, res) => {
         pl.mime_type AS "lowMime",
         pl.country_code AS "lowCountry",
         pl.capture_country_code AS "lowCaptureCountry",
+        pl.capture_country_source AS "lowCaptureCountrySource",
         pl.captured_at AS "lowCapturedAt",
         pl.created_at AS "lowCreatedAt",
         pl.theme AS "lowTheme",
@@ -504,6 +517,7 @@ router.get("/echoes/mine", async (req, res) => {
         ph.mime_type AS "highMime",
         ph.country_code AS "highCountry",
         ph.capture_country_code AS "highCaptureCountry",
+        ph.capture_country_source AS "highCaptureCountrySource",
         ph.captured_at AS "highCapturedAt",
         ph.created_at AS "highCreatedAt",
         ph.theme AS "highTheme",
@@ -692,12 +706,14 @@ router.get("/echoes/theme/:theme", async (req, res) => {
         pl.mime_type AS "lowMime",
         pl.country_code AS "lowCountry",
         pl.capture_country_code AS "lowCaptureCountry",
+        pl.capture_country_source AS "lowCaptureCountrySource",
         pl.custom_audio_base64 AS "lowAudioB64",
         pl.custom_audio_mime AS "lowAudioMime",
         ph.bytes_base64 AS "highBytes",
         ph.mime_type AS "highMime",
         ph.country_code AS "highCountry",
         ph.capture_country_code AS "highCaptureCountry",
+        ph.capture_country_source AS "highCaptureCountrySource",
         ph.custom_audio_base64 AS "highAudioB64",
         ph.custom_audio_mime AS "highAudioMime"
       FROM pair_rows pr
@@ -714,11 +730,17 @@ router.get("/echoes/theme/:theme", async (req, res) => {
         uri: string;
         countryCode: string | null;
         captureCountryCode: string | null;
+        captureCountrySource: string | null;
         customAudioBase64: string | null;
         customAudioMime: string | null;
       };
       partnerPhotoId: string;
     }> = [];
+    const sideSource = (raw: unknown) => {
+      if (typeof raw !== "string") return null;
+      const v = raw.trim().toLowerCase();
+      return v === "gps" || v === "photo" || v === "fallback" ? v : null;
+    };
     for (const raw of rows.rows as Array<Record<string, unknown>>) {
       const echoId = String(raw.echoId);
       const themeStr = String(raw.theme ?? "");
@@ -750,6 +772,7 @@ router.get("/echoes/theme/:theme", async (req, res) => {
           uri: `data:${String(raw.lowMime)};base64,${String(raw.lowBytes)}`,
           countryCode: lowDeclared,
           captureCountryCode: lowCapture,
+          captureCountrySource: sideSource(raw.lowCaptureCountrySource),
           customAudioBase64: (raw.lowAudioB64 as string | null) ?? null,
           customAudioMime: (raw.lowAudioMime as string | null) ?? null,
         },
@@ -764,6 +787,7 @@ router.get("/echoes/theme/:theme", async (req, res) => {
           uri: `data:${String(raw.highMime)};base64,${String(raw.highBytes)}`,
           countryCode: highDeclared,
           captureCountryCode: highCapture,
+          captureCountrySource: sideSource(raw.highCaptureCountrySource),
           customAudioBase64: (raw.highAudioB64 as string | null) ?? null,
           customAudioMime: (raw.highAudioMime as string | null) ?? null,
         },
@@ -803,12 +827,14 @@ router.get("/echoes/recent-waves", async (req, res) => {
         pl.id AS "lowId",
         pl.country_code AS "lowCountry",
         pl.capture_country_code AS "lowCaptureCountry",
+        pl.capture_country_source AS "lowCaptureCountrySource",
         pl.captured_at AS "lowCapturedAt",
         pl.created_at AS "lowCreatedAt",
         pl.user_id AS "lowUserId",
         ph.id AS "highId",
         ph.country_code AS "highCountry",
         ph.capture_country_code AS "highCaptureCountry",
+        ph.capture_country_source AS "highCaptureCountrySource",
         ph.captured_at AS "highCapturedAt",
         ph.created_at AS "highCreatedAt",
         ph.user_id AS "highUserId"
@@ -828,6 +854,7 @@ router.get("/echoes/recent-waves", async (req, res) => {
         id: string;
         countryCode: string | null;
         captureCountryCode: string | null;
+        captureCountrySource: string | null;
         capturedAt: string | null;
         createdAt: string | null;
       };
@@ -835,6 +862,7 @@ router.get("/echoes/recent-waves", async (req, res) => {
         id: string;
         countryCode: string | null;
         captureCountryCode: string | null;
+        captureCountrySource: string | null;
         capturedAt: string | null;
         createdAt: string | null;
       };
@@ -855,6 +883,11 @@ router.get("/echoes/recent-waves", async (req, res) => {
         const s = typeof v === "string" ? v.trim().toUpperCase() : "";
         return s.length === 2 ? s : null;
       };
+      const source = (v: unknown) => {
+        if (typeof v !== "string") return null;
+        const s = v.trim().toLowerCase();
+        return s === "gps" || s === "photo" || s === "fallback" ? s : null;
+      };
       waves.push({
         echoId,
         theme: String(raw.theme ?? ""),
@@ -863,6 +896,7 @@ router.get("/echoes/recent-waves", async (req, res) => {
           id: String(raw.lowId),
           countryCode: iso(raw.lowCountry),
           captureCountryCode: iso(raw.lowCaptureCountry),
+          captureCountrySource: source(raw.lowCaptureCountrySource),
           capturedAt: isoOrNull(raw.lowCapturedAt),
           createdAt: isoOrNull(raw.lowCreatedAt),
         },
@@ -870,6 +904,7 @@ router.get("/echoes/recent-waves", async (req, res) => {
           id: String(raw.highId),
           countryCode: iso(raw.highCountry),
           captureCountryCode: iso(raw.highCaptureCountry),
+          captureCountrySource: source(raw.highCaptureCountrySource),
           capturedAt: isoOrNull(raw.highCapturedAt),
           createdAt: isoOrNull(raw.highCreatedAt),
         },
@@ -934,6 +969,7 @@ router.get("/echoes/pair", async (req, res) => {
         mimeType: photosTable.mimeType,
         countryCode: photosTable.countryCode,
         captureCountryCode: photosTable.captureCountryCode,
+        captureCountrySource: photosTable.captureCountrySource,
         capturedAt: photosTable.capturedAt,
         theme: photosTable.theme,
         tags: photosTable.tags,
@@ -981,6 +1017,7 @@ router.get("/echoes/pair", async (req, res) => {
         uri: `data:${a.mimeType};base64,${a.bytesBase64}`,
         countryCode: a.countryCode,
         captureCountryCode: a.captureCountryCode,
+        captureCountrySource: a.captureCountrySource,
         capturedAt: a.capturedAt,
         theme: a.theme,
         tags: a.tags ?? [],
@@ -994,6 +1031,7 @@ router.get("/echoes/pair", async (req, res) => {
         uri: `data:${b.mimeType};base64,${b.bytesBase64}`,
         countryCode: b.countryCode,
         captureCountryCode: b.captureCountryCode,
+        captureCountrySource: b.captureCountrySource,
         capturedAt: b.capturedAt,
         theme: b.theme,
         tags: b.tags ?? [],

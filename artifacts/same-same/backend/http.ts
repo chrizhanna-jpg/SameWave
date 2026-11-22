@@ -2,6 +2,7 @@
  * The SameWave API, exactly as the server already exposes it.
  * Nothing on the server was changed for this client.
  */
+import { parseCaptureCountrySource } from "../core/captureCountry";
 import { normalizeCountryCode } from "../data/countries";
 import type { Candidate, Offer, Wave, WaveSide } from "../core/types";
 import {
@@ -61,12 +62,13 @@ function waveSide(raw: unknown): WaveSide | null {
   if (!photoId) return null;
   const capture = normalizeCountryCode(side.captureCountryCode as string | null);
   const home = normalizeCountryCode(side.countryCode as string | null);
+  const fromServer = parseCaptureCountrySource(side.captureCountrySource);
   return {
     photoId,
     uri: imageUriOrNull(side.uri),
     countryCode: capture ?? home,
-    // Missing captureCountryCode from the server → treat as profile fallback.
-    countrySource: capture ? null : home ? "fallback" : null,
+    // Server null/missing provenance → approximate fallback (incl. legacy rows).
+    countrySource: fromServer ?? "fallback",
     takenAt: isoOrNull(side.capturedAt) ?? isoOrNull(side.createdAt),
   };
 }

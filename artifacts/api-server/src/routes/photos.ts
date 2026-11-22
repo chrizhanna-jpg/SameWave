@@ -53,6 +53,7 @@ import {
   themeExactMatchVariants,
 } from "../lib/challengeTheme";
 import { expandSubjectsForQuery } from "../lib/subjectMatch";
+import { parseCaptureCountrySource } from "../lib/captureCountrySource";
 
 const bannedPrefixMd5Expr =
   BANNED_PHOTO_PREFIX_MD5.length > 0
@@ -221,7 +222,7 @@ function approxBase64Bytes(b64: string): number {
 
 // ---- POST /api/photos -----------------------------------------------------
 // Body: { imageBase64, mimeType?, countryCode?, captureCountryCode?,
-//         capturedAt?, theme?, tags?, subjects?, shapes? }
+//         captureCountrySource?, capturedAt?, theme?, tags?, subjects?, shapes? }
 // Header: X-Device-Id (required) — stable client UUID.
 router.post("/photos", async (req, res) => {
   try {
@@ -234,6 +235,7 @@ router.post("/photos", async (req, res) => {
       deckPreviewBase64?: unknown;
       countryCode?: unknown;
       captureCountryCode?: unknown;
+      captureCountrySource?: unknown;
       capturedAt?: unknown;
       musicGenre?: unknown;
       customAudioBase64?: unknown;
@@ -265,6 +267,9 @@ router.post("/photos", async (req, res) => {
       body.captureCountryCode.length === 2
         ? body.captureCountryCode.toUpperCase()
         : null;
+    const captureCountrySource = parseCaptureCountrySource(
+      body.captureCountrySource,
+    );
 
     // Real capture instant (EXIF DateTimeOriginal for library picks, or the
     // in-app camera shutter moment). Stored honestly: only persisted when the
@@ -434,6 +439,7 @@ router.post("/photos", async (req, res) => {
         subjects,
         countryCode: effectiveCountryCode,
         captureCountryCode,
+        captureCountrySource,
         capturedAt,
         musicGenre,
         customAudioBase64,

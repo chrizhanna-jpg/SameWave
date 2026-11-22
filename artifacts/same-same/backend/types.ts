@@ -46,10 +46,7 @@ export interface RippleUpload {
   countryCode: string | null;
   /** Where the photo was taken, when the device could tell. */
   captureCountryCode: string | null;
-  /**
-   * Provenance for captureCountryCode. Sent only as an extra JSON field —
-   * the live API ignores unknown keys today (no schema change).
-   */
+  /** Provenance for captureCountryCode — persisted by the API when valid. */
   captureCountrySource?: CaptureCountrySource | null;
   /** When the photo was taken. ISO string. */
   capturedAt: string | null;

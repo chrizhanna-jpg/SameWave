@@ -13,8 +13,8 @@ export interface WaveSide {
   uri: string | null;
   countryCode: string | null;
   /**
-   * How the country was chosen when this device knows (own Ripples / samples).
-   * Missing from the server → treat own sides without captureCountryCode as fallback.
+   * How the country was chosen (gps / photo / fallback).
+   * Server null/missing → clients treat as fallback (approximate).
    */
   countrySource?: CaptureCountrySource | null;
   /** When the photo was taken, falling back to when it was sent. ISO string. */
@@ -40,10 +40,7 @@ export interface Ripple {
   /** Local copy of the photo, when one exists on this device. */
   localUri: string | null;
   countryCode: string | null;
-  /**
-   * Client-side provenance for `countryCode`. Kept on device; the live API
-   * ignores `captureCountrySource` on upload until Chris adds storage.
-   */
+  /** Provenance for countryCode: gps | photo | fallback. */
   captureCountrySource?: CaptureCountrySource | null;
   /** Chosen emotion id (also sent as musicGenre). */
   emotion: string | null;

@@ -172,20 +172,20 @@ test("Waves come back with my photo and theirs, and capture country wins", async
       photoId: "mine-1",
       uri: DATA_URI,
       countryCode: "FR",
-      countrySource: null,
+      countrySource: "fallback",
       takenAt: "2026-10-01T09:00:00.000Z",
     },
     theirs: {
       photoId: "theirs-1",
       uri: null,
       countryCode: null,
-      countrySource: null,
+      countrySource: "fallback",
       takenAt: "2026-10-01T12:00:00.000Z",
     },
   });
 });
 
-test("missing captureCountryCode from the server is treated as fallback", async () => {
+test("missing captureCountrySource from the server is treated as fallback", async () => {
   const { backend } = fakeServer(() => ({
     status: 200,
     body: {
@@ -205,7 +205,8 @@ test("missing captureCountryCode from the server is treated as fallback", async 
             id: "theirs-home",
             uri: DATA_URI,
             countryCode: "FR",
-            captureCountryCode: null,
+            captureCountryCode: "fr",
+            captureCountrySource: "gps",
             capturedAt: "2026-10-01T12:00:00.000Z",
           },
         },
@@ -216,7 +217,7 @@ test("missing captureCountryCode from the server is treated as fallback", async 
   assert.equal(waves[0]?.mine.countryCode, "GB");
   assert.equal(waves[0]?.mine.countrySource, "fallback");
   assert.equal(waves[0]?.theirs.countryCode, "FR");
-  assert.equal(waves[0]?.theirs.countrySource, "fallback");
+  assert.equal(waves[0]?.theirs.countrySource, "gps");
 });
 
 test("looking for matches sends the photo's labels and never its feeling", async () => {
