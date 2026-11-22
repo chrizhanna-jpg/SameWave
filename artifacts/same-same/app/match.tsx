@@ -61,12 +61,16 @@ type LoadState = "loading" | "ready" | "empty" | "error";
  */
 export default function MatchScreen() {
   const router = useRouter();
-  const { photoId: rawId, stage: rawStage } = useLocalSearchParams<{
+  const { photoId: rawId, stage: rawStage, from: rawFrom } = useLocalSearchParams<{
     photoId?: string;
     stage?: string;
+    from?: string;
   }>();
   const photoId = typeof rawId === "string" ? rawId : Array.isArray(rawId) ? rawId[0] : "";
   const stage = parseMatchStage(rawStage);
+  const fromWaves =
+    (typeof rawFrom === "string" ? rawFrom : Array.isArray(rawFrom) ? rawFrom[0] : "") ===
+    "waves";
   const windowDims = useWindowDimensions();
   // Prefer live layout size so WaveJoin always fills the Match root (no bottom gap).
   // Seed from waveLayoutMetrics so the first paint matches capture crop aspect.
@@ -259,9 +263,14 @@ export default function MatchScreen() {
       finishedRef.current = true;
       finishMatchLook(myPhotoId, seenRef.current);
     }
+    // Inbox tap opens Match with from=waves — SoftIconDisc X returns there.
+    if (fromWaves) {
+      router.replace("/(tabs)/waves");
+      return;
+    }
     if (router.canGoBack()) router.back();
     else router.replace("/home");
-  }, [finishMatchLook, myPhotoId, router]);
+  }, [finishMatchLook, myPhotoId, router, fromWaves]);
 
   const advance = useCallback(
     (fromId: string) => {

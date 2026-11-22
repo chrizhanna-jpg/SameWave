@@ -67,7 +67,10 @@ export default function WavesScreen() {
       router.push({ pathname: "/wave/[id]", params: { id: PREVIEW_OFFER_WAVE_ID } });
       return;
     }
-    router.push({ pathname: "/match", params: { photoId: offer.myPhotoId } });
+    router.push({
+      pathname: "/match",
+      params: { photoId: offer.myPhotoId, from: "waves" },
+    });
   };
 
   return (

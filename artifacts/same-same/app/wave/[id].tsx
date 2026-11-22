@@ -12,8 +12,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Button } from "@/components/Button";
-import { Frost } from "@/components/Frost";
-import { Header } from "@/components/Header";
+import { Frost, SoftIconDisc } from "@/components/Frost";
 import { Icon } from "@/components/Icon";
 import { RippleRings } from "@/components/RippleRings";
 import { Scrim } from "@/components/Scrim";
@@ -37,13 +36,15 @@ import {
   type ClipSource,
 } from "@/device/sound";
 import { useAppState } from "@/state/AppState";
-import { colors, motion, space } from "@/theme";
+import { colors, layout, motion, space } from "@/theme";
 
 type Phase = "pulse" | "build" | "splash" | "reveal" | "done";
 
 /** Matches the baked swoosh length (~2.2s) plus a short breath before photos. */
 const PULSE_MS = 2300;
 const PULSE_RINGS = 340;
+/** Top-left close — same SoftIconDisc as Match. */
+const CLOSE_SIZE = layout.iconButtonSize;
 
 /**
  * The Wave ceremony, photography first.
@@ -331,7 +332,12 @@ export default function WaveScreen() {
         <Txt variant="heading" center>
           This Wave isn't here
         </Txt>
-        <Button kind="soft" label="Back" onPress={() => router.back()} style={styles.back} />
+        <Button
+          kind="soft"
+          label="Back"
+          onPress={() => router.replace("/(tabs)/waves")}
+          style={styles.back}
+        />
       </View>
     );
   }
@@ -382,10 +388,16 @@ export default function WaveScreen() {
       await reportWave(wave, "inappropriate");
       setReportDone(true);
       stopClip();
-      router.back();
+      router.replace("/(tabs)/waves");
     } catch {
       setReporting(false);
     }
+  };
+
+  const closeToWaves = () => {
+    stopClip();
+    // Inbox entry point — Match-style SoftIconDisc X always returns here.
+    router.replace("/(tabs)/waves");
   };
 
   const onTapPhotos = () => {
@@ -441,6 +453,24 @@ export default function WaveScreen() {
           </Scrim>
         </Animated.View>
 
+        {/* Always-visible Match-style close — not part of the fading chrome. */}
+        <View
+          style={[styles.closeChrome, { paddingTop: insets.top + space.sm }]}
+          pointerEvents="box-none"
+        >
+          <Pressable
+            onPress={closeToWaves}
+            hitSlop={layout.hitSlop}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+            accessibilityHint="Returns to the Waves inbox"
+          >
+            <SoftIconDisc size={CLOSE_SIZE}>
+              <Icon name="close" color={colors.slate} />
+            </SoftIconDisc>
+          </Pressable>
+        </View>
+
         <Animated.View
           pointerEvents={chrome && !details ? "box-none" : "none"}
           style={[
@@ -452,15 +482,7 @@ export default function WaveScreen() {
             },
           ]}
         >
-          <View style={styles.topRow}>
-            <Header
-              icon="close"
-              onPress={() => {
-                stopClip();
-                router.back();
-              }}
-            />
-          </View>
+          <View style={styles.topRow} />
 
           <Animated.View style={{ opacity: headline }}>
             <WaveSimilarityLine headline={bonuses?.headline} surface="photo" />
@@ -637,7 +659,15 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: space.lg,
   },
-  topRow: { marginHorizontal: -space.sm },
+  closeChrome: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    paddingHorizontal: space.lg,
+    zIndex: 4,
+  },
+  topRow: { minHeight: layout.iconButtonSize, marginHorizontal: -space.sm },
   sheetHeadline: { marginTop: space.xs, marginBottom: space.md },
   hint: {
     flexDirection: "row",

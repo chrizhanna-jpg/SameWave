@@ -66,6 +66,11 @@ test("Wave inbox has no Wave back / Dismiss; tap opens full-screen Wave", () => 
   assert.match(waves, /inboxOfferTheirThumbSource/);
   assert.equal(PREVIEW_OFFER_WAVE_ID, "test_wave_same_minute");
 
+  const waveScreen = readFileSync(path.join(root, "app/wave/[id].tsx"), "utf8");
+  assert.match(waveScreen, /SoftIconDisc/);
+  assert.match(waveScreen, /closeToWaves|\/\(tabs\)\/waves/);
+  assert.match(waveScreen, /accessibilityLabel="Close"/);
+
   const app = readFileSync(path.join(root, "state/AppState.tsx"), "utf8");
   assert.doesNotMatch(app, /offersToAccept\(/);
 });
