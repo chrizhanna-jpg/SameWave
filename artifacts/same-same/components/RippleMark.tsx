@@ -38,8 +38,8 @@ export function RippleMark({
 
   useEffect(() => {
     if (!animated || reduced) {
-      // Still frames near full span so the mark fills the well when motion is off.
-      values.forEach((value, index) => value.setValue(0.55 + index * 0.12));
+      // Still frames around mid-large span (subtle fill, not edge-to-edge).
+      values.forEach((value, index) => value.setValue(0.48 + index * 0.1));
       return;
     }
     const duration = Math.max(1600, motion.ring * 0.85);
