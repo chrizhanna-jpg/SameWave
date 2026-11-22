@@ -11,12 +11,6 @@ interface Props {
   onSearchFocusChange?: (focused: boolean) => void;
   /** When true, keep the list closed (e.g. while uploading). */
   locked?: boolean;
-  /**
-   * Greyed and non-expandable until Feeling is chosen on the Ripple tab.
-   */
-  disabled?: boolean;
-  /** Bump after Feeling collapses so Topic can auto-focus. */
-  focusToken?: number;
   scrollRef?: React.MutableRefObject<ScreenScroll | null>;
   scrollYRef?: React.MutableRefObject<number>;
 }
@@ -31,8 +25,6 @@ export function TopicPicker({
   onChange,
   onSearchFocusChange,
   locked = false,
-  disabled = false,
-  focusToken = 0,
   scrollRef,
   scrollYRef,
 }: Props) {
@@ -53,9 +45,6 @@ export function TopicPicker({
       valueKind="Topic"
       onSearchFocusChange={onSearchFocusChange}
       locked={locked}
-      disabled={disabled}
-      disabledLabel="Choose a feeling first"
-      focusToken={focusToken}
       scrollRef={scrollRef}
       scrollYRef={scrollYRef}
     />

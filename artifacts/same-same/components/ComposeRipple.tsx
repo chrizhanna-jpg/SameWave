@@ -82,9 +82,6 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
   const [sent, setSent] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
-  /** Bumped when Feeling first collapses so Topic can auto-focus. */
-  const [topicFocusToken, setTopicFocusToken] = useState(0);
-  const feelingReady = Boolean(draft.emotion);
 
   // Keep locked Daily topic pinned.
   useEffect(() => {
@@ -106,10 +103,8 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
   const hint = missingHint(Boolean(photo), Boolean(draft.emotion), Boolean(draft.topic));
 
   const onEmotion = (next: string | null) => {
-    const firstFeeling = Boolean(next) && !draft.emotion;
     setDraftEmotion(next);
     if (!draft.songTouched) setDraftSong(defaultMusicForEmotion(next));
-    if (firstFeeling) setTopicFocusToken((n) => n + 1);
   };
 
   const onSong = (next: string) => {
@@ -252,35 +247,17 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
             What&apos;s the topic?
           </Txt>
           {topicLocked ? (
-            feelingReady ? (
-              <View style={styles.lockedChip} accessibilityLabel={`Today's topic: ${lockedLabel}`}>
-                <Txt variant="quiet" tone="secondary">
-                  Today&apos;s topic
-                </Txt>
-                <Txt>{lockedLabel}</Txt>
-              </View>
-            ) : (
-              <View
-                style={[styles.lockedChip, styles.topicWaiting]}
-                accessibilityState={{ disabled: true }}
-                accessibilityLabel={`Today's topic: ${lockedLabel}. Choose a feeling first.`}
-              >
-                <Txt variant="quiet" tone="secondary">
-                  Today&apos;s topic
-                </Txt>
-                <Txt tone="secondary">{lockedLabel}</Txt>
-                <Txt variant="quiet" tone="secondary">
-                  Choose a feeling first
-                </Txt>
-              </View>
-            )
+            <View style={styles.lockedChip} accessibilityLabel={`Today's topic: ${lockedLabel}`}>
+              <Txt variant="quiet" tone="secondary">
+                Today&apos;s topic
+              </Txt>
+              <Txt>{lockedLabel}</Txt>
+            </View>
           ) : (
             <TopicPicker
               value={draft.topic}
               onChange={onTopicChange}
               locked={pickerLocked}
-              disabled={!feelingReady}
-              focusToken={topicFocusToken}
               scrollRef={scrollRef}
               scrollYRef={scrollYRef}
             />
@@ -363,10 +340,6 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.line,
     gap: space.xs,
-  },
-  topicWaiting: {
-    backgroundColor: colors.surface,
-    opacity: 0.72,
   },
   send: {
     marginTop: space.md,

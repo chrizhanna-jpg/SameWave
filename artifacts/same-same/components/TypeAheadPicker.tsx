@@ -41,13 +41,11 @@ export interface TypeAheadPickerProps {
   onSearchFocusChange?: (focused: boolean) => void;
   /** When true, keep collapsed (e.g. while uploading). */
   locked?: boolean;
-  /**
-   * Greyed, non-interactive — used so Topic stays closed until Feeling is set.
-   * Optional idle label when there is no selection yet.
-   */
+  /** Greyed, non-interactive (optional; unused on the Ripple tab). */
   disabled?: boolean;
+  /** Idle label when disabled and nothing is selected. */
   disabledLabel?: string;
-  /** Bump to focus the input once (e.g. after Feeling collapses). */
+  /** Bump to focus the input once (e.g. parent-driven open). */
   focusToken?: number;
   /** Preview / test: seed the search field (also opens the field). */
   initialQuery?: string;
@@ -135,8 +133,8 @@ export function TypeAheadPicker({
         accessibilityState={{ disabled: true }}
         accessibilityLabel={
           selected && selectedLabel
-            ? `${valueKind} ${selectedLabel}. Choose a feeling first.`
-            : (disabledLabel ?? `${valueKind} unavailable. Choose a feeling first.`)
+            ? `${valueKind} ${selectedLabel}. Unavailable.`
+            : (disabledLabel ?? `${valueKind} unavailable.`)
         }
       >
         <Txt style={[styles.chosenLabel, styles.chosenLabelDisabled]} numberOfLines={1}>

@@ -24,11 +24,12 @@ test("Home capture button wording unchanged in home.tsx", () => {
   assert.match(home, /Capture a moment/);
 });
 
-test("Topic waits on Feeling: disabled until emotion, Today gated the same way", () => {
-  assert.match(composeSrc, /disabled=\{!feelingReady\}/);
-  assert.match(composeSrc, /Choose a feeling first/);
-  assert.match(composeSrc, /feelingReady \? \(/);
-  assert.match(composeSrc, /topicFocusToken/);
+test("Feeling and Topic open in any order — no gating copy", () => {
+  assert.doesNotMatch(composeSrc, /feelingReady/);
+  assert.doesNotMatch(composeSrc, /Choose a feeling first/);
+  assert.doesNotMatch(composeSrc, /topicWaiting/);
+  assert.doesNotMatch(composeSrc, /topicFocusToken/);
+  assert.doesNotMatch(composeSrc, /TopicPicker[\s\S]*disabled=/);
 });
 
 test("shared TypeAheadPicker collapses to the selected label only", () => {
@@ -36,4 +37,5 @@ test("shared TypeAheadPicker collapses to the selected label only", () => {
   assert.match(picker, /Tap to change/);
   assert.doesNotMatch(picker, />\s*Change\s*</);
   assert.match(picker, /Keyboard\.dismiss/);
+  assert.doesNotMatch(picker, /Choose a feeling first/);
 });

@@ -1,5 +1,5 @@
 /**
- * Preview-only: Feeling / Topic collapse + sequencing screenshots.
+ * Preview-only: Feeling / Topic collapse screenshots (any order, no gating).
  */
 import React, { useState } from "react";
 import { StyleSheet, View } from "react-native";
@@ -13,31 +13,63 @@ import { Txt } from "@/components/Txt";
 import { filterEmotions } from "@/data/emotions";
 import { filterTopics, topicFor } from "@/data/topics";
 import { sceneFor } from "@/data/scenes";
-import { colors, font, radius, space } from "@/theme";
+import { font, space } from "@/theme";
 
 export type PickerShotMode =
+  | "both-empty"
+  | "both-collapsed"
   | "feeling-collapsed"
   | "feeling-open"
-  | "topic-waiting"
   | "topic-collapsed"
-  | "topic-open"
-  | "today-waiting";
+  | "topic-open";
 
 export function PickerCollapseShotInner({ mode }: { mode: PickerShotMode }) {
   return (
     <Screen scroll scene={sceneFor.composeFallback}>
       <Frost kind="card" style={styles.card} contentStyle={styles.pad} clip={false}>
-        {mode === "feeling-collapsed" || mode === "feeling-open" ? (
+        {mode === "both-empty" ? (
+          <BothEmptyShot />
+        ) : mode === "both-collapsed" ? (
+          <BothCollapsedShot />
+        ) : mode === "feeling-collapsed" || mode === "feeling-open" ? (
           <FeelingShot mode={mode} />
-        ) : mode === "topic-waiting" ? (
-          <TopicWaitingShot />
-        ) : mode === "today-waiting" ? (
-          <TodayWaitingShot />
         ) : (
           <TopicShot mode={mode} />
         )}
       </Frost>
     </Screen>
+  );
+}
+
+function BothEmptyShot() {
+  return (
+    <View>
+      <Txt variant="heading" style={styles.h}>
+        This feels…
+      </Txt>
+      <EmotionPicker value={null} onChange={() => undefined} />
+      <Txt variant="heading" style={styles.h}>
+        What&apos;s the topic?
+      </Txt>
+      <TopicPicker value={null} onChange={() => undefined} />
+    </View>
+  );
+}
+
+function BothCollapsedShot() {
+  const [emotion, setEmotion] = useState<string | null>("tired");
+  const [topic, setTopic] = useState<string | null>("coffee");
+  return (
+    <View>
+      <Txt variant="heading" style={styles.h}>
+        This feels…
+      </Txt>
+      <EmotionPicker value={emotion} onChange={setEmotion} />
+      <Txt variant="heading" style={styles.h}>
+        What&apos;s the topic?
+      </Txt>
+      <TopicPicker value={topic} onChange={setTopic} />
+    </View>
   );
 }
 
@@ -68,49 +100,6 @@ function FeelingShot({ mode }: { mode: "feeling-collapsed" | "feeling-open" }) {
         This feels…
       </Txt>
       <EmotionPicker value={value} onChange={setValue} />
-    </View>
-  );
-}
-
-function TopicWaitingShot() {
-  return (
-    <View>
-      <Txt variant="heading" style={styles.h}>
-        This feels…
-      </Txt>
-      <EmotionPicker value={null} onChange={() => undefined} />
-      <Txt variant="heading" style={styles.h}>
-        What&apos;s the topic?
-      </Txt>
-      <TopicPicker value={null} onChange={() => undefined} disabled />
-    </View>
-  );
-}
-
-function TodayWaitingShot() {
-  const label = topicFor("coffee")?.label ?? "Coffee & tea";
-  return (
-    <View>
-      <Txt variant="heading" style={styles.h}>
-        This feels…
-      </Txt>
-      <EmotionPicker value={null} onChange={() => undefined} />
-      <Txt variant="heading" style={styles.h}>
-        What&apos;s the topic?
-      </Txt>
-      <View
-        style={[styles.lockedChip, styles.topicWaiting]}
-        accessibilityState={{ disabled: true }}
-        accessibilityLabel={`Today's topic: ${label}. Choose a feeling first.`}
-      >
-        <Txt variant="quiet" tone="secondary">
-          Today&apos;s topic
-        </Txt>
-        <Txt tone="secondary">{label}</Txt>
-        <Txt variant="quiet" tone="secondary">
-          Choose a feeling first
-        </Txt>
-      </View>
     </View>
   );
 }
@@ -150,18 +139,4 @@ const styles = StyleSheet.create({
   card: { margin: space.md },
   pad: { padding: space.lg },
   h: { marginTop: space.md, marginBottom: space.sm, fontFamily: font.bold },
-  lockedChip: {
-    marginTop: space.sm,
-    paddingVertical: space.md,
-    paddingHorizontal: space.md,
-    borderRadius: radius.md,
-    backgroundColor: "rgba(222, 242, 254, 0.72)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.line,
-    gap: space.xs,
-  },
-  topicWaiting: {
-    backgroundColor: colors.surface,
-    opacity: 0.72,
-  },
 });
