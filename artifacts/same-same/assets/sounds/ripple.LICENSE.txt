@@ -9,10 +9,12 @@ Licence: Creative Commons 0 (CC0 / public domain)
 Processing (ffmpeg):
   - HQ MP3 preview from Freesound CDN
   - Trim: start ~0.35 s, length ~0.95 s (hand moving through water)
-  - highpass 100 Hz, lowpass 6500 Hz
-  - Soft fades: in 0.08 s, out 0.25 s (qsin)
-  - Gain +7.5 dB then alimiter to true peak ≤ −3 dBFS
-  - Target loudness ≈ −22 to −24 LUFS (short-clip integrated ≈ −22.6)
+  - highpass 100 Hz, lowpass 6500 Hz; soft fades
+  - Tape-style slowdown ~0.8×: asetrate=35280, aresample=44100
+    (pitch drops with speed; duration ≈ 1.23 s)
+  - Gain +2.5 dB, fade-out ~0.22 s (qsin) from 1.02 s
+  - alimiter true-peak ≤ −3 dBFS; integrated ≈ −23 LUFS
   - Encode: mono 44.1 kHz MP3 @ 128 kb/s
 
 Used only for Match "Offer a Ripple" (right-hand button).
+Prior 0.99 s cut is in git history (not bundled).
