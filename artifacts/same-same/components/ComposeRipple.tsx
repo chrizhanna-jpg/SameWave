@@ -281,7 +281,7 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
             </View>
 
             <Txt variant="heading" style={styles.section}>
-              Record a sound, optional
+              Record a sound
             </Txt>
             <SoundRecorder value={draft.recording} onChange={setDraftRecording} />
           </>
