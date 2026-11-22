@@ -93,6 +93,10 @@ const BADGE_SIZE = CLUSTER_BADGE_SIZE ?? 24;
 const BADGE_R = BADGE_SIZE / 2;
 const MIN_SCALE = 1;
 const MAX_SCALE = 12;
+/** Coastline stroke in screen px — paired with vectorEffect non-scaling-stroke. */
+const LAND_STROKE_PX = 1.25;
+/** Wave thread stroke in screen px (non-scaling). */
+const THREAD_STROKE_PX = 2;
 
 interface Props {
   waves: readonly Wave[];
@@ -158,20 +162,39 @@ export function WorldMap({
   const scale = useRef(new Animated.Value(1)).current;
   const translateX = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(0)).current;
-  /** Keeps pin chrome screen-fixed while the land layer zooms (1 / scale). */
+  /** Keeps pin chrome screen-fixed while the pin layer zooms (1 / scale). */
   const invScale = useRef(new Animated.Value(1)).current;
+  /**
+   * Land + wave threads live in this SVG group. Matrix is updated via
+   * setNativeProps (not a parent View scale) so coastlines stay vector-crisp
+   * at high zoom instead of shimmering from upscaled raster edges.
+   */
+  const mapGroupRef = useRef<React.ElementRef<typeof G>>(null);
   /** Previous pinch sample for incremental focal maths (reset at BEGAN). */
   const pinchPrev = useRef<PinchPrev>({ pinchScale: 1, focalX: 0, focalY: 0 });
   const pan0 = useRef({ x: 0, y: 0 });
   const live = useRef({ scale: 1, x: 0, y: 0 });
   const framedFor = useRef<string>("");
   /**
-   * React view state is for clustering / stroke width only. Updating it every
-   * pinch frame re-rendered the SVG land path and rebuilt clusters → flicker
-   * on Android. Gesture frames drive Animated values; we commit here on end.
+   * React view state is for clustering only. Updating it every pinch frame
+   * rebuilt clusters mid-gesture → flicker. Gesture frames drive Animated
+   * pin transforms + SVG matrix; we commit here on end.
    */
   const [view, setView] = useState({ scale: 1, x: 0, y: 0 });
   const [clusterList, setClusterList] = useState<MapCluster | null>(null);
+
+  const applyMapMatrix = useCallback((s: number, x: number, y: number) => {
+    // SVG matrix(a,b,c,d,e,f) → scale + translate in map space.
+    mapGroupRef.current?.setNativeProps({
+      matrix: [s, 0, 0, s, x, y],
+    });
+  }, []);
+
+  // Re-apply after layout/remount so the group isn't stuck at identity.
+  useEffect(() => {
+    if (!map) return;
+    applyMapMatrix(live.current.scale, live.current.x, live.current.y);
+  }, [map, applyMapMatrix]);
 
   const applyLiveTransform = useCallback(
     (next: { scale: number; x: number; y: number }) => {
@@ -180,8 +203,9 @@ export function WorldMap({
       translateX.setValue(next.x);
       translateY.setValue(next.y);
       invScale.setValue(1 / Math.max(next.scale, 0.05));
+      applyMapMatrix(next.scale, next.x, next.y);
     },
-    [scale, translateX, translateY, invScale],
+    [scale, translateX, translateY, invScale, applyMapMatrix],
   );
 
   const commitView = useCallback(
@@ -453,6 +477,50 @@ export function WorldMap({
                   }}
                 >
                   <Animated.View style={styles.fill}>
+                    {/*
+                      Land + threads: SVG-group matrix (setNativeProps), not a
+                      parent View scale. View-scaling rasterises the SVG then
+                      upscales it — coastlines shimmer worse the closer you zoom.
+                      vectorEffect keeps stroke width screen-constant at max zoom.
+                    */}
+                    {box ? (
+                      <Svg
+                        width={box.width}
+                        height={box.height}
+                        style={StyleSheet.absoluteFill}
+                        pointerEvents="none"
+                      >
+                        <G
+                          ref={mapGroupRef}
+                          // Identity until applyMapMatrix setNativeProps runs.
+                          transform="matrix(1,0,0,1,0,0)"
+                        >
+                          <Path
+                            d={map.landPath}
+                            fill={colors.waterMuted}
+                            fillOpacity={0.55}
+                            stroke={colors.slate}
+                            strokeOpacity={0.35}
+                            strokeWidth={LAND_STROKE_PX}
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            vectorEffect="non-scaling-stroke"
+                          />
+                          {geometry.lines.map((line) => (
+                            <Thread
+                              key={line.waveId}
+                              line={line}
+                              draw={!reduced && drawingIds.includes(line.waveId)}
+                              reduced={reduced}
+                            />
+                          ))}
+                        </G>
+                      </Svg>
+                    ) : null}
+                    {/*
+                      Pins stay on an Animated View (same pan/zoom maths) with
+                      invScale so chrome stays screen-fixed.
+                    */}
                     <Animated.View
                       style={[
                         styles.stage,
@@ -465,30 +533,6 @@ export function WorldMap({
                       ]}
                       pointerEvents="none"
                     >
-                      <Svg width={map.width} height={map.height}>
-                        <Path
-                          d={map.landPath}
-                          fill={colors.waterMuted}
-                          fillOpacity={0.55}
-                          stroke={colors.slate}
-                          strokeOpacity={0.28}
-                          strokeWidth={1.1}
-                        />
-                        {geometry.lines.map((line) => (
-                          <Thread
-                            key={line.waveId}
-                            line={line}
-                            draw={!reduced && drawingIds.includes(line.waveId)}
-                            reduced={reduced}
-                            viewScale={view.scale}
-                          />
-                        ))}
-                      </Svg>
-                      {/*
-                        Pins live in map space under the same Animated transform
-                        as the land, with invScale so chrome stays screen-fixed.
-                        Avoids per-frame React left/top updates that flickered.
-                      */}
                       {geometry.clusters.map((cluster) => {
                         const approximate = cluster.members.every((m) => m.approximate);
                         const hit = CLUSTER_SCREEN_PX;
@@ -687,17 +731,13 @@ function Thread({
   line,
   draw,
   reduced,
-  viewScale,
 }: {
   line: MapLine;
   draw: boolean;
   reduced: boolean;
-  viewScale: number;
 }) {
   const length = useMemo(() => pathLength(line.points), [line.points]);
   const [offset, setOffset] = useState(draw && !reduced ? length : 0);
-  const midHit = MIDPOINT_HIT_SCREEN / Math.max(viewScale, 0.05);
-  const touchW = LINE_TOUCH_SCREEN / Math.max(viewScale, 0.05);
 
   useEffect(() => {
     if (!draw || reduced) {
@@ -730,13 +770,14 @@ function Thread({
         fill="none"
         stroke={colors.waterMid}
         strokeOpacity={0.001}
-        strokeWidth={touchW}
+        strokeWidth={LINE_TOUCH_SCREEN}
         strokeLinecap="round"
+        vectorEffect="non-scaling-stroke"
       />
       <Circle
         cx={line.tip.x}
         cy={line.tip.y}
-        r={midHit}
+        r={MIDPOINT_HIT_SCREEN}
         fill={colors.waterMid}
         fillOpacity={0.001}
       />
@@ -745,9 +786,10 @@ function Thread({
         fill="none"
         stroke={colors.waterMid}
         strokeOpacity={0.78}
-        strokeWidth={2 / Math.max(viewScale, 0.05)}
+        strokeWidth={THREAD_STROKE_PX}
         strokeLinecap="round"
         strokeLinejoin="round"
+        vectorEffect="non-scaling-stroke"
         {...dashProps}
       />
     </G>
