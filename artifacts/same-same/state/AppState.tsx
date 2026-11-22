@@ -183,8 +183,12 @@ export function useAppState(): AppStateValue {
 const SYNC_MIN_GAP_MS = 60_000;
 const TRAVEL_POLL_MS = 3 * 60_000;
 const MAX_EXCLUDE_IDS = 200;
-/** Show “still waking…” while Render / Clerk catch up after sign-in. */
-const BOOT_SLOW_MS = 8_000;
+/**
+ * Show “still waking…” only after a real stall. Render free-plan cold starts
+ * can take tens of seconds, but a warm API often finishes getToken + profile
+ * in well under this — keep the calm “Getting your account ready…” card first.
+ */
+const BOOT_SLOW_MS = 20_000;
 /**
  * Hard stop for the starting gate. Covers token + /users/me (25s) with a little
  * spare; never leave RippleRings spinning with no way out.
