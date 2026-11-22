@@ -79,6 +79,12 @@ export const photosTable = pgTable(
     // upload time so the fallback stays detectable downstream.
     capturedAt: timestamp("captured_at"),
 
+    // Chosen Feeling id from artifacts/same-same/data/emotions.ts
+    // (e.g. "calm", "joy"). Distinct from musicGenre (song / vibe clip).
+    // Nullable for legacy rows; clients omit the feeling chip when null.
+    // Validated in api-server on write — no DB CHECK.
+    emotion: text("emotion"),
+
     // Music vibe (the "vibe clip" feature). Lower-case genre id from
     // artifacts/same-same/data/musicLibrary.ts (e.g. "classic", "rock").
     // Nullable so the column is backwards-compatible with photos

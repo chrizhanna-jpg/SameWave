@@ -44,15 +44,48 @@ const SERVER_MUSIC_GENRES = new Set([
   "passion",
 ]);
 
-test("every picker emotion is one the server already accepts as musicGenre", () => {
+/** Mirror of artifacts/api-server/src/lib/allowedEmotions.ts — keep in sync. */
+const SERVER_EMOTIONS = new Set([
+  "joy",
+  "overjoyed",
+  "love",
+  "caring",
+  "romance",
+  "passion",
+  "hope",
+  "gratitude",
+  "pride",
+  "wonder",
+  "calm",
+  "sad",
+  "lonely",
+  "grief",
+  "heartbroken",
+  "longing",
+  "scared",
+  "anger",
+  "stress",
+  "fear",
+]);
+
+test("every picker emotion is persisted as photos.emotion and still a musicGenre", () => {
   for (const id of EMOTION_IDS) {
-    assert.ok(SERVER_MUSIC_GENRES.has(id), id);
+    assert.ok(SERVER_EMOTIONS.has(id), `emotion whitelist missing ${id}`);
+    assert.ok(SERVER_MUSIC_GENRES.has(id), `musicGenre whitelist missing ${id}`);
   }
+  assert.deepEqual([...SERVER_EMOTIONS].sort(), [...EMOTION_IDS].sort());
   assert.equal(new Set(EMOTION_IDS).size, EMOTION_IDS.length);
   // Chris's 18 + Calm + Grateful
   assert.ok(EMOTIONS.length >= 19 && EMOTIONS.length <= 22);
   assert.ok(EMOTIONS.some((e) => e.label === "Calm" && e.id === "calm"));
   assert.ok(EMOTIONS.some((e) => e.label === "Grateful" && e.id === "gratitude"));
+});
+
+test("music-only vibe ids are not treated as Feeling ids", () => {
+  for (const vibeOnly of ["chilling", "cheers", "content", "nostalgia", "elated"]) {
+    assert.equal(SERVER_EMOTIONS.has(vibeOnly), false);
+    assert.ok(SERVER_MUSIC_GENRES.has(vibeOnly), vibeOnly);
+  }
 });
 
 test("every emotion maps to a library mood that exists in vibes", () => {

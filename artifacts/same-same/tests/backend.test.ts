@@ -82,9 +82,49 @@ test("sending a Ripple posts the photo in the shape the server stores", async ()
     countryCode: "GB",
     captureCountrySource: "fallback",
     capturedAt: "2026-11-01T10:00:00.000Z",
+    emotion: "calm",
     musicGenre: "calm",
     theme: "nature",
   });
+});
+
+test("candidates map server emotion, never musicGenre as feeling", async () => {
+  const { backend } = fakeServer(() => ({
+    status: 200,
+    body: {
+      photos: [
+        {
+          id: "c1",
+          uri: "/api/photos/c1/image",
+          score: 10,
+          theme: "coffee",
+          emotion: "joy",
+          musicGenre: "chilling",
+          createdAt: "2026-10-01T00:00:00Z",
+        },
+        {
+          id: "c2",
+          uri: "/api/photos/c2/image",
+          score: 4,
+          theme: "beach",
+          musicGenre: "calm",
+          createdAt: "2026-10-02T00:00:00Z",
+        },
+      ],
+    },
+  }));
+  const rows = await backend.findCandidates({
+    theme: "coffee",
+    tags: [],
+    subjects: [],
+    emotion: "joy",
+    limit: 10,
+    excludeIds: [],
+  });
+  assert.equal(rows[0]?.emotion, "joy");
+  assert.equal(rows[0]?.theme, "coffee");
+  // Missing emotion → null (do not use musicGenre).
+  assert.equal(rows[1]?.emotion, null);
 });
 
 test("a failed upload is reported, never swallowed, and never sent twice", async () => {
@@ -174,6 +214,8 @@ test("Waves come back with my photo and theirs, and capture country wins", async
       countryCode: "FR",
       countrySource: "fallback",
       takenAt: "2026-10-01T09:00:00.000Z",
+      theme: null,
+      emotion: null,
     },
     theirs: {
       photoId: "theirs-1",
@@ -181,6 +223,8 @@ test("Waves come back with my photo and theirs, and capture country wins", async
       countryCode: null,
       countrySource: "fallback",
       takenAt: "2026-10-01T12:00:00.000Z",
+      theme: null,
+      emotion: null,
     },
   });
 });
@@ -300,8 +344,22 @@ test("a Wave's feelings are read with my photo first", async () => {
   const { backend, calls } = fakeServer(() => ({
     status: 200,
     body: {
-      a: { id: "mine-1", musicGenre: "calm", customAudioBase64: null, customAudioMime: null },
-      b: { id: "theirs-1", musicGenre: null, customAudioBase64: "QUJD", customAudioMime: "audio/mp4" },
+      a: {
+        id: "mine-1",
+        emotion: "hope",
+        theme: "coffee",
+        musicGenre: "calm",
+        customAudioBase64: null,
+        customAudioMime: null,
+      },
+      b: {
+        id: "theirs-1",
+        emotion: "joy",
+        theme: "beach",
+        musicGenre: "chilling",
+        customAudioBase64: "QUJD",
+        customAudioMime: "audio/mp4",
+      },
     },
   }));
   const detail = await backend.getWaveDetail({
@@ -312,9 +370,35 @@ test("a Wave's feelings are read with my photo first", async () => {
   });
   assert.equal(calls[0]!.url, "https://api.example/api/echoes/pair?a=mine-1&b=theirs-1");
   assert.deepEqual(detail, {
-    mine: { vibe: "calm", recordingUri: null, emotion: "calm", topic: null },
-    theirs: { vibe: null, recordingUri: "data:audio/mp4;base64,QUJD", emotion: null, topic: null },
+    mine: { vibe: "calm", recordingUri: null, emotion: "hope", topic: "coffee" },
+    theirs: {
+      vibe: "chilling",
+      recordingUri: "data:audio/mp4;base64,QUJD",
+      emotion: "joy",
+      topic: "beach",
+    },
   });
+});
+
+test("wave detail does not treat musicGenre as emotion when emotion is missing", async () => {
+  const { backend } = fakeServer(() => ({
+    status: 200,
+    body: {
+      a: { id: "mine-1", musicGenre: "calm", theme: "nature" },
+      b: { id: "theirs-1", musicGenre: "joy" },
+    },
+  }));
+  const detail = await backend.getWaveDetail({
+    id: "w",
+    formedAt: null,
+    mine: { photoId: "mine-1", uri: null, countryCode: null, takenAt: null },
+    theirs: { photoId: "theirs-1", uri: null, countryCode: null, takenAt: null },
+  });
+  assert.equal(detail.mine.vibe, "calm");
+  assert.equal(detail.mine.emotion, null);
+  assert.equal(detail.mine.topic, "nature");
+  assert.equal(detail.theirs.vibe, "joy");
+  assert.equal(detail.theirs.emotion, null);
 });
 
 function memoryStore() {
@@ -376,7 +460,12 @@ test("a sample Ripple is answered by a Wave after it has travelled", async () =>
   // It survives a restart of the app.
   const reopened = createSampleBackend(store, () => now);
   assert.equal((await reopened.listWaves()).length, before + 1);
-  assert.equal((await reopened.getWaveDetail(waves[0]!)).mine.vibe, "calm");
+  const detail = await reopened.getWaveDetail(waves[0]!);
+  assert.equal(detail.mine.vibe, "calm");
+  assert.equal(detail.mine.emotion, "calm");
+  assert.equal(detail.mine.topic, "nature");
+  // Their sample answer has a clip vibe only — feeling stays null.
+  assert.equal(detail.theirs.emotion, null);
 });
 
 test("sample tools can bring a Wave in at once and start again", async () => {

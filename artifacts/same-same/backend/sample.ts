@@ -116,7 +116,10 @@ interface SampleRipple {
   photoId: string;
   uri: string;
   country: string;
+  /** Song / vibe clip id (musicGenre). */
   vibe: string | null;
+  /** Feeling id — distinct from vibe. */
+  emotion: string | null;
   topic: string | null;
   recording: string | null;
   takenAt: string;
@@ -219,7 +222,8 @@ export function createSampleBackend(
         photoId,
         uri: upload.localUri,
         country: upload.captureCountryCode ?? upload.countryCode ?? current.country ?? "GB",
-        vibe: upload.song || upload.emotion,
+        vibe: upload.song ?? null,
+        emotion: upload.emotion ?? null,
         topic: upload.topic,
         recording: upload.recording
           ? `data:${upload.recording.mime};base64,${upload.recording.base64}`
@@ -271,16 +275,39 @@ export function createSampleBackend(
     async getWaveDetail(wave: Wave): Promise<WaveDetail> {
       const seed = SEEDS.find((s) => s.id === wave.id);
       if (seed) {
+        // Seeds only store vibe (clip); feeling is unknown → null (not vibe).
         return {
-          mine: { vibe: seed.mine.vibe, recordingUri: null },
-          theirs: { vibe: seed.theirs.vibe, recordingUri: null },
+          mine: {
+            vibe: seed.mine.vibe,
+            recordingUri: null,
+            emotion: null,
+            topic: null,
+          },
+          theirs: {
+            vibe: seed.theirs.vibe,
+            recordingUri: null,
+            emotion: null,
+            topic: null,
+          },
         };
       }
       const ripple = (await load()).ripples.find((r) => r.photoId === wave.mine.photoId);
       if (!ripple) throw new BackendError("not-found", "No such sample Wave", 404);
+      const answer = answerFor(ripple);
       return {
-        mine: { vibe: ripple.vibe, recordingUri: ripple.recording },
-        theirs: { vibe: answerFor(ripple).vibe, recordingUri: null },
+        mine: {
+          vibe: ripple.vibe,
+          recordingUri: ripple.recording,
+          emotion: ripple.emotion,
+          topic: ripple.topic,
+        },
+        theirs: {
+          vibe: answer.vibe,
+          recordingUri: null,
+          // Sample answers only have a clip vibe — no separate feeling.
+          emotion: null,
+          topic: null,
+        },
       };
     },
 

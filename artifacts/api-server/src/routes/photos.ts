@@ -17,6 +17,7 @@ import {
   resolveUploadLabels,
 } from "../lib/localPhotoLabels";
 import { recordEchoOffer, revokeEchoForUnvote } from "./echoes";
+import { normalizeEmotion } from "../lib/allowedEmotions";
 import { normalizeMusicGenre } from "../lib/allowedMusicGenres";
 import { sendPhotoReportAlert } from "../lib/moderationEmail";
 import {
@@ -222,7 +223,8 @@ function approxBase64Bytes(b64: string): number {
 
 // ---- POST /api/photos -----------------------------------------------------
 // Body: { imageBase64, mimeType?, countryCode?, captureCountryCode?,
-//         captureCountrySource?, capturedAt?, theme?, tags?, subjects?, shapes? }
+//         captureCountrySource?, emotion?, musicGenre?, capturedAt?,
+//         theme?, tags?, subjects?, shapes? }
 // Header: X-Device-Id (required) — stable client UUID.
 router.post("/photos", async (req, res) => {
   try {
@@ -237,6 +239,7 @@ router.post("/photos", async (req, res) => {
       captureCountryCode?: unknown;
       captureCountrySource?: unknown;
       capturedAt?: unknown;
+      emotion?: unknown;
       musicGenre?: unknown;
       customAudioBase64?: unknown;
       customAudioMime?: unknown;
@@ -363,6 +366,10 @@ router.post("/photos", async (req, res) => {
       }
     }
 
+    // Feeling id from artifacts/same-same/data/emotions.ts — distinct from
+    // musicGenre (song / vibe clip). Unknown values become null.
+    const emotion = normalizeEmotion(body.emotion);
+
     // Music-vibe id chosen on the client. Whitelisted to the canonical
     // emotional set defined in artifacts/same-same/data/musicLibrary.ts
     // — anything outside the list is rejected to null so a malformed,
@@ -441,6 +448,7 @@ router.post("/photos", async (req, res) => {
         captureCountryCode,
         captureCountrySource,
         capturedAt,
+        emotion,
         musicGenre,
         customAudioBase64,
         customAudioMime,
@@ -456,6 +464,7 @@ router.post("/photos", async (req, res) => {
         theme: photosTable.theme,
         tags: photosTable.tags,
         subjects: photosTable.subjects,
+        emotion: photosTable.emotion,
         musicGenre: photosTable.musicGenre,
         createdAt: photosTable.createdAt,
         expiresAt: photosTable.expiresAt,
@@ -490,6 +499,7 @@ router.post("/photos", async (req, res) => {
       tags: row.tags,
       // Concrete subjects for /candidates subject-overlap scoring.
       subjects: row.subjects ?? [],
+      emotion: row.emotion,
       musicGenre: row.musicGenre,
       hasCustomAudio: customAudioBase64 !== null,
       ...(suggestedTheme ? { suggestedTheme } : {}),
@@ -697,6 +707,7 @@ router.get("/photos/candidates", async (req, res) => {
           p.subjects AS "subjects",
           p.country_code AS "countryCode",
           p.capture_country_code AS "captureCountryCode",
+          p.emotion AS "emotion",
           p.music_genre AS "musicGenre",
           p.custom_audio_base64 AS "customAudioBase64",
           p.custom_audio_mime AS "customAudioMime",
@@ -860,6 +871,7 @@ router.get("/photos/candidates", async (req, res) => {
         subjects: Array.isArray(r.subjects) ? (r.subjects as string[]) : [],
         countryCode: (r.countryCode as string | null) ?? null,
         captureCountryCode: (r.captureCountryCode as string | null) ?? null,
+        emotion: (r.emotion as string | null) ?? null,
         musicGenre: (r.musicGenre as string | null) ?? null,
         customAudioUrl,
         // Stock pool: Unsplash CDN (instant on mobile). User uploads: authed stream.
@@ -1645,6 +1657,7 @@ router.post("/photos/atlas/explore", async (req, res) => {
         pl.theme AS pl_theme,
         pl.tags AS pl_tags,
         pl.subjects AS pl_subjects,
+        pl.emotion AS pl_emotion,
         pl.music_genre AS pl_music,
         pl.mime_type AS pl_mime,
         pl.custom_audio_base64 AS pl_audio_b64,
@@ -1660,6 +1673,7 @@ router.post("/photos/atlas/explore", async (req, res) => {
         ph.theme AS ph_theme,
         ph.tags AS ph_tags,
         ph.subjects AS ph_subjects,
+        ph.emotion AS ph_emotion,
         ph.music_genre AS ph_music,
         ph.mime_type AS ph_mime,
         ph.custom_audio_base64 AS ph_audio_b64,
@@ -1770,6 +1784,7 @@ router.post("/photos/atlas/explore", async (req, res) => {
         contentHash: contentHash || undefined,
         tags: normTags(r[`${prefix}_tags`]),
         subjects: normTags(r[`${prefix}_subjects`]),
+        emotion: (r[`${prefix}_emotion`] as string | null) ?? null,
         musicGenre: (r[`${prefix}_music`] as string | null) ?? null,
         customAudioUrl:
           audioB64 && audioMime ? `data:${audioMime};base64,${audioB64}` : null,
@@ -1874,6 +1889,7 @@ router.get("/photos/atlas/:countryCode", async (req, res) => {
           p.mime_type,
           p.theme,
           p.tags,
+          p.emotion,
           p.music_genre,
           p.custom_audio_base64,
           p.custom_audio_mime,
@@ -1905,6 +1921,7 @@ router.get("/photos/atlas/:countryCode", async (req, res) => {
         id,
         theme,
         tags,
+        emotion,
         music_genre,
         custom_audio_base64,
         custom_audio_mime,
@@ -1922,6 +1939,7 @@ router.get("/photos/atlas/:countryCode", async (req, res) => {
         uri: `/api/photos/${encodeURIComponent(id)}/image`,
         theme:          String(r.theme ?? ""),
         tags:           Array.isArray(r.tags) ? (r.tags as string[]) : [],
+        emotion:        (r.emotion as string | null) ?? null,
         musicGenre:     (r.music_genre as string | null) ?? null,
         customAudioUrl: audioBase64 && audioMime
           ? `data:${audioMime};base64,${audioBase64}`

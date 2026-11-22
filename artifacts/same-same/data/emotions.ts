@@ -5,8 +5,9 @@
  *   • Calm — peaceful / low-arousal feeling he asked to include
  *   • Grateful — everyday warm thanks at the same grain as Caring / Hopeful
  *
- * Every `id` is a value the server already accepts as `musicGenre`
- * (see artifacts/api-server/src/lib/allowedMusicGenres.ts).
+ * Feeling ids are persisted as `photos.emotion` (see
+ * artifacts/api-server/src/lib/allowedEmotions.ts). Keep those lists in sync.
+ * Song / vibe clips use a separate `musicGenre` whitelist.
  *
  * Approved by Chris — edit this file only when intentionally changing the list.
  */

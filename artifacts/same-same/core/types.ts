@@ -22,6 +22,10 @@ export interface WaveSide {
   /** Optional precise map position (sample fixtures / GPS). Ignored when source is fallback. */
   lat?: number | null;
   lng?: number | null;
+  /** Topic / theme id from the server when present. */
+  theme?: string | null;
+  /** Feeling id from the server when present — never the music vibe. */
+  emotion?: string | null;
 }
 
 /** Two photos that found each other. */
@@ -42,7 +46,7 @@ export interface Ripple {
   countryCode: string | null;
   /** Provenance for countryCode: gps | photo | fallback. */
   captureCountrySource?: CaptureCountrySource | null;
-  /** Chosen emotion id (also sent as musicGenre). */
+  /** Chosen Feeling id (sent as `emotion`; distinct from song / musicGenre). */
   emotion: string | null;
   /** Chosen Topic id (also sent as theme). */
   topic: string | null;

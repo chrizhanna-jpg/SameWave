@@ -526,8 +526,16 @@ export function WorldMap({
                 sampleEmotion = meta?.emotion ?? null;
                 sampleTopic = meta?.theme ?? null;
               }
-              const emotion = ripple?.emotion ?? ripple?.vibe ?? sampleEmotion;
-              const topic = ripple?.topic ?? ripple?.theme ?? sampleTopic;
+              // Other side: server emotion/theme on the WaveSide. Own side: local
+              // ledger. Never use music vibe as the Feeling chip.
+              const emotion =
+                m.side === "theirs"
+                  ? (side?.emotion ?? sampleEmotion)
+                  : (ripple?.emotion ?? side?.emotion ?? sampleEmotion);
+              const topic =
+                m.side === "theirs"
+                  ? (side?.theme ?? sampleTopic)
+                  : (ripple?.topic ?? ripple?.theme ?? side?.theme ?? sampleTopic);
               return (
                 <Pressable
                   key={`${m.waveId}-${m.side}`}

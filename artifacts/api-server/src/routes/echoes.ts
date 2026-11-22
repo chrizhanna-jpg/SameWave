@@ -340,6 +340,7 @@ type EchoCard = {
     capturedAt: string | null;
     createdAt: string | null;
     theme: string;
+    emotion: string | null;
   };
   theirs: {
     id: string;
@@ -350,6 +351,7 @@ type EchoCard = {
     capturedAt: string | null;
     createdAt: string | null;
     theme: string;
+    emotion: string | null;
   };
 };
 
@@ -373,10 +375,12 @@ function photoSideFromRow(
   capturedAt: string | null;
   createdAt: string | null;
   theme: string;
+  emotion: string | null;
 } {
   const captureRaw = row[`${side}CaptureCountry`] as string | null;
   const declaredRaw = row[`${side}Country`] as string | null;
   const sourceRaw = row[`${side}CaptureCountrySource`] as string | null;
+  const emotionRaw = row[`${side}Emotion`] as string | null;
   const capture =
     typeof captureRaw === "string" && captureRaw.trim().length === 2
       ? captureRaw.trim().toUpperCase()
@@ -390,6 +394,10 @@ function photoSideFromRow(
     ["gps", "photo", "fallback"].includes(sourceRaw.trim().toLowerCase())
       ? sourceRaw.trim().toLowerCase()
       : null;
+  const emotion =
+    typeof emotionRaw === "string" && emotionRaw.trim().length > 0
+      ? emotionRaw.trim().toLowerCase()
+      : null;
   return {
     id: String(row[`photo${side === "low" ? "Low" : "High"}Id`]),
     uri: `data:${String(row[`${side}Mime`])};base64,${String(row[`${side}Bytes`])}`,
@@ -401,6 +409,7 @@ function photoSideFromRow(
     capturedAt: isoOrNull(row[`${side}CapturedAt`]),
     createdAt: isoOrNull(row[`${side}CreatedAt`]),
     theme: String(row[`${side}Theme`] ?? ""),
+    emotion,
   };
 }
 
@@ -458,6 +467,7 @@ router.get("/echoes/inbox", async (req, res) => {
         pl.captured_at AS "lowCapturedAt",
         pl.created_at AS "lowCreatedAt",
         pl.theme AS "lowTheme",
+        pl.emotion AS "lowEmotion",
         ph.bytes_base64 AS "highBytes",
         ph.mime_type AS "highMime",
         ph.country_code AS "highCountry",
@@ -465,7 +475,8 @@ router.get("/echoes/inbox", async (req, res) => {
         ph.capture_country_source AS "highCaptureCountrySource",
         ph.captured_at AS "highCapturedAt",
         ph.created_at AS "highCreatedAt",
-        ph.theme AS "highTheme"
+        ph.theme AS "highTheme",
+        ph.emotion AS "highEmotion"
       FROM echoes e
       JOIN photos pl ON pl.id = e.photo_low_id
       JOIN photos ph ON ph.id = e.photo_high_id
@@ -513,6 +524,7 @@ router.get("/echoes/mine", async (req, res) => {
         pl.captured_at AS "lowCapturedAt",
         pl.created_at AS "lowCreatedAt",
         pl.theme AS "lowTheme",
+        pl.emotion AS "lowEmotion",
         ph.bytes_base64 AS "highBytes",
         ph.mime_type AS "highMime",
         ph.country_code AS "highCountry",
@@ -521,6 +533,7 @@ router.get("/echoes/mine", async (req, res) => {
         ph.captured_at AS "highCapturedAt",
         ph.created_at AS "highCreatedAt",
         ph.theme AS "highTheme",
+        ph.emotion AS "highEmotion",
         (
           SELECT v.voter_user_id
           FROM votes v
@@ -972,6 +985,7 @@ router.get("/echoes/pair", async (req, res) => {
         captureCountrySource: photosTable.captureCountrySource,
         capturedAt: photosTable.capturedAt,
         theme: photosTable.theme,
+        emotion: photosTable.emotion,
         tags: photosTable.tags,
         musicGenre: photosTable.musicGenre,
         createdAt: photosTable.createdAt,
@@ -1020,6 +1034,7 @@ router.get("/echoes/pair", async (req, res) => {
         captureCountrySource: a.captureCountrySource,
         capturedAt: a.capturedAt,
         theme: a.theme,
+        emotion: a.emotion,
         tags: a.tags ?? [],
         musicGenre: a.musicGenre,
         createdAt: a.createdAt,
@@ -1034,6 +1049,7 @@ router.get("/echoes/pair", async (req, res) => {
         captureCountrySource: b.captureCountrySource,
         capturedAt: b.capturedAt,
         theme: b.theme,
+        emotion: b.emotion,
         tags: b.tags ?? [],
         musicGenre: b.musicGenre,
         createdAt: b.createdAt,

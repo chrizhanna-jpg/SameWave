@@ -35,4 +35,14 @@ test("Wave Discover sheet shows similarity plus feeling/topic for both sides", (
   assert.equal((waveSrc.match(/PhotoMetaChip/g) ?? []).length >= 1, true);
   assert.match(waveSrc, /emotion=\{/);
   assert.match(waveSrc, /topic=\{/);
+  // Their feeling comes from server emotion — not musicGenre / vibe fallback.
+  assert.match(waveSrc, /detail\?\.theirs\.emotion/);
+  assert.doesNotMatch(waveSrc, /theirs\.emotion \?\? .*vibe/);
+});
+
+test("http backend sends emotion separately from musicGenre song", () => {
+  const httpSrc = readFileSync(join(root, "backend/http.ts"), "utf8");
+  assert.match(httpSrc, /upload\.emotion \? \{ emotion: upload\.emotion \}/);
+  assert.match(httpSrc, /upload\.song \? \{ musicGenre: upload\.song \}/);
+  assert.doesNotMatch(httpSrc, /musicGenre: upload\.song \|\| upload\.emotion/);
 });

@@ -50,11 +50,11 @@ export interface RippleUpload {
   captureCountrySource?: CaptureCountrySource | null;
   /** When the photo was taken. ISO string. */
   capturedAt: string | null;
-  /** Emotion id from data/emotions.ts — used for client matching. */
+  /** Feeling id from data/emotions.ts — persisted as `emotion` on the server. */
   emotion: string | null;
   /**
-   * Library mood id from data/vibes.ts → musicGenre on the server
-   * (defaults to the emotion's mapped mood). Drives Wave playback clips.
+   * Library mood / song id from data/vibes.ts → musicGenre on the server.
+   * Drives Wave playback clips; never used as the Feeling chip.
    */
   song: string | null;
   /** Topic id from data/topics.ts → theme on the server. */

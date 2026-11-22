@@ -63,6 +63,8 @@ function waveSide(raw: unknown): WaveSide | null {
   const capture = normalizeCountryCode(side.captureCountryCode as string | null);
   const home = normalizeCountryCode(side.countryCode as string | null);
   const fromServer = parseCaptureCountrySource(side.captureCountrySource);
+  const theme = typeof side.theme === "string" && side.theme ? side.theme : null;
+  const emotion = typeof side.emotion === "string" && side.emotion ? side.emotion : null;
   return {
     photoId,
     uri: imageUriOrNull(side.uri),
@@ -70,6 +72,8 @@ function waveSide(raw: unknown): WaveSide | null {
     // Server null/missing provenance → approximate fallback (incl. legacy rows).
     countrySource: fromServer ?? "fallback",
     takenAt: isoOrNull(side.capturedAt) ?? isoOrNull(side.createdAt),
+    theme,
+    emotion,
   };
 }
 
@@ -126,8 +130,8 @@ export function candidateFromRow(raw: unknown): Candidate | null {
     score: Number.isFinite(score) ? score : 0,
     createdAt: isoOrNull(row.createdAt),
     theme: typeof row.theme === "string" && row.theme ? row.theme : null,
-    emotion:
-      typeof row.musicGenre === "string" && row.musicGenre ? row.musicGenre : null,
+    // Feeling only — never fall back to musicGenre (song / vibe clip).
+    emotion: typeof row.emotion === "string" && row.emotion ? row.emotion : null,
   };
 }
 
@@ -138,12 +142,8 @@ function vibeDetail(raw: unknown): VibeDetail {
   return {
     vibe: typeof side.musicGenre === "string" && side.musicGenre ? side.musicGenre : null,
     recordingUri: audio && mime.startsWith("audio/") ? `data:${mime};base64,${audio}` : null,
-    emotion:
-      typeof side.emotion === "string" && side.emotion
-        ? side.emotion
-        : typeof side.musicGenre === "string" && side.musicGenre
-          ? side.musicGenre
-          : null,
+    // Feeling only — null when missing (do not use musicGenre as emotion).
+    emotion: typeof side.emotion === "string" && side.emotion ? side.emotion : null,
     topic: typeof side.theme === "string" && side.theme ? side.theme : null,
   };
 }
@@ -254,7 +254,9 @@ export function createHttpBackend(options: HttpBackendOptions): Backend {
             ? { captureCountrySource: upload.captureCountrySource }
             : {}),
           ...(upload.capturedAt ? { capturedAt: upload.capturedAt } : {}),
-          ...((upload.song || upload.emotion) ? { musicGenre: upload.song || upload.emotion } : {}),
+          // Feeling and song are separate: emotion = Feeling, musicGenre = song.
+          ...(upload.emotion ? { emotion: upload.emotion } : {}),
+          ...(upload.song ? { musicGenre: upload.song } : {}),
           ...(upload.topic ? { theme: upload.topic } : {}),
           ...(upload.recording
             ? {
