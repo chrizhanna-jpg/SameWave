@@ -158,23 +158,42 @@ export function WorldMap({
   const scale = useRef(new Animated.Value(1)).current;
   const translateX = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(0)).current;
+  /** Keeps pin chrome screen-fixed while the land layer zooms (1 / scale). */
+  const invScale = useRef(new Animated.Value(1)).current;
   /** Previous pinch sample for incremental focal maths (reset at BEGAN). */
   const pinchPrev = useRef<PinchPrev>({ pinchScale: 1, focalX: 0, focalY: 0 });
   const pan0 = useRef({ x: 0, y: 0 });
   const live = useRef({ scale: 1, x: 0, y: 0 });
   const framedFor = useRef<string>("");
+  /**
+   * React view state is for clustering / stroke width only. Updating it every
+   * pinch frame re-rendered the SVG land path and rebuilt clusters → flicker
+   * on Android. Gesture frames drive Animated values; we commit here on end.
+   */
   const [view, setView] = useState({ scale: 1, x: 0, y: 0 });
   const [clusterList, setClusterList] = useState<MapCluster | null>(null);
 
-  const publishView = useCallback(
+  const applyLiveTransform = useCallback(
     (next: { scale: number; x: number; y: number }) => {
       live.current = next;
       scale.setValue(next.scale);
       translateX.setValue(next.x);
       translateY.setValue(next.y);
-      setView(next);
+      invScale.setValue(1 / Math.max(next.scale, 0.05));
     },
-    [scale, translateX, translateY],
+    [scale, translateX, translateY, invScale],
+  );
+
+  const commitView = useCallback(
+    (next: { scale: number; x: number; y: number }) => {
+      applyLiveTransform(next);
+      setView((current) =>
+        current.scale === next.scale && current.x === next.x && current.y === next.y
+          ? current
+          : next,
+      );
+    },
+    [applyLiveTransform],
   );
 
   const waveInputs = useMemo(
@@ -264,9 +283,9 @@ export function WorldMap({
         maxScale: MAX_SCALE,
       });
       const clamped = clampPan(next.scale, next.x, next.y);
-      publishView({ scale: next.scale, x: clamped.x, y: clamped.y });
+      commitView({ scale: next.scale, x: clamped.x, y: clamped.y });
     },
-    [map, box, clampPan, publishView],
+    [map, box, clampPan, commitView],
   );
 
   // Frame the first view on the local wave cluster (Europe when home is GB).
@@ -310,8 +329,8 @@ export function WorldMap({
       };
     }
     const clamped = clampPan(next.scale, next.x, next.y);
-    publishView({ scale: next.scale, x: clamped.x, y: clamped.y });
-  }, [map, box, waves, waveInputs, homeCountry, clampPan, publishView]);
+    commitView({ scale: next.scale, x: clamped.x, y: clamped.y });
+  }, [map, box, waves, waveInputs, homeCountry, clampPan, commitView]);
 
   const onPinchGestureEvent = useCallback(
     (event: PinchGestureHandlerGestureEvent) => {
@@ -325,9 +344,10 @@ export function WorldMap({
       if (!stepped.applied) return;
       pinchPrev.current = stepped.prev;
       const pan = clampPan(stepped.live.scale, stepped.live.x, stepped.live.y);
-      publishView({ scale: stepped.live.scale, x: pan.x, y: pan.y });
+      // Animated only — no React setState (avoids SVG/cluster flicker).
+      applyLiveTransform({ scale: stepped.live.scale, x: pan.x, y: pan.y });
     },
-    [clampPan, publishView],
+    [clampPan, applyLiveTransform],
   );
 
   const onPinchStateChange = useCallback(
@@ -338,16 +358,18 @@ export function WorldMap({
         pinchPrev.current = { pinchScale: 1, focalX, focalY };
       }
       // When a finger lifts, re-baseline pan from the live transform so the
-      // remaining finger can drag without a jump.
+      // remaining finger can drag without a jump, and commit React view for
+      // clustering / stroke width.
       if (
         state === State.END ||
         state === State.CANCELLED ||
         state === State.FAILED
       ) {
         pan0.current = { x: live.current.x, y: live.current.y };
+        commitView({ ...live.current });
       }
     },
-    [],
+    [commitView],
   );
 
   const onPanGestureEvent = useCallback(
@@ -357,9 +379,9 @@ export function WorldMap({
         pan0.current.x + event.nativeEvent.translationX,
         pan0.current.y + event.nativeEvent.translationY,
       );
-      publishView({ scale: live.current.scale, x: next.x, y: next.y });
+      applyLiveTransform({ scale: live.current.scale, x: next.x, y: next.y });
     },
-    [clampPan, publishView],
+    [clampPan, applyLiveTransform],
   );
 
   const onPanStateChange = useCallback(
@@ -367,8 +389,15 @@ export function WorldMap({
       if (event.nativeEvent.state === State.BEGAN) {
         pan0.current = { x: live.current.x, y: live.current.y };
       }
+      if (
+        event.nativeEvent.state === State.END ||
+        event.nativeEvent.state === State.CANCELLED ||
+        event.nativeEvent.state === State.FAILED
+      ) {
+        commitView({ ...live.current });
+      }
     },
-    [],
+    [commitView],
   );
 
   const onMapPress = useCallback(
@@ -455,24 +484,34 @@ export function WorldMap({
                           />
                         ))}
                       </Svg>
-                    </Animated.View>
-
-                    <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+                      {/*
+                        Pins live in map space under the same Animated transform
+                        as the land, with invScale so chrome stays screen-fixed.
+                        Avoids per-frame React left/top updates that flickered.
+                      */}
                       {geometry.clusters.map((cluster) => {
-                        const left = cluster.point.x * view.scale + view.x - MARKER_HIT_R;
-                        const top = cluster.point.y * view.scale + view.y - MARKER_HIT_R;
                         const approximate = cluster.members.every((m) => m.approximate);
+                        const hit = CLUSTER_SCREEN_PX;
                         return (
-                          <ClusterPin
+                          <Animated.View
                             key={cluster.id}
-                            left={left}
-                            top={top}
-                            count={cluster.count}
-                            approximate={approximate}
-                          />
+                            pointerEvents="none"
+                            style={[
+                              styles.hit,
+                              {
+                                left: cluster.point.x - MARKER_HIT_R,
+                                top: cluster.point.y - MARKER_HIT_R,
+                                width: hit,
+                                height: hit,
+                                transform: [{ scale: invScale }],
+                              },
+                            ]}
+                          >
+                            <ClusterPin count={cluster.count} approximate={approximate} />
+                          </Animated.View>
                         );
                       })}
-                    </View>
+                    </Animated.View>
                   </Animated.View>
                 </TapGestureHandler>
               </Animated.View>
@@ -603,20 +642,15 @@ export function WorldMap({
 }
 
 function ClusterPin({
-  left,
-  top,
   count,
   approximate = false,
 }: {
-  left: number;
-  top: number;
   count: number;
   approximate?: boolean;
 }) {
-  const hit = CLUSTER_SCREEN_PX;
   const pin = (PIN_OUTER_R + PIN_STROKE) * 2;
   return (
-    <View pointerEvents="none" style={[styles.hit, { left, top, width: hit, height: hit }]}>
+    <>
       <View
         style={[
           styles.pin,
@@ -645,7 +679,7 @@ function ClusterPin({
           <Text style={styles.badgeText}>{count > 9 ? "9+" : String(count)}</Text>
         </View>
       ) : null}
-    </View>
+    </>
   );
 }
 
