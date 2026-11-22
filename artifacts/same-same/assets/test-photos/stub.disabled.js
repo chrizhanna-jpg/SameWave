@@ -22,10 +22,30 @@ function isSampleWaveId() {
   return false;
 }
 
+function LocationDiagPanel() {
+  return null;
+}
+
+function LocationDiagScreenInner() {
+  return null;
+}
+
+function LocationDiagAccountRow() {
+  return null;
+}
+
+function buildLocationDiagRows() {
+  return [];
+}
+
 module.exports = {
   getTestPhotoCandidates: emptyList,
   getSampleWaves: emptyList,
   SamplePhotosToggleRow,
+  LocationDiagPanel,
+  LocationDiagScreenInner,
+  LocationDiagAccountRow,
+  buildLocationDiagRows,
   isSamplePhotoId,
   isSampleWaveId,
   SAMPLE_PHOTO_ID_PREFIX: "",

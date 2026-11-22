@@ -44,12 +44,30 @@ import {
 } from "@/core/mapGeometry";
 import { Photo } from "@/components/Photo";
 import { PhotoMetaChip } from "@/components/PhotoMetaChip";
+import {
+  isApproximateCountrySource,
+  type CaptureCountrySource,
+} from "@/core/captureCountry";
 import type { Wave } from "@/core/types";
 import { waveListPlace, waveListWhen } from "@/core/waveListMeta";
 import { centroidLonLatForCountry } from "@/data/countryCentroids";
 import { useReducedMotion } from "@/device/motion";
 import { useAppState } from "@/state/AppState";
 import { colors, motion, space, type as typeStyle } from "@/theme";
+
+function sideSource(
+  side: Wave["mine"],
+  rippleSource: CaptureCountrySource | null | undefined,
+): CaptureCountrySource | null {
+  return rippleSource ?? side.countrySource ?? null;
+}
+
+function sideApproximate(
+  side: Wave["mine"],
+  rippleSource: CaptureCountrySource | null | undefined,
+): boolean {
+  return isApproximateCountrySource(sideSource(side, rippleSource));
+}
 
 /** Side-by-side thumb size for the city-stack pull-up list. */
 const LIST_THUMB = 64;
@@ -161,20 +179,27 @@ export function WorldMap({
 
   const waveInputs = useMemo(
     () =>
-      waves.map((wave) => ({
-        id: wave.id,
-        mine: wave.mine.countryCode,
-        theirs: wave.theirs.countryCode,
-        mineLonLat:
-          wave.mine.lng != null && wave.mine.lat != null
-            ? ([wave.mine.lng, wave.mine.lat] as [number, number])
-            : null,
-        theirsLonLat:
-          wave.theirs.lng != null && wave.theirs.lat != null
-            ? ([wave.theirs.lng, wave.theirs.lat] as [number, number])
-            : null,
-      })),
-    [waves],
+      waves.map((wave) => {
+        const mineRipple = ripples.find((r) => r.photoId === wave.mine.photoId);
+        const mineApprox = sideApproximate(wave.mine, mineRipple?.captureCountrySource);
+        const theirsApprox = sideApproximate(wave.theirs, null);
+        return {
+          id: wave.id,
+          mine: wave.mine.countryCode,
+          theirs: wave.theirs.countryCode,
+          mineLonLat:
+            !mineApprox && wave.mine.lng != null && wave.mine.lat != null
+              ? ([wave.mine.lng, wave.mine.lat] as [number, number])
+              : null,
+          theirsLonLat:
+            !theirsApprox && wave.theirs.lng != null && wave.theirs.lat != null
+              ? ([wave.theirs.lng, wave.theirs.lat] as [number, number])
+              : null,
+          mineApproximate: mineApprox,
+          theirsApproximate: theirsApprox,
+        };
+      }),
+    [waves, ripples],
   );
 
   // Quantise scale so clusters rebuild ~10× per zoom step, not every pan frame.
@@ -436,12 +461,14 @@ export function WorldMap({
                       {geometry.clusters.map((cluster) => {
                         const left = cluster.point.x * view.scale + view.x - MARKER_HIT_R;
                         const top = cluster.point.y * view.scale + view.y - MARKER_HIT_R;
+                        const approximate = cluster.members.every((m) => m.approximate);
                         return (
                           <ClusterPin
                             key={cluster.id}
                             left={left}
                             top={top}
                             count={cluster.count}
+                            approximate={approximate}
                           />
                         );
                       })}
@@ -469,7 +496,18 @@ export function WorldMap({
             {clusterList?.members.map((m) => {
               const wave = waves.find((w) => w.id === m.waveId);
               const side = wave ? (m.side === "mine" ? wave.mine : wave.theirs) : null;
-              const place = waveListPlace({ countryCode: side?.countryCode });
+              const sideRipple =
+                wave && m.side === "mine"
+                  ? ripples.find((r) => r.photoId === wave.mine.photoId) ?? null
+                  : null;
+              const approx = side
+                ? sideApproximate(side, sideRipple?.captureCountrySource)
+                : Boolean(m.approximate);
+              const place = waveListPlace({
+                countryCode: side?.countryCode,
+                countrySource: side ? sideSource(side, sideRipple?.captureCountrySource) : null,
+                approximate: approx,
+              });
               const when = waveListWhen(side?.takenAt ?? wave?.formedAt);
               const ripple = wave
                 ? ripples.find((r) => r.photoId === wave.mine.photoId) ?? null
@@ -530,6 +568,7 @@ export function WorldMap({
                   <View style={styles.listMeta}>
                     <Text style={styles.listRowText} numberOfLines={1}>
                       {place}
+                      {approx ? " · approx." : ""}
                     </Text>
                     <PhotoMetaChip
                       emotion={emotion}
@@ -555,7 +594,17 @@ export function WorldMap({
   );
 }
 
-function ClusterPin({ left, top, count }: { left: number; top: number; count: number }) {
+function ClusterPin({
+  left,
+  top,
+  count,
+  approximate = false,
+}: {
+  left: number;
+  top: number;
+  count: number;
+  approximate?: boolean;
+}) {
   const hit = CLUSTER_SCREEN_PX;
   const pin = (PIN_OUTER_R + PIN_STROKE) * 2;
   return (
@@ -563,6 +612,7 @@ function ClusterPin({ left, top, count }: { left: number; top: number; count: nu
       <View
         style={[
           styles.pin,
+          approximate ? styles.pinApprox : null,
           {
             width: pin,
             height: pin,
@@ -571,14 +621,16 @@ function ClusterPin({ left, top, count }: { left: number; top: number; count: nu
           },
         ]}
       >
-        <View
-          style={{
-            width: PIN_CORE_R * 2,
-            height: PIN_CORE_R * 2,
-            borderRadius: PIN_CORE_R,
-            backgroundColor: colors.waterMid,
-          }}
-        />
+        {approximate ? null : (
+          <View
+            style={{
+              width: PIN_CORE_R * 2,
+              height: PIN_CORE_R * 2,
+              borderRadius: PIN_CORE_R,
+              backgroundColor: colors.waterMid,
+            }}
+          />
+        )}
       </View>
       {count > 1 ? (
         <View style={styles.badge}>
@@ -684,6 +736,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     opacity: 0.95,
+  },
+  /** Hollow / dashed look for profile-fallback (approximate) pins. */
+  pinApprox: {
+    backgroundColor: "transparent",
+    borderStyle: "dashed",
+    opacity: 0.85,
   },
   badge: {
     position: "absolute",

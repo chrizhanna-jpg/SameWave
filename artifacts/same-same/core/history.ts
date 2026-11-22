@@ -129,6 +129,7 @@ export function newRipple(input: {
   sentAt: string;
   localUri: string | null;
   countryCode: string | null;
+  captureCountrySource?: Ripple["captureCountrySource"];
   emotion: string | null;
   topic: string | null;
   /** Library mood sent as musicGenre; defaults to emotion. */

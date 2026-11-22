@@ -26,6 +26,9 @@ export interface MapWaveInput {
   mineLonLat?: [number, number] | null;
   /** Precise capture position [lng, lat] when known (overrides country centroid). */
   theirsLonLat?: [number, number] | null;
+  /** Profile-home fallback — pin is approximate (no precise city). */
+  mineApproximate?: boolean;
+  theirsApproximate?: boolean;
 }
 
 /** Endpoint marker for a Wave photo on the map. */
@@ -36,6 +39,8 @@ export interface MapMarker {
   point: Point;
   /** Capture / centroid [lng, lat] when known — used for city-level stacking. */
   lonLat?: [number, number];
+  /** True when the country came from profile fallback, not GPS/EXIF. */
+  approximate?: boolean;
 }
 
 export interface MapLine {
@@ -340,13 +345,16 @@ export function buildMapGeometry(
   const placedByWave = new Map<string, { mine: Placed; theirs: Placed }>();
 
   for (const wave of waves) {
+    // Fallback sides never use a precise lon/lat — country centroid only.
+    const mineLon = wave.mineApproximate ? null : (wave.mineLonLat ?? null);
+    const theirsLon = wave.theirsApproximate ? null : (wave.theirsLonLat ?? null);
     const mine =
-      placeLonLat(wave.mineLonLat ?? null, wave.mine) ??
-      placeLonLat(wave.theirsLonLat ?? null, wave.theirs) ??
+      placeLonLat(mineLon, wave.mine) ??
+      placeLonLat(theirsLon, wave.theirs) ??
       fallback;
     const theirs =
-      placeLonLat(wave.theirsLonLat ?? null, wave.theirs) ??
-      placeLonLat(wave.mineLonLat ?? null, wave.mine) ??
+      placeLonLat(theirsLon, wave.theirs) ??
+      placeLonLat(mineLon, wave.mine) ??
       fallback;
     if (!mine || !theirs) continue;
 
@@ -356,6 +364,7 @@ export function buildMapGeometry(
       photoId: wave.id,
       point: mine.point,
       ...(mine.lonLat ? { lonLat: mine.lonLat } : {}),
+      ...(wave.mineApproximate ? { approximate: true } : {}),
     });
     rawMarkers.push({
       waveId: wave.id,
@@ -363,6 +372,7 @@ export function buildMapGeometry(
       photoId: wave.id,
       point: theirs.point,
       ...(theirs.lonLat ? { lonLat: theirs.lonLat } : {}),
+      ...(wave.theirsApproximate ? { approximate: true } : {}),
     });
     placedByWave.set(wave.id, { mine, theirs });
   }

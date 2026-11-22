@@ -18,6 +18,7 @@ import { AppState as NativeAppState, Platform } from "react-native";
 import { createHttpBackend } from "@/backend/http";
 import { errorKind, type Backend } from "@/backend/types";
 import { apiOrigin } from "@/config/env";
+import { resolveCaptureCountry } from "@/core/captureCountry";
 import {
   mergeRipples,
   newRipple,
@@ -693,7 +694,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     async (draft: RippleDraft): Promise<Ripple> => {
       const forAccount = dataRef.current.accountId;
       const countryCode = dataRef.current.profile.countryCode;
-      const [encoded, captureCountryCode, recording] = await Promise.all([
+      const [encoded, locatedCountryCode, recording] = await Promise.all([
         encodeForUpload(draft.photo.uri),
         draft.photo.source === "camera"
           ? countryHere()
@@ -706,6 +707,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
               .catch(() => null)
           : Promise.resolve(null),
       ]);
+      const { captureCountryCode, captureCountrySource } = resolveCaptureCountry({
+        photoSource: draft.photo.source,
+        hasCoords: Boolean(draft.photo.coords),
+        locatedCountryCode,
+        homeCountryCode: countryCode,
+      });
       const localUri = await keepRipplePhoto(encoded);
       let sent;
       try {
@@ -714,6 +721,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           previewBase64: encoded.previewBase64,
           countryCode,
           captureCountryCode,
+          captureCountrySource,
           capturedAt: draft.photo.takenAt,
           emotion: draft.emotion,
           song: draft.song,
@@ -730,6 +738,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         sentAt: new Date().toISOString(),
         localUri,
         countryCode: captureCountryCode ?? countryCode,
+        captureCountrySource,
         emotion: draft.emotion,
         topic: draft.topic,
         vibe: draft.song ?? draft.emotion,

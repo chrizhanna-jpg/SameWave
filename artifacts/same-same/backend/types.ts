@@ -6,6 +6,7 @@
  * Every method either returns what it promises or throws a BackendError.
  * Nothing here returns null, [] or false to hide a failure.
  */
+import type { CaptureCountrySource } from "../core/captureCountry";
 import type { Candidate, Offer, Wave } from "../core/types";
 
 export type BackendErrorKind =
@@ -45,6 +46,11 @@ export interface RippleUpload {
   countryCode: string | null;
   /** Where the photo was taken, when the device could tell. */
   captureCountryCode: string | null;
+  /**
+   * Provenance for captureCountryCode. Sent only as an extra JSON field —
+   * the live API ignores unknown keys today (no schema change).
+   */
+  captureCountrySource?: CaptureCountrySource | null;
   /** When the photo was taken. ISO string. */
   capturedAt: string | null;
   /** Emotion id from data/emotions.ts — used for client matching. */

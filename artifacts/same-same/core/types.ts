@@ -2,6 +2,9 @@
  * Shapes shared by the core logic, the backend and the screens.
  * Nothing in core/ imports React, React Native or Expo.
  */
+import type { CaptureCountrySource } from "./captureCountry";
+
+export type { CaptureCountrySource };
 
 /** One photo in a Wave. */
 export interface WaveSide {
@@ -9,9 +12,14 @@ export interface WaveSide {
   /** Something an image view can show, or null while it is still loading. */
   uri: string | null;
   countryCode: string | null;
+  /**
+   * How the country was chosen when this device knows (own Ripples / samples).
+   * Missing from the server → treat own sides without captureCountryCode as fallback.
+   */
+  countrySource?: CaptureCountrySource | null;
   /** When the photo was taken, falling back to when it was sent. ISO string. */
   takenAt: string | null;
-  /** Optional precise map position (sample fixtures / future GPS). */
+  /** Optional precise map position (sample fixtures / GPS). Ignored when source is fallback. */
   lat?: number | null;
   lng?: number | null;
 }
@@ -32,6 +40,11 @@ export interface Ripple {
   /** Local copy of the photo, when one exists on this device. */
   localUri: string | null;
   countryCode: string | null;
+  /**
+   * Client-side provenance for `countryCode`. Kept on device; the live API
+   * ignores `captureCountrySource` on upload until Chris adds storage.
+   */
+  captureCountrySource?: CaptureCountrySource | null;
   /** Chosen emotion id (also sent as musicGenre). */
   emotion: string | null;
   /** Chosen Topic id (also sent as theme). */

@@ -226,6 +226,7 @@ export function sampleWavesForMap(): Wave[] {
         photoId: mine.id,
         uri: null, // filled by catalog when loading for UI
         countryCode: mine.countryCode,
+        countrySource: "photo",
         takenAt: mine.takenAt,
         lat: mine.lat,
         lng: mine.lng,
@@ -234,6 +235,7 @@ export function sampleWavesForMap(): Wave[] {
         photoId: theirs.id,
         uri: null,
         countryCode: theirs.countryCode,
+        countrySource: "photo",
         takenAt: theirs.takenAt,
         lat: theirs.lat,
         lng: theirs.lng,

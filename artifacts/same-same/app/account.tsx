@@ -41,6 +41,17 @@ function SamplePhotosAccountRow(props: {
   return <SamplePhotosToggleRow {...props} />;
 }
 
+/** Preview / __DEV__ link to the location diagnostic (stubbed in production exports). */
+function LocationDiagAccountRow() {
+  if (!__DEV__ && process.env.EXPO_PUBLIC_TEST_PHOTOS !== "1") return null;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const mod = require("../assets/test-photos/LocationDiagAccountRow") as {
+    LocationDiagAccountRow?: React.ComponentType | null;
+  };
+  const Row = mod.LocationDiagAccountRow;
+  return Row ? <Row /> : null;
+}
+
 /** Quiet place for country, history, notifications, legal, and sign out. */
 export default function AccountScreen() {
   const router = useRouter();
@@ -205,6 +216,7 @@ export default function AccountScreen() {
         </View>
 
         {samplesAvailable ? <SamplePhotosAccountRow on={samplePhotos} setOn={setSamplePhotos} /> : null}
+        {__DEV__ || samplesAvailable ? <LocationDiagAccountRow /> : null}
 
         {/* Expo Go cannot receive remote push — local schedule tests tap → reveal. */}
         <View style={styles.row}>

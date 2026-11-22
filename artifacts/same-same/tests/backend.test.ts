@@ -53,6 +53,7 @@ const upload: RippleUpload = {
   previewBase64: "PREVIEW",
   countryCode: "GB",
   captureCountryCode: null,
+  captureCountrySource: "fallback",
   capturedAt: "2026-11-01T10:00:00.000Z",
   emotion: "calm",
   song: "calm",
@@ -79,6 +80,7 @@ test("sending a Ripple posts the photo in the shape the server stores", async ()
     displayBase64: "DISPLAY",
     deckPreviewBase64: "PREVIEW",
     countryCode: "GB",
+    captureCountrySource: "fallback",
     capturedAt: "2026-11-01T10:00:00.000Z",
     musicGenre: "calm",
     theme: "nature",
@@ -170,15 +172,51 @@ test("Waves come back with my photo and theirs, and capture country wins", async
       photoId: "mine-1",
       uri: DATA_URI,
       countryCode: "FR",
+      countrySource: null,
       takenAt: "2026-10-01T09:00:00.000Z",
     },
     theirs: {
       photoId: "theirs-1",
       uri: null,
       countryCode: null,
+      countrySource: null,
       takenAt: "2026-10-01T12:00:00.000Z",
     },
   });
+});
+
+test("missing captureCountryCode from the server is treated as fallback", async () => {
+  const { backend } = fakeServer(() => ({
+    status: 200,
+    body: {
+      echoes: [
+        {
+          id: "home-only",
+          state: "mutual",
+          mutualAt: "2026-10-02T08:00:00.000Z",
+          mine: {
+            id: "mine-home",
+            uri: DATA_URI,
+            countryCode: "GB",
+            captureCountryCode: null,
+            capturedAt: "2026-10-01T09:00:00.000Z",
+          },
+          theirs: {
+            id: "theirs-home",
+            uri: DATA_URI,
+            countryCode: "FR",
+            captureCountryCode: null,
+            capturedAt: "2026-10-01T12:00:00.000Z",
+          },
+        },
+      ],
+    },
+  }));
+  const waves = await backend.listWaves();
+  assert.equal(waves[0]?.mine.countryCode, "GB");
+  assert.equal(waves[0]?.mine.countrySource, "fallback");
+  assert.equal(waves[0]?.theirs.countryCode, "FR");
+  assert.equal(waves[0]?.theirs.countrySource, "fallback");
 });
 
 test("looking for matches sends the photo's labels and never its feeling", async () => {

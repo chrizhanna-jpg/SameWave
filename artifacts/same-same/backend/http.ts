@@ -59,12 +59,14 @@ function waveSide(raw: unknown): WaveSide | null {
   const side = raw as Json;
   const photoId = typeof side.id === "string" ? side.id : "";
   if (!photoId) return null;
+  const capture = normalizeCountryCode(side.captureCountryCode as string | null);
+  const home = normalizeCountryCode(side.countryCode as string | null);
   return {
     photoId,
     uri: imageUriOrNull(side.uri),
-    countryCode:
-      normalizeCountryCode(side.captureCountryCode as string | null) ??
-      normalizeCountryCode(side.countryCode as string | null),
+    countryCode: capture ?? home,
+    // Missing captureCountryCode from the server → treat as profile fallback.
+    countrySource: capture ? null : home ? "fallback" : null,
     takenAt: isoOrNull(side.capturedAt) ?? isoOrNull(side.createdAt),
   };
 }
@@ -245,6 +247,10 @@ export function createHttpBackend(options: HttpBackendOptions): Backend {
           deckPreviewBase64: upload.previewBase64,
           ...(upload.countryCode ? { countryCode: upload.countryCode } : {}),
           ...(upload.captureCountryCode ? { captureCountryCode: upload.captureCountryCode } : {}),
+          // Harmless extra: Express reads known keys only; server does not store this yet.
+          ...(upload.captureCountrySource
+            ? { captureCountrySource: upload.captureCountrySource }
+            : {}),
           ...(upload.capturedAt ? { capturedAt: upload.capturedAt } : {}),
           ...((upload.song || upload.emotion) ? { musicGenre: upload.song || upload.emotion } : {}),
           ...(upload.topic ? { theme: upload.topic } : {}),

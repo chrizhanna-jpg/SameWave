@@ -1,14 +1,20 @@
+import { isApproximateCountrySource, type CaptureCountrySource } from "./captureCountry";
 import { nameFor } from "../data/countries";
 
 /**
  * Readable place for a Waves list row: full country name when known.
- * City is preferred when a name is supplied; WaveSide has no city field yet.
+ * City is preferred when a name is supplied — except for fallback (approx)
+ * sides, which must never show a precise city.
  */
 export function waveListPlace(opts: {
   countryCode?: string | null;
   city?: string | null;
+  countrySource?: CaptureCountrySource | null;
+  approximate?: boolean;
 }): string {
-  const city = opts.city?.trim();
+  const approx =
+    opts.approximate === true || isApproximateCountrySource(opts.countrySource);
+  const city = approx ? "" : opts.city?.trim();
   if (city) return city;
   return nameFor(opts.countryCode) ?? "Somewhere";
 }
