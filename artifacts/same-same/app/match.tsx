@@ -580,7 +580,7 @@ export default function MatchScreen() {
               {stage === "wave" ? (
                 <WaveMark width={44} />
               ) : (
-                <RippleMark size={36} />
+                <RippleMark size={56} />
               )}
             </FrostIconWell>
           </Pressable>

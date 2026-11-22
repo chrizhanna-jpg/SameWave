@@ -62,9 +62,11 @@ export function RippleMark({
 
   const vb = 48;
   const cx = 24;
-  const cy = 27; // slightly low so the “front” sits in the well
+  // Optical centre of the squashed rings (not sunk toward the front arc).
+  const cy = 24;
+  // Outer ellipse ≈ 83% of the glyph; with size≈56 in a 64pt well that is ~73% of the button.
   const maxRx = 20;
-  const minRx = 3.2;
+  const minRx = 3.6;
 
   return (
     <View style={{ width: size, height: size }} accessibilityLabel="Ripple">
@@ -82,7 +84,7 @@ export function RippleMark({
         {values.map((value, index) => {
           // Outer rings (higher index starts later) stay a touch fainter overall.
           const ringGain = 1 - index * 0.12;
-          const strokeW = 2.35 - index * 0.28;
+          const strokeW = 2.55 - index * 0.3;
           return (
             <AnimatedEllipse
               key={index}
@@ -107,16 +109,16 @@ export function RippleMark({
           );
         })}
 
-        {/* Tiny splash / drop at the origin. */}
+        {/* Tiny splash / drop at the optical centre. */}
         <Ellipse
           cx={cx}
           cy={cy}
-          rx={2.2}
-          ry={2.2 * ELLIPSE_ASPECT}
+          rx={2.4}
+          ry={2.4 * ELLIPSE_ASPECT}
           fill={color}
           opacity={0.95}
         />
-        <Circle cx={cx} cy={cy - 3.2} r={1.15} fill={color} opacity={0.9} />
+        <Circle cx={cx} cy={cy - 2.6} r={1.2} fill={color} opacity={0.9} />
       </Svg>
     </View>
   );
