@@ -10,7 +10,7 @@ const ICON = require("../assets/images/icon.png") as number;
 
 /** Native splash icon size — keep in sync with expo splash `contain` look. */
 const ICON_SIZE = 200;
-/** Rings radiate past the icon; same waterMid + spacing feel as Waiting/home. */
+/** Rings radiate past the icon; same spacing feel as Waiting/home. */
 const RINGS_SIZE = 340;
 
 interface Props {
@@ -38,7 +38,7 @@ export function LaunchSplash({ playSound = true, onLayoutReady }: Props) {
       onLayout={() => onLayoutReady?.()}
     >
       <View style={styles.stage}>
-        <RippleRings size={RINGS_SIZE} rings={4} color={colors.waterMid} />
+        <RippleRings size={RINGS_SIZE} rings={4} />
         <Image
           source={ICON}
           style={styles.icon}

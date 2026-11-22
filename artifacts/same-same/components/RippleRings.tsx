@@ -18,6 +18,12 @@ interface Props {
 }
 
 /**
+ * Deeper blue than waterMid so rings read on the pale #E9F6FF canvas in daylight
+ * without turning harsh. Call sites may still pass waterMid over photographs.
+ */
+const DEFAULT_RING_COLOR = "#2A6FA8";
+
+/**
  * Rings spreading over still water. The box is `size` square and the rings
  * spread from its centre; the parent places it.
  */
@@ -26,7 +32,7 @@ export function RippleRings({
   rings = 3,
   duration = motion.ring,
   loop = true,
-  color = colors.water,
+  color = DEFAULT_RING_COLOR,
   onDone,
 }: Props) {
   const reduced = useReducedMotion();
@@ -37,7 +43,7 @@ export function RippleRings({
 
   useEffect(() => {
     if (reduced) {
-      values.forEach((value) => value.setValue(0.6));
+      values.forEach((value) => value.setValue(0.55));
       if (!loop) {
         const timer = setTimeout(() => onDone?.(), motion.reducedFade);
         return () => clearTimeout(timer);
@@ -78,9 +84,10 @@ export function RippleRings({
               height: size,
               borderRadius: size / 2,
               borderColor: color,
+              // Peak ~0.82 so rings stay calm but readable in daylight on #E9F6FF.
               opacity: value.interpolate({
-                inputRange: [0, 0.15, 1],
-                outputRange: [0, 0.45, 0],
+                inputRange: [0, 0.12, 0.55, 1],
+                outputRange: [0, 0.82, 0.42, 0],
               }),
               transform: [
                 { scale: value.interpolate({ inputRange: [0, 1], outputRange: [0.12, 1] }) },
@@ -94,5 +101,8 @@ export function RippleRings({
 }
 
 const styles = StyleSheet.create({
-  ring: { position: "absolute", borderWidth: 1.5 },
+  ring: { position: "absolute", borderWidth: 2.5 },
 });
+
+/** Shared ink for splash / waiting / Match glyph so the language stays one. */
+export const RIPPLE_RING_INK = DEFAULT_RING_COLOR;
