@@ -1,9 +1,16 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 
+import { TypeAheadList } from "@/components/TypeAheadList";
 import { Txt } from "@/components/Txt";
-import { filterTopics, topicFor, type Topic } from "@/data/topics";
-import { colors, radius, space, type } from "@/theme";
+import type { ScreenScroll } from "@/components/Screen";
+import { filterTopics, topicFor } from "@/data/topics";
+import { useTypeAheadFit } from "@/hooks/useTypeAheadFit";
+import { colors, font, radius, space, type } from "@/theme";
+
+type MeasurableHost = {
+  measureInWindow?: (cb: (x: number, y: number, w: number, h: number) => void) => void;
+};
 
 interface Props {
   value: string | null;
@@ -12,30 +19,46 @@ interface Props {
   onSearchFocusChange?: (focused: boolean) => void;
   /** When true, keep the list closed (e.g. while uploading). */
   locked?: boolean;
+  scrollRef?: React.MutableRefObject<ScreenScroll | null>;
+  scrollYRef?: React.MutableRefObject<number>;
 }
 
 /**
  * Type-ahead Topic picker — preset Topics only.
- * Default: input only. Typing shows a short dropdown of plain labels
- * (~6). Synonyms match behind the scenes; never free text.
- * (Daily/Today topic stays on Home / the locked compose chip — not here.)
+ * Default: input only. Typing shows a short plain-label dropdown that is
+ * fully on-screen (fewer rows if the keyboard leaves less room).
+ * Daily/Today topic stays on Home / the locked compose chip — not here.
  */
-export function TopicPicker({ value, onChange, onSearchFocusChange, locked = false }: Props) {
+export function TopicPicker({
+  value,
+  onChange,
+  onSearchFocusChange,
+  locked = false,
+  scrollRef,
+  scrollYRef,
+}: Props) {
   const selected = topicFor(value);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(!selected);
+  // RN 0.88 View ref typings disagree with useRef<View>; keep a measurable host.
+  const fieldRef = useRef<MeasurableHost | null>(null);
 
   useEffect(() => {
     if (locked) setOpen(false);
   }, [locked]);
 
   const trimmed = query.trim();
+  const active = !locked && trimmed.length > 0 && (selected ? open : true);
+  const { maxRows } = useTypeAheadFit({
+    active,
+    scrollRef,
+    fieldRef,
+    scrollYRef,
+  });
   const matches = useMemo(
-    () => (trimmed ? filterTopics(trimmed) : []),
-    [trimmed],
+    () => (trimmed ? filterTopics(trimmed, maxRows) : []),
+    [trimmed, maxRows],
   );
-  // Suggestions only after the person starts typing — never an empty-state chip row.
-  const showList = !locked && trimmed.length > 0 && (selected ? open : true);
 
   if (selected && (!open || locked)) {
     return (
@@ -49,7 +72,7 @@ export function TopicPicker({ value, onChange, onSearchFocusChange, locked = fal
         accessibilityLabel={`Topic ${selected.label}. Tap to change.`}
         style={styles.chosen}
       >
-        <Txt>{selected.label}</Txt>
+        <Txt style={styles.chosenLabel}>{selected.label}</Txt>
         {!locked ? (
           <Txt variant="quiet" tone="secondary">
             Change
@@ -60,7 +83,12 @@ export function TopicPicker({ value, onChange, onSearchFocusChange, locked = fal
   }
 
   return (
-    <View>
+    <View
+      ref={(node) => {
+        fieldRef.current = node;
+      }}
+      collapsable={false}
+    >
       <TextInput
         value={query}
         onChangeText={setQuery}
@@ -77,75 +105,47 @@ export function TopicPicker({ value, onChange, onSearchFocusChange, locked = fal
         }}
         onBlur={() => onSearchFocusChange?.(false)}
       />
-      {showList ? (
-        <View style={styles.list}>
-          {matches.map((topic) => (
-            <Row
-              key={topic.id}
-              topic={topic}
-              selected={topic.id === value}
-              onPress={() => {
-                onChange(topic.id);
-                setOpen(false);
-                setQuery("");
-              }}
-            />
-          ))}
-        </View>
+      {active ? (
+        <TypeAheadList
+          items={matches}
+          selectedId={value}
+          onPick={(id) => {
+            onChange(id);
+            setOpen(false);
+            setQuery("");
+          }}
+        />
       ) : null}
     </View>
-  );
-}
-
-function Row({
-  topic,
-  selected,
-  onPress,
-}: {
-  topic: Topic;
-  selected: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      accessibilityLabel={topic.label}
-      style={[styles.row, selected && styles.rowOn]}
-    >
-      <Txt>{topic.label}</Txt>
-    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   search: {
     ...type.body,
+    fontSize: 16,
+    lineHeight: 22,
     color: colors.textPrimary,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.white,
     borderRadius: radius.md,
     paddingHorizontal: space.md,
-    height: 48,
+    minHeight: 48,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.line,
   },
-  list: { marginTop: space.sm, gap: space.xs },
-  row: {
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
-    borderRadius: radius.md,
-    justifyContent: "center",
-    minHeight: 44,
-  },
-  rowOn: { backgroundColor: colors.waterPale },
   chosen: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: space.md,
-    height: 52,
+    minHeight: 52,
     borderRadius: radius.md,
     backgroundColor: colors.waterPale,
+  },
+  chosenLabel: {
+    fontFamily: font.regular,
+    fontSize: 16,
+    lineHeight: 22,
+    color: colors.textPrimary,
   },
 });

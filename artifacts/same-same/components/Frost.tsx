@@ -30,6 +30,11 @@ interface FrostProps {
   intensity?: number;
   /** Stretch children to fill the frost (default) or center them (icon wells). */
   contentStyle?: StyleProp<ViewStyle>;
+  /**
+   * When false, children may paint outside the rounded frost (e.g. type-ahead
+   * dropdowns). Default clips so BlurView corners stay clean.
+   */
+  clip?: boolean;
 }
 
 function fillFor(kind: Kind): string {
@@ -48,13 +53,14 @@ export function Frost({
   style,
   intensity = 48,
   contentStyle,
+  clip = true,
 }: FrostProps) {
   const fill = fillFor(kind);
   const shape =
     kind === "card" ? styles.card : kind === "bar" ? styles.bar : styles.chrome;
 
   return (
-    <View style={[shape, style, styles.clip]}>
+    <View style={[shape, style, clip ? styles.clip : styles.noClip]}>
       <BlurView
         intensity={intensity}
         tint="light"
@@ -95,6 +101,7 @@ export function FrostIconWell({
 
 const styles = StyleSheet.create({
   clip: { overflow: "hidden" },
+  noClip: { overflow: "visible" },
   card: {
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
