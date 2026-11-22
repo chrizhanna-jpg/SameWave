@@ -9,14 +9,20 @@ import {
   buildMapGeometry,
   buildMapLines,
   buildMapMarkers,
+  CLUSTER_BADGE_SIZE,
   CLUSTER_SCREEN_PX,
   clusterMarkers,
+  expandUnresolvedClusters,
   focusBounds,
   frameTransform,
   geodesicArcPath,
   geodesicLonLat,
+  isOverwideLine,
   lineAt,
+  lineWidthSpan,
   markerAt,
+  MAX_LINE_WIDTH_FRACTION,
+  membersTrueSpan,
   MIN_LINE_LENGTH,
   pathFromPoints,
   STRAIGHT_BELOW,
@@ -263,19 +269,90 @@ test("overlapping pins merge into one cluster with a count at the true spot", ()
   assert.equal(clusters[0]!.point.y, 100);
 });
 
-test("zooming in splits nearby pins that no longer overlap on screen", () => {
+test("cluster radius is screen pixels divided by viewScale (not raw map units)", () => {
   const nearby: MapMarker[] = [
     { waveId: "a", side: "mine", photoId: "pa", point: { x: 100, y: 100 } },
     { waveId: "b", side: "theirs", photoId: "pb", point: { x: 130, y: 100 } },
   ];
-  // At scale 1, 30 map units = 30 screen px < 44 → one cluster.
+  // 30 map units × scale 1 = 30 screen px < 44 → merge.
   assert.equal(clusterMarkers(nearby, 1, 44).length, 1);
-  // At scale 2, 30 map units = 60 screen px > 44 → two pins.
+  // Same 30 map units × scale 2 = 60 screen px > 44 → split.
   const split = clusterMarkers(nearby, 2, 44);
   assert.equal(split.length, 2);
   assert.ok(split.every((c) => c.count === 1));
   assert.deepEqual(split[0]!.point, { x: 100, y: 100 });
   assert.deepEqual(split[1]!.point, { x: 130, y: 100 });
+});
+
+test("coincident clusters expand into a tidy tappable group at high zoom", () => {
+  const stacked: MapMarker[] = [
+    { waveId: "a", side: "mine", photoId: "p1", point: { x: 100, y: 100 } },
+    { waveId: "b", side: "mine", photoId: "p2", point: { x: 100, y: 100 } },
+    { waveId: "c", side: "mine", photoId: "p3", point: { x: 100.01, y: 100 } },
+  ];
+  const merged = clusterMarkers(stacked, 9, 44);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0]!.count, 3);
+  assert.ok(membersTrueSpan(merged[0]!.members) < 1);
+  const expanded = expandUnresolvedClusters(merged, 9, {
+    expandAboveScale: 8,
+    expandScreenPx: 30,
+    clusterScreenPx: 44,
+  });
+  assert.equal(expanded.length, 3);
+  assert.ok(expanded.every((c) => c.count === 1));
+  // Distinct display positions, still near the true centroid.
+  const keys = new Set(expanded.map((c) => `${c.point.x.toFixed(2)},${c.point.y.toFixed(2)}`));
+  assert.equal(keys.size, 3);
+  for (const c of expanded) {
+    assert.ok(Math.hypot(c.point.x - 100, c.point.y - 100) < 5);
+  }
+});
+
+test("no drawn segment spans most of the map width", () => {
+  const projectLonLat = (lonLat: [number, number]): Point => ({
+    x: (lonLat[0] + 180) * 4,
+    y: (90 - lonLat[1]) * 4,
+  });
+  // Rough Equal-Earth-ish width for this projection (~1440).
+  const mapWidth = 360 * 4;
+  const waves = [
+    {
+      id: "short",
+      mine: "GB",
+      theirs: "FR",
+      mineLonLat: [-0.12, 51.5] as [number, number],
+      theirsLonLat: [2.35, 48.85] as [number, number],
+    },
+    {
+      id: "ocean",
+      mine: "US",
+      theirs: "JP",
+      mineLonLat: [-74, 40.7] as [number, number],
+      theirsLonLat: [139.7, 35.7] as [number, number],
+    },
+  ];
+  const view = buildClusteredView(
+    waves,
+    project,
+    {
+      ...options,
+      viewScale: 2,
+      clusterScreenPx: CLUSTER_SCREEN_PX,
+      mapWidth,
+      maxLineWidthFraction: MAX_LINE_WIDTH_FRACTION,
+    },
+    projectLonLat,
+  );
+  assert.ok(view.lines.some((l) => l.waveId === "short"));
+  assert.ok(!view.lines.some((l) => l.waveId === "ocean"), "US→JP ocean stroke dropped");
+  for (const line of view.lines) {
+    assert.ok(
+      !isOverwideLine(line, mapWidth, MAX_LINE_WIDTH_FRACTION),
+      `line ${line.waveId} span ${lineWidthSpan(line)} vs map ${mapWidth}`,
+    );
+  }
+  assert.ok(CLUSTER_BADGE_SIZE >= 22 && CLUSTER_BADGE_SIZE <= 24);
 });
 
 test("lines attach to cluster pins and drop when both ends share a cluster", () => {

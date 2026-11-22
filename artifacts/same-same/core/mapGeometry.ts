@@ -72,11 +72,26 @@ export interface MapGeometryOptions {
   viewScale?: number;
   /**
    * Pins closer than this many screen pixels merge into one cluster.
-   * Default 44 (matches the minimum hit target).
+   * Default 44 (matches the minimum hit target). Always screen pixels —
+   * converted to map units as `clusterScreenPx / viewScale`.
    */
   clusterScreenPx?: number;
   /** @deprecated Use clusterScreenPx. */
   fanScreenPx?: number;
+  /**
+   * Projected world width in map units. Lines whose X-span exceeds
+   * `maxLineWidthFraction` of this are dropped (antimeridian / ocean-spanning).
+   */
+  mapWidth?: number;
+  /** Drop lines wider than this fraction of mapWidth. Default 0.5. */
+  maxLineWidthFraction?: number;
+  /**
+   * At/above this view scale, unresolved coincident clusters expand into a
+   * small tidy tappable group instead of staying as a forever-badge.
+   */
+  expandAboveScale?: number;
+  /** On-screen centre separation for the tidy expand ring (px). Default 30. */
+  expandScreenPx?: number;
 }
 
 /** A displayed pin: one photo, or several merged at the current zoom. */
@@ -434,15 +449,61 @@ export function buildMapMarkers(
 
 /** Default on-screen merge distance (also the minimum pin hit target). */
 export const CLUSTER_SCREEN_PX = 44;
+/** Count badge diameter in screen px. */
+export const CLUSTER_BADGE_SIZE = 24;
+/** Drop lines whose projected width exceeds this share of the world. */
+export const MAX_LINE_WIDTH_FRACTION = 0.5;
+/** Tidy expand ring: on-screen separation between coincident pins at max zoom. */
+export const EXPAND_SCREEN_PX = 30;
 
 function markerKey(m: MapMarker): string {
   return `${m.waveId}:${m.side}`;
 }
 
+/** Largest pairwise distance among marker true positions. */
+export function membersTrueSpan(members: readonly MapMarker[]): number {
+  let max = 0;
+  for (let i = 0; i < members.length; i++) {
+    for (let j = i + 1; j < members.length; j++) {
+      const d = Math.hypot(
+        members[i]!.point.x - members[j]!.point.x,
+        members[i]!.point.y - members[j]!.point.y,
+      );
+      if (d > max) max = d;
+    }
+  }
+  return max;
+}
+
+/**
+ * Horizontal span of a polyline in map units. Used to catch ocean-spanning /
+ * antimeridian strokes that slash across the whole keep-sake map.
+ */
+export function lineWidthSpan(line: Pick<MapLine, "points">): number {
+  if (line.points.length === 0) return 0;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  for (const p of line.points) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+  }
+  return maxX - minX;
+}
+
+/** True when a line's X-span covers too much of the projected world. */
+export function isOverwideLine(
+  line: Pick<MapLine, "points">,
+  mapWidth: number,
+  maxFraction = MAX_LINE_WIDTH_FRACTION,
+): boolean {
+  if (mapWidth <= 0) return false;
+  return lineWidthSpan(line) > mapWidth * maxFraction;
+}
+
 /**
  * Merge markers whose on-screen centres fall within `clusterScreenPx`.
- * Cluster pin sits at the centroid of members' true positions — never offset.
- * Zooming in (larger viewScale) shrinks the map-unit threshold so clusters split.
+ * Radius is always derived from screen pixels: `clusterScreenPx / viewScale`.
+ * Cluster pin sits at the centroid of members' true positions.
  */
 export function clusterMarkers(
   markers: readonly MapMarker[],
@@ -450,6 +511,7 @@ export function clusterMarkers(
   clusterScreenPx = CLUSTER_SCREEN_PX,
 ): MapCluster[] {
   const scale = Math.max(0.05, viewScale);
+  // Screen pixels → map units (never treat clusterScreenPx as map units).
   const radiusMap = clusterScreenPx / scale;
   type Acc = { members: MapMarker[]; sx: number; sy: number };
   const groups: Acc[] = [];
@@ -491,22 +553,92 @@ export function clusterMarkers(
 }
 
 /**
+ * When zoom is high enough that a multi-pin cluster still can't separate on
+ * screen (shared / near-identical coordinates), expand into a small tidy ring
+ * so every pin is tappable. Only used near max zoom — not the old Europe fan.
+ */
+export function expandUnresolvedClusters(
+  clusters: readonly MapCluster[],
+  viewScale: number,
+  options: {
+    expandAboveScale?: number;
+    expandScreenPx?: number;
+    clusterScreenPx?: number;
+  } = {},
+): MapCluster[] {
+  const scale = Math.max(0.05, viewScale);
+  const above = options.expandAboveScale ?? 8;
+  if (scale < above) return [...clusters];
+  const sepScreen = options.expandScreenPx ?? EXPAND_SCREEN_PX;
+  const clusterPx = options.clusterScreenPx ?? CLUSTER_SCREEN_PX;
+  const out: MapCluster[] = [];
+
+  for (const cluster of clusters) {
+    if (cluster.count <= 1) {
+      out.push(cluster);
+      continue;
+    }
+    const trueSpanScreen = membersTrueSpan(cluster.members) * scale;
+    // Still overlapping on screen even at this zoom → tidy expand.
+    if (trueSpanScreen >= clusterPx) {
+      out.push(cluster);
+      continue;
+    }
+    const n = cluster.members.length;
+    const ring = sepScreen / scale / (2 * Math.sin(Math.PI / Math.max(n, 2)));
+    const cx = cluster.point.x;
+    const cy = cluster.point.y;
+    for (let k = 0; k < n; k++) {
+      const member = cluster.members[k]!;
+      const angle = -Math.PI / 2 + (k * 2 * Math.PI) / n;
+      const point = {
+        x: cx + ring * Math.cos(angle),
+        y: cy + ring * Math.sin(angle),
+      };
+      out.push({
+        id: `${markerKey(member)}:expand`,
+        point,
+        count: 1,
+        members: [{ ...member, point }],
+      });
+    }
+  }
+  return out;
+}
+
+/**
  * Redraw lines so each end sits on the visible cluster pin for that endpoint.
- * Drops a line when both ends collapse into the same cluster.
+ * Drops a line when both ends collapse into the same cluster, or when the
+ * stroke would slash across most of the world map.
  */
 export function attachLinesToClusters(
   lines: readonly MapLine[],
   markers: readonly MapMarker[],
   clusters: readonly MapCluster[],
-  options: Pick<MapGeometryOptions, "minLineLength" | "minArcLength" | "straightBelow"> = {},
+  options: Pick<
+    MapGeometryOptions,
+    | "minLineLength"
+    | "minArcLength"
+    | "straightBelow"
+    | "mapWidth"
+    | "maxLineWidthFraction"
+  > = {},
 ): MapLine[] {
   const minLine = minLineFor(options as MapGeometryOptions);
   const straightBelow = straightBelowFor(options as MapGeometryOptions);
+  const mapWidth = options.mapWidth ?? 0;
+  const maxFrac = options.maxLineWidthFraction ?? MAX_LINE_WIDTH_FRACTION;
   const byKey = new Map<string, MapCluster>();
   for (const cluster of clusters) {
-    for (const m of cluster.members) byKey.set(markerKey(m), cluster);
+    for (const m of cluster.members) {
+      // Prefer the expanded display member when present.
+      byKey.set(markerKey(m), cluster);
+      byKey.set(`${m.waveId}:${m.side}`, cluster);
+    }
   }
   const findCluster = (waveId: string, side: "mine" | "theirs") => {
+    const direct = byKey.get(`${waveId}:${side}`);
+    if (direct) return direct;
     const marker = markers.find((m) => m.waveId === waveId && m.side === side);
     if (!marker) return null;
     return byKey.get(markerKey(marker)) ?? null;
@@ -523,6 +655,8 @@ export function attachLinesToClusters(
     const b = theirs.point;
     const chord = Math.hypot(a.x - b.x, a.y - b.y);
     if (chord < minLine) continue;
+    // Skip ocean-spanning chords (e.g. US→JP across the whole Equal Earth canvas).
+    if (mapWidth > 0 && Math.abs(a.x - b.x) > mapWidth * maxFrac) continue;
     const pairKey = mine.id < theirs.id ? `${mine.id}|${theirs.id}` : `${theirs.id}|${mine.id}`;
     const index = pairCounts.get(pairKey) ?? 0;
     pairCounts.set(pairKey, index + 1);
@@ -530,14 +664,22 @@ export function attachLinesToClusters(
       chord < straightBelow
         ? straightPath(a, b, minLine)
         : arcPath(a, b, arcBow(index, chord), minLine);
-    if (shape) out.push({ waveId: line.waveId, kind: chord < straightBelow ? "straight" : "arc", ...shape });
+    if (!shape) continue;
+    const next: MapLine = {
+      waveId: line.waveId,
+      kind: chord < straightBelow ? "straight" : "arc",
+      ...shape,
+    };
+    if (mapWidth > 0 && isOverwideLine(next, mapWidth, maxFrac)) continue;
+    out.push(next);
   }
   return out;
 }
 
 /**
  * Full clustered view for the current zoom: true-position markers, cluster
- * pins, and lines attached to those pins.
+ * pins (expanded at high zoom when still coincident), and lines attached to
+ * those pins — never ocean-spanning strokes.
  */
 export function buildClusteredView(
   waves: readonly MapWaveInput[],
@@ -548,8 +690,17 @@ export function buildClusteredView(
   const { markers, lines: rawLines } = buildMapGeometry(waves, project, options, projectLonLat);
   const viewScale = Math.max(0.05, options.viewScale ?? 1);
   const clusterPx = options.clusterScreenPx ?? options.fanScreenPx ?? CLUSTER_SCREEN_PX;
-  const clusters = clusterMarkers(markers, viewScale, clusterPx);
-  const lines = attachLinesToClusters(rawLines, markers, clusters, options);
+  const merged = clusterMarkers(markers, viewScale, clusterPx);
+  const clusters = expandUnresolvedClusters(merged, viewScale, {
+    expandAboveScale: options.expandAboveScale,
+    expandScreenPx: options.expandScreenPx,
+    clusterScreenPx: clusterPx,
+  });
+  const mapWidth = options.mapWidth ?? 0;
+  const maxFrac = options.maxLineWidthFraction ?? MAX_LINE_WIDTH_FRACTION;
+  const filteredRaw =
+    mapWidth > 0 ? rawLines.filter((l) => !isOverwideLine(l, mapWidth, maxFrac)) : rawLines;
+  const lines = attachLinesToClusters(filteredRaw, markers, clusters, options);
   return { markers, clusters, lines };
 }
 

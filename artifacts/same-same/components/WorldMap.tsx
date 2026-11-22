@@ -2,6 +2,8 @@ import { geoEqualEarth, geoPath } from "d3-geo";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
+  Modal,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -27,7 +29,9 @@ import land110 from "world-atlas/land-110m.json";
 
 import {
   buildClusteredView,
+  CLUSTER_BADGE_SIZE,
   CLUSTER_SCREEN_PX,
+  EXPAND_SCREEN_PX,
   focusBounds,
   frameTransform,
   lineAt,
@@ -38,7 +42,7 @@ import {
 import type { Wave } from "@/core/types";
 import { centroidLonLatForCountry } from "@/data/countryCentroids";
 import { useReducedMotion } from "@/device/motion";
-import { colors, motion, type as typeStyle } from "@/theme";
+import { colors, motion, space, type as typeStyle } from "@/theme";
 
 const topology = land110 as unknown as Topology;
 const land = feature(topology, topology.objects.land as GeometryCollection);
@@ -55,7 +59,12 @@ const MIDPOINT_HIT_SCREEN = 14;
 const PIN_OUTER_R = 5;
 const PIN_CORE_R = 1.75;
 const PIN_STROKE = 1.25;
-const BADGE_R = 7;
+/** Count badge diameter (screen px). Local so StyleSheet never sees an undefined import. */
+const BADGE_SIZE = CLUSTER_BADGE_SIZE ?? 24;
+/** @deprecated alias kept so any stale reference cannot crash the bundle. */
+const BADGE_R = BADGE_SIZE / 2;
+/** Expand coincident clusters once the view is this zoomed in. */
+const EXPAND_ABOVE_SCALE = 8;
 
 const MIN_SCALE = 1;
 const MAX_SCALE = 12;
@@ -128,6 +137,7 @@ export function WorldMap({
   const live = useRef({ scale: 1, x: 0, y: 0 });
   const framedFor = useRef<string>("");
   const [view, setView] = useState({ scale: 1, x: 0, y: 0 });
+  const [clusterList, setClusterList] = useState<MapCluster | null>(null);
 
   const publishView = useCallback(
     (next: { scale: number; x: number; y: number }) => {
@@ -168,6 +178,9 @@ export function WorldMap({
       fallbackCountry: homeCountry,
       viewScale: clusterScale,
       clusterScreenPx: CLUSTER_SCREEN_PX,
+      mapWidth: map.width,
+      expandAboveScale: EXPAND_ABOVE_SCALE,
+      expandScreenPx: EXPAND_SCREEN_PX,
     };
     const clustered = buildClusteredView(waveInputs, map.project, opts, map.projectLonLat);
     // Restore real photo ids on single-member clusters.
@@ -211,9 +224,15 @@ export function WorldMap({
         maxX: points[0]!.x + 20,
         maxY: points[0]!.y + 20,
       };
+      // Aim at least past expandAboveScale so coincident clusters resolve.
+      const floor = Math.max(
+        live.current.scale * minScaleBump,
+        EXPAND_ABOVE_SCALE,
+        MIN_SCALE,
+      );
       const next = frameTransform(bounds, box, {
         padding: 56,
-        minScale: Math.min(MAX_SCALE, Math.max(live.current.scale * minScaleBump, MIN_SCALE)),
+        minScale: Math.min(MAX_SCALE, floor),
         maxScale: MAX_SCALE,
       });
       const clamped = clampPan(next.scale, next.x, next.y);
@@ -237,6 +256,9 @@ export function WorldMap({
         fallbackCountry: homeCountry,
         viewScale: 2.5,
         clusterScreenPx: CLUSTER_SCREEN_PX,
+        mapWidth: map.width,
+        expandAboveScale: EXPAND_ABOVE_SCALE,
+        expandScreenPx: EXPAND_SCREEN_PX,
       },
       map.projectLonLat,
     );
@@ -314,7 +336,13 @@ export function WorldMap({
         const sy = cluster.point.y * s + live.current.y;
         if (Math.hypot(sx - screenX, sy - screenY) > MARKER_HIT_R) continue;
         if (cluster.count > 1) {
-          zoomToBounds(cluster.members.map((m) => m.point));
+          // Already at expand zoom and still merged → list. Otherwise zoom in
+          // until the tidy group resolves.
+          if (s >= EXPAND_ABOVE_SCALE) {
+            setClusterList(cluster);
+          } else {
+            zoomToBounds(cluster.members.map((m) => m.point));
+          }
           return;
         }
         const only = cluster.members[0]!;
@@ -408,6 +436,42 @@ export function WorldMap({
           </Animated.View>
         </PinchGestureHandler>
       ) : null}
+
+      <Modal
+        visible={Boolean(clusterList)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setClusterList(null)}
+      >
+        <Pressable style={styles.listScrim} onPress={() => setClusterList(null)}>
+          <Pressable style={styles.listCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.listTitle}>
+              {clusterList ? `${clusterList.count} Waves here` : ""}
+            </Text>
+            {clusterList?.members.map((m) => {
+              const wave = waves.find((w) => w.id === m.waveId);
+              const label = wave
+                ? `${wave.mine.countryCode ?? "?"} → ${wave.theirs.countryCode ?? "?"}`
+                : m.waveId;
+              return (
+                <Pressable
+                  key={`${m.waveId}-${m.side}`}
+                  style={styles.listRow}
+                  onPress={() => {
+                    setClusterList(null);
+                    onOpenWave(m.waveId);
+                  }}
+                >
+                  <Text style={styles.listRowText}>{label}</Text>
+                </Pressable>
+              );
+            })}
+            <Pressable style={styles.listClose} onPress={() => setClusterList(null)}>
+              <Text style={styles.listCloseText}>Close</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </GestureHandlerRootView>
   );
 }
@@ -544,21 +608,60 @@ const styles = StyleSheet.create({
   },
   badge: {
     position: "absolute",
-    top: 4,
-    right: 4,
-    minWidth: BADGE_R * 2,
-    height: BADGE_R * 2,
+    top: 2,
+    right: 2,
+    minWidth: BADGE_SIZE,
+    height: BADGE_SIZE,
     borderRadius: BADGE_R,
     backgroundColor: colors.waterMid,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 3,
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: colors.white,
   },
   badgeText: {
-    ...typeStyle.caption,
-    fontSize: 10,
-    lineHeight: 12,
+    ...typeStyle.label,
+    fontSize: 13,
+    lineHeight: 16,
     color: colors.white,
     fontWeight: "700",
+  },
+  listScrim: {
+    flex: 1,
+    backgroundColor: "rgba(15, 30, 40, 0.45)",
+    justifyContent: "flex-end",
+  },
+  listCard: {
+    backgroundColor: colors.white,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingHorizontal: space.lg,
+    paddingTop: space.lg,
+    paddingBottom: space.xl,
+    gap: space.sm,
+  },
+  listTitle: {
+    ...typeStyle.heading,
+    color: colors.slate,
+    marginBottom: space.xs,
+  },
+  listRow: {
+    paddingVertical: space.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(63,74,75,0.15)",
+  },
+  listRowText: {
+    ...typeStyle.body,
+    color: colors.slate,
+  },
+  listClose: {
+    marginTop: space.md,
+    alignItems: "center",
+    paddingVertical: space.md,
+  },
+  listCloseText: {
+    ...typeStyle.button,
+    color: colors.waterMid,
   },
 });
