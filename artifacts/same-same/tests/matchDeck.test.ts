@@ -87,6 +87,46 @@ test("inbound wavedAtYou candidates sort ahead of equal-tier peers", () => {
   );
 });
 
+test("same country and newer recency win equal-tier tie-breaks", () => {
+  const mine = { emotion: "joy", topic: "pets" };
+  const olderAbroad: Candidate = {
+    ...real("abroad-old", 20, "travel", "joy"),
+    countryCode: "FR",
+    createdAt: "2026-10-01T00:00:00Z",
+  };
+  const newerHome: Candidate = {
+    ...real("home-new", 20, "travel", "joy"),
+    countryCode: "GB",
+    createdAt: "2026-11-01T00:00:00Z",
+  };
+  const olderHome: Candidate = {
+    ...real("home-old", 20, "travel", "joy"),
+    countryCode: "GB",
+    createdAt: "2026-09-01T00:00:00Z",
+  };
+  const ranked = rankMatchCandidates([olderAbroad, olderHome, newerHome], mine, {
+    countryCode: "GB",
+    dailyTopicId: null,
+  });
+  assert.deepEqual(
+    ranked.map((c) => c.id),
+    ["home-new", "home-old", "abroad-old"],
+  );
+});
+
+test("Daily topic boosts within the same feeling tier", () => {
+  const mine = { emotion: "joy", topic: "pets" };
+  const ranked = rankMatchCandidates(
+    [real("other-topic", 50, "travel", "joy"), real("daily", 10, "coffee", "joy")],
+    mine,
+    { dailyTopicId: "coffee" },
+  );
+  assert.deepEqual(
+    ranked.map((c) => c.id),
+    ["daily", "other-topic"],
+  );
+});
+
 test("bucket helper is feeling-first; null when neither feeling nor topic", () => {
   assert.equal(
     matchRankBucket({ emotion: "joy", topic: "pets" }, { emotion: "joy", topic: "pets" })?.bucket,

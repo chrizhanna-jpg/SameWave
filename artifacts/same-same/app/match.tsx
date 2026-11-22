@@ -87,6 +87,7 @@ export default function MatchScreen() {
     syncNow,
     recordMatchSeen,
     finishMatchLook,
+    countryCode,
   } = useAppState();
   // null = still reading toggle; never fetch until known (avoids empty-deck race).
   const [useSamples, setUseSamples] = useState<boolean | null>(() => {
@@ -197,6 +198,7 @@ export default function MatchScreen() {
         ranked = rankMatchCandidates(pageRows, { emotion, topic }, {
           excludeIds: [...excludeBase, ...seenRef.current],
           ownPhotoIds: ownIds,
+          countryCode,
         });
         if (pageRows.length < MATCH.pageSize) break;
         looked.push(...pageRows.map((c) => c.id));
@@ -289,6 +291,7 @@ export default function MatchScreen() {
           const ranked = rankMatchCandidates(pageRows, { emotion, topic }, {
             excludeIds: [...excludeBase, ...seenRef.current],
             ownPhotoIds: ownIds,
+            countryCode,
           });
           const preferTopic = topic ?? ripple?.theme ?? null;
           const more = withOptionalTestPhotos(ranked, {

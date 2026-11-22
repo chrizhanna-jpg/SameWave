@@ -2,6 +2,7 @@
  * Client-side Match deck: filter stock/demo seeds and rank live candidates
  * feeling-first. Uses /photos/candidates rows (incl. wavedAtYou).
  */
+import { dailyTopicFor } from "./dailyTopic";
 import { emotionAffinity } from "../data/emotions";
 import { topicAffinity } from "../data/topics";
 import type { Candidate } from "./types";
@@ -79,17 +80,45 @@ export function isStrongMatchCard(
   return matchRankBucket(mine, theirs) !== null;
 }
 
+function sameCountry(
+  mine: string | null | undefined,
+  theirs: string | null | undefined,
+): boolean {
+  const a = mine?.trim().toUpperCase() ?? "";
+  const b = theirs?.trim().toUpperCase() ?? "";
+  return a.length === 2 && a === b;
+}
+
+/** Capture/share time for recency — prefer takenAt, else createdAt. */
+export function candidateRecencyMs(c: Pick<Candidate, "takenAt" | "createdAt">): number {
+  return Date.parse(c.takenAt ?? "") || Date.parse(c.createdAt ?? "") || 0;
+}
+
+export type RankMatchOptions = {
+  excludeIds?: readonly string[];
+  ownPhotoIds?: readonly string[];
+  /** Voter capture/home country — small same-country tie-break. */
+  countryCode?: string | null;
+  /** Override "today" Daily topic id (tests); default dailyTopicFor().id. */
+  dailyTopicId?: string | null;
+};
+
 /**
  * Live strong cards only, ranked feeling-first. Inbound `wavedAtYou` first.
+ * Within a tier: Daily topic → same country → server score → recency.
  * Deck may be short (~5) — no padding with unrelated "other" photos.
  */
 export function rankMatchCandidates(
   candidates: readonly Candidate[],
   mine: { emotion: string | null; topic: string | null },
-  options: { excludeIds?: readonly string[]; ownPhotoIds?: readonly string[] } = {},
+  options: RankMatchOptions = {},
 ): Candidate[] {
   const excluded = new Set(options.excludeIds ?? []);
   const own = new Set(options.ownPhotoIds ?? []);
+  const dailyId =
+    options.dailyTopicId === undefined ? dailyTopicFor().id : options.dailyTopicId;
+  const mineCountry = options.countryCode ?? null;
+
   return candidates
     .filter((c) => {
       if (excluded.has(c.id) || own.has(c.id)) return false;
@@ -101,15 +130,20 @@ export function rankMatchCandidates(
         emotion: c.emotion,
         topic: c.theme,
       })!;
-      return { c, rank };
+      const daily = dailyId && c.theme && topicAffinity(dailyId, c.theme) === 1 ? 1 : 0;
+      const country = sameCountry(mineCountry, c.countryCode) ? 1 : 0;
+      const recency = candidateRecencyMs(c);
+      return { c, rank, daily, country, recency };
     })
     .sort(
       (a, b) =>
         Number(Boolean(b.c.wavedAtYou)) - Number(Boolean(a.c.wavedAtYou)) ||
         b.rank.tier - a.rank.tier ||
         b.rank.emotion - a.rank.emotion ||
+        b.daily - a.daily ||
+        b.country - a.country ||
         b.c.score - a.c.score ||
-        (Date.parse(b.c.createdAt ?? "") || 0) - (Date.parse(a.c.createdAt ?? "") || 0),
+        b.recency - a.recency,
     )
     .map((row) => row.c);
 }
