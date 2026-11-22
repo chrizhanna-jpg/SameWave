@@ -94,6 +94,7 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
   }, [draft.emotion, draft.song, draft.songTouched]);
 
   const photo = draft.photo;
+  const pickerLocked = sending || sent;
   const canSend =
     Boolean(photo && draft.emotion && draft.topic && draft.song) && !sending && !sent;
   const hint = missingHint(Boolean(photo), Boolean(draft.emotion), Boolean(draft.topic));
@@ -227,7 +228,7 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
           <Txt variant="heading" style={[styles.section, styles.sectionBold]}>
             This feels…
           </Txt>
-          <EmotionPicker value={draft.emotion} onChange={onEmotion} />
+          <EmotionPicker value={draft.emotion} onChange={onEmotion} locked={pickerLocked} />
         </View>
 
         <View>
@@ -242,7 +243,7 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
               <Txt>{lockedLabel}</Txt>
             </View>
           ) : (
-            <TopicPicker value={draft.topic} onChange={onTopicChange} />
+            <TopicPicker value={draft.topic} onChange={onTopicChange} locked={pickerLocked} />
           )}
         </View>
 

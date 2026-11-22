@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 
 import { Txt } from "@/components/Txt";
@@ -10,23 +10,32 @@ interface Props {
   onChange: (topicId: string | null) => void;
   /** Fired when the search field gains or loses focus (keyboard layout). */
   onSearchFocusChange?: (focused: boolean) => void;
+  /** When true, keep the list closed (e.g. while uploading). */
+  locked?: boolean;
 }
 
 /**
- * Preset-only Topic picker. Search shortens the flat list live; with an
- * empty search the full list stays visible and scrollable to browse.
+ * Type-ahead Topic picker — preset Topics only.
+ * Typing filters/suggests; tapping a row saves that preset id. Never free text.
+ * Empty search shows popular starters; a miss shows the closest presets.
  */
-export function TopicPicker({ value, onChange, onSearchFocusChange }: Props) {
+export function TopicPicker({ value, onChange, onSearchFocusChange, locked = false }: Props) {
   const selected = topicFor(value);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(!selected);
 
-  const matches = useMemo(() => filterTopics(query), [query]);
+  useEffect(() => {
+    if (locked) setOpen(false);
+  }, [locked]);
 
-  if (selected && !open) {
+  const matches = useMemo(() => filterTopics(query), [query]);
+  const showList = !locked && (selected ? open : true);
+
+  if (selected && (!open || locked)) {
     return (
       <Pressable
         onPress={() => {
+          if (locked) return;
           setOpen(true);
           setQuery("");
         }}
@@ -35,9 +44,11 @@ export function TopicPicker({ value, onChange, onSearchFocusChange }: Props) {
         style={styles.chosen}
       >
         <Txt>{selected.label}</Txt>
-        <Txt variant="quiet" tone="secondary">
-          Change
-        </Txt>
+        {!locked ? (
+          <Txt variant="quiet" tone="secondary">
+            Change
+          </Txt>
+        ) : null}
       </Pressable>
     );
   }
@@ -47,34 +58,35 @@ export function TopicPicker({ value, onChange, onSearchFocusChange }: Props) {
       <TextInput
         value={query}
         onChangeText={setQuery}
-        placeholder="Search or browse"
+        placeholder="Type a topic"
         placeholderTextColor={colors.textQuiet}
         autoCorrect={false}
         autoCapitalize="none"
+        editable={!locked}
         style={styles.search}
         accessibilityLabel="Search Topics"
-        onFocus={() => onSearchFocusChange?.(true)}
+        onFocus={() => {
+          if (locked) return;
+          onSearchFocusChange?.(true);
+        }}
         onBlur={() => onSearchFocusChange?.(false)}
       />
-      <View style={styles.list}>
-        {matches.map((topic) => (
-          <Row
-            key={topic.id}
-            topic={topic}
-            selected={topic.id === value}
-            onPress={() => {
-              onChange(topic.id);
-              setOpen(false);
-              setQuery("");
-            }}
-          />
-        ))}
-        {matches.length === 0 ? (
-          <Txt tone="secondary" style={styles.empty}>
-            No Topic matches that. Try another word.
-          </Txt>
-        ) : null}
-      </View>
+      {showList ? (
+        <View style={styles.list}>
+          {matches.map((topic) => (
+            <Row
+              key={topic.id}
+              topic={topic}
+              selected={topic.id === value}
+              onPress={() => {
+                onChange(topic.id);
+                setOpen(false);
+                setQuery("");
+              }}
+            />
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -93,9 +105,13 @@ function Row({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected }}
+      accessibilityLabel={`${topic.label}. ${topic.description}`}
       style={[styles.row, selected && styles.rowOn]}
     >
       <Txt>{topic.label}</Txt>
+      <Txt variant="quiet" tone="secondary">
+        {topic.description}
+      </Txt>
     </Pressable>
   );
 }
@@ -114,8 +130,9 @@ const styles = StyleSheet.create({
   list: { marginTop: space.sm, gap: space.xs },
   row: {
     paddingHorizontal: space.md,
-    paddingVertical: space.md,
+    paddingVertical: space.sm,
     borderRadius: radius.md,
+    gap: 2,
   },
   rowOn: { backgroundColor: colors.waterPale },
   chosen: {
@@ -127,5 +144,4 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: colors.waterPale,
   },
-  empty: { padding: space.md },
 });

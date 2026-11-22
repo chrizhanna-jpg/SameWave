@@ -4,7 +4,11 @@
  *
  * When the Daily topic button starts the flow, the topic is locked for the
  * whole capture → compose → send path.
+ *
+ * Feeling and Topic are preset ids only — free-text type-ahead never lands here.
  */
+import { emotionFor } from "@/data/emotions";
+import { topicFor } from "@/data/topics";
 import type { ChosenPhoto } from "@/device/photos";
 import type { Recording } from "@/components/SoundRecorder";
 
@@ -66,11 +70,13 @@ export function getDraftPhoto(): ChosenPhoto | null {
  * compose hides the picker and always sends that topic.
  */
 export function setDraftTopic(topicId: string | null, options?: { locked?: boolean }): void {
-  const topicLocked = topicId !== null && options?.locked === true;
-  if (draft.topic === topicId && draft.topicLocked === topicLocked) return;
+  // Reject anything that isn't a known preset Topic id.
+  const presetId = topicId === null ? null : (topicFor(topicId)?.id ?? null);
+  const topicLocked = presetId !== null && options?.locked === true;
+  if (draft.topic === presetId && draft.topicLocked === topicLocked) return;
   draft = {
     ...draft,
-    topic: topicId,
+    topic: presetId,
     topicLocked,
   };
   publish();
@@ -86,8 +92,10 @@ export function isDraftTopicLocked(): boolean {
 }
 
 export function setDraftEmotion(emotion: string | null): void {
-  if (draft.emotion === emotion) return;
-  draft = { ...draft, emotion };
+  // Reject anything that isn't a known preset Feeling id.
+  const presetId = emotion === null ? null : (emotionFor(emotion)?.id ?? null);
+  if (draft.emotion === presetId) return;
+  draft = { ...draft, emotion: presetId };
   publish();
 }
 

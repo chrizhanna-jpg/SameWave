@@ -62,6 +62,8 @@ import {
   readText,
   writeJson,
 } from "@/device/storage";
+import { emotionFor } from "@/data/emotions";
+import { topicFor } from "@/data/topics";
 import { withTimeout } from "@/lib/timeout";
 import { useSession } from "@/state/session";
 
@@ -570,12 +572,17 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
         void syncNow({ force: true });
 
-        // Never prompts here: only refreshes the address if notifications are already on.
-        const address = await enablePushes({ ask: false });
-        if (address && !cancelled) {
-          await backend
-            .registerPushToken(address, Platform.OS === "ios" ? "ios" : "android")
-            .catch(() => undefined);
+        // Never prompts here: only refreshes the address if notifications are
+        // already on in-app and at the OS. Skip register when the person opted out.
+        const { readNotificationsEnabled } = await import("@/device/notificationPrefs");
+        const wantsPush = await readNotificationsEnabled();
+        if (wantsPush) {
+          const address = await enablePushes({ ask: false });
+          if (address && !cancelled) {
+            await backend
+              .registerPushToken(address, Platform.OS === "ios" ? "ios" : "android")
+              .catch(() => undefined);
+          }
         }
       } catch (error) {
         if (cancelled) return;
@@ -696,6 +703,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   const sendRipple = useCallback(
     async (draft: RippleDraft): Promise<Ripple> => {
+      // Preset-only: never upload a free-text Feeling or Topic.
+      const emotion = emotionFor(draft.emotion)?.id ?? null;
+      const topic = topicFor(draft.topic)?.id ?? null;
+      if (!emotion || !topic) {
+        throw new Error("Choose a Feeling and a Topic from the list before uploading.");
+      }
       const forAccount = dataRef.current.accountId;
       const countryCode = dataRef.current.profile.countryCode;
       const [encoded, locatedCountryCode, recording] = await Promise.all([
@@ -727,9 +740,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           captureCountryCode,
           captureCountrySource,
           capturedAt: draft.photo.takenAt,
-          emotion: draft.emotion,
+          emotion,
           song: draft.song,
-          topic: draft.topic,
+          topic,
           recording,
           localUri: localUri ?? draft.photo.uri,
         });
@@ -743,11 +756,11 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         localUri,
         countryCode: captureCountryCode ?? countryCode,
         captureCountrySource,
-        emotion: draft.emotion,
-        topic: draft.topic,
-        vibe: draft.song ?? draft.emotion,
+        emotion,
+        topic,
+        vibe: draft.song ?? emotion,
         hasRecording: recording !== null,
-        theme: draft.topic ?? sent.theme,
+        theme: topic ?? sent.theme,
         tags: sent.tags,
         subjects: sent.subjects,
       });
@@ -836,7 +849,14 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   const deletePhoto = useCallback(
     async (photoId: string) => {
-      await backend.deletePhoto(photoId);
+      let serverGone = false;
+      try {
+        await backend.deletePhoto(photoId);
+      } catch (error) {
+        // Already missing on the server — still clear the local ledger.
+        if (errorKind(error) === "not-found") serverGone = true;
+        else throw error;
+      }
       const ripple = dataRef.current.ripples.find((r) => r.photoId === photoId);
       commit((current) => ({
         ...current,
@@ -849,6 +869,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       save("ripples");
       save("hidden");
       await removeRipplePhoto(ripple?.localUri ?? null);
+      if (serverGone && __DEV__) {
+        console.warn("[deletePhoto] server already missing", photoId);
+      }
     },
     [backend, commit, save],
   );
@@ -868,6 +891,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const askForPushes = useCallback(async (): Promise<PushPermission> => {
     commit((current) => ({ ...current, profile: { ...current.profile, pushAsked: true } }));
     save("profile");
+    const { readNotificationsEnabled } = await import("@/device/notificationPrefs");
+    if (!(await readNotificationsEnabled())) {
+      return pushPermission();
+    }
     const address = await enablePushes({ ask: true });
     if (address) {
       await backend

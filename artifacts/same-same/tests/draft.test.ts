@@ -97,8 +97,22 @@ describe("draft getSnapshot stability (useSyncExternalStore)", () => {
       }
     }
     assert.equal(renders, 0);
-    setDraftEmotion("hopeful");
+    setDraftEmotion("hope");
     assert.ok(renders <= 1);
     stop();
+  });
+});
+
+describe("draft preset-only Feeling and Topic", () => {
+  it("rejects free-text values that are not preset ids", () => {
+    clearDraft();
+    setDraftEmotion("hopeful");
+    assert.equal(getDraft().emotion, null);
+    setDraftEmotion("tired");
+    assert.equal(getDraft().emotion, "tired");
+    setDraftTopic("my custom beach day");
+    assert.equal(getDraft().topic, null);
+    setDraftTopic("beach");
+    assert.equal(getDraft().topic, "beach");
   });
 });

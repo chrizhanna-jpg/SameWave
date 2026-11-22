@@ -1,8 +1,8 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 
 import { Txt } from "@/components/Txt";
-import { EMOTIONS, emotionFor, type Emotion } from "@/data/emotions";
+import { emotionFor, filterEmotions, type Emotion } from "@/data/emotions";
 import { colors, radius, space, type } from "@/theme";
 
 interface Props {
@@ -10,34 +10,32 @@ interface Props {
   onChange: (emotionId: string | null) => void;
   /** Fired when the search field gains or loses focus (keyboard layout). */
   onSearchFocusChange?: (focused: boolean) => void;
-}
-
-/** Filter the flat emotion list by label (and id) as the person types. */
-function filterEmotions(query: string): Emotion[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return [...EMOTIONS];
-  return EMOTIONS.filter((emotion) => {
-    const label = emotion.label.toLowerCase();
-    const id = emotion.id.toLowerCase();
-    return label.startsWith(q) || label.includes(q) || id.startsWith(q) || id.includes(q);
-  });
+  /** When true, keep the list closed (e.g. while uploading). */
+  locked?: boolean;
 }
 
 /**
- * Flat emotion picker. Search shortens the list live; with nothing typed
- * the full list is visible and scrollable to browse and tap.
+ * Type-ahead Feeling picker — preset Feelings only.
+ * Typing filters/suggests; tapping a row saves that preset id. Never free text.
+ * Empty search shows popular picks; a miss shows the closest presets.
  */
-export function EmotionPicker({ value, onChange, onSearchFocusChange }: Props) {
+export function EmotionPicker({ value, onChange, onSearchFocusChange, locked = false }: Props) {
   const selected = emotionFor(value);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(!selected);
 
-  const matches = useMemo(() => filterEmotions(query), [query]);
+  useEffect(() => {
+    if (locked) setOpen(false);
+  }, [locked]);
 
-  if (selected && !open) {
+  const matches = useMemo(() => filterEmotions(query), [query]);
+  const showList = !locked && (selected ? open : true);
+
+  if (selected && (!open || locked)) {
     return (
       <Pressable
         onPress={() => {
+          if (locked) return;
           setOpen(true);
           setQuery("");
         }}
@@ -47,9 +45,11 @@ export function EmotionPicker({ value, onChange, onSearchFocusChange }: Props) {
         style={styles.chosen}
       >
         <Txt>{selected.label}</Txt>
-        <Txt variant="quiet" tone="secondary">
-          Change
-        </Txt>
+        {!locked ? (
+          <Txt variant="quiet" tone="secondary">
+            Change
+          </Txt>
+        ) : null}
       </Pressable>
     );
   }
@@ -63,38 +63,60 @@ export function EmotionPicker({ value, onChange, onSearchFocusChange }: Props) {
         placeholderTextColor={colors.textQuiet}
         autoCorrect={false}
         autoCapitalize="none"
+        editable={!locked}
         style={styles.search}
         accessibilityLabel="This feels…"
-        onFocus={() => onSearchFocusChange?.(true)}
+        onFocus={() => {
+          if (locked) return;
+          onSearchFocusChange?.(true);
+        }}
         onBlur={() => onSearchFocusChange?.(false)}
       />
-      <View style={styles.list}>
-        {matches.map((emotion) => {
-          const on = emotion.id === value;
-          return (
-            <Pressable
-              key={emotion.id}
-              onPress={() => {
-                onChange(emotion.id);
-                setOpen(false);
-                setQuery("");
-              }}
-              accessibilityRole="button"
-              accessibilityState={{ selected: on }}
-              accessibilityLabel={emotion.label}
-              style={[styles.row, on && styles.rowOn]}
-            >
-              <Txt>{emotion.label}</Txt>
-            </Pressable>
-          );
-        })}
-        {matches.length === 0 ? (
-          <Txt tone="secondary" style={styles.empty}>
-            No feeling matches that. Try another word.
-          </Txt>
-        ) : null}
-      </View>
+      {showList ? (
+        <View style={styles.list}>
+          {matches.map((emotion) => {
+            const on = emotion.id === value;
+            return (
+              <Row
+                key={emotion.id}
+                emotion={emotion}
+                selected={on}
+                onPress={() => {
+                  onChange(emotion.id);
+                  setOpen(false);
+                  setQuery("");
+                }}
+              />
+            );
+          })}
+        </View>
+      ) : null}
     </View>
+  );
+}
+
+function Row({
+  emotion,
+  selected,
+  onPress,
+}: {
+  emotion: Emotion;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      accessibilityLabel={`${emotion.label}. ${emotion.description}`}
+      style={[styles.row, selected && styles.rowOn]}
+    >
+      <Txt>{emotion.label}</Txt>
+      <Txt variant="quiet" tone="secondary">
+        {emotion.description}
+      </Txt>
+    </Pressable>
   );
 }
 
@@ -112,8 +134,9 @@ const styles = StyleSheet.create({
   list: { marginTop: space.sm, gap: space.xs },
   row: {
     paddingHorizontal: space.md,
-    paddingVertical: space.md,
+    paddingVertical: space.sm,
     borderRadius: radius.md,
+    gap: 2,
   },
   rowOn: { backgroundColor: colors.waterPale },
   chosen: {
@@ -125,5 +148,4 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: colors.waterPale,
   },
-  empty: { padding: space.md },
 });
