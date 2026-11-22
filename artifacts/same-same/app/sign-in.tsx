@@ -77,6 +77,7 @@ export default function SignInScreen() {
   const [code, setCode] = useState("");
   const [emailStep, setEmailStep] = useState<EmailStep>("email");
   const [emailFlow, setEmailFlow] = useState<EmailFlow>("signIn");
+  const [showEmail, setShowEmail] = useState(false);
   const inExpoGo = isExpoGo();
 
   // Android opens the sign-in page faster if the browser is already awake.
@@ -119,22 +120,11 @@ export default function SignInScreen() {
       if (createdSessionId && activate) {
         await activate({ session: createdSessionId });
       } else {
-        setProblem(
-          inExpoGo
-            ? "Google sign-in didn't return to Expo Go. Use email code below, or ask to allowlist the Expo redirect in Clerk."
-            : "Sign-in didn't finish. Please try again.",
-        );
+        setProblem("Sign-in didn't finish. Please try again.");
       }
     } catch (err) {
       console.warn("[sign-in] Google SSO failed", err);
-      setProblem(
-        clerkErrorMessage(
-          err,
-          inExpoGo
-            ? "Google sign-in couldn't finish in Expo Go. Try email code below."
-            : "We couldn't sign you in just now. Please try again.",
-        ),
-      );
+      setProblem(clerkErrorMessage(err, "We couldn't sign you in just now. Please try again."));
     } finally {
       setBusy(false);
     }
@@ -159,7 +149,7 @@ export default function SignInScreen() {
     if (busy || !isLoaded || !signIn) return;
     const identifier = email.trim().toLowerCase();
     if (!identifier.includes("@")) {
-      setProblem("Enter the email on your SameWave account.");
+      setProblem("Enter your email address.");
       return;
     }
     setBusy(true);
@@ -171,12 +161,8 @@ export default function SignInScreen() {
         (item) => item.strategy === "email_code" && "emailAddressId" in item,
       ) as { strategy: "email_code"; emailAddressId: string } | undefined;
       if (!factor?.emailAddressId) {
-        const strategies =
-          created.supportedFirstFactors?.map((item) => item.strategy).join(", ") || "(none)";
-        console.warn("[sign-in] email_code factor missing; factors =", strategies);
-        setProblem(
-          `Email code isn't available for this account (factors: ${strategies}). Try Google on a development build.`,
-        );
+        console.warn("[sign-in] email_code factor missing");
+        setProblem("Email sign-in isn't available for this account. Try Google instead.");
         return;
       }
       console.log("[sign-in] email code: prepareFirstFactor", factor.emailAddressId);
@@ -205,7 +191,7 @@ export default function SignInScreen() {
           setProblem(
             clerkErrorMessage(
               signUpErr,
-              "Couldn't start sign-up for that email. Check it and try again.",
+              "Couldn't start with that email. Check it and try again.",
             ),
           );
           return;
@@ -235,7 +221,7 @@ export default function SignInScreen() {
           await setActive({ session: result.createdSessionId });
           return;
         }
-        setProblem(`That code didn't complete sign-up (${result.status}). Try again.`);
+        setProblem("That code didn't work. Request a new one and try again.");
         return;
       }
       if (!signIn) throw new Error("Sign-in is not ready yet.");
@@ -245,7 +231,7 @@ export default function SignInScreen() {
         await setActive({ session: result.createdSessionId });
         return;
       }
-      setProblem(`That code didn't complete sign-in (${result.status}). Try again.`);
+      setProblem("That code didn't work. Request a new one and try again.");
     } catch (err) {
       console.warn("[sign-in] email code verify failed", err);
       setProblem(clerkErrorMessage(err, "That code didn't work. Request a new one and try again."));
@@ -264,89 +250,109 @@ export default function SignInScreen() {
       </Frost>
 
       <Frost kind="card" style={styles.formCard} contentStyle={styles.formPad}>
+        <Txt variant="heading" center style={styles.heading}>
+          Sign in to continue
+        </Txt>
+        <Txt tone="secondary" center style={styles.sub}>
+          One account. Pick the option that suits you.
+        </Txt>
+
         {problem ? (
           <Txt variant="quiet" tone="ember" center style={styles.problem}>
             {problem}
           </Txt>
         ) : null}
 
-        {inExpoGo ? (
-          <Txt variant="quiet" tone="secondary" center style={styles.hint}>
-            Expo Go tip: email code avoids the old Play app stealing Google&apos;s redirect. Google
-            needs an allowlisted exp:// redirect in Clerk (see Metro log).
-          </Txt>
-        ) : null}
-
         <Button label="Continue with Google" onPress={() => void signInWithGoogle()} busy={busy} />
 
-        <Txt variant="quiet" tone="quiet" center style={styles.or}>
-          or sign in with email code
-        </Txt>
+        {!showEmail && emailStep === "email" ? (
+          <Button
+            kind="quiet"
+            label="Use email instead"
+            onPress={() => {
+              setShowEmail(true);
+              setProblem(null);
+            }}
+            style={styles.secondary}
+          />
+        ) : null}
 
-        {emailStep === "email" ? (
-          <>
-            <TextInput
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
-              textContentType="emailAddress"
-              placeholder="Email"
-              placeholderTextColor={colors.textQuiet}
-              style={styles.input}
-              editable={!busy}
-              accessibilityLabel="Email"
-            />
-            <Button
-              kind="soft"
-              label="Send email code"
-              onPress={() => void sendEmailCode()}
-              busy={busy}
-              disabled={!isLoaded}
-              style={styles.emailBtn}
-            />
-          </>
-        ) : (
-          <>
-            <Txt tone="secondary" center style={styles.codeHint}>
-              Code sent to {email.trim().toLowerCase()}
-            </Txt>
-            <TextInput
-              value={code}
-              onChangeText={setCode}
-              keyboardType="number-pad"
-              textContentType="oneTimeCode"
-              placeholder="6-digit code"
-              placeholderTextColor={colors.textQuiet}
-              style={styles.input}
-              editable={!busy}
-              accessibilityLabel="Email code"
-            />
-            <Button
-              kind="soft"
-              label="Verify code"
-              onPress={() => void verifyEmailCode()}
-              busy={busy}
-              style={styles.emailBtn}
-            />
-            <Button
-              kind="quiet"
-              label="Use a different email"
-              onPress={() => {
-                setEmailStep("email");
-                setEmailFlow("signIn");
-                setCode("");
-                setProblem(null);
-              }}
-              style={styles.quiet}
-            />
-          </>
-        )}
+        {showEmail || emailStep === "code" ? (
+          <View style={styles.emailBlock}>
+            {emailStep === "email" ? (
+              <>
+                <Txt variant="quiet" tone="quiet" center style={styles.or}>
+                  We&apos;ll email you a one-time code
+                </Txt>
+                <TextInput
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  textContentType="emailAddress"
+                  placeholder="Email address"
+                  placeholderTextColor={colors.textQuiet}
+                  style={styles.input}
+                  editable={!busy}
+                  accessibilityLabel="Email address"
+                />
+                <Button
+                  kind="soft"
+                  label="Send code"
+                  onPress={() => void sendEmailCode()}
+                  busy={busy}
+                  disabled={!isLoaded}
+                  style={styles.emailBtn}
+                />
+                {inExpoGo ? (
+                  <Txt variant="quiet" tone="quiet" center style={styles.hint}>
+                    In Expo Go, email is the reliable path if Google opens the installed Play app.
+                  </Txt>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <Txt tone="secondary" center style={styles.codeHint}>
+                  Enter the code we sent to {email.trim().toLowerCase()}
+                </Txt>
+                <TextInput
+                  value={code}
+                  onChangeText={setCode}
+                  keyboardType="number-pad"
+                  textContentType="oneTimeCode"
+                  placeholder="6-digit code"
+                  placeholderTextColor={colors.textQuiet}
+                  style={styles.input}
+                  editable={!busy}
+                  accessibilityLabel="Email code"
+                />
+                <Button
+                  kind="soft"
+                  label="Continue"
+                  onPress={() => void verifyEmailCode()}
+                  busy={busy}
+                  style={styles.emailBtn}
+                />
+                <Button
+                  kind="quiet"
+                  label="Use a different email"
+                  onPress={() => {
+                    setEmailStep("email");
+                    setEmailFlow("signIn");
+                    setCode("");
+                    setProblem(null);
+                  }}
+                  style={styles.quiet}
+                />
+              </>
+            )}
+          </View>
+        ) : null}
 
         <Button
           kind="quiet"
-          label="How it works"
+          label="How SameWave works"
           onPress={() => router.push("/how-it-works")}
           style={styles.quiet}
         />
@@ -389,9 +395,13 @@ const styles = StyleSheet.create({
   formCard: { marginBottom: space.lg },
   formPad: { paddingHorizontal: space.lg, paddingVertical: space.lg },
   line: { marginTop: space.md, maxWidth: 300 },
+  heading: { marginBottom: space.xs },
+  sub: { marginBottom: space.lg, maxWidth: 300, alignSelf: "center" },
   problem: { marginBottom: space.md },
-  hint: { marginBottom: space.md, maxWidth: 340, alignSelf: "center" },
-  or: { marginTop: space.lg, marginBottom: space.sm },
+  hint: { marginTop: space.md, maxWidth: 320, alignSelf: "center" },
+  secondary: { marginTop: space.md },
+  emailBlock: { marginTop: space.md },
+  or: { marginBottom: space.sm },
   input: {
     ...type.body,
     color: colors.textPrimary,
