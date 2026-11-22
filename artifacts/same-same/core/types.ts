@@ -94,4 +94,9 @@ export interface Offer {
   myPhotoId: string;
   theirPhotoId: string;
   createdAt: string | null;
+  /** Their photo URI when the inbox card includes it (data: or https). */
+  theirUri?: string | null;
+  theirEmotion?: string | null;
+  theirTopic?: string | null;
+  theirCountryCode?: string | null;
 }

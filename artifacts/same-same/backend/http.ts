@@ -96,11 +96,33 @@ export function offerFromCard(raw: unknown): Offer | null {
   const mine = (card.mine ?? {}) as Json;
   const theirs = (card.theirs ?? {}) as Json;
   if (!id || typeof mine.id !== "string" || typeof theirs.id !== "string") return null;
+  const theirTopic =
+    typeof theirs.theme === "string" && theirs.theme
+      ? theirs.theme
+      : typeof card.theme === "string" && card.theme
+        ? card.theme
+        : null;
+  const capture =
+    typeof theirs.captureCountryCode === "string" && theirs.captureCountryCode
+      ? theirs.captureCountryCode
+      : null;
+  const home =
+    typeof theirs.countryCode === "string" && theirs.countryCode ? theirs.countryCode : null;
+  const rawUri = typeof theirs.uri === "string" ? theirs.uri : null;
+  // Inbox cards are usually data: URIs from the server; also accept https /api paths.
+  const theirUri =
+    imageUriOrNull(rawUri) ??
+    (rawUri && /^(https?:\/\/|\/api\/photos\/)/i.test(rawUri) ? rawUri : null);
   return {
     id,
     myPhotoId: mine.id,
     theirPhotoId: theirs.id,
     createdAt: isoOrNull(card.createdAt),
+    theirUri,
+    theirEmotion:
+      typeof theirs.emotion === "string" && theirs.emotion ? theirs.emotion : null,
+    theirTopic,
+    theirCountryCode: capture ?? home,
   };
 }
 
@@ -335,6 +357,13 @@ export function createHttpBackend(options: HttpBackendOptions): Backend {
     async acceptOffer(offerId) {
       await call("POST", `/echoes/${id(offerId)}/respond`, {
         body: { verdict: "same" },
+        repeatable: true,
+      });
+    },
+
+    async dismissOffer(offerId) {
+      await call("POST", `/echoes/${id(offerId)}/respond`, {
+        body: { verdict: "different" },
         repeatable: true,
       });
     },

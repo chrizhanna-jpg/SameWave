@@ -1,0 +1,20 @@
+# Wave inbox: incoming Ripple with Wave back / Dismiss (preview sample offer when TEST_PHOTOS=1).
+appId: echo.samewaveripple.app
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Waves"
+    timeout: 60000
+- tapOn: "Waves"
+- extendedWaitUntil:
+    visible:
+      text: "Inbox|No incoming Ripples|Wave back"
+    timeout: 30000
+- takeScreenshot: wave-inbox
+- runFlow:
+    when:
+      visible: "Wave back"
+    commands:
+      - assertVisible: "Dismiss"
+      - tapOn: "Dismiss"
+      - takeScreenshot: wave-inbox-after-dismiss

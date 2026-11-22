@@ -5,8 +5,8 @@ import { TabBar } from "@/components/TabBar";
 import { TabBarHeightProvider } from "@/state/TabBarHeight";
 
 /**
- * Bottom nav: Home → Ripple → Waves.
- * Opens on Home by default; push / auto-reveal still take precedence via root hosts.
+ * Bottom nav: Home → Ripple → Waves → Map.
+ * Labels are exact titles below (report if Chris expected "Wave" singular).
  */
 export const unstable_settings = {
   // Expo Router 58: prefer `anchor` over deprecated `initialRouteName`.
@@ -27,6 +27,7 @@ export default function TabsLayout() {
         <Tabs.Screen name="home" options={{ title: "Home" }} />
         <Tabs.Screen name="ripple" options={{ title: "Ripple" }} />
         <Tabs.Screen name="waves" options={{ title: "Waves" }} />
+        <Tabs.Screen name="map" options={{ title: "Map" }} />
       </Tabs>
     </TabBarHeightProvider>
   );

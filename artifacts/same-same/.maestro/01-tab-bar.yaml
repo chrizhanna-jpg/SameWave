@@ -1,0 +1,12 @@
+# Tab bar: Home, Ripple, Waves, Map — labels visible (unclipped).
+appId: echo.samewaveripple.app
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Home"
+    timeout: 60000
+- assertVisible: "Home"
+- assertVisible: "Ripple"
+- assertVisible: "Waves"
+- assertVisible: "Map"
+- takeScreenshot: tab-bar-labels

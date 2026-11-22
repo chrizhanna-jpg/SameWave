@@ -28,13 +28,12 @@ import {
 } from "@/core/history";
 import {
   MATCH,
-  offersToAccept,
   reachDecision,
   selectReachTargets,
   travellingRipple,
   withReachPass,
 } from "@/core/reach";
-import type { Candidate, Ripple, Wave } from "@/core/types";
+import type { Candidate, Offer, Ripple, Wave } from "@/core/types";
 import { sortWaves, unseenWaves, unrevealedWaves, withRevealedWaveId } from "@/core/waves";
 import { normalizeCountryCode } from "@/data/countries";
 import { countryAt, countryHere } from "@/device/location";
@@ -110,6 +109,9 @@ interface Data {
   waves: Wave[];
   /** True once Waves have been read from the device or the server. */
   wavesKnown: boolean;
+  /** Pending inbox offers waiting for the user's Wave-back / Dismiss. */
+  offers: Offer[];
+  offersKnown: boolean;
   seenWaveIds: string[];
   /** Wave ids that already played the rings+swoosh reveal (persisted). */
   revealedWaveIds: string[];
@@ -130,6 +132,14 @@ export interface AppStateValue {
   /** Waves on the map, newest first. */
   waves: Wave[];
   wavesKnown: boolean;
+  /**
+   * Pending inbox offers (other people's Ripples aimed at my photos).
+   * Not auto-accepted — the Wave tab lets the user Wave back or Dismiss.
+   */
+  offers: Offer[];
+  offersKnown: boolean;
+  /** Wave tab: accept (verdict same) or dismiss (verdict different). */
+  respondToOffer(offerId: string, verdict: "same" | "different"): Promise<void>;
   /** Waves that have arrived and not been opened, oldest first. */
   newWaves: Wave[];
   /**
@@ -217,6 +227,8 @@ function emptyData(): Data {
     ripples: [],
     waves: [],
     wavesKnown: false,
+    offers: [],
+    offersKnown: false,
     seenWaveIds: [],
     revealedWaveIds: [],
     hidden: { photoIds: [], waveIds: [] },
@@ -378,20 +390,15 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         save("profile");
       }
 
-      const [offers, firstWaves] = await Promise.all([backend.listOffers(), backend.listWaves()]);
-      let waves = firstWaves;
-      let changed = false;
-      for (const offer of offersToAccept(offers, waves)) {
-        try {
-          await backend.acceptOffer(offer.id);
-          changed = true;
-        } catch (error) {
-          // An offer whose photo has since been removed cannot be accepted. Leave it.
-          if (errorKind(error) === "unreachable") throw error;
-        }
-      }
-      if (changed) waves = await backend.listWaves();
+      // Inbox stays pending until the user Waves back or Dismisses on the Wave tab.
+      // Do not auto-accept here (offersToAccept / acceptOffer loop removed).
+      const [offers, waves] = await Promise.all([backend.listOffers(), backend.listWaves()]);
       if (!stillCurrent()) return;
+      commit((current) => ({
+        ...current,
+        offers,
+        offersKnown: true,
+      }));
 
       const store = async (list: Wave[]) => {
         const cached = await withCachedPhotos(list);
@@ -815,6 +822,29 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     [commit, save],
   );
 
+  const respondToOffer = useCallback(
+    async (offerId: string, verdict: "same" | "different") => {
+      if (verdict === "same") await backend.acceptOffer(offerId);
+      else await backend.dismissOffer(offerId);
+      // Optimistic removal; sync refreshes mutual Waves after Wave-back.
+      commit((current) => ({
+        ...current,
+        offers: current.offers.filter((o) => o.id !== offerId),
+      }));
+      if (verdict === "same") {
+        try {
+          const waves = await backend.listWaves();
+          const cached = await withCachedPhotos(waves);
+          commit((current) => ({ ...current, waves: cached, wavesKnown: true }));
+          save("waves");
+        } catch {
+          // Offer already removed; next sync will pick up the Wave.
+        }
+      }
+    },
+    [backend, commit, save],
+  );
+
   const markWaveSeen = useCallback(
     (waveId: string) => {
       if (dataRef.current.seenWaveIds.includes(waveId)) return;
@@ -917,6 +947,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       retryBoot,
       waves: visibleWaves,
       wavesKnown: data.wavesKnown,
+      offers: data.offers,
+      offersKnown: data.offersKnown,
+      respondToOffer,
       newWaves,
       unrevealedWaves: pendingReveal,
       markWaveRevealed,
@@ -954,6 +987,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       postSendWaiting,
       dismissPostSendWaiting,
       data.wavesKnown,
+      data.offers,
+      data.offersKnown,
       data.sync,
       visibleWaves,
       newWaves,
@@ -970,6 +1005,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       syncNow,
       recordMatchSeen,
       finishMatchLook,
+      respondToOffer,
       markWaveSeen,
       deletePhoto,
       reportWave,

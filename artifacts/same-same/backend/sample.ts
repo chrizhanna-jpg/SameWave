@@ -265,6 +265,8 @@ export function createSampleBackend(
 
     async acceptOffer() {},
 
+    async dismissOffer() {},
+
     async listWaves(): Promise<Wave[]> {
       const current = await load();
       const now = clock();

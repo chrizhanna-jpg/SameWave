@@ -1,0 +1,12 @@
+# Home: bold tagline under existing line; bottom content clear of tab bar.
+appId: echo.samewaveripple.app
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Home"
+    timeout: 60000
+- tapOn: "Home"
+- assertVisible: "Someone, somewhere is having a similar moment."
+- assertVisible: "Send a Ripple, Catch a Wave"
+- assertVisible: "Capture a moment"
+- takeScreenshot: home-tagline

@@ -127,7 +127,10 @@ export interface Backend {
 
   /** Offers from other people waiting on one of the user's photos. */
   listOffers(): Promise<Offer[]>;
+  /** Wave tab: Wave back — POST /echoes/:id/respond { verdict: "same" }. */
   acceptOffer(offerId: string): Promise<void>;
+  /** Wave tab: Dismiss — POST /echoes/:id/respond { verdict: "different" }. */
+  dismissOffer(offerId: string): Promise<void>;
 
   listWaves(): Promise<Wave[]>;
   /** The feeling and sound each side sent. */

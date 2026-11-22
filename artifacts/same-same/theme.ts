@@ -153,9 +153,10 @@ export const layout = {
    */
   homeToolbarOffset: 48 * 3,
   /**
-   * Frosted tab bar content height excluding safe-area inset:
+   * Frosted tab bar content height excluding safe-area inset and selection mark:
    * paddingTop (space.md) + tab item row (iconButtonSize).
-   * Prefer useTabBarClearance() for screen padding — it measures the overlay.
+   * Prefer useTabBarClearance() / fallbackTabBarHeight() for screen padding —
+   * those include the mark + safe-area so Home chrome clears the bar.
    */
   tabBarContentHeight: 16 + 48,
   hitSlop: { top: 12, bottom: 12, left: 12, right: 12 },

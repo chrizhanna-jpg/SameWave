@@ -333,11 +333,30 @@ test("incoming offers are read from the inbox and accepted with 'same'", async (
   );
   const offers = await backend.listOffers();
   assert.deepEqual(offers, [
-    { id: "e9", myPhotoId: "mine-1", theirPhotoId: "theirs-9", createdAt: "2026-10-03T00:00:00.000Z" },
+    {
+      id: "e9",
+      myPhotoId: "mine-1",
+      theirPhotoId: "theirs-9",
+      createdAt: "2026-10-03T00:00:00.000Z",
+      theirUri: null,
+      theirEmotion: null,
+      theirTopic: null,
+      theirCountryCode: null,
+    },
   ]);
   await backend.acceptOffer("e9");
   assert.equal(calls[1]!.url, "https://api.example/api/echoes/e9/respond");
   assert.deepEqual(calls[1]!.body, { verdict: "same" });
+});
+
+test("dismissing an offer posts verdict different", async () => {
+  const { backend, calls } = fakeServer(() => ({
+    status: 200,
+    body: { ok: true, state: "declined" },
+  }));
+  await backend.dismissOffer("e9");
+  assert.equal(calls[0]!.url, "https://api.example/api/echoes/e9/respond");
+  assert.deepEqual(calls[0]!.body, { verdict: "different" });
 });
 
 test("a Wave's feelings are read with my photo first", async () => {

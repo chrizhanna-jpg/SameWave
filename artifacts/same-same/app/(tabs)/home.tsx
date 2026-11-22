@@ -19,7 +19,7 @@ import { useAppState } from "@/state/AppState";
 import { SplashReadyContext } from "@/state/SplashReady";
 import { setDraftPhoto, setDraftTopic } from "@/state/draft";
 import { useTabBarClearance } from "@/state/TabBarHeight";
-import { colors, layout, space } from "@/theme";
+import { colors, font, layout, space } from "@/theme";
 
 /**
  * Home tab: brand, topic, send actions, Account. Default launch tab.
@@ -47,7 +47,8 @@ export default function HomeScreen() {
     sendingAnother,
   });
   const today = dailyTopicFor();
-  const tabClearance = useTabBarClearance(space.md);
+  // Clear the absolute frosted tab bar + Android nav/gesture inset (incl. mark).
+  const tabClearance = useTabBarClearance(space.lg);
 
   useEffect(() => {
     setSendingAnother(false);
@@ -179,6 +180,9 @@ export default function HomeScreen() {
             <Txt tone="secondary" center style={styles.tagline}>
               Someone, somewhere is having a similar moment.
             </Txt>
+            <Txt tone="secondary" center style={styles.brandLine}>
+              Send a Ripple, Catch a Wave
+            </Txt>
           </>
         )}
       </Frost>
@@ -263,9 +267,12 @@ const styles = StyleSheet.create({
   },
   brandTitle: { marginTop: space.sm },
   tagline: { maxWidth: 300 },
+  /** Same size/colour as the tagline above; Inter_700Bold. */
+  brandLine: { maxWidth: 300, fontFamily: font.bold },
   caption: { alignSelf: "stretch", maxWidth: 320, paddingHorizontal: space.sm },
   actionsCard: {
-    marginBottom: space.sm,
+    // Extra gap above tab-bar overlay so frosted chrome / wells never sit on the bar.
+    marginBottom: space.md,
   },
   actions: {
     width: "100%",
