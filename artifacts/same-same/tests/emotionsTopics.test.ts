@@ -56,6 +56,7 @@ const SERVER_EMOTIONS = new Set([
   "gratitude",
   "pride",
   "wonder",
+  "awe",
   "calm",
   "sad",
   "lonely",
@@ -68,17 +69,21 @@ const SERVER_EMOTIONS = new Set([
   "fear",
 ]);
 
-test("every picker emotion is persisted as photos.emotion and still a musicGenre", () => {
+test("every picker emotion is persisted as photos.emotion", () => {
   for (const id of EMOTION_IDS) {
     assert.ok(SERVER_EMOTIONS.has(id), `emotion whitelist missing ${id}`);
-    assert.ok(SERVER_MUSIC_GENRES.has(id), `musicGenre whitelist missing ${id}`);
   }
   assert.deepEqual([...SERVER_EMOTIONS].sort(), [...EMOTION_IDS].sort());
   assert.equal(new Set(EMOTION_IDS).size, EMOTION_IDS.length);
-  // Chris's 18 + Calm + Grateful
-  assert.ok(EMOTIONS.length >= 19 && EMOTIONS.length <= 22);
+  // Chris's 18 + Calm + Grateful + Wonder(awe)
+  assert.ok(EMOTIONS.length >= 20 && EMOTIONS.length <= 23);
   assert.ok(EMOTIONS.some((e) => e.label === "Calm" && e.id === "calm"));
   assert.ok(EMOTIONS.some((e) => e.label === "Grateful" && e.id === "gratitude"));
+  assert.ok(EMOTIONS.some((e) => e.label === "Surprised" && e.id === "wonder"));
+  assert.ok(EMOTIONS.some((e) => e.label === "Wonder" && e.id === "awe"));
+  // Wonder sits immediately after Surprised.
+  const wonderIdx = EMOTIONS.findIndex((e) => e.id === "wonder");
+  assert.equal(EMOTIONS[wonderIdx + 1]?.id, "awe");
 });
 
 test("music-only vibe ids are not treated as Feeling ids", () => {
@@ -94,8 +99,12 @@ test("every emotion maps to a library mood that exists in vibes", () => {
     const mood = defaultMusicForEmotion(id);
     assert.equal(mood, EMOTION_TO_MUSIC[id]);
     assert.ok(mood && vibeIds.has(mood), id);
+    assert.ok(SERVER_MUSIC_GENRES.has(mood), `default song for ${id} must be a musicGenre`);
   }
   assert.equal(defaultMusicForEmotion(null), null);
+  // Feeling Wonder (awe) defaults to the Wonder music vibe — not a new vibe id.
+  assert.equal(defaultMusicForEmotion("awe"), "wonder");
+  assert.equal(EMOTION_TO_MUSIC.awe, "wonder");
 });
 
 test("related emotions score partially, exact emotions score fully", () => {
@@ -104,6 +113,13 @@ test("related emotions score partially, exact emotions score fully", () => {
   assert.equal(emotionAffinity("joy", "anger"), 0);
   assert.equal(emotionFor("nope"), null);
   assert.equal(emotionFor("joy")?.label, "Happy");
+  assert.equal(emotionFor("awe")?.label, "Wonder");
+  assert.equal(emotionFor("wonder")?.label, "Surprised");
+  for (const related of ["joy", "overjoyed", "hope", "calm", "wonder"] as const) {
+    assert.equal(emotionAffinity("awe", related), 0.45, related);
+  }
+  assert.equal(emotionAffinity("awe", "fear"), 0);
+  assert.equal(emotionAffinity("awe", "scared"), 0);
 });
 
 test("Topics are everyday moments with type-ahead aliases", () => {

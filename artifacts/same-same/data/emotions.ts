@@ -4,6 +4,8 @@
  * Base list from Chris (18). Additions (flag in report / PR):
  *   • Calm — peaceful / low-arousal feeling he asked to include
  *   • Grateful — everyday warm thanks at the same grain as Caring / Hopeful
+ *   • Wonder (id awe) — separate from Surprised (id wonder); default song is
+ *     the existing Wonder music vibe
  *
  * Feeling ids are persisted as `photos.emotion` (see
  * artifacts/api-server/src/lib/allowedEmotions.ts). Keep those lists in sync.
@@ -21,30 +23,31 @@ export interface Emotion {
 
 /**
  * Happy · Overjoyed · Love · Caring · Connected · Passionate · Hopeful ·
- * Grateful† · Strength · Surprised · Calm† · Sad · Lonely · Loss · Hurt ·
- * Shame · Scared · Anger · Frustrated · Disgust
+ * Grateful† · Strength · Surprised · Wonder† · Calm† · Sad · Lonely · Loss ·
+ * Hurt · Shame · Scared · Anger · Frustrated · Disgust
  *
  * † Additions beyond Chris's draft.
  *
- * Id notes where the label and server genre differ:
+ * Id notes where the label and feeling id differ:
  *   Happy → joy, Connected → romance, Passionate → passion,
  *   Hopeful → hope, Grateful → gratitude, Strength → pride,
- *   Surprised → wonder, Loss → grief, Hurt → heartbroken,
+ *   Surprised → wonder, Wonder → awe, Loss → grief, Hurt → heartbroken,
  *   Shame → longing (closest allowed self-conscious unease),
  *   Frustrated → stress, Disgust → fear (aversion; Scared already takes scared).
  */
 export const EMOTIONS: readonly Emotion[] = [
-  { id: "joy", label: "Happy", related: ["overjoyed", "hope", "pride", "wonder", "gratitude"] },
-  { id: "overjoyed", label: "Overjoyed", related: ["joy", "passion", "wonder", "hope"] },
+  { id: "joy", label: "Happy", related: ["overjoyed", "hope", "pride", "wonder", "gratitude", "awe"] },
+  { id: "overjoyed", label: "Overjoyed", related: ["joy", "passion", "wonder", "hope", "awe"] },
   { id: "love", label: "Love", related: ["caring", "romance", "joy", "hope", "gratitude"] },
   { id: "caring", label: "Caring", related: ["love", "romance", "calm", "hope", "gratitude"] },
   { id: "romance", label: "Connected", related: ["love", "caring", "hope", "calm"] },
   { id: "passion", label: "Passionate", related: ["overjoyed", "love", "romance", "pride"] },
-  { id: "hope", label: "Hopeful", related: ["joy", "love", "pride", "caring", "gratitude"] },
+  { id: "hope", label: "Hopeful", related: ["joy", "love", "pride", "caring", "gratitude", "awe"] },
   { id: "gratitude", label: "Grateful", related: ["love", "caring", "hope", "calm", "joy"] },
   { id: "pride", label: "Strength", related: ["hope", "joy", "passion", "calm"] },
-  { id: "wonder", label: "Surprised", related: ["overjoyed", "joy", "fear", "scared"] },
-  { id: "calm", label: "Calm", related: ["caring", "romance", "hope", "gratitude", "lonely"] },
+  { id: "wonder", label: "Surprised", related: ["overjoyed", "joy", "fear", "scared", "awe"] },
+  { id: "awe", label: "Wonder", related: ["joy", "overjoyed", "hope", "calm", "wonder"] },
+  { id: "calm", label: "Calm", related: ["caring", "romance", "hope", "gratitude", "lonely", "awe"] },
   { id: "sad", label: "Sad", related: ["lonely", "grief", "heartbroken", "longing"] },
   { id: "lonely", label: "Lonely", related: ["sad", "grief", "heartbroken", "calm"] },
   { id: "grief", label: "Loss", related: ["sad", "lonely", "heartbroken", "longing"] },

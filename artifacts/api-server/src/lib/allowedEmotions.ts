@@ -13,6 +13,7 @@ export const ALLOWED_EMOTIONS = new Set([
   "gratitude",
   "pride",
   "wonder",
+  "awe",
   "calm",
   "sad",
   "lonely",
