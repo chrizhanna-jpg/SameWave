@@ -53,6 +53,7 @@ app.get("/api/public/clerk-config", (_req, res) => {
 });
 
 // Play Store update nudge — latest Android build the API knows about.
+// features.* flags are remote switches (default off) flipped via Render env.
 app.get("/api/public/app-config", (_req, res) => {
   const { latestVersionCode, latestVersionName, updateMessage } =
     resolveAndroidLatest();
@@ -64,6 +65,10 @@ app.get("/api/public/app-config", (_req, res) => {
         process.env.ANDROID_PLAY_STORE_URL?.trim() ||
         "https://play.google.com/store/apps/details?id=echo.samewaveripple.app",
       ...(updateMessage ? { updateMessage } : {}),
+    },
+    features: {
+      // Render: FEATURE_RECORD_SOUND=1 to show "Record a sound" on Ripple.
+      recordSound: process.env.FEATURE_RECORD_SOUND?.trim() === "1",
     },
   });
 });

@@ -16,6 +16,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { LaunchSplash } from "@/components/LaunchSplash";
 import { Waiting } from "@/components/Waiting";
+import { bootFeatures } from "@/core/features";
 import { uiShotsBuildEnabled } from "@/core/uiShots";
 import { findWaveByPhotos } from "@/core/waves";
 import { prepareEffects, stopWaveSwoosh } from "@/device/sound";
@@ -248,6 +249,8 @@ export default function RootLayout() {
   useEffect(() => {
     void SystemUI.setBackgroundColorAsync(colors.background).catch(() => undefined);
     prepareEffects();
+    // Remote flags (e.g. FEATURE_RECORD_SOUND) — fail closed if the endpoint is missing.
+    void bootFeatures();
     const fontTimer = setTimeout(() => setFontWaitOver(true), FONT_WAIT_MS);
     const minTimer = setTimeout(() => setMinSplashDone(true), SPLASH_MIN_MS);
     const splashTimer = setTimeout(() => setSplashForcedOff(true), SPLASH_LIMIT_MS);

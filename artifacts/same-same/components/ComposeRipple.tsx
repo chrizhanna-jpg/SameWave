@@ -19,6 +19,7 @@ import { TopicPicker } from "@/components/TopicPicker";
 import { Txt } from "@/components/Txt";
 import { BackendError, errorKind } from "@/backend/types";
 import { dailyTopicFor } from "@/core/dailyTopic";
+import { peekFeatures, subscribeFeatures } from "@/core/features";
 import { wavePhotoSlot } from "@/core/wavePhotoSlot";
 import { waveLayoutMetrics } from "@/device/waveLayoutMetrics";
 import { sceneFor } from "@/data/scenes";
@@ -48,6 +49,10 @@ function useDraft() {
   return useSyncExternalStore(subscribeDraft, getDraft, getDraft);
 }
 
+function useRecordSoundEnabled() {
+  return useSyncExternalStore(subscribeFeatures, () => peekFeatures().recordSound, () => false);
+}
+
 function missingHint(photo: boolean, emotion: boolean, topic: boolean): string {
   const missing: string[] = [];
   if (!photo) missing.push("a photo");
@@ -75,6 +80,7 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
   const previewHeight = Math.max(1, Math.round(PREVIEW_WIDTH / slotAspect));
   const { sendRipple } = useAppState();
   const draft = useDraft();
+  const recordSound = useRecordSoundEnabled();
   const tabClearance = useTabBarClearance(space.xl);
   const scrollRef = useRef<ScreenScroll | null>(null);
   const scrollYRef = useRef(0);
@@ -289,10 +295,14 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
               />
             </View>
 
-            <Txt variant="heading" style={styles.section}>
-              Record a sound – optional
-            </Txt>
-            <SoundRecorder value={draft.recording} onChange={setDraftRecording} />
+            {recordSound ? (
+              <>
+                <Txt variant="heading" style={styles.section}>
+                  Record a sound – optional
+                </Txt>
+                <SoundRecorder value={draft.recording} onChange={setDraftRecording} />
+              </>
+            ) : null}
           </>
         ) : null}
       </Frost>
