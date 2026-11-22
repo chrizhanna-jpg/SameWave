@@ -119,16 +119,14 @@ export function topicFor(id: string | null | undefined): Topic | null {
 }
 
 /**
- * Type-ahead for Topics. Empty query → popular picks. Otherwise match
- * label, id, aliases, and description — then keep the top few.
- * Always returns presets only; never invents a custom Topic. When nothing
- * scores a direct hit, returns the closest presets instead of an empty list.
+ * Type-ahead for Topics. Empty query → no suggestions (compose shows the
+ * input alone). Otherwise match label, id, aliases, and description — then
+ * keep the top few. Always presets only; never invents a custom Topic. When
+ * nothing scores a direct hit, returns the closest presets.
  */
 export function filterTopics(query: string, limit = SUGGESTION_LIMIT): Topic[] {
   const q = query.trim().toLowerCase();
-  if (!q) {
-    return POPULAR_TOPICS.map((id) => topicFor(id)).filter((t): t is Topic => Boolean(t)).slice(0, limit);
-  }
+  if (!q) return [];
   const scored = TOPICS.map((topic) => {
     const label = topic.label.toLowerCase();
     const id = topic.id.toLowerCase();

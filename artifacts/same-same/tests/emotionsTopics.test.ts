@@ -147,13 +147,13 @@ test("related emotions score partially, exact emotions score fully", () => {
   }
 });
 
-test("empty type-ahead shows popular picks, capped at the suggestion limit", () => {
-  assert.equal(filterTopics("").length, POPULAR_TOPICS.length);
-  assert.equal(filterTopics("").length, TOPIC_SUGGESTION_LIMIT);
-  assert.equal(filterEmotions("").length, POPULAR_EMOTIONS.length);
-  assert.equal(filterEmotions("").length, EMOTION_SUGGESTION_LIMIT);
+test("empty type-ahead shows no popular chips — suggestions only after typing", () => {
+  assert.deepEqual(filterTopics(""), []);
+  assert.deepEqual(filterEmotions(""), []);
   assert.equal(filterTopics("a").length, TOPIC_SUGGESTION_LIMIT);
   assert.equal(filterEmotions("h").length, EMOTION_SUGGESTION_LIMIT);
+  assert.ok(POPULAR_TOPICS.length === TOPIC_SUGGESTION_LIMIT);
+  assert.ok(POPULAR_EMOTIONS.length === EMOTION_SUGGESTION_LIMIT);
 });
 
 test("type-ahead matches descriptions and aliases", () => {
@@ -167,12 +167,9 @@ test("type-ahead matches descriptions and aliases", () => {
   assert.ok(filterEmotions("exhausted").some((e) => e.id === "tired"));
   assert.ok(filterEmotions("worn out").some((e) => e.id === "tired"));
   assert.ok(filterEmotions("low on energy").some((e) => e.id === "tired"));
-  for (const topic of filterTopics("")) {
-    assert.ok(topic.description.length > 0);
-  }
-  for (const emotion of filterEmotions("")) {
-    assert.ok(emotion.description.length > 0);
-  }
+  // Descriptions stay in data for synonym/search scoring, not as UI lines.
+  assert.ok(filterTopics("cof")[0]?.description.length);
+  assert.ok(filterEmotions("cal")[0]?.description.length);
 });
 
 test("Topics are everyday moments with type-ahead aliases", () => {

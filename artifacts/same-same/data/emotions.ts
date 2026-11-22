@@ -231,19 +231,14 @@ export function emotionAffinity(a: string | null | undefined, b: string | null |
 }
 
 /**
- * Type-ahead for Feeling. Empty query → popular picks. Otherwise match label,
- * id, aliases, description, and related labels — then keep the top few.
- * Always returns presets only; never invents a custom Feeling. When nothing
- * scores a direct hit, returns the closest presets instead of an empty list.
+ * Type-ahead for Feeling. Empty query → no suggestions (compose shows the
+ * input alone). Otherwise match label, id, aliases, description, and related
+ * labels — then keep the top few. Always presets only; never invents a custom
+ * Feeling. When nothing scores a direct hit, returns the closest presets.
  */
 export function filterEmotions(query: string, limit = SUGGESTION_LIMIT): Emotion[] {
   const q = query.trim().toLowerCase();
-  if (!q) {
-    return POPULAR_EMOTIONS.map((id) => emotionFor(id)).filter((e): e is Emotion => Boolean(e)).slice(
-      0,
-      limit,
-    );
-  }
+  if (!q) return [];
 
   const labelById = new Map(EMOTIONS.map((e) => [e.id, e.label.toLowerCase()] as const));
   const scored = EMOTIONS.map((emotion) => {

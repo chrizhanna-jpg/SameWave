@@ -294,11 +294,7 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
         <Txt variant="quiet" tone="ember" center style={styles.problem}>
           {problem}
         </Txt>
-      ) : (
-        <Txt variant="quiet" tone="secondary" center style={styles.problem}>
-          Matching leans on the emotion and Topic you pick, together with the photo.
-        </Txt>
-      )}
+      ) : null}
     </Screen>
   );
 }

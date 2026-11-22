@@ -16,8 +16,9 @@ interface Props {
 
 /**
  * Type-ahead Topic picker — preset Topics only.
- * Typing filters/suggests; tapping a row saves that preset id. Never free text.
- * Empty search shows popular starters; a miss shows the closest presets.
+ * Default: input only. Typing shows a short dropdown of plain labels
+ * (~6). Synonyms match behind the scenes; never free text.
+ * (Daily/Today topic stays on Home / the locked compose chip — not here.)
  */
 export function TopicPicker({ value, onChange, onSearchFocusChange, locked = false }: Props) {
   const selected = topicFor(value);
@@ -28,8 +29,13 @@ export function TopicPicker({ value, onChange, onSearchFocusChange, locked = fal
     if (locked) setOpen(false);
   }, [locked]);
 
-  const matches = useMemo(() => filterTopics(query), [query]);
-  const showList = !locked && (selected ? open : true);
+  const trimmed = query.trim();
+  const matches = useMemo(
+    () => (trimmed ? filterTopics(trimmed) : []),
+    [trimmed],
+  );
+  // Suggestions only after the person starts typing — never an empty-state chip row.
+  const showList = !locked && trimmed.length > 0 && (selected ? open : true);
 
   if (selected && (!open || locked)) {
     return (
@@ -105,13 +111,10 @@ function Row({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected }}
-      accessibilityLabel={`${topic.label}. ${topic.description}`}
+      accessibilityLabel={topic.label}
       style={[styles.row, selected && styles.rowOn]}
     >
       <Txt>{topic.label}</Txt>
-      <Txt variant="quiet" tone="secondary">
-        {topic.description}
-      </Txt>
     </Pressable>
   );
 }
@@ -132,7 +135,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
     borderRadius: radius.md,
-    gap: 2,
+    justifyContent: "center",
+    minHeight: 44,
   },
   rowOn: { backgroundColor: colors.waterPale },
   chosen: {

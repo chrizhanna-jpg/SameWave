@@ -16,8 +16,8 @@ interface Props {
 
 /**
  * Type-ahead Feeling picker — preset Feelings only.
- * Typing filters/suggests; tapping a row saves that preset id. Never free text.
- * Empty search shows popular picks; a miss shows the closest presets.
+ * Default: input only. Typing shows a short dropdown of plain labels
+ * (~6). Synonyms match behind the scenes; never free text.
  */
 export function EmotionPicker({ value, onChange, onSearchFocusChange, locked = false }: Props) {
   const selected = emotionFor(value);
@@ -28,8 +28,13 @@ export function EmotionPicker({ value, onChange, onSearchFocusChange, locked = f
     if (locked) setOpen(false);
   }, [locked]);
 
-  const matches = useMemo(() => filterEmotions(query), [query]);
-  const showList = !locked && (selected ? open : true);
+  const trimmed = query.trim();
+  const matches = useMemo(
+    () => (trimmed ? filterEmotions(trimmed) : []),
+    [trimmed],
+  );
+  // Suggestions only after the person starts typing — never an empty-state chip row.
+  const showList = !locked && trimmed.length > 0 && (selected ? open : true);
 
   if (selected && (!open || locked)) {
     return (
@@ -109,13 +114,10 @@ function Row({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected }}
-      accessibilityLabel={`${emotion.label}. ${emotion.description}`}
+      accessibilityLabel={emotion.label}
       style={[styles.row, selected && styles.rowOn]}
     >
       <Txt>{emotion.label}</Txt>
-      <Txt variant="quiet" tone="secondary">
-        {emotion.description}
-      </Txt>
     </Pressable>
   );
 }
@@ -136,7 +138,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
     borderRadius: radius.md,
-    gap: 2,
+    justifyContent: "center",
+    minHeight: 44,
   },
   rowOn: { backgroundColor: colors.waterPale },
   chosen: {
