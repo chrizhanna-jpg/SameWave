@@ -12,7 +12,7 @@ import { Txt } from "@/components/Txt";
 import { apiOrigin, appVersionLabel, LEGAL_LINKS } from "@/config/env";
 import { flagFor, nameFor } from "@/data/countries";
 import { sceneFor } from "@/data/scenes";
-import { MUSIC_CREDIT } from "@/data/vibes";
+import { MUSIC_CREDIT, MUSIC_TRACK_CREDITS } from "@/data/vibes";
 import {
   enablePushes,
   pushPermission,
@@ -272,6 +272,11 @@ export default function AccountScreen() {
         <Txt variant="quiet" tone="secondary" center style={styles.credit}>
           {MUSIC_CREDIT}
         </Txt>
+        {MUSIC_TRACK_CREDITS.map((line) => (
+          <Txt key={line} variant="quiet" tone="secondary" center style={styles.trackCredit}>
+            {line}
+          </Txt>
+        ))}
         <Txt variant="quiet" tone="secondary" center>
           {appVersionLabel()}
         </Txt>
@@ -338,6 +343,7 @@ const styles = StyleSheet.create({
     gap: space.sm,
   },
   credit: { marginTop: space.lg },
+  trackCredit: { marginTop: space.xs, paddingHorizontal: space.md },
   copyright: { marginTop: space.sm },
   signOut: { marginTop: space.xl, marginBottom: space.sm },
 });

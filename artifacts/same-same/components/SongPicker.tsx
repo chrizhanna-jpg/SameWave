@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 
 import { Txt } from "@/components/Txt";
-import { clipUrlFor, vibeFor } from "@/core/vibes";
+import { clipSourceFor, clipTitleFor, vibeFor } from "@/core/vibes";
 import { VIBES, type Vibe } from "@/data/vibes";
 import { playClip, stopClip } from "@/device/sound";
 import { colors, radius, space, type } from "@/theme";
@@ -28,15 +28,12 @@ function filterVibes(query: string): Vibe[] {
 }
 
 function trackTitle(vibe: Vibe, seed: string): string {
-  const url = clipUrlFor(vibe.id, seed);
-  if (!url) return vibe.label;
-  const file = decodeURIComponent(url.split("/").pop() ?? "").replace(/\.mp3$/i, "");
-  return file || vibe.label;
+  return clipTitleFor(vibe.id, seed) ?? vibe.label;
 }
 
 /**
  * Library song picker. Search shortens the mood list live; empty search
- * shows the full scrollable library. The chosen mood's clip plays on tap.
+ * shows the full scrollable library. Tapping a row selects and previews.
  */
 export function SongPicker({ value, onChange, previewSeed, onSearchFocusChange }: Props) {
   const selected = vibeFor(value);
@@ -47,10 +44,19 @@ export function SongPicker({ value, onChange, previewSeed, onSearchFocusChange }
   const matches = useMemo(() => filterVibes(query), [query]);
 
   const preview = async (vibeId: string) => {
-    const url = clipUrlFor(vibeId, previewSeed);
-    if (!url) return;
+    const source = clipSourceFor(vibeId, previewSeed);
+    if (source == null) return;
     setPlayingId(vibeId);
-    await playClip(url, () => setPlayingId((current) => (current === vibeId ? null : current)));
+    await playClip(source, () => setPlayingId((current) => (current === vibeId ? null : current)), {
+      onError: () => setPlayingId((current) => (current === vibeId ? null : current)),
+    });
+  };
+
+  const selectAndPreview = (vibeId: string) => {
+    onChange(vibeId);
+    setOpen(false);
+    setQuery("");
+    void preview(vibeId);
   };
 
   if (selected && !open) {
@@ -114,13 +120,7 @@ export function SongPicker({ value, onChange, previewSeed, onSearchFocusChange }
           return (
             <Pressable
               key={vibe.id}
-              onPress={() => {
-                onChange(vibe.id);
-                setOpen(false);
-                setQuery("");
-                stopClip();
-                setPlayingId(null);
-              }}
+              onPress={() => selectAndPreview(vibe.id)}
               accessibilityRole="button"
               accessibilityState={{ selected: on }}
               accessibilityLabel={`${vibe.label}, ${trackTitle(vibe, previewSeed)}`}

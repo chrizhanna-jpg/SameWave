@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { mergeRipples, photoHistory, ripplesFromLegacyState } from "../core/history";
 import type { Ripple, Wave } from "../core/types";
-import { clipUrlFor, vibeFor } from "../core/vibes";
+import { clipFileFor, clipTitleFor, vibeFor } from "../core/vibes";
 import { findWaveByPhotos, sortWaves, unseenWaves } from "../core/waves";
 import { PICKER_VIBE_IDS, VIBES } from "../data/vibes";
 
@@ -134,9 +134,23 @@ test("every feeling offered when sending is one the server accepts and has clips
 });
 
 test("a photo always gets the same clip for its feeling", () => {
-  const first = clipUrlFor("calm", "photo-123");
-  assert.ok(first?.startsWith("https://incompetech.com/"));
-  assert.equal(clipUrlFor("calm", "photo-123"), first);
-  assert.equal(clipUrlFor("not-a-feeling", "photo-123"), null);
-  assert.equal(clipUrlFor(null, "photo-123"), null);
+  const first = clipFileFor("calm", "photo-123");
+  assert.ok(first?.endsWith(".mp3"));
+  assert.equal(clipFileFor("calm", "photo-123"), first);
+  assert.ok(clipTitleFor("calm", "photo-123"));
+  assert.equal(clipFileFor("not-a-feeling", "photo-123"), null);
+  assert.equal(clipFileFor(null, "photo-123"), null);
+});
+
+test("bundled clip registry covers every vibe file", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { CLIP_TITLES } = require("../data/musicCredits") as {
+    CLIP_TITLES: Record<string, string>;
+  };
+  for (const vibe of VIBES) {
+    for (const encoded of vibe.clips) {
+      const file = decodeURIComponent(encoded);
+      assert.ok(CLIP_TITLES[file], `missing title for ${file}`);
+    }
+  }
 });

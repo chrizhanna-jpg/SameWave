@@ -23,10 +23,19 @@ import { PhotoMetaChip } from "@/components/PhotoMetaChip";
 import { WaveSimilarityLine } from "@/components/WaveSimilarityLine";
 import type { WaveDetail } from "@/backend/types";
 import { describeGap, matchBonuses } from "@/core/bonuses";
-import { clipUrlFor, vibeFor } from "@/core/vibes";
+import { sampleWaveDetail } from "@/core/sampleWaveDetail";
+import { clipSourceFor, clipTitleFor, vibeFor } from "@/core/vibes";
 import { flagFor, nameFor } from "@/data/countries";
 import { NATIVE_DRIVER, useReducedMotion } from "@/device/motion";
-import { playClip, playEffect, playWaveSwoosh, stopClip, stopWaveSwoosh } from "@/device/sound";
+import {
+  fadeStopClip,
+  playClip,
+  playEffect,
+  playWaveSwoosh,
+  stopClip,
+  stopWaveSwoosh,
+  type ClipSource,
+} from "@/device/sound";
 import { useAppState } from "@/state/AppState";
 import { colors, motion, space } from "@/theme";
 
@@ -94,6 +103,10 @@ export default function WaveScreen() {
   const chromeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const seen = useRef(false);
   const ceremonyFor = useRef<string | null>(null);
+  const detailRef = useRef<WaveDetail | null>(null);
+  detailRef.current = detail;
+  const ripplesRef = useRef(ripples);
+  ripplesRef.current = ripples;
 
   const bonuses = useMemo(
     () =>
@@ -164,8 +177,12 @@ export default function WaveScreen() {
   }, [wave, markWaveSeen, markWaveRevealed, reveal]);
 
   useEffect(() => {
-    if (!wave || isSampleWave(wave.id)) return;
+    if (!wave) return;
     let cancelled = false;
+    if (isSampleWave(wave.id)) {
+      setDetail(sampleWaveDetail(wave));
+      return;
+    }
     backend
       .getWaveDetail(wave)
       .then((next) => {
@@ -231,6 +248,34 @@ export default function WaveScreen() {
       ]).start();
     }, Math.min(motion.waveBuildUp, 1600));
 
+    // After the chime: autoplay the original rippler's song/recording (mine when
+    // this device owns that Ripple; otherwise theirs). Gentle fade-in; no Match music.
+    const musicAt = setTimeout(() => {
+      if (!wave) return;
+      const liveDetail =
+        detailRef.current ??
+        (isSampleWave(wave.id) ? sampleWaveDetail(wave) : null);
+      const mineOwned = ripplesRef.current.some((r) => r.photoId === wave.mine.photoId);
+      const preferMine = mineOwned || reveal === "1";
+      const order: Array<"mine" | "theirs"> = preferMine ? ["mine", "theirs"] : ["theirs", "mine"];
+      for (const side of order) {
+        const recording =
+          side === "mine" ? liveDetail?.mine.recordingUri : liveDetail?.theirs.recordingUri;
+        const vibe = side === "mine" ? liveDetail?.mine.vibe : liveDetail?.theirs.vibe;
+        const photoId = side === "mine" ? wave.mine.photoId : wave.theirs.photoId;
+        const source: ClipSource | null = recording
+          ? recording
+          : clipSourceFor(vibe ?? null, photoId);
+        if (source == null) continue;
+        setPlaying(side);
+        void playClip(source, () => setPlaying(null), {
+          fadeInMs: 1200,
+          onError: () => setPlaying(null),
+        });
+        break;
+      }
+    }, Math.min(motion.waveBuildUp, 1600) + motion.waveSplash + 200);
+
     const revealAt = setTimeout(() => {
       setPhase("reveal");
       Animated.timing(sharpen, {
@@ -251,12 +296,12 @@ export default function WaveScreen() {
       showChrome();
     }, Math.min(motion.waveBuildUp, 1600) + motion.waveSplash + motion.waveSharpen + motion.waveHeadlineDelay);
 
-    timers.current = [splashAt, revealAt, headlineAt];
+    timers.current = [splashAt, revealAt, headlineAt, musicAt];
     return () => {
       timers.current.forEach(clearTimeout);
       timers.current = [];
       if (chromeTimer.current) clearTimeout(chromeTimer.current);
-      stopClip();
+      fadeStopClip(700);
     };
     // Ceremony runs once for this Wave after any pulse phase.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -302,20 +347,32 @@ export default function WaveScreen() {
   }
 
   const blur = phase === "build" || phase === "splash" ? 16 : 0;
-  const mineClip =
-    detail?.mine.recordingUri ?? clipUrlFor(detail?.mine.vibe ?? null, wave.mine.photoId);
-  const theirsClip =
-    detail?.theirs.recordingUri ?? clipUrlFor(detail?.theirs.vibe ?? null, wave.theirs.photoId);
+  const mineClip: ClipSource | null =
+    detail?.mine.recordingUri ??
+    clipSourceFor(detail?.mine.vibe ?? null, wave.mine.photoId);
+  const theirsClip: ClipSource | null =
+    detail?.theirs.recordingUri ??
+    clipSourceFor(detail?.theirs.vibe ?? null, wave.theirs.photoId);
+  const mineTitle =
+    detail?.mine.recordingUri
+      ? "Your recording"
+      : clipTitleFor(detail?.mine.vibe ?? null, wave.mine.photoId);
+  const theirsTitle =
+    detail?.theirs.recordingUri
+      ? "Their recording"
+      : clipTitleFor(detail?.theirs.vibe ?? null, wave.theirs.photoId);
 
-  const playSide = (side: "mine" | "theirs", uri: string | null) => {
-    if (!uri) return;
+  const playSide = (side: "mine" | "theirs", source: ClipSource | null) => {
+    if (source == null) return;
     if (playing === side) {
       stopClip();
       setPlaying(null);
       return;
     }
     setPlaying(side);
-    void playClip(uri, () => setPlaying(null));
+    void playClip(source, () => setPlaying(null), {
+      onError: () => setPlaying(null),
+    });
   };
 
   const onReport = async () => {
@@ -461,7 +518,8 @@ export default function WaveScreen() {
                   null
                 }
                 vibe={detail?.mine.vibe ?? null}
-                clip={mineClip}
+                trackTitle={mineTitle}
+                hasClip={mineClip != null}
                 playing={playing === "mine"}
                 onPlay={() => playSide("mine", mineClip)}
               />
@@ -471,7 +529,8 @@ export default function WaveScreen() {
                 emotion={detail?.theirs.emotion ?? sampleMeta?.theirs?.emotion ?? null}
                 topic={detail?.theirs.topic ?? sampleMeta?.theirs?.theme ?? null}
                 vibe={detail?.theirs.vibe ?? null}
-                clip={theirsClip}
+                trackTitle={theirsTitle}
+                hasClip={theirsClip != null}
                 playing={playing === "theirs"}
                 onPlay={() => playSide("theirs", theirsClip)}
               />
@@ -503,7 +562,8 @@ function Side({
   emotion,
   topic,
   vibe,
-  clip,
+  trackTitle,
+  hasClip,
   playing,
   onPlay,
 }: {
@@ -512,7 +572,8 @@ function Side({
   emotion: string | null;
   topic: string | null;
   vibe: string | null;
-  clip: string | null;
+  trackTitle: string | null;
+  hasClip: boolean;
   playing: boolean;
   onPlay: () => void;
 }) {
@@ -526,16 +587,29 @@ function Side({
         {flagFor(country)} {place ?? "Somewhere"}
       </Txt>
       <PhotoMetaChip emotion={emotion} topic={topic} style={styles.sideMeta} />
-      {vibe || clip ? (
+      {vibe || hasClip ? (
         <Pressable
           onPress={onPlay}
-          disabled={!clip}
+          disabled={!hasClip}
           accessibilityRole="button"
-          accessibilityLabel={playing ? "Stop" : "Play feeling"}
+          accessibilityLabel={
+            playing
+              ? "Stop"
+              : trackTitle
+                ? `Play ${trackTitle}`
+                : "Play feeling"
+          }
           style={styles.vibe}
         >
-          {clip ? <Icon name={playing ? "stop" : "play"} size={18} /> : null}
-          <Txt tone="secondary">{vibeFor(vibe)?.label ?? "Sound"}</Txt>
+          {hasClip ? <Icon name={playing ? "stop" : "play"} size={18} /> : null}
+          <View style={styles.vibeText}>
+            <Txt tone="secondary">{vibeFor(vibe)?.label ?? "Sound"}</Txt>
+            {trackTitle ? (
+              <Txt variant="quiet" tone="quiet">
+                {trackTitle}
+              </Txt>
+            ) : null}
+          </View>
         </Pressable>
       ) : null}
     </View>
@@ -594,6 +668,7 @@ const styles = StyleSheet.create({
   side: { marginBottom: space.lg, gap: space.xs },
   sideMeta: { alignItems: "flex-start", marginTop: space.xs },
   vibe: { flexDirection: "row", alignItems: "center", gap: space.sm, marginTop: space.xs },
+  vibeText: { flex: 1, gap: 2 },
   gap: { marginTop: space.sm },
   report: { marginTop: space.md },
   back: { marginTop: space.xl, alignSelf: "center", minWidth: 180 },

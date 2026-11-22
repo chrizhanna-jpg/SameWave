@@ -370,7 +370,8 @@ export async function playWave(): Promise<void> {
   });
 }
 
-let activeClip: { player: AudioPlayer; ended: () => void } | null = null;
+let activeClip: { player: AudioPlayer; ended: () => void; gen: number } | null = null;
+let clipGeneration = 0;
 
 function releaseClip(notify: boolean): void {
   const clip = activeClip;
@@ -389,22 +390,115 @@ function releaseClip(notify: boolean): void {
   if (notify) clip.ended();
 }
 
-export async function playClip(uri: string, onEnd: () => void): Promise<void> {
+export type ClipSource = number | string | { uri: string };
+
+/**
+ * Play a bundled module id, a file URI, or `{ uri }`.
+ * Waits until the player reports loaded before play(); surfaces load errors
+ * via `onError` instead of swallowing them.
+ */
+export async function playClip(
+  source: ClipSource,
+  onEnd: () => void,
+  options?: { fadeInMs?: number; volume?: number; onError?: (error: unknown) => void },
+): Promise<void> {
   releaseClip(true);
+  const gen = ++clipGeneration;
+  const fadeInMs = options?.fadeInMs ?? 0;
+  const targetVolume = options?.volume ?? 0.9;
   try {
     await setPlaybackMode();
-    const player = createAudioPlayer({ uri });
-    player.volume = 0.9;
-    const clip = { player, ended: onEnd };
+    const player =
+      typeof source === "number"
+        ? createAudioPlayer(source)
+        : typeof source === "string"
+          ? createAudioPlayer({ uri: source })
+          : createAudioPlayer(source);
+    player.volume = fadeInMs > 0 ? 0 : targetVolume;
+    const clip = { player, ended: onEnd, gen };
     activeClip = clip;
+
+    let started = false;
+    const startPlayback = () => {
+      if (started || activeClip !== clip) return;
+      started = true;
+      try {
+        player.play();
+      } catch (error) {
+        options?.onError?.(error);
+        if (activeClip === clip) releaseClip(true);
+        return;
+      }
+      if (fadeInMs > 0) {
+        const steps = Math.max(6, Math.round(fadeInMs / 50));
+        let step = 0;
+        const timer = setInterval(() => {
+          if (activeClip !== clip) {
+            clearInterval(timer);
+            return;
+          }
+          step += 1;
+          const t = Math.min(1, step / steps);
+          try {
+            player.volume = targetVolume * t;
+          } catch {
+            /* */
+          }
+          if (t >= 1) clearInterval(timer);
+        }, fadeInMs / steps);
+      }
+    };
+
     player.addListener("playbackStatusUpdate", (status) => {
-      if (status.didJustFinish && activeClip === clip) releaseClip(true);
+      if (activeClip !== clip) return;
+      if (status.isLoaded && !started) startPlayback();
+      if (status.didJustFinish) releaseClip(true);
     });
-    player.play();
-  } catch {
-    releaseClip(false);
-    onEnd();
+
+    // Already loaded (common for bundled modules).
+    if (player.isLoaded) startPlayback();
+    else {
+      // Soft timeout so a stuck load still surfaces.
+      setTimeout(() => {
+        if (activeClip !== clip || started) return;
+        if (player.isLoaded) startPlayback();
+        else {
+          const error = new Error("Clip failed to load");
+          options?.onError?.(error);
+          releaseClip(true);
+        }
+      }, 8000);
+    }
+  } catch (error) {
+    options?.onError?.(error);
+    if (clipGeneration === gen) {
+      releaseClip(false);
+      onEnd();
+    }
   }
+}
+
+/** Fade volume to zero then stop (gentle leave). */
+export function fadeStopClip(fadeMs = 600): void {
+  const clip = activeClip;
+  if (!clip) return;
+  const { player } = clip;
+  const from = typeof player.volume === "number" ? player.volume : 0.9;
+  const steps = Math.max(4, Math.round(fadeMs / 50));
+  let step = 0;
+  const timer = setInterval(() => {
+    step += 1;
+    const t = Math.min(1, step / steps);
+    try {
+      player.volume = from * (1 - t);
+    } catch {
+      /* */
+    }
+    if (t >= 1) {
+      clearInterval(timer);
+      releaseClip(true);
+    }
+  }, fadeMs / steps);
 }
 
 export function stopClip(): void {

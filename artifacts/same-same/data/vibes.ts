@@ -2,19 +2,16 @@
  * Feelings that can travel with a Ripple. The ids are the set the server
  * accepts for a photo; anything else is dropped on upload.
  *
- * Clips are Kevin MacLeod tracks from incompetech.com, licensed CC BY 4.0.
- * The credit is shown on the Account screen.
+ * Clips are short bundled edits of Kevin MacLeod tracks (incompetech.com),
+ * licensed CC BY 4.0. Credits live on the Account screen.
  */
 
 export interface Vibe {
   id: string;
   label: string;
-  /** File names under CLIP_BASE. */
+  /** Original filenames (may be URI-encoded) → assets/music/registry. */
   clips: readonly string[];
 }
-
-export const CLIP_BASE =
-  "https://incompetech.com/music/royalty-free/mp3-royaltyfree/";
 
 export const VIBES: readonly Vibe[] = [
   {
@@ -346,3 +343,5 @@ export const PICKER_VIBE_IDS: readonly string[] = [
 ];
 
 export const MUSIC_CREDIT = "Music by Kevin MacLeod (incompetech.com), CC BY 4.0";
+
+export { MUSIC_TRACK_CREDITS } from "./musicCredits";
