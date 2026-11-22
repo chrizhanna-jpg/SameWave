@@ -12,7 +12,7 @@ import { space } from "@/theme";
 
 const STEPS = [
   {
-    title: "Send a Ripple",
+    title: "Capture a moment",
     body: "One photo of your day, an emotion, and a Topic. Or tap Today for the shared Daily topic. Matching leans on the emotion and Topic together with the photo.",
   },
   {
@@ -33,6 +33,9 @@ export default function HowItWorksScreen() {
       <Header />
       <Frost kind="card" style={styles.card} contentStyle={styles.pad}>
         <Txt variant="title">How it works</Txt>
+        <Txt tone="secondary" style={styles.line}>
+          A match is a ripple, and a match back is a wave.
+        </Txt>
         {STEPS.map((step, index) => (
           <Frost key={step.title} kind="card" style={styles.step} contentStyle={styles.stepPad}>
             <Txt variant="quiet" tone="secondary">
@@ -53,6 +56,7 @@ export default function HowItWorksScreen() {
 const styles = StyleSheet.create({
   card: { marginBottom: space.lg },
   pad: { paddingHorizontal: space.lg, paddingVertical: space.lg },
+  line: { marginTop: space.md, marginBottom: space.sm },
   step: { marginTop: space.lg },
   stepPad: { paddingHorizontal: space.md, paddingVertical: space.md },
   heading: { marginTop: space.xs, marginBottom: space.sm },
