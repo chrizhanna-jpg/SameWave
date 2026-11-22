@@ -42,11 +42,17 @@ export function subscribeDraft(listener: () => void): () => void {
   };
 }
 
+/**
+ * Snapshot for `useSyncExternalStore`. MUST return the same reference until
+ * a setter publishes — spreading a fresh object here causes
+ * "Maximum update depth exceeded" on the Ripple tab.
+ */
 export function getDraft(): RippleComposeDraft {
-  return { ...draft, recording: draft.recording };
+  return draft;
 }
 
 export function setDraftPhoto(photo: ChosenPhoto | null): void {
+  if (draft.photo === photo) return;
   draft = { ...draft, photo };
   publish();
 }
@@ -60,10 +66,12 @@ export function getDraftPhoto(): ChosenPhoto | null {
  * compose hides the picker and always sends that topic.
  */
 export function setDraftTopic(topicId: string | null, options?: { locked?: boolean }): void {
+  const topicLocked = topicId !== null && options?.locked === true;
+  if (draft.topic === topicId && draft.topicLocked === topicLocked) return;
   draft = {
     ...draft,
     topic: topicId,
-    topicLocked: topicId !== null && options?.locked === true,
+    topicLocked,
   };
   publish();
 }
@@ -78,6 +86,7 @@ export function isDraftTopicLocked(): boolean {
 }
 
 export function setDraftEmotion(emotion: string | null): void {
+  if (draft.emotion === emotion) return;
   draft = { ...draft, emotion };
   publish();
 }
@@ -87,10 +96,12 @@ export function getDraftEmotion(): string | null {
 }
 
 export function setDraftSong(song: string | null, options?: { touched?: boolean }): void {
+  const songTouched = options?.touched === true ? true : draft.songTouched;
+  if (draft.song === song && draft.songTouched === songTouched) return;
   draft = {
     ...draft,
     song,
-    songTouched: options?.touched === true ? true : draft.songTouched,
+    songTouched,
   };
   publish();
 }
@@ -104,6 +115,7 @@ export function isDraftSongTouched(): boolean {
 }
 
 export function setDraftRecording(recording: Recording | null): void {
+  if (draft.recording === recording) return;
   draft = { ...draft, recording };
   publish();
 }
