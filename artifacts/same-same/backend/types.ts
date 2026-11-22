@@ -85,6 +85,10 @@ export interface VibeDetail {
   vibe: string | null;
   /** A playable recording, when one was sent with the photo. */
   recordingUri: string | null;
+  /** Emotion id when the pair payload includes one. */
+  emotion?: string | null;
+  /** Topic / theme id when the pair payload includes one. */
+  topic?: string | null;
 }
 
 export interface WaveDetail {

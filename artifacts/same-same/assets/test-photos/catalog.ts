@@ -58,7 +58,7 @@ export function getTestPhotoCandidates(): Candidate[] {
       uri,
       createdAt: meta.takenAt,
       theme: meta.theme,
-      emotion: null,
+      emotion: meta.emotion,
       takenAt: meta.takenAt,
       countryCode: meta.countryCode,
     } satisfies Candidate;

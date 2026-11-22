@@ -134,6 +134,13 @@ function vibeDetail(raw: unknown): VibeDetail {
   return {
     vibe: typeof side.musicGenre === "string" && side.musicGenre ? side.musicGenre : null,
     recordingUri: audio && mime.startsWith("audio/") ? `data:${mime};base64,${audio}` : null,
+    emotion:
+      typeof side.emotion === "string" && side.emotion
+        ? side.emotion
+        : typeof side.musicGenre === "string" && side.musicGenre
+          ? side.musicGenre
+          : null,
+    topic: typeof side.theme === "string" && side.theme ? side.theme : null,
   };
 }
 

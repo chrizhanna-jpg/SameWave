@@ -163,10 +163,13 @@ function Routes() {
     );
   }
 
+  const uiShots = process.env.EXPO_PUBLIC_UI_SHOTS === "1";
   const signedIn = session.status === "signedIn";
-  const starting = signedIn && (!app.ready || app.country === "checking");
-  const inApp = signedIn && !starting && app.country === "known";
-  const choosingCountry = signedIn && !starting && !inApp;
+  const starting = !uiShots && signedIn && (!app.ready || app.country === "checking");
+  // UI shot builds treat the preview account as fully in-app so shot routes render.
+  const inApp =
+    uiShots || (signedIn && !starting && app.country === "known");
+  const choosingCountry = !uiShots && signedIn && !starting && !inApp;
   return (
     <>
       <Stack
@@ -198,6 +201,11 @@ function Routes() {
           <Stack.Screen name="sign-in" />
         </Stack.Protected>
         <Stack.Screen name="how-it-works" />
+        {/* Preview-only UI shot routes (TEST_PHOTOS / UI_SHOTS builds). */}
+        <Stack.Screen name="ripple-mark-shot" />
+        <Stack.Screen name="match-blur-shot" />
+        <Stack.Screen name="waves-list-shot" />
+        <Stack.Screen name="wave-sheet-shot" />
         <Stack.Screen name="+not-found" />
       </Stack>
       {inApp ? (

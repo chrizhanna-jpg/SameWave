@@ -19,6 +19,8 @@ export type TestPhotoMeta = {
   lng: number;
   /** Topic id from `data/topics` so Match can prefer same-topic samples. */
   theme: string;
+  /** Emotion id from `data/emotions` — shown on Match, never with place. */
+  emotion: string;
 };
 
 /**
@@ -37,6 +39,7 @@ export const TEST_PHOTO_META: readonly TestPhotoMeta[] = [
     lat: 51.5074,
     lng: -0.1278,
     theme: "mountains",
+    emotion: "calm",
   },
   {
     id: "test_sample_02",
@@ -47,6 +50,7 @@ export const TEST_PHOTO_META: readonly TestPhotoMeta[] = [
     lat: 51.515,
     lng: -0.12,
     theme: "coffee",
+    emotion: "joy",
   },
   {
     id: "test_sample_03",
@@ -57,6 +61,7 @@ export const TEST_PHOTO_META: readonly TestPhotoMeta[] = [
     lat: 48.8566,
     lng: 2.3522,
     theme: "nature",
+    emotion: "hope",
   },
   {
     id: "test_sample_04",
@@ -67,6 +72,7 @@ export const TEST_PHOTO_META: readonly TestPhotoMeta[] = [
     lat: 52.52,
     lng: 13.405,
     theme: "countryside",
+    emotion: "gratitude",
   },
   {
     id: "test_sample_05",
@@ -77,6 +83,7 @@ export const TEST_PHOTO_META: readonly TestPhotoMeta[] = [
     lat: 41.9028,
     lng: 12.4964,
     theme: "weather",
+    emotion: "wonder",
   },
   {
     id: "test_sample_06",
@@ -87,6 +94,7 @@ export const TEST_PHOTO_META: readonly TestPhotoMeta[] = [
     lat: 40.4168,
     lng: -3.7038,
     theme: "mountains",
+    emotion: "lonely",
   },
   {
     id: "test_sample_07",
@@ -97,6 +105,7 @@ export const TEST_PHOTO_META: readonly TestPhotoMeta[] = [
     lat: 40.7128,
     lng: -74.006,
     theme: "beach",
+    emotion: "joy",
   },
   {
     id: "test_sample_08",
@@ -107,6 +116,7 @@ export const TEST_PHOTO_META: readonly TestPhotoMeta[] = [
     lat: 35.6762,
     lng: 139.6503,
     theme: "beach",
+    emotion: "calm",
   },
 ];
 

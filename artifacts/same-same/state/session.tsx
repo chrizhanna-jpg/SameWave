@@ -178,6 +178,25 @@ function ClerkSessionProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Preview UI-shot builds can skip Clerk so headless screenshots stay offline-able. */
+function UiShotSessionProvider({ children }: { children: React.ReactNode }) {
+  const session = useMemo<Session>(
+    () => ({
+      status: "signedIn",
+      accountId: "ui-shot",
+      getToken: async () => null,
+      signOut: async () => undefined,
+      slow: false,
+      retry: () => undefined,
+    }),
+    [],
+  );
+  return <SessionContext.Provider value={session}>{children}</SessionContext.Provider>;
+}
+
 export function SessionProvider({ children }: { children: React.ReactNode }) {
+  if (process.env.EXPO_PUBLIC_UI_SHOTS === "1") {
+    return <UiShotSessionProvider>{children}</UiShotSessionProvider>;
+  }
   return <ClerkSessionProvider>{children}</ClerkSessionProvider>;
 }

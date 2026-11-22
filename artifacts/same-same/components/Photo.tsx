@@ -1,6 +1,6 @@
 import { Image, type ImageSource as ExpoImageSource } from "expo-image";
 import React, { useEffect, useRef, useState } from "react";
-import { StyleSheet, View, type ImageStyle, type StyleProp } from "react-native";
+import { Platform, StyleSheet, View, type ImageStyle, type StyleProp } from "react-native";
 
 import { PHOTO_BLUR_IN_MS, PHOTO_BLUR_IN_RADIUS, blurInRadiusAt } from "@/core/photoBlurIn";
 import { useAppState } from "@/state/AppState";
@@ -92,9 +92,15 @@ export function Photo({
       {source && !failed ? (
         <Image
           source={source}
-          style={StyleSheet.absoluteFill}
+          style={[
+            StyleSheet.absoluteFill,
+            // expo-image blurRadius is a no-op on web; CSS filter keeps soft→sharp visible in previews.
+            Platform.OS === "web" && effectiveBlur > 0
+              ? ({ filter: `blur(${Math.min(effectiveBlur, 24)}px)` } as ImageStyle)
+              : null,
+          ]}
           contentFit="cover"
-          blurRadius={effectiveBlur}
+          blurRadius={Platform.OS === "web" ? 0 : effectiveBlur}
           transition={motion.fadeQuick}
           cachePolicy="memory-disk"
           accessibilityLabel={accessibilityLabel}

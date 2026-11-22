@@ -4,6 +4,7 @@ import { StyleSheet, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Frost } from "@/components/Frost";
+import { PhotoMetaChip } from "@/components/PhotoMetaChip";
 import { Txt } from "@/components/Txt";
 import { WaveJoin } from "@/components/WaveJoin";
 import { WaveSimilarityLine } from "@/components/WaveSimilarityLine";
@@ -18,24 +19,32 @@ export default function WaveSheetShotScreen() {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
-  const wave = useMemo((): Wave | null => {
+  const pack = useMemo(() => {
     if (process.env.EXPO_PUBLIC_TEST_PHOTOS !== "1") return null;
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { loadSampleWaves } = require("@/core/testPhotos") as {
       loadSampleWaves: () => Wave[];
     };
-    // same_month fixture → "Same month, same continent"
-    return (
-      loadSampleWaves().find((w) => w.id.includes("same_month")) ??
-      loadSampleWaves()[0] ??
-      null
-    );
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { TEST_PHOTO_META } = require("../assets/test-photos/fixtures") as {
+      TEST_PHOTO_META: readonly { id: string; theme: string; emotion: string }[];
+    };
+    const waves = loadSampleWaves();
+    const wave =
+      waves.find((w) => w.id.includes("same_month")) ?? waves[0] ?? null;
+    if (!wave) return null;
+    return {
+      wave,
+      mine: TEST_PHOTO_META.find((m) => m.id === wave.mine.photoId) ?? null,
+      theirs: TEST_PHOTO_META.find((m) => m.id === wave.theirs.photoId) ?? null,
+    };
   }, []);
 
   if (process.env.EXPO_PUBLIC_TEST_PHOTOS !== "1") {
     return <Redirect href="/" />;
   }
-  if (!wave) return <View style={styles.root} />;
+  if (!pack) return <View style={styles.root} />;
+  const { wave, mine, theirs } = pack;
 
   const bonuses = matchBonuses(
     { takenAt: wave.mine.takenAt, countryCode: wave.mine.countryCode },
@@ -57,9 +66,14 @@ export default function WaveSheetShotScreen() {
         <Frost kind="card" style={styles.panelFrost} contentStyle={styles.panelInner}>
           <View style={styles.panelHandle} accessibilityLabel="Hide details" />
           <WaveSimilarityLine headline={bonuses.headline} surface="sheet" style={styles.sheetHeadline} />
-          <Txt tone="secondary" center>
-            Discover sheet · similarity under handle
+          <Txt variant="quiet" tone="quiet">
+            You
           </Txt>
+          <PhotoMetaChip emotion={mine?.emotion} topic={mine?.theme} style={styles.sideMeta} />
+          <Txt variant="quiet" tone="quiet" style={styles.them}>
+            Them
+          </Txt>
+          <PhotoMetaChip emotion={theirs?.emotion} topic={theirs?.theme} style={styles.sideMeta} />
         </Frost>
       </View>
     </View>
@@ -95,4 +109,6 @@ const styles = StyleSheet.create({
     marginBottom: space.lg,
   },
   sheetHeadline: { marginTop: space.xs, marginBottom: space.md },
+  sideMeta: { alignItems: "flex-start", marginTop: space.xs, marginBottom: space.sm },
+  them: { marginTop: space.sm },
 });

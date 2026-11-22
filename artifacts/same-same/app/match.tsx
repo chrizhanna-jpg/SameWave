@@ -15,6 +15,7 @@ import { Button } from "@/components/Button";
 import { FrostIconWell } from "@/components/Frost";
 import { Icon } from "@/components/Icon";
 import { RippleMark } from "@/components/RippleMark";
+import { PhotoMetaChip } from "@/components/PhotoMetaChip";
 import { Scrim } from "@/components/Scrim";
 import { Txt } from "@/components/Txt";
 import { WaveJoin } from "@/components/WaveJoin";
@@ -397,23 +398,6 @@ export default function MatchScreen() {
   const empty = load === "empty" || (load === "ready" && !candidate);
   // Hide match/skip when there's nothing to act on — dead buttons confuse people.
   const showActions = load === "ready" && !empty;
-  const sampleCaption =
-    candidate && isSample(candidate.id)
-      ? [
-          candidate.countryCode ? `Sample · ${candidate.countryCode}` : "Sample",
-          candidate.takenAt
-            ? new Date(candidate.takenAt).toLocaleString(undefined, {
-                month: "short",
-                day: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-              })
-            : null,
-        ]
-          .filter(Boolean)
-          .join(" · ")
-      : null;
-
   if (!ripple && load !== "loading") {
     return (
       <View style={[styles.root, { paddingTop: insets.top + space.md }]}>
@@ -506,16 +490,19 @@ export default function MatchScreen() {
         </View>
       ) : null}
 
-      {sampleCaption && showActions ? (
+      {candidate && showActions ? (
         <View
-          style={[styles.sampleCaption, { bottom: Math.max(insets.bottom, space.md) + ACTION_SIZE + space.lg }]}
+          style={[
+            styles.metaChip,
+            {
+              // Lower half, clear of the seam and the action row.
+              top: height / 2 + space.lg,
+              bottom: Math.max(insets.bottom, space.md) + ACTION_SIZE + space.lg,
+            },
+          ]}
           pointerEvents="none"
         >
-          <Scrim kind="light">
-            <Txt variant="quiet" center>
-              {sampleCaption}
-            </Txt>
-          </Scrim>
+          <PhotoMetaChip emotion={candidate.emotion} topic={candidate.theme} />
         </View>
       ) : null}
 
@@ -646,11 +633,12 @@ const styles = StyleSheet.create({
   },
   actionPressed: { opacity: 0.85, transform: [{ scale: 0.94 }] },
   emptyDone: { marginTop: space.lg, alignSelf: "stretch" },
-  sampleCaption: {
+  metaChip: {
     position: "absolute",
     left: space.lg,
     right: space.lg,
     zIndex: 3,
+    justifyContent: "flex-end",
     alignItems: "center",
   },
   missing: { marginHorizontal: space.lg, marginTop: space.xxl },

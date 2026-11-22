@@ -507,6 +507,70 @@ export function focalZoomTransform(
   };
 }
 
+/** Live map transform while a pinch is in progress. */
+export interface PinchLive {
+  scale: number;
+  x: number;
+  y: number;
+}
+
+/** Previous pinch event sample — reset at BEGAN. */
+export interface PinchPrev {
+  pinchScale: number;
+  focalX: number;
+  focalY: number;
+}
+
+/**
+ * One incremental pinch step. Absolute-from-baseline focal maths jumps on
+ * Android when a finger lifts and ScaleGestureDetector moves the focal to the
+ * remaining finger; stepping from the previous event and skipping
+ * `numberOfPointers < 2` keeps the map under the fingers.
+ */
+export function incrementalPinchStep(
+  live: PinchLive,
+  prev: PinchPrev,
+  event: {
+    pinchScale: number;
+    focalX: number;
+    focalY: number;
+    numberOfPointers: number;
+  },
+  opts?: { minScale?: number; maxScale?: number },
+): { live: PinchLive; prev: PinchPrev; applied: boolean } {
+  if (event.numberOfPointers < 2) {
+    return { live, prev, applied: false };
+  }
+  const minScale = opts?.minScale ?? 1;
+  const maxScale = opts?.maxScale ?? 12;
+  const fromPinch = Math.max(prev.pinchScale, 1e-6);
+  const nextScale = Math.min(
+    maxScale,
+    Math.max(minScale, live.scale * (event.pinchScale / fromPinch)),
+  );
+  const zoomed = focalZoomTransform(
+    live.scale,
+    nextScale,
+    live.x,
+    live.y,
+    event.focalX,
+    event.focalY,
+  );
+  return {
+    live: {
+      scale: zoomed.scale,
+      x: zoomed.x + (event.focalX - prev.focalX),
+      y: zoomed.y + (event.focalY - prev.focalY),
+    },
+    prev: {
+      pinchScale: event.pinchScale,
+      focalX: event.focalX,
+      focalY: event.focalY,
+    },
+    applied: true,
+  };
+}
+
 function markerKey(m: MapMarker): string {
   return `${m.waveId}:${m.side}`;
 }

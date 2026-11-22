@@ -19,6 +19,7 @@ import { RippleRings } from "@/components/RippleRings";
 import { Scrim } from "@/components/Scrim";
 import { Txt } from "@/components/Txt";
 import { WaveJoin } from "@/components/WaveJoin";
+import { PhotoMetaChip } from "@/components/PhotoMetaChip";
 import { WaveSimilarityLine } from "@/components/WaveSimilarityLine";
 import type { WaveDetail } from "@/backend/types";
 import { describeGap, matchBonuses } from "@/core/bonuses";
@@ -47,7 +48,7 @@ export default function WaveScreen() {
   const { id, reveal } = useLocalSearchParams<{ id: string; reveal?: string }>();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const { waves, markWaveSeen, markWaveRevealed, shouldRevealWave, reportWave, backend } =
+  const { waves, ripples, markWaveSeen, markWaveRevealed, shouldRevealWave, reportWave, backend } =
     useAppState();
   const isSampleWave = (waveId: string) => {
     if (process.env.EXPO_PUBLIC_TEST_PHOTOS !== "1") return false;
@@ -104,6 +105,23 @@ export default function WaveScreen() {
         : null,
     [wave],
   );
+
+  const mineRipple = useMemo(
+    () => (wave ? ripples.find((r) => r.photoId === wave.mine.photoId) ?? null : null),
+    [wave, ripples],
+  );
+
+  const sampleMeta = useMemo(() => {
+    if (!wave || process.env.EXPO_PUBLIC_TEST_PHOTOS !== "1") return null;
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { TEST_PHOTO_META } = require("../../assets/test-photos/fixtures") as {
+      TEST_PHOTO_META: readonly { id: string; theme: string; emotion: string }[];
+    };
+    return {
+      mine: TEST_PHOTO_META.find((m) => m.id === wave.mine.photoId) ?? null,
+      theirs: TEST_PHOTO_META.find((m) => m.id === wave.theirs.photoId) ?? null,
+    };
+  }, [wave]);
 
   const showChrome = () => {
     setChrome(true);
@@ -429,6 +447,19 @@ export default function WaveScreen() {
               <Side
                 label="You"
                 country={wave.mine.countryCode}
+                emotion={
+                  mineRipple?.emotion ??
+                  detail?.mine.emotion ??
+                  sampleMeta?.mine?.emotion ??
+                  null
+                }
+                topic={
+                  mineRipple?.topic ??
+                  mineRipple?.theme ??
+                  detail?.mine.topic ??
+                  sampleMeta?.mine?.theme ??
+                  null
+                }
                 vibe={detail?.mine.vibe ?? null}
                 clip={mineClip}
                 playing={playing === "mine"}
@@ -437,6 +468,8 @@ export default function WaveScreen() {
               <Side
                 label="Them"
                 country={wave.theirs.countryCode}
+                emotion={detail?.theirs.emotion ?? sampleMeta?.theirs?.emotion ?? null}
+                topic={detail?.theirs.topic ?? sampleMeta?.theirs?.theme ?? null}
                 vibe={detail?.theirs.vibe ?? null}
                 clip={theirsClip}
                 playing={playing === "theirs"}
@@ -467,6 +500,8 @@ export default function WaveScreen() {
 function Side({
   label,
   country,
+  emotion,
+  topic,
   vibe,
   clip,
   playing,
@@ -474,6 +509,8 @@ function Side({
 }: {
   label: string;
   country: string | null;
+  emotion: string | null;
+  topic: string | null;
   vibe: string | null;
   clip: string | null;
   playing: boolean;
@@ -488,6 +525,7 @@ function Side({
       <Txt>
         {flagFor(country)} {place ?? "Somewhere"}
       </Txt>
+      <PhotoMetaChip emotion={emotion} topic={topic} style={styles.sideMeta} />
       {vibe || clip ? (
         <Pressable
           onPress={onPlay}
@@ -554,6 +592,7 @@ const styles = StyleSheet.create({
     marginBottom: space.lg,
   },
   side: { marginBottom: space.lg, gap: space.xs },
+  sideMeta: { alignItems: "flex-start", marginTop: space.xs },
   vibe: { flexDirection: "row", alignItems: "center", gap: space.sm, marginTop: space.xs },
   gap: { marginTop: space.sm },
   report: { marginTop: space.md },

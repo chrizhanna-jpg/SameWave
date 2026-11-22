@@ -32,13 +32,14 @@ import {
   CITY_MERGE_KM,
   CLUSTER_BADGE_SIZE,
   CLUSTER_SCREEN_PX,
-  focalZoomTransform,
   focusBounds,
   frameTransform,
+  incrementalPinchStep,
   isStickyStack,
   lineAt,
   type MapCluster,
   type MapLine,
+  type PinchPrev,
   type Point,
 } from "@/core/mapGeometry";
 import { Photo } from "@/components/Photo";
@@ -139,8 +140,8 @@ export function WorldMap({
   const scale = useRef(new Animated.Value(1)).current;
   const translateX = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(0)).current;
-  /** Transform at pinch BEGAN — focal maths uses this baseline (not live). */
-  const pinch0 = useRef({ scale: 1, x: 0, y: 0 });
+  /** Previous pinch sample for incremental focal maths (reset at BEGAN). */
+  const pinchPrev = useRef<PinchPrev>({ pinchScale: 1, focalX: 0, focalY: 0 });
   const pan0 = useRef({ x: 0, y: 0 });
   const live = useRef({ scale: 1, x: 0, y: 0 });
   const framedFor = useRef<string>("");
@@ -289,34 +290,27 @@ export function WorldMap({
 
   const onPinchGestureEvent = useCallback(
     (event: PinchGestureHandlerGestureEvent) => {
-      const { scale: pinchScale, focalX, focalY } = event.nativeEvent;
-      const nextScale = Math.min(
-        MAX_SCALE,
-        Math.max(MIN_SCALE, pinch0.current.scale * pinchScale),
+      const { scale: pinchScale, focalX, focalY, numberOfPointers } = event.nativeEvent;
+      const stepped = incrementalPinchStep(
+        live.current,
+        pinchPrev.current,
+        { pinchScale, focalX, focalY, numberOfPointers },
+        { minScale: MIN_SCALE, maxScale: MAX_SCALE },
       );
-      // Top-left origin: keep the map point under the fingers fixed.
-      const zoomed = focalZoomTransform(
-        pinch0.current.scale,
-        nextScale,
-        pinch0.current.x,
-        pinch0.current.y,
-        focalX,
-        focalY,
-      );
-      const pan = clampPan(zoomed.scale, zoomed.x, zoomed.y);
-      publishView({ scale: zoomed.scale, x: pan.x, y: pan.y });
+      if (!stepped.applied) return;
+      pinchPrev.current = stepped.prev;
+      const pan = clampPan(stepped.live.scale, stepped.live.x, stepped.live.y);
+      publishView({ scale: stepped.live.scale, x: pan.x, y: pan.y });
     },
     [clampPan, publishView],
   );
 
   const onPinchStateChange = useCallback(
     (event: HandlerStateChangeEvent<PinchGestureHandlerEventPayload>) => {
-      const { state } = event.nativeEvent;
-      if (state === State.BEGAN || state === State.ACTIVE) {
-        // Capture baseline once at the start of the pinch.
-        if (state === State.BEGAN) {
-          pinch0.current = { ...live.current };
-        }
+      const { state, focalX, focalY } = event.nativeEvent;
+      if (state === State.BEGAN) {
+        // Incremental baseline: gesture scale starts at 1 under the fingers.
+        pinchPrev.current = { pinchScale: 1, focalX, focalY };
       }
       // When a finger lifts, re-baseline pan from the live transform so the
       // remaining finger can drag without a jump.

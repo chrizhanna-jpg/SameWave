@@ -273,8 +273,8 @@ test("a Wave's feelings are read with my photo first", async () => {
   });
   assert.equal(calls[0]!.url, "https://api.example/api/echoes/pair?a=mine-1&b=theirs-1");
   assert.deepEqual(detail, {
-    mine: { vibe: "calm", recordingUri: null },
-    theirs: { vibe: null, recordingUri: "data:audio/mp4;base64,QUJD" },
+    mine: { vibe: "calm", recordingUri: null, emotion: "calm", topic: null },
+    theirs: { vibe: null, recordingUri: "data:audio/mp4;base64,QUJD", emotion: null, topic: null },
   });
 });
 

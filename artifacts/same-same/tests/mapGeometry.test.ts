@@ -17,6 +17,7 @@ import {
   focalZoomTransform,
   focusBounds,
   frameTransform,
+  incrementalPinchStep,
   geodesicArcPath,
   geodesicLonLat,
   haversineKm,
@@ -347,6 +348,52 @@ test("focal zoom keeps the map point under the fingers fixed (top-left origin)",
   // Matches the stated formula.
   assert.equal(next.x, focalX - (focalX - translateX) * (newScale / oldScale));
   assert.equal(next.y, focalY - (focalY - translateY) * (newScale / oldScale));
+});
+
+test("incremental pinch ignores finger-lift focal jump (no translation jump)", () => {
+  // Steady two-finger zoom about a mid-gap focal.
+  let live = { scale: 2, x: -40, y: -80 };
+  let prev = { pinchScale: 1, focalX: 180, focalY: 320 };
+  const steady = incrementalPinchStep(live, prev, {
+    pinchScale: 1.4,
+    focalX: 182,
+    focalY: 318,
+    numberOfPointers: 2,
+  });
+  assert.equal(steady.applied, true);
+  live = steady.live;
+  prev = steady.prev;
+
+  const beforeLift = { ...live };
+  // Absolute-from-baseline maths would shove the map by ~(1-ratio)×half the
+  // finger gap when Android moves the focal onto the remaining finger.
+  const fingerGapY = 160;
+  const liftedFocalY = prev.focalY - fingerGapY / 2;
+  const absoluteJump = focalZoomTransform(
+    2,
+    live.scale,
+    -40,
+    -80,
+    prev.focalX,
+    liftedFocalY,
+  );
+  assert.ok(
+    Math.abs(absoluteJump.y - beforeLift.y) > 20,
+    "absolute baseline would jump on finger lift",
+  );
+
+  // Incremental path: skip numberOfPointers < 2 → no translation change.
+  const lift = incrementalPinchStep(live, prev, {
+    pinchScale: prev.pinchScale,
+    focalX: prev.focalX,
+    focalY: liftedFocalY,
+    numberOfPointers: 1,
+  });
+  assert.equal(lift.applied, false);
+  assert.equal(lift.live.x, beforeLift.x);
+  assert.equal(lift.live.y, beforeLift.y);
+  assert.equal(lift.live.scale, beforeLift.scale);
+  assert.deepEqual(lift.prev, prev);
 });
 
 test("no drawn segment spans most of the map width", () => {

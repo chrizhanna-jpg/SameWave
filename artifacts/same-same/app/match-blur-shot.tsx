@@ -1,7 +1,9 @@
+import { Image } from "expo-image";
 import { Redirect, useLocalSearchParams } from "expo-router";
 import React, { useMemo } from "react";
-import { ActivityIndicator, StyleSheet, useWindowDimensions, View } from "react-native";
+import { ActivityIndicator, Platform, StyleSheet, useWindowDimensions, View } from "react-native";
 
+import { PhotoMetaChip } from "@/components/PhotoMetaChip";
 import { WaveJoin } from "@/components/WaveJoin";
 import { PHOTO_BLUR_IN_RADIUS } from "@/core/photoBlurIn";
 import { colors, space } from "@/theme";
@@ -19,7 +21,12 @@ export default function MatchBlurShotScreen() {
     if (process.env.EXPO_PUBLIC_TEST_PHOTOS !== "1") return null;
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const catalog = require("../assets/test-photos/catalog") as {
-      getTestPhotoCandidates: () => { id: string; uri: string }[];
+      getTestPhotoCandidates: () => {
+        id: string;
+        uri: string;
+        emotion: string | null;
+        theme: string | null;
+      }[];
     };
     const rows = catalog.getTestPhotoCandidates();
     return { top: rows[0] ?? null, bottom: rows[1] ?? null };
@@ -44,27 +51,38 @@ export default function MatchBlurShotScreen() {
           uri: sample.top.uri,
           accessibilityLabel: "Your photo",
         }}
-        bottom={
-          phase === "mid"
-            ? {
-                uri: sample.bottom.uri,
-                blurRadius: PHOTO_BLUR_IN_RADIUS,
-                accessibilityLabel: "Their photo",
-              }
-            : {
-                uri: sample.bottom.uri,
-                accessibilityLabel: "Their photo",
-              }
-        }
+        bottom={{
+          uri: sample.bottom.uri,
+          // Mid: soft via overlay below (MaskedView blur is flaky on web).
+          accessibilityLabel: "Their photo",
+        }}
       />
       {phase === "mid" ? (
         <View
-          style={[styles.emptyWrap, { top: height / 2, bottom: 80 }]}
+          style={[styles.emptyWrap, { top: height / 2, bottom: 0 }]}
           pointerEvents="none"
         >
-          <ActivityIndicator color={colors.textPrimary} />
+          <Image
+            source={{ uri: sample.bottom.uri }}
+            style={[
+              StyleSheet.absoluteFill,
+              Platform.OS === "web"
+                ? ({ filter: `blur(${PHOTO_BLUR_IN_RADIUS}px)` } as object)
+                : null,
+            ]}
+            contentFit="cover"
+            blurRadius={Platform.OS === "web" ? 0 : PHOTO_BLUR_IN_RADIUS}
+          />
+          <ActivityIndicator color={colors.textPrimary} style={styles.spinner} />
         </View>
-      ) : null}
+      ) : (
+        <View
+          style={[styles.metaChip, { top: height / 2 + space.lg, bottom: 80 }]}
+          pointerEvents="none"
+        >
+          <PhotoMetaChip emotion={sample.bottom.emotion} topic={sample.bottom.theme} />
+        </View>
+      )}
     </View>
   );
 }
@@ -77,7 +95,16 @@ const styles = StyleSheet.create({
     right: 0,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: space.lg,
     zIndex: 2,
+    overflow: "hidden",
+  },
+  spinner: { zIndex: 3 },
+  metaChip: {
+    position: "absolute",
+    left: space.lg,
+    right: space.lg,
+    zIndex: 3,
+    justifyContent: "flex-end",
+    alignItems: "center",
   },
 });
