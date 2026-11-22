@@ -48,14 +48,15 @@ test("stock CDN and stock_/atlas_global_seed_ ids are filtered out", () => {
   assert.equal(isMatchableCandidate(real("live-1", 12, "pets", "joy")), true);
 });
 
-test("ranking prefers topic+emotion, then topic, then emotion", () => {
+test("ranking prefers same feeling first, then related, then other", () => {
   const mine = { emotion: "joy", topic: "pets" };
   const ranked = rankMatchCandidates(
     [
-      real("emotion-only", 40, "dinner", "joy"),
+      real("related-feeling", 40, "dinner", "hope"), // hope related to joy
       real("topic-only", 30, "pets", "anger"),
-      real("both", 10, "pets", "joy"),
-      real("neither", 50, "travel", "calm"),
+      real("same-feeling-topic", 10, "pets", "joy"),
+      real("same-feeling", 12, "travel", "joy"),
+      real("neither", 50, "travel", "anger"),
       {
         id: "stock_pool_v1_x",
         score: 99,
@@ -67,9 +68,10 @@ test("ranking prefers topic+emotion, then topic, then emotion", () => {
     ],
     mine,
   );
+  // topic-only (anger+pets) and neither both land in `other`; higher server score first.
   assert.deepEqual(
     ranked.map((c) => c.id),
-    ["both", "topic-only", "emotion-only", "neither"],
+    ["same-feeling-topic", "same-feeling", "related-feeling", "neither", "topic-only"],
   );
 });
 
@@ -98,9 +100,25 @@ test("inbound wavedAtYou candidates sort ahead of equal-tier peers", () => {
   );
 });
 
-test("bucket helper matches Chris's tiers", () => {
-  assert.equal(matchRankBucket({ emotion: "joy", topic: "pets" }, { emotion: "joy", topic: "pets" }).bucket, "topic+emotion");
-  assert.equal(matchRankBucket({ emotion: "joy", topic: "pets" }, { emotion: "anger", topic: "pets" }).bucket, "topic");
-  assert.equal(matchRankBucket({ emotion: "joy", topic: "pets" }, { emotion: "hope", topic: "dinner" }).bucket, "emotion");
-  assert.equal(matchRankBucket({ emotion: "joy", topic: "pets" }, { emotion: "anger", topic: "dinner" }).bucket, "other");
+test("bucket helper is feeling-first", () => {
+  assert.equal(
+    matchRankBucket({ emotion: "joy", topic: "pets" }, { emotion: "joy", topic: "pets" }).bucket,
+    "same-feeling+topic",
+  );
+  assert.equal(
+    matchRankBucket({ emotion: "joy", topic: "pets" }, { emotion: "joy", topic: "dinner" }).bucket,
+    "same-feeling",
+  );
+  assert.equal(
+    matchRankBucket({ emotion: "joy", topic: "pets" }, { emotion: "hope", topic: "pets" }).bucket,
+    "related-feeling+topic",
+  );
+  assert.equal(
+    matchRankBucket({ emotion: "joy", topic: "pets" }, { emotion: "hope", topic: "dinner" }).bucket,
+    "related-feeling",
+  );
+  assert.equal(
+    matchRankBucket({ emotion: "joy", topic: "pets" }, { emotion: "anger", topic: "dinner" }).bucket,
+    "other",
+  );
 });

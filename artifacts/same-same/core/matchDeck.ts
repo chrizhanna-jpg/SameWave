@@ -1,6 +1,6 @@
 /**
  * Client-side Match deck: filter stock/demo seeds and rank live candidates
- * by emotion + Topic. Uses existing /photos/candidates rows — no server change.
+ * feeling-first. Uses /photos/candidates rows (incl. wavedAtYou).
  */
 import { emotionAffinity } from "../data/emotions";
 import { topicAffinity } from "../data/topics";
@@ -25,24 +25,39 @@ export function isMatchableCandidate(candidate: Pick<Candidate, "id" | "uri">): 
   return !isStockOrDemoCandidate(candidate);
 }
 
-export type MatchRankBucket = "topic+emotion" | "topic" | "emotion" | "other";
+/** Feeling-first buckets (higher = better). `other` kept until strong-card cut. */
+export type MatchRankBucket =
+  | "same-feeling+topic"
+  | "same-feeling"
+  | "related-feeling+topic"
+  | "related-feeling"
+  | "other";
 
-/** Ranking bucket Chris asked for (higher = better). */
+/** Ranking bucket — feeling first. */
 export function matchRankBucket(
   mine: { emotion: string | null; topic: string | null },
   theirs: { emotion: string | null; topic: string | null },
 ): { bucket: MatchRankBucket; tier: number; emotion: number; topic: number } {
   const emotion = emotionAffinity(mine.emotion, theirs.emotion);
   const topic = topicAffinity(mine.topic, theirs.topic);
-  if (topic === 1 && emotion > 0) return { bucket: "topic+emotion", tier: 3, emotion, topic };
-  if (topic === 1) return { bucket: "topic", tier: 2, emotion, topic };
-  if (emotion > 0) return { bucket: "emotion", tier: 1, emotion, topic };
+  if (emotion === 1 && topic === 1) {
+    return { bucket: "same-feeling+topic", tier: 4, emotion, topic };
+  }
+  if (emotion === 1) {
+    return { bucket: "same-feeling", tier: 3, emotion, topic };
+  }
+  if (emotion > 0 && topic === 1) {
+    return { bucket: "related-feeling+topic", tier: 2, emotion, topic };
+  }
+  if (emotion > 0) {
+    return { bucket: "related-feeling", tier: 1, emotion, topic };
+  }
   return { bucket: "other", tier: 0, emotion, topic };
 }
 
 /**
- * Live candidates only, ranked: same Topic + same/similar emotion, then Topic,
- * then emotion. Server score breaks ties within a tier.
+ * Live candidates only, ranked feeling-first. Inbound `wavedAtYou` first;
+ * within a tier: emotion affinity, then server score, then recency.
  */
 export function rankMatchCandidates(
   candidates: readonly Candidate[],
@@ -65,7 +80,6 @@ export function rankMatchCandidates(
     })
     .sort(
       (a, b) =>
-        // Inbound pending offers first (still must pass later strong-card rules).
         Number(Boolean(b.c.wavedAtYou)) - Number(Boolean(a.c.wavedAtYou)) ||
         b.rank.tier - a.rank.tier ||
         b.rank.emotion - a.rank.emotion ||
