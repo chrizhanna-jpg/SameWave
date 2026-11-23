@@ -30,7 +30,7 @@
     },
     "android": {
       "package": "echo.samewaveripple.app",
-      "versionCode": 54,
+      "versionCode": 55,
       "softwareKeyboardLayoutMode": "resize",
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
