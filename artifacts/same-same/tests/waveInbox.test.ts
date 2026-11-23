@@ -121,10 +121,21 @@ test("Wave inbox has no card actions; pending tap opens Match Offer a Wave / Pas
   assert.match(match, /Offer a Wave/);
   assert.match(match, /Matches back to form a Wave/);
 
+  // Mutual Waves: card tap → full-screen Wave only (no card buttons).
+  assert.match(waves, /pathname:\s*"\/wave\/\[id\]"/);
+  assert.match(waves, /openWave|onOpen=\{\(\) => openWave/);
+
   const waveScreen = readFileSync(path.join(root, "app/wave/[id].tsx"), "utf8");
   assert.match(waveScreen, /SoftIconDisc/);
   assert.match(waveScreen, /closeToWaves|\/\(tabs\)\/waves/);
   assert.match(waveScreen, /accessibilityLabel="Close"/);
+  assert.match(waveScreen, /accessibilityHint="Returns to the Waves inbox"/);
+  // Existing full-screen actions only — no new invent.
+  assert.match(waveScreen, /Report this photo/);
+  assert.match(waveScreen, /Play |Stop|onPlay/);
+  assert.match(waveScreen, /Discover|setDetails/);
+  assert.match(waveScreen, /Hide details/);
+  assert.doesNotMatch(waveScreen, /Wave back|Dismiss|Offer a Wave/);
 
   const app = readFileSync(path.join(root, "state/AppState.tsx"), "utf8");
   assert.doesNotMatch(app, /offersToAccept\(/);
