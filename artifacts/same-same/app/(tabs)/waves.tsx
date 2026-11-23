@@ -9,7 +9,6 @@ import { PhotoMetaChip } from "@/components/PhotoMetaChip";
 import { Screen } from "@/components/Screen";
 import { Txt } from "@/components/Txt";
 import {
-  inboxOfferMyThumbSource,
   inboxOfferTheirThumbSource,
   isPreviewOfferId,
   PREVIEW_OFFER_WAVE_ID,
@@ -33,8 +32,7 @@ import { colors, space } from "@/theme";
  */
 export default function WavesScreen() {
   const router = useRouter();
-  const { offers, offersKnown, waves, wavesKnown, sync, syncNow, ripples } =
-    useAppState();
+  const { offers, offersKnown, waves, wavesKnown, sync, syncNow } = useAppState();
   const tabClearance = useTabBarClearance(space.md);
 
   useFocusEffect(
@@ -95,14 +93,14 @@ export default function WavesScreen() {
           Ripples received
         </Txt>
         <Txt variant="quiet" tone="quiet" style={styles.sectionHint}>
-          Incoming — not mutual yet. Tap to open.
+          Moments people matched to yours. Tap to open.
         </Txt>
 
         {loadingRipples ? (
           <Frost kind="card" style={styles.card} contentStyle={styles.emptyPad}>
             <ActivityIndicator color={colors.waterMid} />
             <Txt tone="secondary" center style={styles.emptyBody}>
-              Checking for Ripples…
+              Checking for moments…
             </Txt>
           </Frost>
         ) : ripplesReceived.length === 0 ? (
@@ -111,20 +109,12 @@ export default function WavesScreen() {
               No Ripples received
             </Txt>
             <Txt variant="quiet" tone="quiet" center style={styles.emptyBody}>
-              When someone waves at one of your photos, it lands here until you
-              answer full screen.
+              When someone matches their moment to one of yours, it lands here.
             </Txt>
           </Frost>
         ) : (
           ripplesReceived.map((offer) => (
-            <InboxRow
-              key={offer.id}
-              offer={offer}
-              myLocalUri={
-                ripples.find((r) => r.photoId === offer.myPhotoId)?.localUri ?? null
-              }
-              onOpen={() => openOffer(offer)}
-            />
+            <MomentRow key={offer.id} offer={offer} onOpen={() => openOffer(offer)} />
           ))
         )}
       </View>
@@ -213,27 +203,17 @@ export default function WavesScreen() {
   );
 }
 
-function InboxRow({
-  offer,
-  myLocalUri,
-  onOpen,
-}: {
-  offer: Offer;
-  myLocalUri: string | null;
-  onOpen: () => void;
-}) {
+/**
+ * Their moment (photo + feeling/topic/place/time), framed as a match to yours.
+ * Not a dual-thumb photo strip — only the other person's moment.
+ */
+function MomentRow({ offer, onOpen }: { offer: Offer; onOpen: () => void }) {
   const feeling = emotionFor(offer.theirEmotion)?.label ?? null;
   const topic = topicFor(offer.theirTopic)?.label ?? offer.theirTopic;
   const place = waveListPlace({ countryCode: offer.theirCountryCode });
   const when = waveListWhen(offer.createdAt);
 
-  const mineSource =
-    (myLocalUri ? { uri: myLocalUri } : null) ?? inboxOfferMyThumbSource(offer);
   const theirSource = inboxOfferTheirThumbSource(offer);
-  const mineUri =
-    mineSource && typeof mineSource === "object" && "uri" in mineSource
-      ? (mineSource.uri as string)
-      : null;
   const theirUri =
     theirSource && typeof theirSource === "object" && "uri" in theirSource
       ? (theirSource.uri as string)
@@ -243,51 +223,36 @@ function InboxRow({
     <Pressable
       onPress={onOpen}
       accessibilityRole="button"
-      accessibilityLabel="Open Wave"
-      accessibilityHint="Opens the full-screen Wave layout for this pair"
+      accessibilityLabel="Open their moment"
+      accessibilityHint="Opens the full-screen Wave layout"
       style={styles.historyHit}
     >
-      <Frost kind="card" style={styles.card} contentStyle={styles.inboxPad}>
-        <View style={styles.inboxTop}>
-          <View style={styles.pair}>
-            {mineSource && !mineUri ? (
-              <Image
-                source={mineSource}
-                style={styles.thumb}
-                contentFit="cover"
-                accessibilityLabel="Your photo"
-              />
-            ) : (
-              <Photo
-                uri={mineUri}
-                ownPhotoId={mineUri ? undefined : offer.myPhotoId}
-                quiet
-                style={styles.thumb}
-                accessibilityLabel="Your photo"
-              />
-            )}
-            {theirSource && !theirUri ? (
-              <Image
-                source={theirSource}
-                style={styles.thumb}
-                contentFit="cover"
-                accessibilityLabel="Their photo"
-              />
-            ) : (
-              <Photo
-                uri={theirUri}
-                ownPhotoId={theirUri ? undefined : offer.theirPhotoId}
-                quiet
-                style={styles.thumb}
-                accessibilityLabel="Their photo"
-              />
-            )}
-          </View>
-          <View style={styles.inboxMeta}>
+      <Frost kind="card" style={styles.card} contentStyle={styles.momentPad}>
+        <View style={styles.momentRow}>
+          {theirSource && !theirUri ? (
+            <Image
+              source={theirSource}
+              style={styles.momentThumb}
+              contentFit="cover"
+              accessibilityLabel="Their moment"
+            />
+          ) : (
+            <Photo
+              uri={theirUri}
+              ownPhotoId={theirUri ? undefined : offer.theirPhotoId}
+              quiet
+              style={styles.momentThumb}
+              accessibilityLabel="Their moment"
+            />
+          )}
+          <View style={styles.momentMeta}>
+            <Txt variant="quiet" tone="moon" numberOfLines={1}>
+              Matched their moment to yours
+            </Txt>
             <PhotoMetaChip emotion={offer.theirEmotion} topic={offer.theirTopic} />
             {!feeling && !topic ? (
               <Txt variant="quiet" tone="quiet">
-                Incoming Ripple
+                Their moment
               </Txt>
             ) : null}
             <Txt variant="quiet" tone="secondary" numberOfLines={1}>
@@ -320,12 +285,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   emptyBody: { maxWidth: 300 },
-  inboxPad: {
+  momentPad: {
     paddingHorizontal: space.md,
     paddingVertical: space.md,
   },
-  inboxTop: { flexDirection: "row", gap: space.md, alignItems: "center" },
-  inboxMeta: { flex: 1, gap: space.xs, minWidth: 0 },
+  momentRow: { flexDirection: "row", gap: space.md, alignItems: "center" },
+  momentMeta: { flex: 1, gap: space.xs, minWidth: 0 },
+  /** Single moment photo — larger than a dual-thumb strip. */
+  momentThumb: {
+    width: 96,
+    height: 96,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+  },
   pair: { flexDirection: "row", gap: space.xs },
   thumb: {
     width: 72,
