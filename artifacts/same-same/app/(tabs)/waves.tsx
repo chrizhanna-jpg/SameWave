@@ -1,6 +1,6 @@
 import { Image, type ImageSource } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 
 import { Frost } from "@/components/Frost";
@@ -13,7 +13,13 @@ import {
   inboxOfferTheirThumbSource,
   withOptionalSampleOffers,
 } from "@/core/sampleOffers";
-import { loadSampleWaves, testPhotosBuildEnabled } from "@/core/testPhotos";
+import {
+  peekSamplePhotosToggle,
+  readSamplePhotosToggle,
+  subscribeSamplePhotosToggle,
+  testPhotosBuildEnabled,
+  withOptionalSampleWaves,
+} from "@/core/testPhotos";
 import type { Offer, Wave } from "@/core/types";
 import { findWaveByPhotos } from "@/core/waves";
 import { waveListPlace, waveListWhen } from "@/core/waveListMeta";
@@ -35,6 +41,18 @@ export default function WavesScreen() {
   const router = useRouter();
   const { offers, offersKnown, waves, wavesKnown, sync, syncNow } = useAppState();
   const tabClearance = useTabBarClearance(space.md);
+  const [useSampleData, setUseSampleData] = useState(
+    () => testPhotosBuildEnabled() && peekSamplePhotosToggle() !== false,
+  );
+
+  useEffect(() => {
+    if (!testPhotosBuildEnabled()) {
+      setUseSampleData(false);
+      return;
+    }
+    void readSamplePhotosToggle().then(setUseSampleData);
+    return subscribeSamplePhotosToggle(setUseSampleData);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -44,20 +62,18 @@ export default function WavesScreen() {
 
   /** Pending only — drop any offer that already has a mutual Wave. */
   const ripplesReceived = useMemo(() => {
-    return withOptionalSampleOffers(offers).filter(
+    return withOptionalSampleOffers(offers, { useSampleData }).filter(
       (offer) => !findWaveByPhotos(waves, offer.myPhotoId, offer.theirPhotoId),
     );
-  }, [offers, waves]);
+  }, [offers, waves, useSampleData]);
 
   /**
-   * Mutual Waves. Live / matched-back list wins. Preview seeds sample Waves
-   * when the live list is empty so both pair thumbs can be exercised.
+   * Mutual Waves. Live / locally matched-back list plus optional sample Waves
+   * when Account → Sample data is on (preview builds only).
    */
   const mutualWaves = useMemo(() => {
-    if (waves.length > 0) return waves;
-    if (!testPhotosBuildEnabled()) return [];
-    return loadSampleWaves().slice(0, 2);
-  }, [waves]);
+    return withOptionalSampleWaves(waves, { useSamplePhotos: useSampleData });
+  }, [waves, useSampleData]);
 
   const loadingRipples = !offersKnown && sync === "syncing";
   const loadingWaves = !wavesKnown && sync === "syncing";

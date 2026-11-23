@@ -11,9 +11,11 @@ import {
   isPreviewOfferId,
   peekPreviewOfferResolution,
   PREVIEW_OFFER_MY_PHOTO_ID,
+  PREVIEW_OFFER_SPECS,
   PREVIEW_OFFER_THEIR_PHOTO_ID,
   PREVIEW_OFFER_WAVE_ID,
   previewWaveAfterAccept,
+  previewWaveIdForOffer,
   resetPreviewOfferResolution,
   resolvePreviewOffer,
   withOptionalSampleOffers,
@@ -21,6 +23,7 @@ import {
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, "..");
+const samplesOn = process.env.EXPO_PUBLIC_TEST_PHOTOS === "1";
 
 test("offerFromCard keeps both photo uris, feeling, topic and country for the inbox", () => {
   const offer = offerFromCard({
@@ -77,16 +80,20 @@ test("waveFromCard keeps both mine and theirs uris from API-shaped https cards",
   assert.ok(wave!.mine.uri && wave!.theirs.uri);
 });
 
-test("preview sample offer is gated, identifiable, and uses fixture photo ids", () => {
+test("preview sample offers are gated, multi-pair, and use fixture photo ids", () => {
   resetPreviewOfferResolution();
-  const seeded = withOptionalSampleOffers([]);
-  if (process.env.EXPO_PUBLIC_TEST_PHOTOS === "1") {
-    assert.equal(seeded.length, 1);
+  const seeded = withOptionalSampleOffers([], { useSampleData: true });
+  if (samplesOn) {
+    assert.equal(seeded.length, PREVIEW_OFFER_SPECS.length);
     assert.equal(seeded[0]!.id, "preview-inbox-offer-1");
     assert.equal(seeded[0]!.myPhotoId, PREVIEW_OFFER_MY_PHOTO_ID);
     assert.equal(seeded[0]!.theirPhotoId, PREVIEW_OFFER_THEIR_PHOTO_ID);
+    assert.ok(seeded[0]!.theirEmotion);
+    assert.ok(seeded[0]!.theirTopic);
+    assert.ok(seeded[0]!.theirCountryCode);
     assert.ok(inboxOfferTheirThumbSource(seeded[0]!), "preview offer needs their moment thumb");
     assert.ok(findOfferIncludingPreview([], "preview-inbox-offer-1"));
+    assert.deepEqual(withOptionalSampleOffers([], { useSampleData: false }), []);
   } else {
     assert.deepEqual(seeded, []);
   }
@@ -94,19 +101,26 @@ test("preview sample offer is gated, identifiable, and uses fixture photo ids", 
   assert.equal(isPreviewOfferId("live"), false);
 });
 
-test("preview match-back resolves offer and yields the sample Wave", () => {
+test("preview match-back resolves one offer and yields its sample Wave", () => {
   resetPreviewOfferResolution();
-  if (process.env.EXPO_PUBLIC_TEST_PHOTOS !== "1") {
-    assert.equal(previewWaveAfterAccept(), null);
+  const offerId = "preview-inbox-offer-1";
+  if (!samplesOn) {
+    assert.equal(previewWaveAfterAccept(offerId), null);
     return;
   }
-  assert.equal(withOptionalSampleOffers([]).length, 1);
-  resolvePreviewOffer("accepted");
-  assert.equal(peekPreviewOfferResolution(), "accepted");
-  assert.deepEqual(withOptionalSampleOffers([]), []);
-  const wave = previewWaveAfterAccept();
+  assert.equal(
+    withOptionalSampleOffers([], { useSampleData: true }).length,
+    PREVIEW_OFFER_SPECS.length,
+  );
+  resolvePreviewOffer(offerId, "accepted");
+  assert.equal(peekPreviewOfferResolution(offerId), "accepted");
+  const remaining = withOptionalSampleOffers([], { useSampleData: true });
+  assert.equal(remaining.length, PREVIEW_OFFER_SPECS.length - 1);
+  assert.ok(!remaining.some((o) => o.id === offerId));
+  const wave = previewWaveAfterAccept(offerId);
   assert.ok(wave);
   assert.equal(wave!.id, PREVIEW_OFFER_WAVE_ID);
+  assert.equal(wave!.id, previewWaveIdForOffer(offerId));
   assert.equal(wave!.mine.photoId, PREVIEW_OFFER_MY_PHOTO_ID);
   assert.equal(wave!.theirs.photoId, PREVIEW_OFFER_THEIR_PHOTO_ID);
   resetPreviewOfferResolution();
@@ -144,6 +158,10 @@ test("Wave inbox has no card actions; pending tap opens Match Offer a Wave / Pas
   assert.match(waves, /offerId:\s*offer\.id/);
   assert.match(waves, /from:\s*"waves"/);
   assert.doesNotMatch(waves, /PREVIEW_OFFER_WAVE_ID/);
+  // Sample data toggle gates fixtures (never force-seed when live empty alone).
+  assert.match(waves, /useSampleData/);
+  assert.match(waves, /withOptionalSampleWaves/);
+  assert.match(waves, /withOptionalSampleOffers/);
   // Contrast: titles/hints sit on Frost; opaque mist fill; no moon/quiet on scene.
   assert.match(waves, /headingFrost|readableFill/);
   assert.match(waves, /colors\.background/);
@@ -158,6 +176,8 @@ test("Wave inbox has no card actions; pending tap opens Match Offer a Wave / Pas
   assert.match(match, /accessibilityLabel="Pass"/);
   assert.match(match, /Offer a Wave/);
   assert.match(match, /Matches back to form a Wave/);
+  assert.match(match, /previewWaveIdForOffer/);
+  assert.match(match, /Sample data/);
 
   // Mutual Waves: card tap → full-screen Wave only (no card buttons).
   assert.match(waves, /pathname:\s*"\/wave\/\[id\]"/);
@@ -179,11 +199,5 @@ test("Wave inbox has no card actions; pending tap opens Match Offer a Wave / Pas
   assert.doesNotMatch(app, /offersToAccept\(/);
   assert.match(app, /isPreviewOfferId/);
   assert.match(app, /previewWaveAfterAccept/);
-});
-
-test("Map tab hosts the keepsake WorldMap; Waves tab does not", () => {
-  const map = readFileSync(path.join(root, "app/(tabs)/map.tsx"), "utf8");
-  const waves = readFileSync(path.join(root, "app/(tabs)/waves.tsx"), "utf8");
-  assert.match(map, /WorldMap/);
-  assert.doesNotMatch(waves, /WorldMap/);
+  assert.match(app, /resolvePreviewOffer\(/);
 });

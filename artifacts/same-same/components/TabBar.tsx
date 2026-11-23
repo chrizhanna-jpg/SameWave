@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   Pressable,
   StyleSheet,
@@ -11,6 +11,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Frost } from "@/components/Frost";
 import { Txt } from "@/components/Txt";
 import { withOptionalSampleOffers } from "@/core/sampleOffers";
+import {
+  peekSamplePhotosToggle,
+  readSamplePhotosToggle,
+  subscribeSamplePhotosToggle,
+  testPhotosBuildEnabled,
+} from "@/core/testPhotos";
 import { useAppState } from "@/state/AppState";
 import { useReportTabBarHeight } from "@/state/TabBarHeight";
 import { colors, layout, space } from "@/theme";
@@ -36,7 +42,20 @@ export function TabBar({ state, descriptors, navigateToTab }: TabBarProps) {
   const reportHeight = useReportTabBarHeight();
   const { width } = useWindowDimensions();
   const { offers } = useAppState();
-  const badgeCount = withOptionalSampleOffers(offers).length;
+  const [useSampleData, setUseSampleData] = useState(
+    () => testPhotosBuildEnabled() && peekSamplePhotosToggle() !== false,
+  );
+
+  useEffect(() => {
+    if (!testPhotosBuildEnabled()) {
+      setUseSampleData(false);
+      return;
+    }
+    void readSamplePhotosToggle().then(setUseSampleData);
+    return subscribeSamplePhotosToggle(setUseSampleData);
+  }, []);
+
+  const badgeCount = withOptionalSampleOffers(offers, { useSampleData }).length;
 
   const onBarLayout = (event: LayoutChangeEvent) => {
     reportHeight(event.nativeEvent.layout.height);

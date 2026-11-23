@@ -31,7 +31,7 @@ import {
   inboxOfferMyThumbSource,
   inboxOfferTheirThumbSource,
   isPreviewOfferId,
-  PREVIEW_OFFER_WAVE_ID,
+  previewWaveIdForOffer,
 } from "@/core/sampleOffers";
 import {
   peekSamplePhotosToggle,
@@ -484,7 +484,9 @@ export default function MatchScreen() {
       }
       finishedRef.current = true;
       finishMatchLook(myPhotoId, seenRef.current);
-      let waveId: string | null = isPreviewOfferId(offerId) ? PREVIEW_OFFER_WAVE_ID : null;
+      let waveId: string | null = isPreviewOfferId(offerId)
+        ? previewWaveIdForOffer(offerId)
+        : null;
       if (!waveId) {
         let formed = findWaveByPhotos(waves, myPhotoId, current.id);
         try {
@@ -656,7 +658,7 @@ export default function MatchScreen() {
                 </Txt>
                 {empty && testPhotosBuildEnabled() && useSamples === false ? (
                   <Txt center variant="quiet" tone="secondary" style={styles.emptyHint}>
-                    Turn on Sample photos in Account to test
+                    Turn on Sample data in Account to test
                   </Txt>
                 ) : null}
                 {empty ? (

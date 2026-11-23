@@ -7,8 +7,8 @@ import { writeSamplePhotosToggle } from "@/core/testPhotos";
 import { space } from "@/theme";
 
 /**
- * Account row for the preview-only sample Match deck. Lives under
- * `assets/test-photos/` so Metro swaps it for a null stub when
+ * Account row for preview-only Sample data (Ripples / Waves / Match).
+ * Lives under `assets/test-photos/` so Metro swaps it for a null stub when
  * EXPO_PUBLIC_TEST_PHOTOS is off — keeping the label out of production.
  */
 export function SamplePhotosToggleRow({
@@ -22,9 +22,13 @@ export function SamplePhotosToggleRow({
     <View style={styles.row}>
       <View style={styles.fill}>
         <Txt variant="quiet" tone="secondary">
-          Sample photos (preview)
+          Sample data
         </Txt>
-        <Txt>{on ? "On — Match deck includes fixtures" : "Off"}</Txt>
+        <Txt>
+          {on
+            ? "On — Ripples, Waves, and Match use local fixtures"
+            : "Off"}
+        </Txt>
       </View>
       <Button
         kind="quiet"

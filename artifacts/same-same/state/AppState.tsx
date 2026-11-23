@@ -833,8 +833,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     async (offerId: string, verdict: "same" | "different") => {
       // Preview inbox fixture — no server write; local Wave after match-back.
       if (isPreviewOfferId(offerId)) {
-        resolvePreviewOffer(verdict === "same" ? "accepted" : "dismissed");
-        const formed = verdict === "same" ? previewWaveAfterAccept() : null;
+        resolvePreviewOffer(
+          offerId,
+          verdict === "same" ? "accepted" : "dismissed",
+        );
+        const formed =
+          verdict === "same" ? previewWaveAfterAccept(offerId) : null;
         commit((current) => {
           const without = current.offers.filter((o) => o.id !== offerId);
           if (!formed) {
