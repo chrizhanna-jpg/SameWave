@@ -29,9 +29,21 @@ test("Home pins the two cards above the tab bar (no scroll under the bar)", () =
 
 test("Home has no standalone Choose from your photos (library lives on Capture)", () => {
   assert.match(home, /label="Capture a moment"/);
-  assert.match(home, /label="Today's topic"/);
+  assert.match(home, /label="Capture this moment"/);
   assert.doesNotMatch(home, /label="Choose from your photos"/);
   assert.doesNotMatch(home, /pickFromLibrary/);
+});
+
+test("Home shows today's topic above the soft CTA (full text, not button detail)", () => {
+  assert.match(home, /Today&apos;s topic/);
+  assert.match(home, /\{today\.label\}/);
+  assert.match(home, /styles\.todayTopic/);
+  // Topic must not be crammed into Button detail (that ellipsizes on one line).
+  assert.doesNotMatch(home, /detail=\{today\.label\}/);
+  assert.doesNotMatch(home, /label="Today's topic"/);
+  const topicBlock = home.indexOf("styles.todayTopic");
+  const cta = home.indexOf('label="Capture this moment"');
+  assert.ok(topicBlock >= 0 && cta > topicBlock);
 });
 
 test("Home Help and Account clear the status bar with safe-area insets", () => {
