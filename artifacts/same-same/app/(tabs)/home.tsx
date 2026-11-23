@@ -235,6 +235,13 @@ export default function HomeScreen() {
                 />
                 <Button
                   kind="soft"
+                  label="Choose from your photos"
+                  onPress={() => void pickFromLibrary()}
+                  style={styles.actionGap}
+                  accessibilityHint="Opens your photo library, then the Ripple tab to upload"
+                />
+                <Button
+                  kind="soft"
                   label="Today's topic"
                   detail={today.label}
                   detailTone="moon"
@@ -242,14 +249,6 @@ export default function HomeScreen() {
                   style={styles.actionGap}
                   accessibilityHint="Starts a Ripple locked to today's topic"
                 />
-                {Platform.OS !== "web" ? (
-                  <Button
-                    kind="quiet"
-                    label="Choose from your photos"
-                    onPress={() => void pickFromLibrary()}
-                    style={styles.actionGap}
-                  />
-                ) : null}
               </>
             )}
 
