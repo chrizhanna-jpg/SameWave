@@ -10,9 +10,24 @@ import { Screen } from "@/components/Screen";
 import { Txt } from "@/components/Txt";
 import { WorldMap } from "@/components/WorldMap";
 import { testPhotosBuildEnabled, withOptionalSampleWaves } from "@/core/testPhotos";
+import type { Wave } from "@/core/types";
+import { COUNTRIES, normalizeCountryCode } from "@/data/countries";
 import { useAppState } from "@/state/AppState";
 import { useTabBarClearance } from "@/state/TabBarHeight";
 import { colors, layout, space } from "@/theme";
+
+const TOTAL_COUNTRIES = COUNTRIES.length;
+const COUNTRY_CODES = new Set(COUNTRIES.map((c) => c.code));
+
+/** Distinct countries a Wave arrived from (their side), known in the app set. */
+function countriesReachedFromWaves(waves: Wave[]): number {
+  const codes = new Set<string>();
+  for (const wave of waves) {
+    const code = normalizeCountryCode(wave.theirs.countryCode);
+    if (code && COUNTRY_CODES.has(code)) codes.add(code);
+  }
+  return codes.size;
+}
 
 /**
  * Map tab: keepsake map of past Waves (moved from the Waves tab).
@@ -39,6 +54,11 @@ export default function MapScreen() {
     [waves],
   );
 
+  const countriesReached = useMemo(
+    () => countriesReachedFromWaves(mapWaves),
+    [mapWaves],
+  );
+
   useEffect(() => {
     if (mapWaves.length === 0) return;
     if (firstPass.current) {
@@ -62,7 +82,7 @@ export default function MapScreen() {
       empty
         ? {
             title: "No Waves yet",
-            body: "When a Ripple finds a match, it lands here on the map.",
+            body: "When a Ripple finds a match, it lands here on the map as a Wave.",
           }
         : unreachable
           ? { title: "Can't reach SameWave right now", body: null }
@@ -91,6 +111,21 @@ export default function MapScreen() {
   return (
     <Screen bare scene="none">
       <View style={[styles.fill, { paddingTop: insets.top + space.sm, paddingBottom: tabClearance }]}>
+        {/* Fixed above the map — not inside WorldMap's pan/zoom layer. */}
+        <Frost
+          kind="bar"
+          style={styles.countBar}
+          contentStyle={styles.countPad}
+        >
+          <Txt
+            variant="quiet"
+            tone="secondary"
+            center
+            accessibilityLabel={`${countriesReached} of ${TOTAL_COUNTRIES} countries`}
+          >
+            {countriesReached} of {TOTAL_COUNTRIES} countries
+          </Txt>
+        </Frost>
         <View style={styles.map}>
           <WorldMap
             waves={mapWaves}
@@ -138,6 +173,16 @@ export default function MapScreen() {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  countBar: {
+    marginHorizontal: space.md,
+    marginBottom: space.sm,
+    alignSelf: "stretch",
+  },
+  countPad: {
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    justifyContent: "center",
+  },
   map: { flex: 1 },
   wordsCard: { marginHorizontal: space.md, marginBottom: space.sm },
   words: {
