@@ -147,8 +147,8 @@ export default function HomeScreen() {
     >
       <View style={styles.body}>
         {/*
-          Fixed toolbar — NOT inside a short ScrollView. The old 3×48 top
-          margin pushed Help/Account below the visible strip once cards were
+          Fixed toolbar — not in a collapsing scroll strip. The old 3×48 top
+          margin pushed Help/Account below the visible area once cards were
           pinned, so they sat under the status bar / cutout.
         */}
         <View

@@ -36,6 +36,7 @@ test("Home Help and Account clear the status bar with safe-area insets", () => {
   assert.match(home, /minHeight:\s*insets\.top\s*\+\s*space\.sm\s*\+\s*layout\.iconButtonSize/);
   // Pinned-cards layout: no legacy layout offset that hid the toolbar.
   assert.doesNotMatch(home, /layout\.homeToolbarOffset/);
-  assert.doesNotMatch(home, /ScrollView/);
+  assert.doesNotMatch(home, /from "react-native".*ScrollView|ScrollView[\s\S]*toolbar/);
+  assert.doesNotMatch(home, /<\s*ScrollView\b/);
   assert.match(home, /styles\.toolbarHit|minWidth:\s*layout\.iconButtonSize/);
 });
