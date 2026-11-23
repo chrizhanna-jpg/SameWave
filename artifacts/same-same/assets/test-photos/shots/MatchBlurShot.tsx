@@ -13,6 +13,7 @@ import { Icon } from "@/components/Icon";
 import { PhotoMetaChip } from "@/components/PhotoMetaChip";
 import { MATCH_RIPPLE_INK, RippleMark } from "@/components/RippleMark";
 import { WaveJoin } from "@/components/WaveJoin";
+import { WaveMark } from "@/components/WaveMark";
 import { PHOTO_BLUR_IN_RADIUS } from "@/core/photoBlurIn";
 import { waveLayoutMetrics } from "@/device/waveLayoutMetrics";
 import { colors, layout, space } from "@/theme";
@@ -36,9 +37,14 @@ export function MatchBlurShotInner() {
   }, [metrics]);
   const { width, height } = bleedSize;
   const insets = useSafeAreaInsets();
-  const { phase: raw } = useLocalSearchParams<{ phase?: string }>();
+  const { phase: raw, stage: rawStage } = useLocalSearchParams<{
+    phase?: string;
+    stage?: string;
+  }>();
   // "fade" kept as a URL alias of mid — Chris removed the entrance fade.
   const phase = raw === "done" ? "done" : "mid";
+  /** `stage=wave` mirrors Ripples-received match-back (Offer a Wave / Pass). */
+  const offerWave = rawStage === "wave";
 
   const sample = useMemo(() => {
     if (process.env.EXPO_PUBLIC_TEST_PHOTOS !== "1") return null;
@@ -124,7 +130,11 @@ export function MatchBlurShotInner() {
             topic={sample.bottom.theme}
           />
           <SoftIconDisc size={ACTION_SIZE}>
-            <RippleMark size={48} color={MATCH_RIPPLE_INK} animated={false} />
+            {offerWave ? (
+              <WaveMark width={44} />
+            ) : (
+              <RippleMark size={48} color={MATCH_RIPPLE_INK} animated={false} />
+            )}
           </SoftIconDisc>
         </View>
       ) : null}

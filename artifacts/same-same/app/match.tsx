@@ -202,11 +202,22 @@ export default function MatchScreen() {
   useEffect(() => {
     if (!inboxOffer) return;
     const theirSource = inboxOfferTheirThumbSource(inboxOffer);
-    const theirUri =
+    let theirUri =
       inboxOffer.theirUri ??
       (theirSource && typeof theirSource === "object" && "uri" in theirSource
         ? (theirSource.uri as string)
         : null);
+    // Preview web shots: catalog URI can be empty before Metro resolves.
+    if (
+      !theirUri &&
+      isPreviewOfferId(inboxOffer.id) &&
+      typeof window !== "undefined"
+    ) {
+      theirUri = new URL(
+        "/assets/assets/test-photos/02-coffee-hands.jpg",
+        window.location.origin,
+      ).href;
+    }
     const pinned: Candidate = {
       id: inboxOffer.theirPhotoId,
       score: 1,
