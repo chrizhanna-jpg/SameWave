@@ -106,6 +106,11 @@ test("Wave inbox has no card actions; pending tap opens Match Offer a Wave / Pas
   assert.match(waves, /offerId:\s*offer\.id/);
   assert.match(waves, /from:\s*"waves"/);
   assert.doesNotMatch(waves, /PREVIEW_OFFER_WAVE_ID/);
+  // Contrast: titles/hints sit on Frost; card copy uses primary/secondary (not moon/quiet on scene).
+  assert.match(waves, /headingFrost|readableFill|surfaceTranslucent/);
+  assert.match(waves, /intensity=\{7[28]\}|intensity=\{68\}/);
+  assert.doesNotMatch(waves, /tone="moon"/);
+  assert.doesNotMatch(waves, /tone="quiet"/);
 
   const match = readFileSync(path.join(root, "app/match.tsx"), "utf8");
   assert.match(match, /offerId/);

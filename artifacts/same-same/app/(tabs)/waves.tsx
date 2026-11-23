@@ -94,31 +94,56 @@ export default function WavesScreen() {
       reserveBottom={tabClearance}
       style={styles.screen}
     >
-      <Txt variant="title" style={styles.heading} accessibilityLabel="Waves">
-        Waves
-      </Txt>
+      {/* Frosted title — bare slate on the mountain scene fails AA. */}
+      <Frost
+        kind="card"
+        intensity={68}
+        style={styles.headingFrost}
+        contentStyle={[styles.headingPad, styles.readableFill]}
+      >
+        <Txt variant="title" tone="primary" accessibilityLabel="Waves">
+          Waves
+        </Txt>
+      </Frost>
 
       <View style={styles.sectionBlock} accessibilityLabel="Ripples received">
-        <Txt variant="heading" style={styles.sectionTitle}>
-          Ripples received
-        </Txt>
-        <Txt variant="quiet" tone="quiet" style={styles.sectionHint}>
-          Moments people matched to yours. Tap to open.
-        </Txt>
+        <Frost
+          kind="card"
+          intensity={68}
+          style={styles.sectionFrost}
+          contentStyle={[styles.sectionPad, styles.readableFill]}
+        >
+          <Txt variant="heading" tone="primary" style={styles.sectionTitle}>
+            Ripples received
+          </Txt>
+          <Txt variant="quiet" tone="secondary">
+            Moments people matched to yours. Tap to open.
+          </Txt>
+        </Frost>
 
         {loadingRipples ? (
-          <Frost kind="card" style={styles.card} contentStyle={styles.emptyPad}>
+          <Frost
+            kind="card"
+            intensity={72}
+            style={styles.card}
+            contentStyle={[styles.emptyPad, styles.readableFill]}
+          >
             <ActivityIndicator color={colors.waterMid} />
             <Txt tone="secondary" center style={styles.emptyBody}>
               Checking for moments…
             </Txt>
           </Frost>
         ) : ripplesReceived.length === 0 ? (
-          <Frost kind="card" style={styles.card} contentStyle={styles.emptyPad}>
-            <Txt tone="secondary" center>
+          <Frost
+            kind="card"
+            intensity={72}
+            style={styles.card}
+            contentStyle={[styles.emptyPad, styles.readableFill]}
+          >
+            <Txt tone="primary" center>
               No Ripples received
             </Txt>
-            <Txt variant="quiet" tone="quiet" center style={styles.emptyBody}>
+            <Txt variant="quiet" tone="secondary" center style={styles.emptyBody}>
               When someone matches their moment to one of yours, it lands here.
             </Txt>
           </Frost>
@@ -147,26 +172,47 @@ export default function WavesScreen() {
         )}
       </View>
 
-      <View style={styles.divider} accessibilityRole="none" />
+      <View accessibilityRole="none" style={styles.dividerFrost}>
+        <Frost kind="card" intensity={48} contentStyle={styles.dividerPad}>
+          <View style={styles.divider} />
+        </Frost>
+      </View>
 
       <View style={styles.sectionBlock} accessibilityLabel="Waves section">
-        <Txt variant="heading" style={styles.sectionTitle}>
-          Waves
-        </Txt>
-        <Txt variant="quiet" tone="quiet" style={styles.sectionHint}>
-          Moments where they matched back. Tap to open.
-        </Txt>
+        <Frost
+          kind="card"
+          intensity={68}
+          style={styles.sectionFrost}
+          contentStyle={[styles.sectionPad, styles.readableFill]}
+        >
+          <Txt variant="heading" tone="primary" style={styles.sectionTitle}>
+            Waves
+          </Txt>
+          <Txt variant="quiet" tone="secondary">
+            Moments where they matched back. Tap to open.
+          </Txt>
+        </Frost>
 
         {loadingWaves ? (
-          <Frost kind="card" style={styles.card} contentStyle={styles.emptyPad}>
+          <Frost
+            kind="card"
+            intensity={72}
+            style={styles.card}
+            contentStyle={[styles.emptyPad, styles.readableFill]}
+          >
             <ActivityIndicator color={colors.waterMid} />
           </Frost>
         ) : mutualWaves.length === 0 ? (
-          <Frost kind="card" style={styles.card} contentStyle={styles.emptyPad}>
-            <Txt tone="secondary" center>
+          <Frost
+            kind="card"
+            intensity={72}
+            style={styles.card}
+            contentStyle={[styles.emptyPad, styles.readableFill]}
+          >
+            <Txt tone="primary" center>
               No Waves yet
             </Txt>
-            <Txt variant="quiet" tone="quiet" center style={styles.emptyBody}>
+            <Txt variant="quiet" tone="secondary" center style={styles.emptyBody}>
               When someone matches back, their moment stays here. The map of
               where they happened is on the Map tab.
             </Txt>
@@ -231,7 +277,12 @@ function TheirMomentCard({
       accessibilityHint="Opens the full-screen Wave layout"
       style={styles.hit}
     >
-      <Frost kind="card" style={styles.card} contentStyle={styles.momentPad}>
+      <Frost
+        kind="card"
+        intensity={72}
+        style={styles.card}
+        contentStyle={[styles.momentPad, styles.readableFill]}
+      >
         <View style={styles.momentRow}>
           {bundledSource ? (
             <Image
@@ -250,12 +301,13 @@ function TheirMomentCard({
             />
           )}
           <View style={styles.momentMeta}>
-            <Txt variant="quiet" tone="moon" numberOfLines={1}>
+            {/* primary slate on dense frost — moon (#45B4FC) fails AA on surface. */}
+            <Txt variant="quiet" tone="primary" numberOfLines={1}>
               {frame}
             </Txt>
             <PhotoMetaChip emotion={emotion} topic={topic} />
             {!feeling && !topicLabel ? (
-              <Txt variant="quiet" tone="quiet">
+              <Txt variant="quiet" tone="secondary">
                 Their moment
               </Txt>
             ) : null}
@@ -271,17 +323,37 @@ function TheirMomentCard({
 
 const styles = StyleSheet.create({
   screen: { flexGrow: 1, justifyContent: "flex-start" },
-  heading: { marginBottom: space.md },
+  headingFrost: { marginBottom: space.md, alignSelf: "stretch" },
+  headingPad: {
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+  },
   sectionBlock: { marginBottom: space.sm },
-  sectionTitle: { marginBottom: space.xs },
-  sectionHint: { marginBottom: space.md },
+  sectionFrost: { marginBottom: space.md, alignSelf: "stretch" },
+  sectionPad: {
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    gap: space.xs,
+  },
+  sectionTitle: { marginBottom: 0 },
+  dividerFrost: {
+    marginVertical: space.md,
+    alignSelf: "stretch",
+  },
+  dividerPad: {
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+  },
   divider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.line,
-    marginVertical: space.lg,
     alignSelf: "stretch",
   },
   card: { marginBottom: space.md },
+  /** Dense fill so slate / secondary text clears WCAG AA over the scene. */
+  readableFill: {
+    backgroundColor: colors.surfaceTranslucent,
+  },
   emptyPad: {
     paddingHorizontal: space.lg,
     paddingVertical: space.lg,
