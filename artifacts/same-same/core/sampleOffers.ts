@@ -164,20 +164,33 @@ function bundledThumb(
   }
 }
 
-const THUMB_FILES = [
-  "01-mountain-lake.jpg",
-  "02-coffee-hands.jpg",
-  "03-forest-path.jpg",
-  "04-sunlit-hills.jpg",
-] as const;
+/** Static requires — Metro cannot resolve template-string require paths. */
+const THUMB_SOURCES: ReadonlyArray<{ load: () => ImageSource; fallback: string }> = [
+  {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    load: () => require("../assets/test-photos/01-mountain-lake.jpg") as ImageSource,
+    fallback: "test-photos://01-mountain-lake.jpg",
+  },
+  {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    load: () => require("../assets/test-photos/02-coffee-hands.jpg") as ImageSource,
+    fallback: "test-photos://02-coffee-hands.jpg",
+  },
+  {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    load: () => require("../assets/test-photos/03-forest-path.jpg") as ImageSource,
+    fallback: "test-photos://03-forest-path.jpg",
+  },
+  {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    load: () => require("../assets/test-photos/04-sunlit-hills.jpg") as ImageSource,
+    fallback: "test-photos://04-sunlit-hills.jpg",
+  },
+];
 
 function bundledThumbAt(index: number): ImageSource | null {
-  const file = THUMB_FILES[index] ?? THUMB_FILES[0]!;
-  return bundledThumb(
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    () => require(`../assets/test-photos/${file}`) as ImageSource,
-    `test-photos://${file}`,
-  );
+  const entry = THUMB_SOURCES[index] ?? THUMB_SOURCES[0]!;
+  return bundledThumb(entry.load, entry.fallback);
 }
 
 /** Bundled thumb for their side of the first preview inbox card. */
