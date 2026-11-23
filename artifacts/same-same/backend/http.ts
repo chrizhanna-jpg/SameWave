@@ -55,6 +55,18 @@ function imageUriOrNull(value: unknown): string | null {
   return /^data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=\s]{64,}$/i.test(value) ? value : null;
 }
 
+/**
+ * Wave / inbox side image — data: from Postgres, or https / relative /api paths
+ * from CDN / proxy. Photo can still fetch by id when this is null.
+ */
+function sideImageUri(raw: unknown): string | null {
+  if (typeof raw !== "string" || !raw) return null;
+  return (
+    imageUriOrNull(raw) ??
+    (/^(https?:\/\/|\/api\/photos\/)/i.test(raw) ? raw : null)
+  );
+}
+
 function waveSide(raw: unknown): WaveSide | null {
   if (!raw || typeof raw !== "object") return null;
   const side = raw as Json;
@@ -67,7 +79,7 @@ function waveSide(raw: unknown): WaveSide | null {
   const emotion = typeof side.emotion === "string" && side.emotion ? side.emotion : null;
   return {
     photoId,
-    uri: imageUriOrNull(side.uri),
+    uri: sideImageUri(side.uri),
     countryCode: capture ?? home,
     // Server null/missing provenance → approximate fallback (incl. legacy rows).
     countrySource: fromServer ?? "fallback",
@@ -108,19 +120,13 @@ export function offerFromCard(raw: unknown): Offer | null {
       : null;
   const home =
     typeof theirs.countryCode === "string" && theirs.countryCode ? theirs.countryCode : null;
-  const rawTheirUri = typeof theirs.uri === "string" ? theirs.uri : null;
-  const rawMyUri = typeof mine.uri === "string" ? mine.uri : null;
-  // Inbox cards are usually data: URIs from the server; also accept https /api paths.
-  const sideUri = (raw: string | null) =>
-    imageUriOrNull(raw) ??
-    (raw && /^(https?:\/\/|\/api\/photos\/)/i.test(raw) ? raw : null);
   return {
     id,
     myPhotoId: mine.id,
     theirPhotoId: theirs.id,
     createdAt: isoOrNull(card.createdAt),
-    myUri: sideUri(rawMyUri),
-    theirUri: sideUri(rawTheirUri),
+    myUri: sideImageUri(mine.uri),
+    theirUri: sideImageUri(theirs.uri),
     theirEmotion:
       typeof theirs.emotion === "string" && theirs.emotion ? theirs.emotion : null,
     theirTopic,

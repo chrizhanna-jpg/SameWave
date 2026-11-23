@@ -9,6 +9,7 @@ import { PhotoMetaChip } from "@/components/PhotoMetaChip";
 import { Screen } from "@/components/Screen";
 import { Txt } from "@/components/Txt";
 import {
+  inboxOfferMyThumbSource,
   inboxOfferTheirThumbSource,
   withOptionalSampleOffers,
 } from "@/core/sampleOffers";
@@ -22,6 +23,8 @@ import { sceneFor } from "@/data/scenes";
 import { useAppState } from "@/state/AppState";
 import { useTabBarClearance } from "@/state/TabBarHeight";
 import { colors, space } from "@/theme";
+
+const PAIR_THUMB = 72;
 
 /**
  * Waves tab: "Ripples received" (pending inbound moments) and "Waves" (mutual
@@ -149,22 +152,32 @@ export default function WavesScreen() {
           </Frost>
         ) : (
           ripplesReceived.map((offer) => {
+            const mySource = inboxOfferMyThumbSource(offer);
             const theirSource = inboxOfferTheirThumbSource(offer);
+            const myUri =
+              offer.myUri ??
+              (mySource && typeof mySource === "object" && "uri" in mySource
+                ? (mySource.uri as string)
+                : null);
             const theirUri =
-              theirSource && typeof theirSource === "object" && "uri" in theirSource
+              offer.theirUri ??
+              (theirSource && typeof theirSource === "object" && "uri" in theirSource
                 ? (theirSource.uri as string)
-                : null;
+                : null);
             return (
-              <TheirMomentCard
+              <PairMomentCard
                 key={offer.id}
                 frame="Matched their moment to yours"
                 emotion={offer.theirEmotion}
                 topic={offer.theirTopic}
                 place={waveListPlace({ countryCode: offer.theirCountryCode })}
                 when={waveListWhen(offer.createdAt)}
+                mineUri={myUri}
+                minePhotoId={offer.myPhotoId}
+                mineBundled={!myUri ? mySource : null}
                 theirUri={theirUri}
                 theirPhotoId={offer.theirPhotoId}
-                bundledSource={!theirUri ? theirSource : null}
+                theirBundled={!theirUri ? theirSource : null}
                 onOpen={() => openOffer(offer)}
               />
             );
@@ -219,7 +232,7 @@ export default function WavesScreen() {
           </Frost>
         ) : (
           mutualWaves.map((wave) => (
-            <TheirMomentCard
+            <PairMomentCard
               key={wave.id}
               frame="They matched back"
               emotion={wave.theirs.emotion}
@@ -229,9 +242,12 @@ export default function WavesScreen() {
                 countrySource: wave.theirs.countrySource,
               })}
               when={waveListWhen(wave.theirs.takenAt ?? wave.formedAt)}
+              mineUri={wave.mine.uri}
+              minePhotoId={wave.mine.photoId}
+              mineBundled={null}
               theirUri={wave.theirs.uri}
               theirPhotoId={wave.theirs.photoId}
-              bundledSource={null}
+              theirBundled={null}
               onOpen={() => openWave(wave)}
             />
           ))
@@ -241,19 +257,54 @@ export default function WavesScreen() {
   );
 }
 
+function PairThumb({
+  uri,
+  photoId,
+  bundled,
+  label,
+}: {
+  uri: string | null | undefined;
+  photoId: string;
+  bundled: ImageSource | null;
+  label: string;
+}) {
+  if (bundled) {
+    return (
+      <Image
+        source={bundled}
+        style={styles.momentThumb}
+        contentFit="cover"
+        accessibilityLabel={label}
+      />
+    );
+  }
+  return (
+    <Photo
+      uri={uri ?? null}
+      ownPhotoId={uri ? undefined : photoId}
+      quiet
+      style={styles.momentThumb}
+      accessibilityLabel={label}
+    />
+  );
+}
+
 /**
- * Other person's moment card — photo + feeling/topic/place/time.
+ * Matched pair card — yours + theirs side by side, plus feeling/topic/place/time.
  * Shared by Ripples received and Waves; only the frame copy differs.
  */
-function TheirMomentCard({
+function PairMomentCard({
   frame,
   emotion,
   topic,
   place,
   when,
+  mineUri,
+  minePhotoId,
+  mineBundled,
   theirUri,
   theirPhotoId,
-  bundledSource,
+  theirBundled,
   onOpen,
 }: {
   frame: string;
@@ -261,9 +312,12 @@ function TheirMomentCard({
   topic: string | null | undefined;
   place: string | null;
   when: string | null;
+  mineUri: string | null | undefined;
+  minePhotoId: string;
+  mineBundled: ImageSource | null;
   theirUri: string | null | undefined;
   theirPhotoId: string;
-  bundledSource: ImageSource | null;
+  theirBundled: ImageSource | null;
   onOpen: () => void;
 }) {
   const feeling = emotionFor(emotion)?.label ?? null;
@@ -284,22 +338,20 @@ function TheirMomentCard({
         contentStyle={[styles.momentPad, styles.readableFill]}
       >
         <View style={styles.momentRow}>
-          {bundledSource ? (
-            <Image
-              source={bundledSource}
-              style={styles.momentThumb}
-              contentFit="cover"
-              accessibilityLabel="Their moment"
+          <View style={styles.pairThumbs} accessibilityLabel="Matched photo pair">
+            <PairThumb
+              uri={mineUri}
+              photoId={minePhotoId}
+              bundled={mineBundled}
+              label="Your photo"
             />
-          ) : (
-            <Photo
-              uri={theirUri ?? null}
-              ownPhotoId={theirUri ? undefined : theirPhotoId}
-              quiet
-              style={styles.momentThumb}
-              accessibilityLabel="Their moment"
+            <PairThumb
+              uri={theirUri}
+              photoId={theirPhotoId}
+              bundled={theirBundled}
+              label="Their photo"
             />
-          )}
+          </View>
           <View style={styles.momentMeta}>
             {/* primary slate on dense frost — moon (#45B4FC) fails AA on surface. */}
             <Txt variant="quiet" tone="primary" numberOfLines={1}>
@@ -370,11 +422,12 @@ const styles = StyleSheet.create({
     paddingVertical: space.md,
   },
   momentRow: { flexDirection: "row", gap: space.md, alignItems: "center" },
+  pairThumbs: { flexDirection: "row", gap: 6 },
   momentMeta: { flex: 1, gap: space.xs, minWidth: 0 },
   momentThumb: {
-    width: 96,
-    height: 96,
-    borderRadius: 14,
+    width: PAIR_THUMB,
+    height: PAIR_THUMB,
+    borderRadius: 12,
     backgroundColor: colors.surface,
   },
   hit: { alignSelf: "stretch" },

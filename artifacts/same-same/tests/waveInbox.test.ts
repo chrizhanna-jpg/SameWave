@@ -4,7 +4,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { offerFromCard } from "../backend/http";
+import { offerFromCard, waveFromCard } from "../backend/http";
 import {
   findOfferIncludingPreview,
   inboxOfferTheirThumbSource,
@@ -42,6 +42,39 @@ test("offerFromCard keeps both photo uris, feeling, topic and country for the in
   assert.equal(offer!.theirTopic, "coffee");
   assert.equal(offer!.theirCountryCode, "FR");
   assert.equal(offer!.theirUri, "https://example.com/p.jpg");
+});
+
+test("waveFromCard keeps both mine and theirs uris from API-shaped https cards", () => {
+  const wave = waveFromCard({
+    id: "echo-99",
+    mutualAt: "2026-11-20T15:00:00Z",
+    mine: {
+      id: "photo-mine",
+      uri: "https://cdn.example.com/api/photos/photo-mine/image",
+      theme: "mountains",
+      emotion: "calm",
+      captureCountryCode: "GB",
+      capturedAt: "2026-06-15T12:00:00Z",
+    },
+    theirs: {
+      id: "photo-theirs",
+      uri: "/api/photos/photo-theirs/image",
+      theme: "coffee",
+      emotion: "joy",
+      captureCountryCode: "FR",
+      capturedAt: "2026-06-15T12:00:45Z",
+    },
+  });
+  assert.ok(wave);
+  assert.equal(wave!.id, "echo-99");
+  assert.equal(wave!.mine.photoId, "photo-mine");
+  assert.equal(wave!.theirs.photoId, "photo-theirs");
+  assert.equal(wave!.mine.uri, "https://cdn.example.com/api/photos/photo-mine/image");
+  assert.equal(wave!.theirs.uri, "/api/photos/photo-theirs/image");
+  assert.equal(wave!.mine.emotion, "calm");
+  assert.equal(wave!.theirs.theme, "coffee");
+  // Inbox PairMomentCard reads both sides for the matched pair thumbs.
+  assert.ok(wave!.mine.uri && wave!.theirs.uri);
 });
 
 test("preview sample offer is gated, identifiable, and uses fixture photo ids", () => {
@@ -91,9 +124,14 @@ test("Wave inbox has no card actions; pending tap opens Match Offer a Wave / Pas
   assert.match(waves, /Moments people matched to yours/);
   assert.match(waves, /They matched back/);
   assert.match(waves, /Moments where they matched back/);
-  assert.match(waves, /TheirMomentCard/);
+  assert.match(waves, /PairMomentCard/);
+  assert.match(waves, /pairThumbs|Matched photo pair/);
   assert.match(waves, /inboxOfferTheirThumbSource/);
-  assert.doesNotMatch(waves, /inboxOfferMyThumbSource/);
+  assert.match(waves, /inboxOfferMyThumbSource/);
+  assert.match(waves, /label="Your photo"/);
+  assert.match(waves, /label="Their photo"/);
+  assert.match(waves, /mineUri|minePhotoId/);
+  assert.match(waves, /theirUri|theirPhotoId/);
   assert.match(waves, /Waves/);
   assert.match(waves, /No Waves yet/);
   assert.match(waves, /styles\.divider|colors\.line/);
