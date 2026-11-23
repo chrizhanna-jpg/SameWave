@@ -1,0 +1,408 @@
+import { CameraView, useCameraPermissions, type CameraType } from "expo-camera";
+import { useFocusEffect, useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import * as SystemUI from "expo-system-ui";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Linking, Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
+import {
+  GestureHandlerRootView,
+  PinchGestureHandler,
+  State,
+  type HandlerStateChangeEvent,
+  type PinchGestureHandlerEventPayload,
+  type PinchGestureHandlerGestureEvent,
+} from "react-native-gesture-handler";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { Button } from "@/components/Button";
+import { Frost } from "@/components/Frost";
+import { Header } from "@/components/Header";
+import { Icon } from "@/components/Icon";
+import { Screen } from "@/components/Screen";
+import { Txt } from "@/components/Txt";
+import {
+  ZOOM_1X,
+  ZOOM_2X,
+  isZoomChipActive,
+  zoomFromPinchScale,
+} from "@/core/cameraZoom";
+import { wavePhotoSlot } from "@/core/wavePhotoSlot";
+import { chooseFromLibrary, cropToWaveSlot } from "@/device/photos";
+import { waveLayoutMetrics } from "@/device/waveLayoutMetrics";
+import { setDraftPhoto, setDraftTopic } from "@/state/draft";
+import { colors, layout, radius, space } from "@/theme";
+
+/** Some phones never report that the camera is ready; after this long it is treated as ready. */
+const READY_FALLBACK_MS = 1200;
+const MAX_RESTARTS = 2;
+/** Matches the camera chrome — keeps Android edge-to-edge nav from flashing light. */
+const CAMERA_CHROME = "#1A2425";
+
+export default function CaptureScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const windowDims = useWindowDimensions();
+  const [permission, requestPermission] = useCameraPermissions();
+  const camera = useRef<CameraView | null>(null);
+
+  const [facing, setFacing] = useState<CameraType>("back");
+  // The camera is only held while this screen is in front.
+  const [live, setLive] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [restarts, setRestarts] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [room, setRoom] = useState<number | null>(null);
+  const [zoom, setZoom] = useState(ZOOM_1X);
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  /** CameraView zoom at the moment the pinch becomes ACTIVE (scale resets to 1). */
+  const pinchStartZoomRef = useRef(ZOOM_1X);
+
+  // Same metrics as Match WaveJoin — full-bleed slot aspect.
+  const metrics = useMemo(
+    () => waveLayoutMetrics(),
+    [windowDims.width, windowDims.height],
+  );
+  const slot = wavePhotoSlot(metrics.width, metrics.height);
+  const { width, height } = metrics;
+
+  useFocusEffect(
+    useCallback(() => {
+      setLive(true);
+      setRestarts(0);
+      setProblem(null);
+      setZoom(ZOOM_1X);
+      // Root layout paints the system background baby-blue; while the camera is
+      // open keep Android's edge-to-edge nav/status chrome dark so no light bar shows.
+      void SystemUI.setBackgroundColorAsync(CAMERA_CHROME).catch(() => undefined);
+      return () => {
+        setLive(false);
+        setReady(false);
+        void SystemUI.setBackgroundColorAsync(colors.background).catch(() => undefined);
+      };
+    }, []),
+  );
+
+  useEffect(() => {
+    if (!live || !permission?.granted) return;
+    setReady(false);
+    const timer = setTimeout(() => setReady(true), READY_FALLBACK_MS);
+    return () => clearTimeout(timer);
+  }, [live, permission?.granted, facing, restarts]);
+
+  const useLibrary = async () => {
+    try {
+      const photo = await chooseFromLibrary();
+      if (!photo) return;
+      setDraftPhoto(photo);
+      router.replace("/ripple");
+    } catch {
+      setProblem("That photo couldn't be opened. Try another.");
+    }
+  };
+
+  const takePhoto = async () => {
+    if (!camera.current || busy || !ready) return;
+    setBusy(true);
+    setProblem(null);
+    try {
+      const shot = await camera.current.takePictureAsync({
+        quality: 0.9,
+        base64: false,
+        skipProcessing: false,
+        exif: false,
+      });
+      if (!shot?.uri) throw new Error("No photo was returned");
+      const cropped = await cropToWaveSlot(shot.uri, slot.aspectRatio).catch(() => shot.uri);
+      setDraftPhoto({
+        uri: cropped,
+        takenAt: new Date().toISOString(),
+        coords: null,
+        source: "camera",
+      });
+      router.replace("/ripple");
+    } catch {
+      setProblem("The photo didn't take. Try once more.");
+      setBusy(false);
+    }
+  };
+
+  /**
+   * Native CameraView swallows JS responder pinches — use RNGH PinchGestureHandler
+   * (same pattern as production in-camera) so scale updates CameraView `zoom` 0–1.
+   */
+  const onPinchGestureEvent = useCallback((event: PinchGestureHandlerGestureEvent) => {
+    setZoom(zoomFromPinchScale(pinchStartZoomRef.current, event.nativeEvent.scale));
+  }, []);
+
+  const onPinchHandlerStateChange = useCallback(
+    (event: HandlerStateChangeEvent<PinchGestureHandlerEventPayload>) => {
+      // Capture baseline when the pinch activates; scale is relative to that moment.
+      if (event.nativeEvent.state === State.ACTIVE) {
+        pinchStartZoomRef.current = zoomRef.current;
+      }
+    },
+    [],
+  );
+
+  const flipCamera = () => {
+    setZoom(ZOOM_1X);
+    setFacing((current) => (current === "back" ? "front" : "back"));
+  };
+
+  if (!permission) {
+    return <Screen scene="none">{null}</Screen>;
+  }
+
+  const abandon = () => {
+    setDraftTopic(null);
+    if (router.canGoBack()) router.back();
+    else router.replace("/home");
+  };
+
+  if (!permission.granted) {
+    return (
+      <Screen scene="softPeaks" style={styles.ask}>
+        <Header icon="close" onPress={abandon} />
+        <Frost kind="card" style={styles.askCard} contentStyle={styles.askCentre}>
+          <Txt variant="title" center>
+            Take today&apos;s photo
+          </Txt>
+          <Txt tone="secondary" center style={styles.line}>
+            SameWave needs your camera to take it.
+          </Txt>
+          <Button
+            label="Allow camera"
+            onPress={() =>
+              permission.canAskAgain ? void requestPermission() : void Linking.openSettings()
+            }
+            style={styles.allow}
+          />
+          <Button
+            kind="quiet"
+            label="Choose from your photos instead"
+            onPress={useLibrary}
+            style={styles.line}
+          />
+        </Frost>
+      </Screen>
+    );
+  }
+
+  // Match the Wave photo slot (half screen + half seam band), so framing matches the match screen.
+  const maxHeight = room ?? height * 0.55;
+  let frameWidth = Math.min(width - space.lg * 2, Math.round(maxHeight * slot.aspectRatio));
+  let frameHeight = Math.round(frameWidth / slot.aspectRatio);
+  if (frameHeight > maxHeight) {
+    frameHeight = Math.round(maxHeight);
+    frameWidth = Math.round(frameHeight * slot.aspectRatio);
+  }
+
+  return (
+    <GestureHandlerRootView style={styles.root}>
+      <StatusBar style="light" />
+      <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
+        <Header icon="close" onPress={abandon} />
+      </View>
+
+      <View style={styles.middle} onLayout={(event) => setRoom(event.nativeEvent.layout.height)}>
+        {/* Dark letterbox around the Wave-slot frame — never light/baby-blue. */}
+        <View style={styles.dim}>
+          <PinchGestureHandler
+            onGestureEvent={onPinchGestureEvent}
+            onHandlerStateChange={onPinchHandlerStateChange}
+          >
+            <View style={[styles.frame, { width: frameWidth, height: frameHeight }]}>
+              {live ? (
+                <CameraView
+                  key={`${facing}-${restarts}`}
+                  ref={camera}
+                  style={StyleSheet.absoluteFill}
+                  facing={facing}
+                  zoom={zoom}
+                  onCameraReady={() => setReady(true)}
+                  onMountError={() => {
+                    if (restarts < MAX_RESTARTS) setRestarts((n) => n + 1);
+                    else setProblem("The camera wouldn't start. You can choose a photo instead.");
+                  }}
+                />
+              ) : null}
+            </View>
+          </PinchGestureHandler>
+        </View>
+        {problem ? (
+          <Txt variant="quiet" tone="ember" center style={styles.problem}>
+            {problem}
+          </Txt>
+        ) : null}
+      </View>
+
+      <View style={[styles.controls, { paddingBottom: insets.bottom + space.lg }]}>
+        <View style={styles.zoomRow} pointerEvents="box-none">
+          {(
+            [
+              { label: "1×", value: ZOOM_1X },
+              { label: "2×", value: ZOOM_2X },
+            ] as const
+          ).map((chip) => {
+            const active = isZoomChipActive(zoom, chip.value);
+            return (
+              <Pressable
+                key={chip.label}
+                onPress={() => setZoom(chip.value)}
+                accessibilityRole="button"
+                accessibilityLabel={`Zoom ${chip.label}`}
+                accessibilityState={{ selected: active }}
+                style={[styles.chip, active && styles.chipOn]}
+              >
+                <Txt variant="quiet" tone="white">
+                  {chip.label}
+                </Txt>
+              </Pressable>
+            );
+          })}
+        </View>
+        <View style={styles.shutterRow}>
+          {/*
+            Photos must read as a labelled control — icon-only was easy to miss
+            on the dark chrome beside the shutter (Chris / Expo preview).
+          */}
+          <Pressable
+            onPress={useLibrary}
+            hitSlop={layout.hitSlop}
+            accessibilityRole="button"
+            accessibilityLabel="Photos"
+            accessibilityHint="Opens your photo library, then continues to compose"
+            style={({ pressed }) => [styles.photosHit, pressed && styles.sidePressed]}
+          >
+            <View style={styles.photosWell}>
+              <Icon name="photos" size={26} color={colors.white} />
+              <Txt variant="label" tone="white" style={styles.photosLabel}>
+                Photos
+              </Txt>
+            </View>
+          </Pressable>
+          <Pressable
+            onPress={takePhoto}
+            disabled={!ready || busy}
+            accessibilityRole="button"
+            accessibilityLabel="Take photo"
+            style={({ pressed }) => [
+              styles.shutter,
+              (!ready || busy) && styles.shutterWaiting,
+              pressed && styles.shutterPressed,
+            ]}
+          >
+            <View style={styles.shutterInner} />
+          </Pressable>
+          <Pressable
+            onPress={flipCamera}
+            hitSlop={layout.hitSlop}
+            accessibilityRole="button"
+            accessibilityLabel="Switch camera"
+            style={({ pressed }) => [styles.side, pressed && styles.sidePressed]}
+          >
+            <Icon name="flip" size={28} color={colors.white} />
+          </Pressable>
+        </View>
+      </View>
+    </GestureHandlerRootView>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: CAMERA_CHROME },
+  header: { paddingHorizontal: space.lg },
+  middle: { flex: 1, justifyContent: "center", alignItems: "center" },
+  dim: {
+    flex: 1,
+    alignSelf: "stretch",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: CAMERA_CHROME,
+  },
+  frame: {
+    backgroundColor: CAMERA_CHROME,
+    borderRadius: radius.lg,
+    overflow: "hidden",
+  },
+  zoomRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: space.sm,
+    marginBottom: space.md,
+  },
+  chip: {
+    minWidth: layout.iconButtonSize,
+    minHeight: 36,
+    paddingHorizontal: space.md,
+    borderRadius: radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255, 255, 255, 0.35)",
+  },
+  chipOn: {
+    backgroundColor: "rgba(255, 255, 255, 0.28)",
+    borderColor: "rgba(255, 255, 255, 0.7)",
+  },
+  problem: { position: "absolute", bottom: space.md, left: space.lg, right: space.lg },
+  controls: {
+    alignItems: "center",
+    paddingTop: space.md,
+    backgroundColor: CAMERA_CHROME,
+  },
+  shutterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-around",
+    alignSelf: "stretch",
+    paddingHorizontal: space.md,
+  },
+  side: { width: 64, height: 64, alignItems: "center", justifyContent: "center" },
+  sidePressed: { opacity: 0.75 },
+  photosHit: {
+    minWidth: 72,
+    minHeight: 64,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  photosWell: {
+    minWidth: 64,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xs,
+    borderRadius: radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+    backgroundColor: "rgba(255, 255, 255, 0.22)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255, 255, 255, 0.55)",
+  },
+  photosLabel: { letterSpacing: 0.2 },
+  shutter: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    borderWidth: 3,
+    borderColor: colors.white,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  shutterInner: { width: 60, height: 60, borderRadius: 30, backgroundColor: colors.white },
+  shutterWaiting: { opacity: 0.4 },
+  shutterPressed: { transform: [{ scale: 0.94 }] },
+  ask: { justifyContent: "flex-start" },
+  askCard: { marginTop: space.xl, flexGrow: 1 },
+  askCentre: {
+    flexGrow: 1,
+    justifyContent: "center",
+    paddingHorizontal: space.lg,
+    paddingVertical: space.xl,
+  },
+  line: { marginTop: space.md },
+  allow: { marginTop: space.xl },
+});
+

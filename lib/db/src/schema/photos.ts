@@ -74,6 +74,10 @@ export const photosTable = pgTable(
     // from `countryCode`, which is the uploader's profile/default at post
     // time (library uploads, legacy rows). Geo ripples require capture.
     captureCountryCode: varchar("capture_country_code", { length: 2 }),
+    // How captureCountryCode was chosen: "gps" | "photo" | "fallback".
+    // Nullable for legacy rows (clients treat null as fallback / approximate).
+    // Validated in api-server on write — no DB CHECK (same pattern as musicGenre).
+    captureCountrySource: text("capture_country_source"),
 
     // Real capture time of the moment — EXIF DateTimeOriginal for library
     // picks, or the shutter instant for in-app camera shots. This is the
@@ -86,6 +90,12 @@ export const photosTable = pgTable(
     // note — we deliberately store null here rather than backfilling with
     // upload time so the fallback stays detectable downstream.
     capturedAt: timestamp("captured_at"),
+
+    // Chosen Feeling id from artifacts/same-same/data/emotions.ts
+    // (e.g. "calm", "joy"). Distinct from musicGenre (song / vibe clip).
+    // Nullable for legacy rows; clients omit the feeling chip when null.
+    // Validated in api-server on write — no DB CHECK.
+    emotion: text("emotion"),
 
     // Music vibe (the "vibe clip" feature). Lower-case genre id from
     // artifacts/same-same/data/musicLibrary.ts (e.g. "classic", "rock").

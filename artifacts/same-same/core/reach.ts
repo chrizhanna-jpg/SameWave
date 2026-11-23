@@ -1,0 +1,198 @@
+/**
+ * Background matching, decided on the device.
+ *
+ * The server only forms a Wave when both people have said "same" about each
+ * other's photo. The Match screen owns the first look (X = pass, wave =
+ * offer). After that look is finished, the app may keep looking quietly:
+ *
+ *   1. Later passes ask the server for photos most like the Ripple and offer
+ *      to the closest real upload.
+ *   2. When an offer reaches one of the user's own photos, the app accepts it.
+ */
+import { isSameUtcDay } from "./dailyTopic";
+import { combinedMatchScore } from "./matchScore";
+import type { Candidate, Offer, Ripple, Wave } from "./types";
+
+const HOUR = 60 * 60 * 1000;
+
+export const MATCH = {
+  /** Score a photo needs on the first look. Sharing the same theme scores 10. */
+  minScore: 10,
+  /** Score accepted on later looks, once the close matches have had their chance. */
+  relaxedMinScore: 4,
+  /** Offers made each time the app looks. */
+  offersPerPass: 1,
+  /** How many times the app looks on behalf of one Ripple. */
+  maxPasses: 4,
+  /** Wait between looks for the same Ripple. */
+  passIntervalMs: 6 * HOUR,
+  /** A Ripple stops travelling after this long. */
+  travelWindowMs: 7 * 24 * HOUR,
+  /** Waves one photo can collect before further offers are left alone. */
+  maxWavesPerPhoto: 3,
+  /** Photos requested per page, and how many pages to read per look. */
+  pageSize: 50,
+  maxPages: 4,
+} as const;
+
+export type MatchRules = typeof MATCH;
+
+/**
+ * Stock photos are served from a public image CDN (and/or stock_% /
+ * atlas_global_seed_% ids). Photos real people sent are served by the API.
+ * Only real photos can answer, so only they are offered to.
+ */
+export function isRealUpload(candidate: Pick<Candidate, "id" | "uri">): boolean {
+  if (/^(stock_|atlas_global_seed_)/i.test(candidate.id.trim())) return false;
+  return !/^https?:\/\//i.test(candidate.uri.trim());
+}
+
+export function minScoreForPass(pass: number, rules: MatchRules = MATCH): number {
+  return pass <= 0 ? rules.minScore : rules.relaxedMinScore;
+}
+
+/** The photos to offer a Ripple to, closest first after emotion/Topic re-rank. */
+export function selectReachTargets(
+  candidates: readonly Candidate[],
+  options: {
+    minScore: number;
+    limit: number;
+    alreadyOffered: readonly string[];
+    emotion?: string | null;
+    topic?: string | null;
+    /** ISO time this Ripple was sent — used for same-day Daily topic boost. */
+    sentAt?: string | null;
+    /**
+     * When set, candidates that share this Topic and the same UTC day as
+     * `sentAt` may pass even if their server score is below `minScore`, so
+     * early Daily topic peers still find each other.
+     */
+    relaxMinScoreForSameDayTopic?: boolean;
+  },
+): Candidate[] {
+  const offered = new Set(options.alreadyOffered);
+  const seen = new Set<string>();
+  const mine = {
+    emotion: options.emotion ?? null,
+    topic: options.topic ?? null,
+    at: options.sentAt ?? null,
+  };
+  const floor = Math.max(0, options.minScore);
+  return candidates
+    .filter((c) => {
+      if (seen.has(c.id) || offered.has(c.id)) return false;
+      seen.add(c.id);
+      if (!isRealUpload(c)) return false;
+      if (c.score >= floor) return true;
+      if (!options.relaxMinScoreForSameDayTopic) return false;
+      // Same Topic + same UTC day: let a weak server score through for ranking.
+      return (
+        !!mine.topic &&
+        c.theme === mine.topic &&
+        isSameUtcDay(mine.at, c.createdAt)
+      );
+    })
+    .map((c) => ({
+      candidate: c,
+      rank: combinedMatchScore(c.score, mine, {
+        emotion: c.emotion,
+        topic: c.theme,
+        at: c.createdAt,
+      }),
+    }))
+    .sort(
+      (a, b) =>
+        b.rank - a.rank ||
+        b.candidate.score - a.candidate.score ||
+        newestFirst(a.candidate.createdAt, b.candidate.createdAt),
+    )
+    .slice(0, Math.max(0, options.limit))
+    .map((row) => row.candidate);
+}
+
+function newestFirst(a: string | null, b: string | null): number {
+  return (Date.parse(b ?? "") || 0) - (Date.parse(a ?? "") || 0);
+}
+
+export function wavesForPhoto(waves: readonly Wave[], photoId: string): number {
+  return waves.filter((w) => w.mine.photoId === photoId).length;
+}
+
+export type ReachDecision =
+  | { due: true; minScore: number; pass: number }
+  | { due: false; reason: "has-wave" | "finished" | "expired" | "too-soon" };
+
+/** Whether the app should look for a match for this Ripple right now. */
+export function reachDecision(
+  ripple: Ripple,
+  waves: readonly Wave[],
+  now: number,
+  rules: MatchRules = MATCH,
+): ReachDecision {
+  if (wavesForPhoto(waves, ripple.photoId) > 0) return { due: false, reason: "has-wave" };
+  if (ripple.reach.passes >= rules.maxPasses) return { due: false, reason: "finished" };
+  const sentAt = Date.parse(ripple.sentAt);
+  if (Number.isFinite(sentAt) && now - sentAt > rules.travelWindowMs) {
+    return { due: false, reason: "expired" };
+  }
+  const lastPassAt = ripple.reach.lastPassAt ? Date.parse(ripple.reach.lastPassAt) : NaN;
+  if (Number.isFinite(lastPassAt) && now - lastPassAt < rules.passIntervalMs) {
+    return { due: false, reason: "too-soon" };
+  }
+  return {
+    due: true,
+    pass: ripple.reach.passes,
+    minScore: minScoreForPass(ripple.reach.passes, rules),
+  };
+}
+
+/** The Ripple still waiting for its Wave, if there is one. */
+export function travellingRipple(
+  ripples: readonly Ripple[],
+  waves: readonly Wave[],
+  now: number,
+  rules: MatchRules = MATCH,
+): Ripple | null {
+  const latest = ripples[0];
+  if (!latest) return null;
+  if (wavesForPhoto(waves, latest.photoId) > 0) return null;
+  const sentAt = Date.parse(latest.sentAt);
+  if (Number.isFinite(sentAt) && now - sentAt > rules.travelWindowMs) return null;
+  return latest;
+}
+
+/**
+ * Which incoming offers to accept. Oldest first, and no photo collects more
+ * than `maxWavesPerPhoto` Waves. The rest are left waiting, not declined.
+ */
+export function offersToAccept(
+  offers: readonly Offer[],
+  waves: readonly Wave[],
+  rules: MatchRules = MATCH,
+): Offer[] {
+  const counts = new Map<string, number>();
+  for (const wave of waves) {
+    counts.set(wave.mine.photoId, (counts.get(wave.mine.photoId) ?? 0) + 1);
+  }
+  const accepted: Offer[] = [];
+  const oldestFirst = [...offers].sort((a, b) => -newestFirst(a.createdAt, b.createdAt));
+  for (const offer of oldestFirst) {
+    const count = counts.get(offer.myPhotoId) ?? 0;
+    if (count >= rules.maxWavesPerPhoto) continue;
+    counts.set(offer.myPhotoId, count + 1);
+    accepted.push(offer);
+  }
+  return accepted;
+}
+
+/** Record that the app has looked once more for this Ripple. */
+export function withReachPass(ripple: Ripple, offeredIds: readonly string[], now: number): Ripple {
+  return {
+    ...ripple,
+    reach: {
+      passes: ripple.reach.passes + 1,
+      lastPassAt: new Date(now).toISOString(),
+      offeredIds: [...new Set([...ripple.reach.offeredIds, ...offeredIds])],
+    },
+  };
+}

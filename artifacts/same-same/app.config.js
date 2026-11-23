@@ -1,6 +1,9 @@
 /**
  * Dynamic Expo config: derives expo-router `origin` from your API env.
  * Static fields stay in app.json.
+ *
+ * On EAS, set File env var GOOGLE_SERVICES_JSON (dev/preview/prod). Locally,
+ * fall back to ./google-services.json (gitignored).
  */
 const appJson = require("./app.json");
 
@@ -24,5 +27,10 @@ module.exports = () => {
   return {
     ...appJson.expo,
     plugins,
+    android: {
+      ...appJson.expo.android,
+      googleServicesFile:
+        process.env.GOOGLE_SERVICES_JSON ?? "./google-services.json",
+    },
   };
 };

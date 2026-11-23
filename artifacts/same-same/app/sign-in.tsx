@@ -1,429 +1,419 @@
-// Required Google sign-in screen. The user lands here on first launch
-// (and after sign-out) — there is no anonymous mode. We deliberately don't
-// show or store the user's Google name / email / photo: the Google account
-// is only used as a stable account anchor so photos and country survive
-// reinstalls. The legacy device-id is still sent on the first authenticated
-// request so the server can link any pre-sign-in photos onto this account.
-import * as WebBrowser from "expo-web-browser";
 import { useSSO } from "@clerk/expo";
-import { router } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Image,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useApp } from "@/context/AppContext";
-import { updateMyCountryCode } from "@/utils/api";
-import { parseOAuthSessionFailure } from "@/utils/googleOAuthErrors";
-import { getGoogleSsoRedirectUrl } from "@/utils/googleSsoRedirect";
-import { postDebugSessionLog } from "@/utils/debugSessionLog";
-import {
-  formatSignInDiagnosticsLines,
-  formatSignInErrorReport,
-  getSignInDiagnostics,
-  parseSignInError,
-  probeClerkKeyMatch,
-  SIGN_IN_DIAGNOSTICS_BUILD,
-  type ClerkConfigProbe,
-} from "@/utils/signInDiagnostics";
+/**
+ * Email code must use the *legacy* SignIn / SignUp resources.
+ * `@clerk/expo`'s default `useSignIn` returns SignInFuture, which has
+ * `emailCode.sendCode()` — not `prepareFirstFactor` / `supportedFirstFactors`.
+ * Calling the legacy methods on Future threw, and the empty catch made Send
+ * look like a silent failure in Expo Go.
+ */
+import { useSignIn, useSignUp } from "@clerk/expo/legacy";
+import * as AuthSession from "expo-auth-session";
+import Constants from "expo-constants";
+import * as Linking from "expo-linking";
+import { useRouter } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
+import React, { useEffect, useState } from "react";
+import { Platform, StyleSheet, TextInput, View } from "react-native";
+
+import { BrandMark } from "@/components/BrandMark";
+import { Button } from "@/components/Button";
+import { Frost } from "@/components/Frost";
+import { Screen } from "@/components/Screen";
+import { Txt } from "@/components/Txt";
+import { apiOrigin, isExpoGo, LEGAL_LINKS } from "@/config/env";
+import { sceneFor } from "@/data/scenes";
+import { clerkErrorCode, clerkErrorMessage } from "@/lib/clerkError";
+import { colors, radius, space, type } from "@/theme";
 
 WebBrowser.maybeCompleteAuthSession();
 
-const COLORS = {
-  background: "#071828",
-  card: "#0d2340",
-  border: "#143554",
-  teal: "#00BFA5",
-  foreground: "#E8F4F8",
-  mutedForeground: "#7ba7c2",
-  white: "#FFFFFF",
-};
-
-function useWarmUpBrowser(): void {
-  useEffect(() => {
-    if (Platform.OS !== "android") return;
-    void WebBrowser.warmUpAsync();
-    return () => {
-      void WebBrowser.coolDownAsync();
-    };
-  }, []);
+/**
+ * Where Google sends the person back after OAuth.
+ *
+ * In Expo Go we must NOT use the Play package scheme
+ * (`echo.samewaveripple.app://…`) — Android hands that to the installed
+ * SameWave app. Expo Go gets an `exp://` / `exps://` redirect instead.
+ * That URL must also be allowlisted in the Clerk Dashboard (Native
+ * applications → Redirect URLs). Production / dev builds keep the package scheme.
+ */
+function redirectUrl(): string {
+  const forced = (process.env.EXPO_PUBLIC_CLERK_SSO_REDIRECT ?? "").trim();
+  if (forced) return forced;
+  if (Platform.OS === "web") return AuthSession.makeRedirectUri({ path: "callback" });
+  if (isExpoGo()) {
+    return AuthSession.makeRedirectUri({ path: "callback" });
+  }
+  const scheme =
+    (Platform.OS === "ios"
+      ? Constants.expoConfig?.ios?.bundleIdentifier
+      : Constants.expoConfig?.android?.package) ?? "echo.samewaveripple.app";
+  return AuthSession.makeRedirectUri({ scheme, path: "callback", preferLocalhost: false });
 }
 
-export default function SignInScreen() {
-  useWarmUpBrowser();
-  const insets = useSafeAreaInsets();
-  const { myCountryCode } = useApp();
-  const { startSSOFlow } = useSSO();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [clerkProbe, setClerkProbe] = useState<ClerkConfigProbe | null>(null);
-  const [probeBusy, setProbeBusy] = useState(false);
-  const diagnostics = getSignInDiagnostics();
-  const diagnosticLines = formatSignInDiagnosticsLines(diagnostics);
+/** Satisfy Clerk's required-password rule without asking the person for one. */
+function ephemeralPassword(): string {
+  const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%";
+  let out = "Sw1!";
+  for (let i = 0; i < 24; i += 1) {
+    out += chars[Math.floor(Math.random() * chars.length)]!;
+  }
+  return out;
+}
 
+type EmailStep = "email" | "code";
+type EmailFlow = "signIn" | "signUp";
+
+export default function SignInScreen() {
+  const router = useRouter();
+  const { startSSOFlow } = useSSO();
+  const { isLoaded: signInLoaded, signIn, setActive: setActiveFromSignIn } = useSignIn();
+  const { isLoaded: signUpLoaded, signUp, setActive: setActiveFromSignUp } = useSignUp();
+  const setActive = setActiveFromSignIn ?? setActiveFromSignUp;
+  const isLoaded = signInLoaded && signUpLoaded;
+
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [emailStep, setEmailStep] = useState<EmailStep>("email");
+  const [emailFlow, setEmailFlow] = useState<EmailFlow>("signIn");
+  const [showEmail, setShowEmail] = useState(false);
+  const inExpoGo = isExpoGo();
+
+  // Android opens the sign-in page faster if the browser is already awake.
   useEffect(() => {
-    void probeClerkKeyMatch().then(setClerkProbe);
+    if (Platform.OS !== "android") return;
+    void WebBrowser.warmUpAsync().catch(() => undefined);
+    return () => {
+      void WebBrowser.coolDownAsync().catch(() => undefined);
+    };
   }, []);
 
-  const runClerkProbe = useCallback(async () => {
-    setProbeBusy(true);
-    try {
-      const result = await probeClerkKeyMatch();
-      setClerkProbe(result);
-      postDebugSessionLog({
-        hypothesisId: "H-G-probe",
-        location: "sign-in.tsx:runClerkProbe",
-        message: "clerk key probe",
-        data: {
-          ...result,
-          redirectUrl: diagnostics.redirectUrlUsed,
-          marker: diagnostics.marker,
-        },
-      });
-    } finally {
-      setProbeBusy(false);
+  useEffect(() => {
+    if (__DEV__) {
+      console.log(
+        "[sign-in] OAuth redirectUrl =",
+        redirectUrl(),
+        "isExpoGo =",
+        inExpoGo,
+        "expoVersion =",
+        Constants.expoVersion,
+        "executionEnvironment =",
+        Constants.executionEnvironment,
+        "appOwnership =",
+        Constants.appOwnership,
+      );
     }
-  }, [diagnostics.marker, diagnostics.redirectUrlUsed]);
+  }, [inExpoGo]);
 
-  const onPressGoogle = useCallback(async () => {
+  const signInWithGoogle = async () => {
     if (busy) return;
     setBusy(true);
-    setError(null);
-    const redirectUrl = getGoogleSsoRedirectUrl();
+    setProblem(null);
+    const oauthRedirect = redirectUrl();
     try {
-      // #region agent log
-      postDebugSessionLog({
-        hypothesisId: "H-G1",
-        location: "sign-in.tsx:onPressGoogle",
-        message: "google sso start",
-        data: {
-          platform: Platform.OS,
-          redirectUrl,
-        },
+      const { createdSessionId, setActive: setActiveFromSso } = await startSSOFlow({
+        strategy: "oauth_google",
+        redirectUrl: oauthRedirect,
       });
-      // #endregion
-      const { createdSessionId, setActive, authSessionResult } =
-        await startSSOFlow({
-          strategy: "oauth_google",
-          redirectUrl,
-        });
-      const oauthFailure = parseOAuthSessionFailure(authSessionResult);
-      if (createdSessionId && setActive) {
-        // Call setActive with only the session param — the `navigate`
-        // callback form is a Next.js/web pattern that @clerk/expo does
-        // not support in React Native. Navigating via that callback
-        // caused an unhandled JS exception after OAuth that triggered
-        // Expo's ON_ERROR_RECOVERY update check (and the misleading
-        // "Failed to download remote update" error the user sees).
-        // Route through "/" so index.tsx lands on tabs when the tutorial
-        // is already complete, or on /onboarding only if it is not.
-        await setActive({ session: createdSessionId });
-        if (myCountryCode) {
-          void updateMyCountryCode(myCountryCode);
-        }
-        // #region agent log
-        postDebugSessionLog({
-          hypothesisId: "H-Gok",
-          location: "sign-in.tsx:onPressGoogle",
-          message: "google sso setActive ok",
-          data: {},
-        });
-        // #endregion
-        router.replace("/");
+      const activate = setActiveFromSso ?? setActive;
+      if (createdSessionId && activate) {
+        await activate({ session: createdSessionId });
       } else {
-        const probe = clerkProbe ?? (await probeClerkKeyMatch());
-        setClerkProbe(probe);
-        setError(
-          formatSignInErrorReport({
-            err: new Error(
-              oauthFailure?.summary ??
-                "Google OAuth returned without a session (browser dismissed or callback not received).",
-            ),
-            diagnostics,
-            redirectUrlAttempted: redirectUrl,
-            clerkProbe: probe,
-            flowStage: "sso_incomplete",
-            oauthFailure,
-          }),
-        );
+        setProblem("Sign-in didn't finish. Please try again.");
       }
-    } catch (e) {
-      const parsed = parseSignInError(e);
-      const probe = clerkProbe ?? (await probeClerkKeyMatch());
-      setClerkProbe(probe);
-      // #region agent log
-      postDebugSessionLog({
-        hypothesisId: "H-Gerr",
-        location: "sign-in.tsx:onPressGoogle",
-        message: "google sso caught",
-        data: {
-          ...parsed,
-          redirectUrl,
-          marker: diagnostics.marker,
-          clerkKeysMatch: probe.keysMatch,
-        },
-      });
-      // #endregion
-      setError(
-        formatSignInErrorReport({
-          err: e,
-          diagnostics,
-          redirectUrlAttempted: redirectUrl,
-          clerkProbe: probe,
-          flowStage: "sso_start",
-        }),
-      );
+    } catch (err) {
+      console.warn("[sign-in] Google SSO failed", err);
+      setProblem(clerkErrorMessage(err, "We couldn't sign you in just now. Please try again."));
     } finally {
       setBusy(false);
     }
-  }, [busy, clerkProbe, diagnostics, myCountryCode, startSSOFlow]);
+  };
+
+  const beginSignUpWithEmailCode = async (identifier: string) => {
+    if (!signUp) throw new Error("Sign-up is not ready yet.");
+    // This Clerk instance requires a password at sign-up. Email code is still
+    // the first factor for sign-in; we mint a one-time password the person
+    // never sees so create() succeeds without a dashboard change.
+    await signUp.create({
+      emailAddress: identifier,
+      password: ephemeralPassword(),
+    });
+    await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
+    setEmailFlow("signUp");
+    setEmailStep("code");
+    setCode("");
+  };
+
+  const sendEmailCode = async () => {
+    if (busy || !isLoaded || !signIn) return;
+    const identifier = email.trim().toLowerCase();
+    if (!identifier.includes("@")) {
+      setProblem("Enter your email address.");
+      return;
+    }
+    setBusy(true);
+    setProblem(null);
+    try {
+      console.log("[sign-in] email code: create sign-in for", identifier);
+      const created = await signIn.create({ identifier });
+      const factor = created.supportedFirstFactors?.find(
+        (item) => item.strategy === "email_code" && "emailAddressId" in item,
+      ) as { strategy: "email_code"; emailAddressId: string } | undefined;
+      if (!factor?.emailAddressId) {
+        console.warn("[sign-in] email_code factor missing");
+        setProblem("Email sign-in isn't available for this account. Try Google instead.");
+        return;
+      }
+      console.log("[sign-in] email code: prepareFirstFactor", factor.emailAddressId);
+      await signIn.prepareFirstFactor({
+        strategy: "email_code",
+        emailAddressId: factor.emailAddressId,
+      });
+      setEmailFlow("signIn");
+      setEmailStep("code");
+      setCode("");
+    } catch (err) {
+      const codeName = clerkErrorCode(err);
+      console.warn("[sign-in] email code send failed", codeName, err);
+      // Brand-new email → fall through to sign-up + email verification.
+      if (
+        codeName === "form_identifier_not_found" ||
+        codeName === "form_param_nil" ||
+        /Couldn't find your account/i.test(clerkErrorMessage(err, ""))
+      ) {
+        try {
+          console.log("[sign-in] falling back to sign-up email_code for", identifier);
+          await beginSignUpWithEmailCode(identifier);
+          return;
+        } catch (signUpErr) {
+          console.warn("[sign-in] sign-up email code failed", signUpErr);
+          setProblem(
+            clerkErrorMessage(
+              signUpErr,
+              "Couldn't start with that email. Check it and try again.",
+            ),
+          );
+          return;
+        }
+      }
+      setProblem(clerkErrorMessage(err, "Couldn't send a code to that email. Check it and try again."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const verifyEmailCode = async () => {
+    if (busy || !isLoaded || !setActive) return;
+    const value = code.trim();
+    if (value.length < 4) {
+      setProblem("Enter the code from your email.");
+      return;
+    }
+    setBusy(true);
+    setProblem(null);
+    try {
+      if (emailFlow === "signUp") {
+        if (!signUp) throw new Error("Sign-up is not ready yet.");
+        console.log("[sign-in] verifying sign-up email code");
+        const result = await signUp.attemptEmailAddressVerification({ code: value });
+        if (result.status === "complete" && result.createdSessionId) {
+          await setActive({ session: result.createdSessionId });
+          return;
+        }
+        setProblem("That code didn't work. Request a new one and try again.");
+        return;
+      }
+      if (!signIn) throw new Error("Sign-in is not ready yet.");
+      console.log("[sign-in] verifying sign-in email code");
+      const result = await signIn.attemptFirstFactor({ strategy: "email_code", code: value });
+      if (result.status === "complete" && result.createdSessionId) {
+        await setActive({ session: result.createdSessionId });
+        return;
+      }
+      setProblem("That code didn't work. Request a new one and try again.");
+    } catch (err) {
+      console.warn("[sign-in] email code verify failed", err);
+      setProblem(clerkErrorMessage(err, "That code didn't work. Request a new one and try again."));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
-    <View
-      style={[
-        styles.container,
-        { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 },
-      ]}
-    >
-      <View style={styles.heroBlock}>
-        <Image
-          source={require("@/assets/images/samewave-logo.png")}
-          style={styles.logo}
-          resizeMode="contain"
+    <Screen scene={sceneFor.signIn} style={styles.screen} scroll contentBottomPad={48}>
+      <Frost kind="card" style={styles.brandCard} contentStyle={styles.top}>
+        <BrandMark size={104} withName />
+        <Txt tone="secondary" center style={styles.line}>
+          Someone, somewhere is having a similar moment.
+        </Txt>
+      </Frost>
+
+      <Frost kind="card" style={styles.formCard} contentStyle={styles.formPad}>
+        <Txt variant="heading" center style={styles.heading}>
+          Sign in to continue
+        </Txt>
+        <Txt tone="secondary" center style={styles.sub}>
+          One account. Pick the option that suits you.
+        </Txt>
+
+        {problem ? (
+          <Txt variant="quiet" tone="ember" center style={styles.problem}>
+            {problem}
+          </Txt>
+        ) : null}
+
+        <Button label="Continue with Google" onPress={() => void signInWithGoogle()} busy={busy} />
+
+        {!showEmail && emailStep === "email" ? (
+          <Button
+            kind="quiet"
+            label="Use email instead"
+            onPress={() => {
+              setShowEmail(true);
+              setProblem(null);
+            }}
+            style={styles.secondary}
+          />
+        ) : null}
+
+        {showEmail || emailStep === "code" ? (
+          <View style={styles.emailBlock}>
+            {emailStep === "email" ? (
+              <>
+                <Txt variant="quiet" tone="quiet" center style={styles.or}>
+                  We&apos;ll email you a one-time code
+                </Txt>
+                <TextInput
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  textContentType="emailAddress"
+                  placeholder="Email address"
+                  placeholderTextColor={colors.textQuiet}
+                  style={styles.input}
+                  editable={!busy}
+                  accessibilityLabel="Email address"
+                />
+                <Button
+                  kind="soft"
+                  label="Send code"
+                  onPress={() => void sendEmailCode()}
+                  busy={busy}
+                  disabled={!isLoaded}
+                  style={styles.emailBtn}
+                />
+                {inExpoGo ? (
+                  <Txt variant="quiet" tone="quiet" center style={styles.hint}>
+                    In Expo Go, email is the reliable path if Google opens the installed Play app.
+                  </Txt>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <Txt tone="secondary" center style={styles.codeHint}>
+                  Enter the code we sent to {email.trim().toLowerCase()}
+                </Txt>
+                <TextInput
+                  value={code}
+                  onChangeText={setCode}
+                  keyboardType="number-pad"
+                  textContentType="oneTimeCode"
+                  placeholder="6-digit code"
+                  placeholderTextColor={colors.textQuiet}
+                  style={styles.input}
+                  editable={!busy}
+                  accessibilityLabel="Email code"
+                />
+                <Button
+                  kind="soft"
+                  label="Continue"
+                  onPress={() => void verifyEmailCode()}
+                  busy={busy}
+                  style={styles.emailBtn}
+                />
+                <Button
+                  kind="quiet"
+                  label="Use a different email"
+                  onPress={() => {
+                    setEmailStep("email");
+                    setEmailFlow("signIn");
+                    setCode("");
+                    setProblem(null);
+                  }}
+                  style={styles.quiet}
+                />
+              </>
+            )}
+          </View>
+        ) : null}
+
+        <Button
+          kind="quiet"
+          label="How SameWave works"
+          onPress={() => router.push("/how-it-works")}
+          style={styles.quiet}
         />
-        <Text style={styles.title}>Welcome to SameWave</Text>
-        <Text style={styles.subtitle}>
-          Sign in once with Google so your photos and country stay with you
-          across devices.
-        </Text>
-      </View>
-
-      <View style={styles.actionBlock}>
-        <TouchableOpacity
-          accessibilityRole="button"
-          accessibilityLabel="Continue with Google"
-          activeOpacity={0.85}
-          onPress={onPressGoogle}
-          disabled={busy}
-          style={[styles.googleBtn, busy && styles.googleBtnBusy]}
-        >
-          {busy ? (
-            <ActivityIndicator color="#3c4043" />
-          ) : (
-            <>
-              <View style={styles.googleMark}>
-                <Text style={styles.googleG}>G</Text>
-              </View>
-              <Text style={styles.googleLabel}>Continue with Google</Text>
-            </>
-          )}
-        </TouchableOpacity>
-
-        {error && (
-          <ScrollView
-            style={styles.errorScroll}
-            nestedScrollEnabled
-            accessibilityLabel="Sign-in error details"
+        <Txt variant="quiet" tone="secondary" center style={styles.legal}>
+          By continuing you agree to the{" "}
+          <Txt
+            variant="quiet"
+            tone="primary"
+            accessibilityRole="link"
+            onPress={() => void Linking.openURL(apiOrigin() + LEGAL_LINKS.terms)}
           >
-            <Text style={styles.errorText} selectable>
-              {error}
-            </Text>
-          </ScrollView>
-        )}
-
-        <TouchableOpacity
-          accessibilityRole="button"
-          accessibilityLabel="Test Clerk and API setup"
-          activeOpacity={0.85}
-          onPress={() => void runClerkProbe()}
-          disabled={probeBusy || busy}
-          style={styles.probeBtn}
-        >
-          {probeBusy ? (
-            <ActivityIndicator color={COLORS.teal} size="small" />
-          ) : (
-            <Text style={styles.probeBtnLabel}>Test Clerk setup (no Google)</Text>
-          )}
-        </TouchableOpacity>
-
-        <View style={styles.diagCard}>
-          <Text style={styles.diagTitle}>Closed test build info</Text>
-          {diagnosticLines.map((line) => (
-            <Text key={line} style={styles.diagLine}>
-              {line}
-            </Text>
-          ))}
-          {clerkProbe && (
-            <Text
-              style={[
-                styles.diagLine,
-                clerkProbe.keysMatch === false && styles.diagWarn,
-                clerkProbe.keysMatch === true && styles.diagOk,
-              ]}
-            >
-              {clerkProbe.ok
-                ? clerkProbe.keysMatch
-                  ? `Clerk keys match (…${clerkProbe.appKeySuffix})`
-                  : `Clerk key mismatch — app …${clerkProbe.appKeySuffix} vs server …${clerkProbe.serverKeySuffix}`
-                : `Clerk probe failed: ${clerkProbe.error ?? "unknown"}`}
-            </Text>
-          )}
-          <Text style={styles.diagHint}>
-            Need SSO-diag-{SIGN_IN_DIAGNOSTICS_BUILD} on this screen. Play 1.2.8
-            can still be an older vc — check vc {diagnostics.versionCodeNative ?? "?"}.
-          </Text>
-        </View>
-
-        <Text style={styles.fineprint}>
-          We don't show or store your name, email, or profile photo. Your
-          Google account is only used as a private anchor for your data.
-        </Text>
-      </View>
-    </View>
+            Terms
+          </Txt>{" "}
+          and{" "}
+          <Txt
+            variant="quiet"
+            tone="primary"
+            accessibilityRole="link"
+            onPress={() => void Linking.openURL(apiOrigin() + LEGAL_LINKS.privacy)}
+          >
+            Privacy Policy
+          </Txt>
+          .
+        </Txt>
+      </Frost>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-    paddingHorizontal: 24,
-    justifyContent: "space-between",
-  },
-  heroBlock: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 16,
-    paddingHorizontal: 12,
-  },
-  logo: {
-    width: 96,
-    height: 96,
-    marginBottom: 8,
-  },
-  title: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 28,
-    color: COLORS.foreground,
-    textAlign: "center",
-  },
-  subtitle: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 15,
-    color: COLORS.mutedForeground,
-    textAlign: "center",
-    lineHeight: 22,
-    maxWidth: 320,
-  },
-  actionBlock: {
-    gap: 14,
-    paddingBottom: 8,
-  },
-  googleBtn: {
-    flexDirection: "row",
+  screen: { justifyContent: "space-between" },
+  brandCard: { marginBottom: space.md },
+  top: {
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
-    backgroundColor: COLORS.white,
-    borderRadius: 999,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    minHeight: 52,
+    paddingTop: space.xl,
+    paddingBottom: space.lg,
+    paddingHorizontal: space.lg,
   },
-  googleBtnBusy: { opacity: 0.7 },
-  googleMark: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#dadce0",
-    alignItems: "center",
-    justifyContent: "center",
+  formCard: { marginBottom: space.lg },
+  formPad: { paddingHorizontal: space.lg, paddingVertical: space.lg },
+  line: { marginTop: space.md, maxWidth: 300 },
+  heading: { marginBottom: space.xs },
+  sub: { marginBottom: space.lg, maxWidth: 300, alignSelf: "center" },
+  problem: { marginBottom: space.md },
+  hint: { marginTop: space.md, maxWidth: 320, alignSelf: "center" },
+  secondary: { marginTop: space.md },
+  emailBlock: { marginTop: space.md },
+  or: { marginBottom: space.sm },
+  input: {
+    ...type.body,
+    color: colors.textPrimary,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    paddingHorizontal: space.md,
+    height: 48,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.line,
   },
-  googleG: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 14,
-    color: "#4285F4",
-  },
-  googleLabel: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 16,
-    color: "#3c4043",
-  },
-  fineprint: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 12,
-    color: COLORS.mutedForeground,
-    textAlign: "center",
-    lineHeight: 18,
-    paddingHorizontal: 8,
-  },
-  errorScroll: {
-    maxHeight: 220,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#5c2a2a",
-    backgroundColor: "#1a0f14",
-    padding: 10,
-  },
-  errorText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 11,
-    color: "#FF9B9B",
-    textAlign: "left",
-    lineHeight: 16,
-  },
-  probeBtn: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    minHeight: 44,
-  },
-  probeBtnLabel: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 14,
-    color: COLORS.teal,
-  },
-  diagCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 12,
-    gap: 4,
-  },
-  diagTitle: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 12,
-    color: COLORS.foreground,
-    marginBottom: 4,
-  },
-  diagLine: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 11,
-    color: COLORS.mutedForeground,
-    lineHeight: 16,
-  },
-  diagHint: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 10,
-    color: COLORS.mutedForeground,
-    lineHeight: 15,
-    marginTop: 6,
-    opacity: 0.85,
-  },
-  diagOk: { color: COLORS.teal },
-  diagWarn: { color: "#FFB347" },
+  emailBtn: { marginTop: space.md },
+  codeHint: { marginBottom: space.sm },
+  quiet: { marginTop: space.md },
+  legal: { marginTop: space.md },
 });

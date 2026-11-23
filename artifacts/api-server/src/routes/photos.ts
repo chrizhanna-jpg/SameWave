@@ -17,6 +17,7 @@ import {
   resolveUploadLabels,
 } from "../lib/localPhotoLabels";
 import { recordEchoOffer, revokeEchoForUnvote } from "./echoes";
+import { normalizeEmotion } from "../lib/allowedEmotions";
 import { normalizeMusicGenre } from "../lib/allowedMusicGenres";
 import { sendPhotoReportAlert } from "../lib/moderationEmail";
 import {
@@ -71,6 +72,7 @@ import {
   themeExactMatchVariants,
 } from "../lib/challengeTheme";
 import { expandSubjectsForQuery } from "../lib/subjectMatch";
+import { parseCaptureCountrySource } from "../lib/captureCountrySource";
 
 const bannedPrefixMd5Expr =
   BANNED_PHOTO_PREFIX_MD5.length > 0
@@ -266,7 +268,8 @@ async function countUserPhotoSends(
 
 // ---- POST /api/photos -----------------------------------------------------
 // Body: { imageBase64, mimeType?, countryCode?, captureCountryCode?,
-//         capturedAt?, theme?, tags?, subjects?, shapes? }
+//         captureCountrySource?, emotion?, musicGenre?, capturedAt?,
+//         theme?, tags?, subjects?, shapes? }
 // Header: X-Device-Id (required) — stable client UUID.
 router.post("/photos", async (req, res) => {
   try {
@@ -279,7 +282,9 @@ router.post("/photos", async (req, res) => {
       deckPreviewBase64?: unknown;
       countryCode?: unknown;
       captureCountryCode?: unknown;
+      captureCountrySource?: unknown;
       capturedAt?: unknown;
+      emotion?: unknown;
       musicGenre?: unknown;
       customAudioBase64?: unknown;
       customAudioMime?: unknown;
@@ -310,6 +315,9 @@ router.post("/photos", async (req, res) => {
       body.captureCountryCode.length === 2
         ? body.captureCountryCode.toUpperCase()
         : null;
+    const captureCountrySource = parseCaptureCountrySource(
+      body.captureCountrySource,
+    );
 
     // Real capture instant (EXIF DateTimeOriginal for library picks, or the
     // in-app camera shutter moment). Stored honestly: only persisted when the
@@ -406,6 +414,10 @@ router.post("/photos", async (req, res) => {
         );
       }
     }
+
+    // Feeling id from artifacts/same-same/data/emotions.ts — distinct from
+    // musicGenre (song / vibe clip). Unknown values become null.
+    const emotion = normalizeEmotion(body.emotion);
 
     // Music-vibe id chosen on the client. Whitelisted to the canonical
     // emotional set defined in artifacts/same-same/data/musicLibrary.ts
@@ -521,6 +533,7 @@ router.post("/photos", async (req, res) => {
       theme: string;
       tags: string[];
       subjects: string[] | null;
+      emotion: string | null;
       musicGenre: string | null;
       createdAt: Date;
       expiresAt: Date | null;
@@ -549,7 +562,9 @@ router.post("/photos", async (req, res) => {
             subjects,
             countryCode: effectiveCountryCode,
             captureCountryCode,
+            captureCountrySource,
             capturedAt,
+            emotion,
             musicGenre,
             customAudioBase64: useR2 ? null : customAudioBase64,
             customAudioMime,
@@ -570,6 +585,7 @@ router.post("/photos", async (req, res) => {
             theme: photosTable.theme,
             tags: photosTable.tags,
             subjects: photosTable.subjects,
+            emotion: photosTable.emotion,
             musicGenre: photosTable.musicGenre,
             createdAt: photosTable.createdAt,
             expiresAt: photosTable.expiresAt,
@@ -629,12 +645,17 @@ router.post("/photos", async (req, res) => {
       tags: row.tags,
       // Concrete subjects for /candidates subject-overlap scoring.
       subjects: row.subjects ?? [],
+      emotion: row.emotion,
       musicGenre: row.musicGenre,
       hasCustomAudio: customAudioBase64 !== null,
       ...(suggestedTheme ? { suggestedTheme } : {}),
       ...(suggestedTags?.length ? { suggestedTags } : {}),
     });
   } catch (err) {
+    if (isPhotoDailyCapError(err)) {
+      res.status(429).json({ error: PHOTO_DAILY_CAP_ERROR });
+      return;
+    }
     req.log.error({ err }, "photo upload failed");
     res.status(500).json({ error: "upload failed" });
   }
@@ -642,7 +663,7 @@ router.post("/photos", async (req, res) => {
 
 // ---- GET /api/photos/candidates -------------------------------------------
 // Query: ?theme=&tags=tag1,tag2&shapes=circles,vertical&subjects=apple,sculpture
-//        &musicGenre=lofi&limit=24
+//        &emotion=joy&musicGenre=lofi&limit=24
 // Header: X-Device-Id (required).
 //
 // Scoring (computed in SQL). Subject overlap is the heaviest single
@@ -663,6 +684,7 @@ router.post("/photos", async (req, res) => {
 //                 still a strong signal in the primary deck.
 //   shape_score = least(shape_overlap, 5) * 2 → 0..10. Visual-form
 //                 (circles, vertical, layered…) overlap.
+//   emotion_score = 8 if same feeling (`emotion` query vs p.emotion).
 //   music_score = 5 if same musicGenre as the requester's photo, else 0.
 //   jitter      = tiny random factor (0..0.3) so two consecutive calls
 //                 don't return the exact same ordering.
@@ -745,6 +767,8 @@ router.get("/photos/candidates", async (req, res) => {
       .filter((t) => t.length > 0 && t.length <= 32)
       .slice(0, 12);
     const subjects = expandSubjectsForQuery(subjectsRaw, 48);
+    // Feeling id (canonical allow-list). Distinct from musicGenre (song).
+    const emotion = normalizeEmotion(req.query.emotion) ?? "";
     // Music vibe is whitelisted in /photos POST, so it's safe to trust
     // the value the client echoes back here. Empty string disables the
     // bonus for callers (e.g. subject-matter match) that don't send it.
@@ -752,6 +776,11 @@ router.get("/photos/candidates", async (req, res) => {
       typeof req.query.musicGenre === "string"
         ? req.query.musicGenre.trim()
         : "";
+    // Voter's own Ripple photo — used to flag inbound pending offers (wavedAtYou).
+    const voterPhotoIdRaw =
+      typeof req.query.voterPhotoId === "string" ? req.query.voterPhotoId.trim() : "";
+    const voterPhotoId =
+      voterPhotoIdRaw.length > 0 && voterPhotoIdRaw.length <= 64 ? voterPhotoIdRaw : "";
     const limit = Math.min(
       Math.max(parseInt(String(req.query.limit ?? "24"), 10) || 24, 1),
       50,
@@ -836,6 +865,7 @@ router.get("/photos/candidates", async (req, res) => {
           p.subjects AS "subjects",
           p.country_code AS "countryCode",
           p.capture_country_code AS "captureCountryCode",
+          p.emotion AS "emotion",
           p.music_genre AS "musicGenre",
           p.custom_audio_base64 AS "customAudioBase64",
           p.custom_audio_mime AS "customAudioMime",
@@ -846,6 +876,21 @@ router.get("/photos/candidates", async (req, res) => {
           -- carried no capture metadata. The client uses this as the temporal
           -- match basis and falls back to created_at (share time) when null.
           p.captured_at AS "capturedAt",
+          -- Inbound pending "same" aimed at the voter's Ripple photo.
+          CASE
+            WHEN ${voterPhotoId} = '' THEN false
+            ELSE EXISTS (
+              SELECT 1
+              FROM echoes e
+              WHERE e.state = 'pending'
+                AND e.pending_from_user_id IS NOT NULL
+                AND e.pending_from_user_id <> ${user.id}
+                AND (
+                  (e.photo_low_id = ${voterPhotoId} AND e.photo_high_id = p.id)
+                  OR (e.photo_high_id = ${voterPhotoId} AND e.photo_low_id = p.id)
+                )
+            )
+          END AS "wavedAtYou",
           -- Dedup key only. We intentionally do NOT select p.bytes_base64:
           -- the multi-MB base64 column was previously pulled back for every
           -- candidate from the remote DB but never read in JS (images stream
@@ -865,6 +910,11 @@ router.get("/photos/candidates", async (req, res) => {
               OR ${normPhotoTheme} ILIKE '%' || ${theme} || '%' THEN 7
             ELSE 0
           END AS theme_score,
+          CASE
+            WHEN ${emotion} = '' THEN 0
+            WHEN lower(trim(coalesce(p.emotion, ''))) = ${emotion} THEN 8
+            ELSE 0
+          END AS emotion_score,
           CASE
             WHEN ${musicGenre} = '' THEN 0
             WHEN p.music_genre = ${musicGenre} THEN 5
@@ -924,6 +974,11 @@ router.get("/photos/candidates", async (req, res) => {
                 ) * 2
               END
             + CASE
+                WHEN ${emotion} = '' THEN 0
+                WHEN lower(trim(coalesce(p.emotion, ''))) = ${emotion} THEN 8
+                ELSE 0
+              END
+            + CASE
                 WHEN ${musicGenre} = '' THEN 0
                 WHEN p.music_genre = ${musicGenre} THEN 5
                 ELSE 0
@@ -976,10 +1031,10 @@ router.get("/photos/candidates", async (req, res) => {
       deduped AS (
         SELECT DISTINCT ON (content_hash) *
         FROM scored
-        ORDER BY content_hash, rank_score DESC, "createdAt" DESC
+        ORDER BY content_hash, "wavedAtYou" DESC, rank_score DESC, "createdAt" DESC
       )
       SELECT * FROM deduped
-      ORDER BY rank_score DESC, "createdAt" DESC
+      ORDER BY "wavedAtYou" DESC, rank_score DESC, "createdAt" DESC
       LIMIT ${limit}
     `);
 
@@ -1001,7 +1056,9 @@ router.get("/photos/candidates", async (req, res) => {
         subjects: Array.isArray(r.subjects) ? (r.subjects as string[]) : [],
         countryCode: (r.countryCode as string | null) ?? null,
         captureCountryCode: (r.captureCountryCode as string | null) ?? null,
+        emotion: (r.emotion as string | null) ?? null,
         musicGenre: (r.musicGenre as string | null) ?? null,
+        wavedAtYou: Boolean(r.wavedAtYou),
         customAudioUrl,
         // Stock pool: Unsplash CDN (instant on mobile). User uploads: authed stream.
         uri: cdnUri ?? `/api/photos/${encodeURIComponent(id)}/image`,
@@ -1791,6 +1848,7 @@ router.post("/photos/atlas/explore", async (req, res) => {
         pl.theme AS pl_theme,
         pl.tags AS pl_tags,
         pl.subjects AS pl_subjects,
+        pl.emotion AS pl_emotion,
         pl.music_genre AS pl_music,
         pl.mime_type AS pl_mime,
         pl.custom_audio_base64 AS pl_audio_b64,
@@ -1807,6 +1865,7 @@ router.post("/photos/atlas/explore", async (req, res) => {
         ph.theme AS ph_theme,
         ph.tags AS ph_tags,
         ph.subjects AS ph_subjects,
+        ph.emotion AS ph_emotion,
         ph.music_genre AS ph_music,
         ph.mime_type AS ph_mime,
         ph.custom_audio_base64 AS ph_audio_b64,
@@ -1919,6 +1978,7 @@ router.post("/photos/atlas/explore", async (req, res) => {
         contentHash: contentHash || undefined,
         tags: normTags(r[`${prefix}_tags`]),
         subjects: normTags(r[`${prefix}_subjects`]),
+        emotion: (r[`${prefix}_emotion`] as string | null) ?? null,
         musicGenre: (r[`${prefix}_music`] as string | null) ?? null,
         customAudioUrl: resolveServedAudioUrl({
           objectKey: audioKey,
@@ -2025,6 +2085,7 @@ router.get("/photos/atlas/:countryCode", async (req, res) => {
           p.mime_type,
           p.theme,
           p.tags,
+          p.emotion,
           p.music_genre,
           p.custom_audio_base64,
           p.custom_audio_mime,
@@ -2060,6 +2121,7 @@ router.get("/photos/atlas/:countryCode", async (req, res) => {
         id,
         theme,
         tags,
+        emotion,
         music_genre,
         custom_audio_base64,
         custom_audio_mime,
@@ -2079,6 +2141,7 @@ router.get("/photos/atlas/:countryCode", async (req, res) => {
         uri: `/api/photos/${encodeURIComponent(id)}/image`,
         theme:          String(r.theme ?? ""),
         tags:           Array.isArray(r.tags) ? (r.tags as string[]) : [],
+        emotion:        (r.emotion as string | null) ?? null,
         musicGenre:     (r.music_genre as string | null) ?? null,
         customAudioUrl: resolveServedAudioUrl({
           objectKey: audioKey,

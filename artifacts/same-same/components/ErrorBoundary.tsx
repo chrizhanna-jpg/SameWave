@@ -1,64 +1,69 @@
-import React, { Component, ComponentType, PropsWithChildren } from "react";
+import React from "react";
+import { StyleSheet, View } from "react-native";
 
-import { ErrorFallback, ErrorFallbackProps } from "@/components/ErrorFallback";
+import { Button } from "@/components/Button";
+import { Txt } from "@/components/Txt";
+import { colors, space } from "@/theme";
 
-export type ErrorBoundaryProps = PropsWithChildren<{
-  FallbackComponent?: ComponentType<ErrorFallbackProps>;
-  onError?: (error: Error, stackTrace: string) => void;
-}>;
+interface Props {
+  children: React.ReactNode;
+}
 
-type ErrorBoundaryState = { error: Error | null };
+interface State {
+  error: Error | null;
+  attempt: number;
+}
 
 /**
- * This is a special case for for using the class components. Error boundaries must be class components because React only provides error boundary functionality through lifecycle methods (componentDidCatch and getDerivedStateFromError) which are not available in functional components.
- * https://react.dev/reference/react/Component#catching-rendering-errors-with-an-error-boundary
+ * If a screen breaks, the person sees a calm way to carry on instead of a
+ * frozen or blank app. "Try again" redraws everything below this point.
  */
-export class ErrorBoundary extends Component<
-  ErrorBoundaryProps,
-  ErrorBoundaryState
-> {
-  state: ErrorBoundaryState = { error: null };
+export class ErrorBoundary extends React.Component<Props, State> {
+  state: State = { error: null, attempt: 0 };
 
-  static defaultProps: {
-    FallbackComponent: ComponentType<ErrorFallbackProps>;
-  } = {
-    FallbackComponent: ErrorFallback,
-  };
-
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+  static getDerivedStateFromError(error: Error): Partial<State> {
     return { error };
   }
 
-  componentDidCatch(error: Error, info: { componentStack: string }): void {
-    // Logs show up in the Metro / Expo terminal on your PC even when the
-    // device UI only says "Something went wrong".
-    console.error(
-      "[SameWave crash]",
-      error?.message ?? error,
-      "\n--- stack ---\n",
-      error?.stack ?? "(no stack)",
-      "\n--- component stack ---\n",
-      info.componentStack,
-    );
-    if (typeof this.props.onError === "function") {
-      this.props.onError(error, info.componentStack);
-    }
+  componentDidCatch(error: Error) {
+    console.error("[SameWave] screen failed", error);
   }
 
-  resetError = (): void => {
-    this.setState({ error: null });
-  };
-
   render() {
-    const { FallbackComponent } = this.props;
-
-    return this.state.error && FallbackComponent ? (
-      <FallbackComponent
-        error={this.state.error}
-        resetError={this.resetError}
-      />
-    ) : (
-      this.props.children
+    if (!this.state.error) {
+      return <React.Fragment key={this.state.attempt}>{this.props.children}</React.Fragment>;
+    }
+    return (
+      <View style={styles.root}>
+        <Txt variant="title" center>
+          Something went still
+        </Txt>
+        <Txt tone="secondary" center style={styles.body}>
+          That screen ran into a problem. Your photos and Waves are safe.
+        </Txt>
+        <Button
+          label="Try again"
+          onPress={() => this.setState((state) => ({ error: null, attempt: state.attempt + 1 }))}
+          style={styles.button}
+        />
+        {__DEV__ ? (
+          <Txt variant="quiet" tone="ember" center style={styles.body}>
+            {this.state.error.message}
+          </Txt>
+        ) : null}
+      </View>
     );
   }
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: colors.background,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: space.xl,
+  },
+  body: { marginTop: space.md },
+  button: { marginTop: space.xl, alignSelf: "center", minWidth: 200 },
+});

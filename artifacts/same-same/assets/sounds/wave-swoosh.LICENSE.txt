@@ -1,0 +1,13 @@
+wave-swoosh.mp3
+================
+
+Source:  Synthesised in-house with ffmpeg (no third-party recording).
+Licence: SameWave project — original work.
+
+Recipe (ffmpeg lavfi):
+  - Brown-noise body, band-passed 70–480 Hz
+  - White-noise foam, band-passed 700–4200 Hz, delayed 0.28 s
+  - Shared 4.545 s swell envelope peaking ~2.05 s (sin(π·t/4.1)²)
+  - Cosine-like fades: afade in 0.95 s (qsin), out 1.25 s from 3.295 s
+  - loudnorm I=-18 LUFS, TP=-3 dBFS
+  - Encode: mono 44.1 kHz MP3 @ 192 kb/s

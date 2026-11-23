@@ -1,0 +1,17 @@
+# Ripple flow reaches match with photos (no Unavailable).
+# Requires signed-in preview + photo permission / gallery fixture.
+appId: echo.samewaveripple.app
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Ripple"
+    timeout: 60000
+- tapOn: "Ripple"
+- extendedWaitUntil:
+    visible:
+      text: "Upload moment|Add a photo|This feels"
+    timeout: 30000
+- takeScreenshot: ripple-compose
+# Full send path is device-dependent; assert compose chrome is present.
+- assertVisible:
+    text: ".*topic.*|This feels|Upload moment|Add a photo"

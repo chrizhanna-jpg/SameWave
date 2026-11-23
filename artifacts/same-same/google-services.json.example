@@ -1,0 +1,9 @@
+{
+  "_comment": "Place the real google-services.json from Firebase here (Android app package echo.samewaveripple.app). Do not commit the real file — see docs/PUSH_SETUP.md.",
+  "project_info": {
+    "project_number": "REPLACE",
+    "project_id": "REPLACE",
+    "storage_bucket": "REPLACE"
+  },
+  "client": []
+}

@@ -1,0 +1,21 @@
+# Wave tab: Ripples received + Waves sections; tap opens full-screen Wave.
+appId: echo.samewaveripple.app
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Waves"
+    timeout: 60000
+- tapOn:
+    text: "Waves"
+    index: 0
+- extendedWaitUntil:
+    visible: "Ripples received"
+    timeout: 30000
+- assertVisible: "Waves"
+- takeScreenshot: wave-inbox-sections
+- runFlow:
+    when:
+      visible: "Open Wave"
+    commands:
+      - tapOn: "Open Wave"
+      - takeScreenshot: wave-inbox-fullscreen

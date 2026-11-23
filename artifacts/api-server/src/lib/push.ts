@@ -1,33 +1,21 @@
 import { db, pushTokensTable } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
 import { logger } from "./logger";
+import {
+  buildExpoPushMessages,
+  deadTokensFromTickets,
+  type PushPayload,
+} from "./pushMessages";
+
+export {
+  buildExpoPushMessages,
+  deadTokensFromTickets,
+  EXPO_WAVE_CHANNEL_ID,
+  type PushPayload,
+} from "./pushMessages";
 
 // Expo Push API endpoint. Accepts up to 100 messages per call.
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
-
-export interface PushPayload {
-  title: string;
-  body: string;
-  // Arbitrary JSON delivered to the client. We use it for deep-linking —
-  // the mobile app reads `data.deepLink` from the notification response.
-  data?: Record<string, unknown>;
-  /** iOS notification category (action buttons). Android uses the same id. */
-  categoryId?: string;
-}
-
-interface ExpoMessage extends PushPayload {
-  to: string;
-  sound?: "default" | null;
-  channelId?: string;
-  categoryId?: string;
-}
-
-interface ExpoTicket {
-  status: "ok" | "error";
-  id?: string;
-  message?: string;
-  details?: { error?: string };
-}
 
 /**
  * Look up every Expo push token registered for a user (they may have
@@ -63,26 +51,9 @@ export async function sendPushToTokens(
   tokens: string[],
   payload: PushPayload,
 ): Promise<void> {
-  // Filter to syntactically valid Expo push tokens. Anything else (an
-  // FCM/APNS token registered before the project was set up, a stale
-  // string from a wiped install) is dropped silently.
-  const valid = tokens.filter(
-    (t) => typeof t === "string" && /^Expo(?:nent)?PushToken\[/.test(t),
-  );
-  if (valid.length === 0) return;
-
-  const messages: ExpoMessage[] = valid.map((to) => ({
-    to,
-    sound: "default",
-    title: payload.title,
-    body: payload.body,
-    data: payload.data ?? {},
-    // Android channel id — keep in sync with the mobile app (`waves`).
-    // Older clients that only created channel "echoes" still receive the
-    // notification (system default / existing channel fallback).
-    channelId: "waves",
-    ...(payload.categoryId ? { categoryId: payload.categoryId } : {}),
-  }));
+  const messages = buildExpoPushMessages(tokens, payload);
+  if (messages.length === 0) return;
+  const valid = messages.map((m) => m.to);
 
   let res: Response;
   try {
@@ -111,15 +82,11 @@ export async function sendPushToTokens(
   // future echo. Other error codes (rate limits, bad JSON, etc.) we
   // leave alone — they're transient or our own bug.
   try {
-    const json = (await res.json()) as { data?: ExpoTicket[] };
+    const json = (await res.json()) as {
+      data?: { status: "ok" | "error"; details?: { error?: string } }[];
+    };
     const tickets = Array.isArray(json.data) ? json.data : [];
-    const dead: string[] = [];
-    tickets.forEach((t, i) => {
-      if (t.status === "error" && t.details?.error === "DeviceNotRegistered") {
-        const tok = valid[i];
-        if (tok) dead.push(tok);
-      }
-    });
+    const dead = deadTokensFromTickets(valid, tickets);
     if (dead.length > 0) {
       await db
         .delete(pushTokensTable)

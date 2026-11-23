@@ -161,7 +161,7 @@ export async function recordEchoOffer(input: {
   const row = upserted[0];
   if (!row) return { state: "skipped" };
 
-  // Only fire push when a pending offer becomes a mutual Wave (real Wave).
+  // Only fire push when a pending offer becomes a mutual Wave.
   // Pending offers do not notify. Re-voting the same direction is a no-op.
   const becameMutual =
     !!before && before.state === "pending" && row.state === "mutual";
@@ -171,13 +171,21 @@ export async function recordEchoOffer(input: {
       : pair.lowPayload.userId;
   const echoId = row.id;
   if (becameMutual) {
-    // Keep `/echo-pair?a=&b=` deepLink for the currently shipped app;
-    // also send waveId / reveal for newer clients (PR #45+).
+    // Both sides care: the responder (voterUserId) just tapped and the
+    // original offerer (recipientUserId) needs to know it stuck. Mutual
+    // taps deep-link straight into the side-by-side pair view (the
+    // celebration moment) so the user lands on the actual match
+    // instead of the inbox list. The pair endpoint requires mutual
+    // state, which we've just promoted to, so the link will resolve.
+    // Client routes waveId → full-screen Wave reveal (`/wave/[id]?reveal=1`).
+    // Keep photo ids for older clients that still resolve via echo-pair.
+    const waveLink = `/wave/${encodeURIComponent(echoId)}?reveal=1`;
     const pairLink = `/echo-pair?a=${encodeURIComponent(
       pair.lowId,
     )}&b=${encodeURIComponent(pair.highId)}`;
     const mutualData = {
-      deepLink: pairLink,
+      deepLink: waveLink,
+      legacyDeepLink: pairLink,
       waveId: echoId,
       echoId,
       state: "mutual" as const,
@@ -200,6 +208,7 @@ export async function recordEchoOffer(input: {
       }),
     ]).catch((err) => logger.error({ err }, "echo push (mutual) failed"));
   }
+  // Pending offers do not send push — only real mutual Waves (Chris).
 
   return { state: row.state === "mutual" ? "mutual" : "pending", id: row.id };
 }
@@ -328,18 +337,22 @@ type EchoCard = {
     uri: string;
     countryCode: string | null;
     captureCountryCode: string | null;
+    captureCountrySource: string | null;
     capturedAt: string | null;
     createdAt: string | null;
     theme: string;
+    emotion: string | null;
   };
   theirs: {
     id: string;
     uri: string;
     countryCode: string | null;
     captureCountryCode: string | null;
+    captureCountrySource: string | null;
     capturedAt: string | null;
     createdAt: string | null;
     theme: string;
+    emotion: string | null;
   };
 };
 
@@ -395,12 +408,16 @@ function photoSideFromRow(
   uri: string;
   countryCode: string | null;
   captureCountryCode: string | null;
+  captureCountrySource: string | null;
   capturedAt: string | null;
   createdAt: string | null;
   theme: string;
+  emotion: string | null;
 } {
   const captureRaw = row[`${side}CaptureCountry`] as string | null;
   const declaredRaw = row[`${side}Country`] as string | null;
+  const sourceRaw = row[`${side}CaptureCountrySource`] as string | null;
+  const emotionRaw = row[`${side}Emotion`] as string | null;
   const capture =
     typeof captureRaw === "string" && captureRaw.trim().length === 2
       ? captureRaw.trim().toUpperCase()
@@ -408,6 +425,15 @@ function photoSideFromRow(
   const declared =
     typeof declaredRaw === "string" && declaredRaw.trim().length === 2
       ? declaredRaw.trim().toUpperCase()
+      : null;
+  const source =
+    typeof sourceRaw === "string" &&
+    ["gps", "photo", "fallback"].includes(sourceRaw.trim().toLowerCase())
+      ? sourceRaw.trim().toLowerCase()
+      : null;
+  const emotion =
+    typeof emotionRaw === "string" && emotionRaw.trim().length > 0
+      ? emotionRaw.trim().toLowerCase()
       : null;
   const bytes = row[`${side}Bytes`];
   return {
@@ -422,11 +448,13 @@ function photoSideFromRow(
     }),
     countryCode: capture ?? declared,
     captureCountryCode: capture,
+    captureCountrySource: source,
     // Real capture instant of this side's photo; null falls back to its
     // upload/share time (createdAt) for the temporal tier on the client.
     capturedAt: isoOrNull(row[`${side}CapturedAt`]),
     createdAt: isoOrNull(row[`${side}CreatedAt`]),
     theme: String(row[`${side}Theme`] ?? ""),
+    emotion,
   };
 }
 
@@ -479,17 +507,21 @@ router.get("/echoes/inbox", async (req, res) => {
         ${displayOrOriginalSql("pl", "lowBytes", "lowMime")},
         pl.country_code AS "lowCountry",
         pl.capture_country_code AS "lowCaptureCountry",
+        pl.capture_country_source AS "lowCaptureCountrySource",
         pl.captured_at AS "lowCapturedAt",
         pl.created_at AS "lowCreatedAt",
         pl.theme AS "lowTheme",
+        pl.emotion AS "lowEmotion",
         ${photoObjectKeySql("pl", "low")},
         ${displayOrOriginalSql("ph", "highBytes", "highMime")},
         ${photoObjectKeySql("ph", "high")},
         ph.country_code AS "highCountry",
         ph.capture_country_code AS "highCaptureCountry",
+        ph.capture_country_source AS "highCaptureCountrySource",
         ph.captured_at AS "highCapturedAt",
         ph.created_at AS "highCreatedAt",
-        ph.theme AS "highTheme"
+        ph.theme AS "highTheme",
+        ph.emotion AS "highEmotion"
       FROM echoes e
       JOIN photos pl ON pl.id = e.photo_low_id
       JOIN photos ph ON ph.id = e.photo_high_id
@@ -532,17 +564,21 @@ router.get("/echoes/mine", async (req, res) => {
         ${displayOrOriginalSql("pl", "lowBytes", "lowMime")},
         pl.country_code AS "lowCountry",
         pl.capture_country_code AS "lowCaptureCountry",
+        pl.capture_country_source AS "lowCaptureCountrySource",
         pl.captured_at AS "lowCapturedAt",
         pl.created_at AS "lowCreatedAt",
         pl.theme AS "lowTheme",
+        pl.emotion AS "lowEmotion",
         ${photoObjectKeySql("pl", "low")},
         ${displayOrOriginalSql("ph", "highBytes", "highMime")},
         ${photoObjectKeySql("ph", "high")},
         ph.country_code AS "highCountry",
         ph.capture_country_code AS "highCaptureCountry",
+        ph.capture_country_source AS "highCaptureCountrySource",
         ph.captured_at AS "highCapturedAt",
         ph.created_at AS "highCreatedAt",
         ph.theme AS "highTheme",
+        ph.emotion AS "highEmotion",
         (
           SELECT v.voter_user_id
           FROM votes v
@@ -636,11 +672,13 @@ router.post("/echoes/:id/respond", async (req, res) => {
     // view since the row is now mutual. Best-effort, never blocks.
     const otherUserId =
       echo.userLowId === user.id ? echo.userHighId : echo.userLowId;
+    const waveLink = `/wave/${encodeURIComponent(echoId)}?reveal=1`;
     const pairLink = `/echo-pair?a=${encodeURIComponent(
       echo.photoLowId,
     )}&b=${encodeURIComponent(echo.photoHighId)}`;
     const mutualData = {
-      deepLink: pairLink,
+      deepLink: waveLink,
+      legacyDeepLink: pairLink,
       waveId: echoId,
       echoId,
       state: "mutual" as const,
@@ -726,12 +764,14 @@ router.get("/echoes/theme/:theme", async (req, res) => {
         ${photoObjectKeySql("pl", "low")},
         pl.country_code AS "lowCountry",
         pl.capture_country_code AS "lowCaptureCountry",
+        pl.capture_country_source AS "lowCaptureCountrySource",
         pl.custom_audio_base64 AS "lowAudioB64",
         pl.custom_audio_mime AS "lowAudioMime",
         ${displayOrOriginalSql("ph", "highBytes", "highMime")},
         ${photoObjectKeySql("ph", "high")},
         ph.country_code AS "highCountry",
         ph.capture_country_code AS "highCaptureCountry",
+        ph.capture_country_source AS "highCaptureCountrySource",
         ph.custom_audio_base64 AS "highAudioB64",
         ph.custom_audio_mime AS "highAudioMime"
       FROM pair_rows pr
@@ -748,11 +788,17 @@ router.get("/echoes/theme/:theme", async (req, res) => {
         uri: string;
         countryCode: string | null;
         captureCountryCode: string | null;
+        captureCountrySource: string | null;
         customAudioBase64: string | null;
         customAudioMime: string | null;
       };
       partnerPhotoId: string;
     }> = [];
+    const sideSource = (raw: unknown) => {
+      if (typeof raw !== "string") return null;
+      const v = raw.trim().toLowerCase();
+      return v === "gps" || v === "photo" || v === "fallback" ? v : null;
+    };
     for (const raw of rows.rows as Array<Record<string, unknown>>) {
       const echoId = String(raw.echoId);
       const themeStr = String(raw.theme ?? "");
@@ -805,6 +851,7 @@ router.get("/echoes/theme/:theme", async (req, res) => {
           }),
           countryCode: lowDeclared,
           captureCountryCode: lowCapture,
+          captureCountrySource: sideSource(raw.lowCaptureCountrySource),
           customAudioBase64: lowAudio.customAudioBase64,
           customAudioMime: lowAudio.customAudioMime,
         },
@@ -826,6 +873,7 @@ router.get("/echoes/theme/:theme", async (req, res) => {
           }),
           countryCode: highDeclared,
           captureCountryCode: highCapture,
+          captureCountrySource: sideSource(raw.highCaptureCountrySource),
           customAudioBase64: highAudio.customAudioBase64,
           customAudioMime: highAudio.customAudioMime,
         },
@@ -865,12 +913,14 @@ router.get("/echoes/recent-waves", async (req, res) => {
         pl.id AS "lowId",
         pl.country_code AS "lowCountry",
         pl.capture_country_code AS "lowCaptureCountry",
+        pl.capture_country_source AS "lowCaptureCountrySource",
         pl.captured_at AS "lowCapturedAt",
         pl.created_at AS "lowCreatedAt",
         pl.user_id AS "lowUserId",
         ph.id AS "highId",
         ph.country_code AS "highCountry",
         ph.capture_country_code AS "highCaptureCountry",
+        ph.capture_country_source AS "highCaptureCountrySource",
         ph.captured_at AS "highCapturedAt",
         ph.created_at AS "highCreatedAt",
         ph.user_id AS "highUserId"
@@ -890,6 +940,7 @@ router.get("/echoes/recent-waves", async (req, res) => {
         id: string;
         countryCode: string | null;
         captureCountryCode: string | null;
+        captureCountrySource: string | null;
         capturedAt: string | null;
         createdAt: string | null;
       };
@@ -897,6 +948,7 @@ router.get("/echoes/recent-waves", async (req, res) => {
         id: string;
         countryCode: string | null;
         captureCountryCode: string | null;
+        captureCountrySource: string | null;
         capturedAt: string | null;
         createdAt: string | null;
       };
@@ -917,6 +969,11 @@ router.get("/echoes/recent-waves", async (req, res) => {
         const s = typeof v === "string" ? v.trim().toUpperCase() : "";
         return s.length === 2 ? s : null;
       };
+      const source = (v: unknown) => {
+        if (typeof v !== "string") return null;
+        const s = v.trim().toLowerCase();
+        return s === "gps" || s === "photo" || s === "fallback" ? s : null;
+      };
       waves.push({
         echoId,
         theme: String(raw.theme ?? ""),
@@ -925,6 +982,7 @@ router.get("/echoes/recent-waves", async (req, res) => {
           id: String(raw.lowId),
           countryCode: iso(raw.lowCountry),
           captureCountryCode: iso(raw.lowCaptureCountry),
+          captureCountrySource: source(raw.lowCaptureCountrySource),
           capturedAt: isoOrNull(raw.lowCapturedAt),
           createdAt: isoOrNull(raw.lowCreatedAt),
         },
@@ -932,6 +990,7 @@ router.get("/echoes/recent-waves", async (req, res) => {
           id: String(raw.highId),
           countryCode: iso(raw.highCountry),
           captureCountryCode: iso(raw.highCaptureCountry),
+          captureCountrySource: source(raw.highCaptureCountrySource),
           capturedAt: isoOrNull(raw.highCapturedAt),
           createdAt: isoOrNull(raw.highCreatedAt),
         },
@@ -1011,8 +1070,10 @@ router.get("/echoes/pair", async (req, res) => {
         audioKey: photosTable.audioKey,
         countryCode: photosTable.countryCode,
         captureCountryCode: photosTable.captureCountryCode,
+        captureCountrySource: photosTable.captureCountrySource,
         capturedAt: photosTable.capturedAt,
         theme: photosTable.theme,
+        emotion: photosTable.emotion,
         tags: photosTable.tags,
         musicGenre: photosTable.musicGenre,
         createdAt: photosTable.createdAt,
@@ -1075,8 +1136,10 @@ router.get("/echoes/pair", async (req, res) => {
       }),
       countryCode: photo.countryCode,
       captureCountryCode: photo.captureCountryCode,
+      captureCountrySource: photo.captureCountrySource,
       capturedAt: photo.capturedAt,
       theme: photo.theme,
+      emotion: photo.emotion,
       tags: photo.tags ?? [],
       musicGenre: photo.musicGenre,
       createdAt: photo.createdAt,

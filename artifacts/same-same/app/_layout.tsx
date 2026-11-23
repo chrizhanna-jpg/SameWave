@@ -1,574 +1,294 @@
 import {
+  Inter_300Light,
   Inter_400Regular,
   Inter_500Medium,
-  Inter_600SemiBold,
   Inter_700Bold,
   useFonts,
 } from "@expo-google-fonts/inter";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  ClerkProvider,
-  useAuth,
-} from "@clerk/expo";
-import { tokenCache } from "@clerk/expo/token-cache";
-import { Redirect, router, Stack, useSegments } from "expo-router";
+import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect, useState } from "react";
-import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { KeyboardProvider } from "react-native-keyboard-controller";
-import {
-  SafeAreaProvider,
-  initialWindowMetrics,
-} from "react-native-safe-area-context";
-import {
-  Alert,
-  Platform,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { EchoFlash } from "@/components/EchoFlash";
-import { formatDualWaveThemes } from "@/utils/shareThemeLabels";
+import { StatusBar } from "expo-status-bar";
+import * as SystemUI from "expo-system-ui";
+import React, { useContext, useEffect, useRef, useState } from "react";
+import { AppState, LogBox, View } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { ToastHost } from "@/components/ToastHost";
-import { UpdateAvailableBanner } from "@/components/UpdateAvailableBanner";
-import { AppProvider, useApp } from "@/context/AppContext";
-import { usePushNotifications } from "@/hooks/usePushNotifications";
-import {
-  resetLaunchWarmups,
-  setAuthTokenGetter,
-  warmClerkOnLaunch,
-  warmHostedApiOnLaunch,
-} from "@/utils/api";
-import {
-  resolveClerkBootConfig,
-  resolveClerkProxyUrl,
-  type ClerkBootConfig,
-} from "@/utils/clerkConfig";
-import { postDebugSessionLog } from "@/utils/debugSessionLog";
-import { isMonetizationEnabled } from "@/lib/monetization";
-import {
-  initializeRevenueCat,
-  SubscriptionProvider,
-  useSubscription,
-} from "@/lib/revenuecat";
-import { getPublicApiOrigin } from "@/utils/publicEnv";
+import { LaunchSplash } from "@/components/LaunchSplash";
+import { Waiting } from "@/components/Waiting";
+import { bootFeatures } from "@/core/features";
+import { uiShotsBuildEnabled } from "@/core/uiShots";
+import { findWaveByPhotos } from "@/core/waves";
+import { prepareEffects, stopWaveSwoosh } from "@/device/sound";
+import { AppStateProvider, useAppState } from "@/state/AppState";
+import { SplashReadyContext } from "@/state/SplashReady";
+import { SessionProvider, useSession } from "@/state/session";
+import { colors, motion } from "@/theme";
 
-SplashScreen.preventAutoHideAsync();
-
-// --- Production safety net -------------------------------------------------
-// v1.2.1 / v1.2.2 shipped to Play Store and got stuck on the splash screen
-// for users on cold start. We never got a clear stack trace because any
-// uncaught JS error during boot died silently behind the splash. These two
-// nets exist to:
-//   (1) Surface ANY uncaught JS error or unhandled promise rejection to the
-//       user via Alert, so production crashes are diagnosable instead of
-//       invisible ("the app just sits there").
-//   (2) Guarantee the splash hides after a hard cap (4 s) regardless of
-//       what the bootstrap chain is doing — so a hung font load, a hung
-//       Clerk init, or a hung native module can never again leave the user
-//       parked on the splash forever. They'll at least see the React tree.
-// Both are no-ops in dev (LogBox already shows JS errors) but invaluable
-// for diagnosing production-only failures via field reports + screenshots.
-type GlobalErrorHandler = (error: Error, isFatal?: boolean) => void;
-type ErrorUtilsLike = {
-  getGlobalHandler?: () => GlobalErrorHandler | undefined;
-  setGlobalHandler?: (handler: GlobalErrorHandler) => void;
-};
-const errorUtils: ErrorUtilsLike | undefined = (globalThis as unknown as {
-  ErrorUtils?: ErrorUtilsLike;
-}).ErrorUtils;
-if (errorUtils?.setGlobalHandler && errorUtils?.getGlobalHandler) {
-  const previous = errorUtils.getGlobalHandler();
-  errorUtils.setGlobalHandler((error, isFatal) => {
-    console.error(
-      "[SameWave uncaught]",
-      isFatal ? "(fatal)" : "(non-fatal)",
-      error?.message ?? error,
-      "\n",
-      error?.stack ?? "",
-    );
-    try {
-      Alert.alert(
-        isFatal ? "SameWave hit an error" : "Something went wrong",
-        `${error?.name ?? "Error"}: ${error?.message ?? "Unknown"}\n\n${(error?.stack ?? "").split("\n").slice(0, 5).join("\n")}`,
-      );
-    } catch {}
-    if (typeof previous === "function") previous(error, isFatal);
-  });
+/**
+ * Expo Router + Stack.Protected briefly emits ROUTE_NAMES_CHANGED when the
+ * signed-in tab set mounts. Harmless, but LogBox overlays block taps in Expo Go.
+ */
+LogBox.ignoreLogs([
+  "ROUTE_NAMES_CHANGED",
+  "Linking did not produce an initial navigation state",
+  "Received `false` for a non-boolean attribute",
+  "Received 'false' for a non-boolean attribute",
+]);
+if (typeof console !== "undefined" && typeof console.error === "function") {
+  const originalError = console.error.bind(console);
+  console.error = (...args: unknown[]) => {
+    const text = args.map((a) => (typeof a === "string" ? a : "")).join(" ");
+    if (text.includes("ROUTE_NAMES_CHANGED")) return;
+    if (text.includes("Linking did not produce an initial navigation state")) return;
+    if (text.includes("non-boolean attribute")) return;
+    originalError(...args);
+  };
 }
 
-// Configure the RevenueCat SDK exactly once at module load. Wrapped in
-// try/catch so a missing public key (e.g. a misconfigured EAS profile)
-// surfaces as a visible alert instead of a white-screen crash.
-if (isMonetizationEnabled()) {
-  try {
-    initializeRevenueCat();
-  } catch (err: any) {
-    Alert.alert("Billing unavailable", err?.message ?? "Unknown error");
-  }
-}
+/** The splash never stays up longer than this, whatever else is still loading. */
+const SPLASH_LIMIT_MS = 4000;
+/** Let the launch swoosh settle a little before dismissing when fonts are ready. */
+const SPLASH_MIN_MS = 1600;
+/** Extra beat after splash so launch swoosh and reveal swoosh do not overlap. */
+const REVEAL_AFTER_SPLASH_MS = 400;
+const FONT_WAIT_MS = 3000;
 
-const queryClient = new QueryClient();
+SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
-// Clerk publishable key — must pair with `CLERK_SECRET_KEY` / `CLERK_PUBLISHABLE_KEY` on Render.
-const EMBEDDED_CLERK_PUBLISHABLE_KEY: string =
-  process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim() ?? "";
-if (!EMBEDDED_CLERK_PUBLISHABLE_KEY && __DEV__) {
-  console.warn(
-    "[SameWave] EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY is empty — Clerk sign-in will not work until you set it.",
-  );
-}
+/** Opens the Wave a tapped / foreground notification was about. */
+function OpenWaveFromPush() {
+  const router = useRouter();
+  const { pushTarget, clearPushTarget, waves, sync, shouldRevealWave } = useAppState();
 
-// --- Clerk boot gate (replaces <ClerkLoaded>) ----------------------------
-// `<ClerkLoaded>` from @clerk/expo simply returns null until isLoaded is
-// true — with no fallback for the case where it NEVER becomes true. We
-// render the app immediately from local cache instead; AuthGate / index.tsx
-// only redirect to sign-in once Clerk reports isLoaded.
-
-function ClerkBootGate({
-  children,
-  boot,
-}: {
-  children: React.ReactNode;
-  onRetry?: () => void;
-  boot: ClerkBootConfig;
-}) {
-  const publishableKey = boot.publishableKey;
-
-  if (!publishableKey.trim()) {
-    return (
-      <View style={bootGateStyles.root}>
-        <Text style={bootGateStyles.title}>Can&apos;t reach SameWave</Text>
-        <Text style={bootGateStyles.body}>
-          This build is missing the Clerk sign-in key. Rebuild with
-          EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY set in eas.json, then upload a new
-          version to Play.
-        </Text>
-      </View>
-    );
-  }
-
-  return <>{children}</>;
-}
-const bootGateStyles = StyleSheet.create({
-  loadingRoot: {
-    flex: 1,
-    backgroundColor: "#166FFC",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  root: {
-    flex: 1,
-    backgroundColor: "#071828",
-    paddingHorizontal: 32,
-    justifyContent: "center",
-    alignItems: "stretch",
-  },
-  title: {
-    color: "#E8F4F8",
-    fontSize: 22,
-    fontWeight: "700",
-    marginBottom: 16,
-    textAlign: "center",
-  },
-  body: {
-    color: "#7ba7c2",
-    fontSize: 15,
-    lineHeight: 22,
-    marginBottom: 12,
-    textAlign: "center",
-  },
-  button: {
-    marginTop: 20,
-    backgroundColor: "#00BFA5",
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  buttonLabel: {
-    color: "#071828",
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  mono: {
-    color: "#9ec5d8",
-    fontSize: 12,
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    marginBottom: 12,
-    textAlign: "center",
-  },
-  monoInline: {
-    color: "#9ec5d8",
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-  },
-});
-
-/** Headless/native Clerk resolves post-auth redirects via `routerReplace`/`routerPush`. */
-function normalizeClerkRouterTarget(to: string): string {
-  const t = to.trim();
-  if (!t) return "/";
-  try {
-    if (/^https?:\/\//i.test(t)) {
-      const u = new URL(t);
-      return `${u.pathname || "/"}${u.search}`;
-    }
-  } catch {
-    /* ignore */
-  }
-  return t.startsWith("/") ? t : `/${t}`;
-}
-
-// Wires the API client's bearer-token getter to Clerk's session token.
-// This component MUST mount above AppProvider so the getter is in place
-// before any of AppProvider's mount-effects fire their first authed
-// request — otherwise the very first calls go out without a Bearer and
-// 401 against the new clerkMiddleware.
-function ClerkTokenBridge() {
-  const { getToken } = useAuth();
   useEffect(() => {
-    setAuthTokenGetter(() => getToken());
-  }, [getToken]);
-  return null;
-}
+    if (!pushTarget) return;
 
-// Mirror RevenueCat's "pro" entitlement onto the AppContext flag that
-// the rest of the app reads from (matches.tsx, reveal.tsx, echo-pair,
-// etc. all read `proUnlocked`). This way nothing else has to know
-// about the SDK — they just consume the flag, and this bridge keeps
-// it in lock-step with the live entitlement (initial load, after a
-// purchase, after a restore, after a webhook update).
-//
-// CRITICAL: only write once the SDK has actually resolved the user's
-// CustomerInfo. On cold start `isPro` is `false` simply because we
-// haven't heard back from RevenueCat yet — writing that into
-// proUnlocked would revoke Pro for paid users until the bootstrap
-// completes, and would leave them locked out indefinitely if the
-// bootstrap fails (offline, store unreachable). Gating on
-// `hasResolvedEntitlements` means an unreachable RevenueCat leaves
-// the persisted local flag intact instead of silently flipping it.
-function RevenueCatProBridge() {
-  const { isPro, hasResolvedEntitlements } = useSubscription();
-  const { setProUnlocked } = useApp();
-  useEffect(() => {
-    if (!isMonetizationEnabled()) {
-      setProUnlocked(true);
+    if (pushTarget.waveId) {
+      const id = pushTarget.waveId;
+      const reveal = Boolean(pushTarget.reveal) && shouldRevealWave(id);
+      clearPushTarget();
+      router.push({
+        pathname: "/wave/[id]",
+        params: {
+          id,
+          ...(reveal ? { reveal: "1" } : {}),
+        },
+      });
       return;
     }
-    if (!hasResolvedEntitlements) return;
-    setProUnlocked(isPro);
-  }, [isPro, hasResolvedEntitlements, setProUnlocked]);
+
+    const wave =
+      pushTarget.photoA && pushTarget.photoB
+        ? findWaveByPhotos(waves, pushTarget.photoA, pushTarget.photoB)
+        : null;
+    if (wave) {
+      const reveal = Boolean(pushTarget.reveal) && shouldRevealWave(wave.id);
+      clearPushTarget();
+      router.push({
+        pathname: "/wave/[id]",
+        params: {
+          id: wave.id,
+          ...(reveal ? { reveal: "1" } : {}),
+        },
+      });
+    } else if (sync !== "syncing") {
+      clearPushTarget();
+    }
+  }, [pushTarget, waves, sync, clearPushTarget, router, shouldRevealWave]);
+
   return null;
 }
 
-/** Best-effort Render wake on launch — renders nothing. */
-function HostedApiWarmup() {
-  useEffect(() => {
-    warmHostedApiOnLaunch();
-  }, []);
-  return null;
-}
-
-// Gates the app behind sign-in for any screen that isn't a pre-auth
-// surface (the tutorial / onboarding, the sign-in screen itself, or
-// the root index router). The actual decision tree — tutorial first,
-// then sign-in, then tabs — lives in `app/index.tsx`; this gate just
-// makes sure unauthenticated users can't bypass it via a deep link
-// straight into a protected screen, and that signed-in users don't
-// stay parked on /sign-in. Renders `null` while resolving auth or
-// redirecting so the user never sees a flash of the wrong tree.
-function AuthGate({ children }: { children: React.ReactNode }) {
-  const { isLoaded, isSignedIn } = useAuth();
-  const { hasHydrated } = useApp();
+/**
+ * Backup for missing push: on launch / foreground, if a mutual Wave has not
+ * been revealed yet, open the full-screen ceremony once (after splash).
+ */
+function WaveArrivalHost() {
+  const router = useRouter();
   const segments = useSegments();
+  const splashReady = useContext(SplashReadyContext);
+  const { unrevealedWaves, syncNow } = useAppState();
+  const wave = unrevealedWaves[0] ?? null;
+  const opened = useRef<string | null>(null);
+  const root = segments[0];
+  const busy =
+    root === "wave" ||
+    root === "capture" ||
+    root === "compose" ||
+    root === "match" ||
+    root === "echo-pair";
 
-  // Cast to a plain string so the comparisons below don't fight
-  // expo-router's typed-route inference (it constrains segments[0] to
-  // a known union and rejects the empty-string / undefined case).
-  const firstSegment = segments[0] as string | undefined;
-  const onSignIn = firstSegment === "sign-in";
-  // Tutorial is pre-auth: an unauthenticated user is allowed to be on
-  // /onboarding so the brand and flow can land before we ask them to
-  // sign in. The decision in index.tsx routes them here on first opens.
-  const onOnboarding = firstSegment === "onboarding";
-  // The root router (no segment, i.e. on "/") is the decision point —
-  // never block it; let index.tsx pick the next destination.
-  const onRoot = !firstSegment;
-  const onPreAuthScreen = onSignIn || onOnboarding || onRoot;
+  // Refresh Waves when returning to the foreground (backup if push was missed).
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") void syncNow({ force: true });
+    });
+    return () => sub.remove();
+  }, [syncNow]);
 
-  // Two cases need a redirect through "/" so the central decision in
-  // index.tsx runs again with fresh state:
-  //  (a) user signed in but is still parked on /sign-in (tutorial may
-  //      still be pending — index.tsx handles either case correctly);
-  //  (b) user is NOT signed in and is on a protected screen (i.e. not
-  //      pre-auth). Bouncing through "/" lets index.tsx decide whether
-  //      to send them to /onboarding or /sign-in next.
-  //
-  // We use a declarative <Redirect> (not an imperative
-  // navRouter.replace in a useEffect) because the imperative form
-  // races with in-flight navigations — e.g. while the Stack is still
-  // settling on /onboarding from index.tsx's <Redirect>, a useEffect
-  // here can fire a second REPLACE that the navigator has already
-  // moved past, producing a "The action 'REPLACE' with payload
-  // {name:'index'} was not handled by any navigator" warning toast on
-  // the first onboarding card. <Redirect> is timed by React's render
-  // cycle and stays in lock-step with whatever screen is mounting.
-  const needsRedirect =
-    isLoaded &&
-    ((isSignedIn && onSignIn) || (!isSignedIn && !onPreAuthScreen));
+  useEffect(() => {
+    if (!splashReady || !wave || busy) return;
+    if (opened.current === wave.id) return;
+    opened.current = wave.id;
+    const timer = setTimeout(() => {
+      router.push({
+        pathname: "/wave/[id]",
+        params: { id: wave.id, reveal: "1" },
+      });
+    }, REVEAL_AFTER_SPLASH_MS);
+    return () => clearTimeout(timer);
+  }, [splashReady, wave, busy, router]);
 
-  if (!hasHydrated) return null;
-  if (needsRedirect) return <Redirect href="/" />;
-  return <>{children}</>;
+  return null;
 }
 
-function RootLayoutNav() {
-  // Wire device push registration + tap-to-deep-link. Mounted inside
-  // AppProvider so navigation context is available before we call
-  // router.push from a notification response.
-  usePushNotifications();
-  // The echo celebration overlay lives at the root so it can render
-  // on top of any tab or modal screen. It picks up newly-mutual echoes
-  // detected by AppContext (either via respondToEcho or the polling
-  // refresh) and dismisses cleanly without interrupting navigation.
-  const { pendingFlashEcho, dismissFlashEcho } = useApp();
+function Routes() {
+  const session = useSession();
+  const app = useAppState();
+
+  if (session.status === "unavailable") {
+    return (
+      <Waiting
+        message="Can't reach SameWave"
+        detail="Check your connection and try again."
+        onRetry={session.retry}
+      />
+    );
+  }
+  if (session.status === "loading") {
+    return session.slow ? (
+      <Waiting
+        message="Still connecting…"
+        detail="This can take a moment on a slow connection."
+        onRetry={session.retry}
+      />
+    ) : (
+      <Waiting />
+    );
+  }
+
+  // Compile-time gated (__DEV__ && EXPO_PUBLIC_UI_SHOTS) — never hot in production.
+  const uiShots = uiShotsBuildEnabled();
+  const signedIn = session.status === "signedIn";
+  const starting = !uiShots && signedIn && (!app.ready || app.country === "checking");
+  // UI shot builds treat the preview account as fully in-app so shot routes render.
+  const inApp =
+    uiShots || (signedIn && !starting && app.country === "known");
+  const choosingCountry = !uiShots && signedIn && !starting && !inApp;
   return (
     <>
-      <UpdateAvailableBanner />
-      <Stack screenOptions={{ headerBackTitle: "Back", headerShown: false }}>
-        <Stack.Screen name="sign-in" options={{ headerShown: false, gestureEnabled: false }} />
-        <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="reveal" options={{ headerShown: false, presentation: "modal" }} />
-        <Stack.Screen name="camera" options={{ headerShown: false, presentation: "modal" }} />
-        <Stack.Screen name="echoes" options={{ headerShown: false }} />
-        <Stack.Screen name="echo-pair" options={{ headerShown: false, presentation: "modal" }} />
-        <Stack.Screen name="echoes-theme/[theme]" options={{ headerShown: false }} />
-        <Stack.Screen name="photo-viewer" options={{ headerShown: false, presentation: "modal" }} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.background },
+          animation: "fade",
+          animationDuration: motion.fadeQuick,
+        }}
+      >
+        <Stack.Protected guard={inApp}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="capture" />
+          <Stack.Screen name="compose" />
+          <Stack.Screen
+            name="match"
+            options={{ contentStyle: { backgroundColor: "#000000" } }}
+          />
+          <Stack.Screen name="wave/[id]" />
+          <Stack.Screen name="account" />
+          <Stack.Screen name="change-country" />
+          <Stack.Screen name="echo-pair" />
+        </Stack.Protected>
+        <Stack.Protected guard={starting}>
+          <Stack.Screen name="starting" />
+        </Stack.Protected>
+        <Stack.Protected guard={choosingCountry}>
+          <Stack.Screen name="country" />
+        </Stack.Protected>
+        <Stack.Protected guard={!signedIn}>
+          <Stack.Screen name="sign-in" />
+        </Stack.Protected>
+        {/* OAuth return path — must stay outside Protected so deep links resolve. */}
+        <Stack.Screen name="callback" />
+        <Stack.Screen name="how-it-works" />
+        {/* Preview-only UI shot routes (TEST_PHOTOS / UI_SHOTS builds). */}
+        <Stack.Screen name="ripple-mark-shot" />
+        <Stack.Screen name="match-blur-shot" />
+        <Stack.Screen name="waves-list-shot" />
+        <Stack.Screen name="wave-sheet-shot" />
+        <Stack.Screen name="picker-collapse-shot" />
+        {/* __DEV__ / preview location authenticity diagnostic (stubbed in prod). */}
+        <Stack.Screen name="location-diag" />
+        <Stack.Screen name="+not-found" />
       </Stack>
-      {pendingFlashEcho && (() => {
-        const { title: flashThemeTitle, emoji: flashThemeEmoji } =
-          formatDualWaveThemes(
-            pendingFlashEcho.mine.theme ?? pendingFlashEcho.theme,
-            pendingFlashEcho.theirs.theme ?? pendingFlashEcho.theme,
-          );
-        return (
-        <EchoFlash
-          myPhotoUri={pendingFlashEcho.mine.uri}
-          theirPhotoUri={pendingFlashEcho.theirs.uri}
-          myCountryFlag={pendingFlashEcho.mine.countryFlag}
-          myCountryCode={pendingFlashEcho.mine.countryCode ?? undefined}
-          myCaptureCountryCode={pendingFlashEcho.mine.captureCountryCode ?? undefined}
-          theirCountry={pendingFlashEcho.theirs.country}
-          theirCountryFlag={pendingFlashEcho.theirs.countryFlag}
-          theirCountryCode={pendingFlashEcho.theirs.countryCode ?? undefined}
-          theirCaptureCountryCode={pendingFlashEcho.theirs.captureCountryCode ?? undefined}
-          myPhotoCapturedAt={pendingFlashEcho.mine.capturedAt ?? undefined}
-          myPhotoSharedAt={pendingFlashEcho.mine.createdAt ?? undefined}
-          theirPhotoCapturedAt={pendingFlashEcho.theirs.capturedAt ?? undefined}
-          theirPhotoSharedAt={pendingFlashEcho.theirs.createdAt ?? undefined}
-          themeTitle={flashThemeTitle}
-          themeEmoji={flashThemeEmoji}
-          onDone={dismissFlashEcho}
-          onOpen={() => {
-            const a = String(pendingFlashEcho.mine.id);
-            const b = String(pendingFlashEcho.theirs.id);
-            router.push({
-              pathname: "/echo-pair",
-              params: { a, b, celebrate: "1" },
-            });
-            setTimeout(() => dismissFlashEcho(), 400);
-          }}
-        />
-        );
-      })()}
+      {inApp ? (
+        <>
+          <OpenWaveFromPush />
+          <WaveArrivalHost />
+        </>
+      ) : null}
     </>
   );
 }
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
+    Inter_300Light,
     Inter_400Regular,
     Inter_500Medium,
-    Inter_600SemiBold,
     Inter_700Bold,
   });
-
-  // Safety net: even if useFonts never resolves (we've seen this happen
-  // on certain Android builds where the native font loader hangs without
-  // throwing), proceed with system fonts after a hard cap so we never
-  // sit on the splash forever. 3s is comfortably longer than the
-  // observed normal-path font load (~150 ms) and short enough that a
-  // user doesn't perceive it as a hang.
-  const [fontTimedOut, setFontTimedOut] = useState(false);
-  useEffect(() => {
-    const t = setTimeout(() => setFontTimedOut(true), 3000);
-    return () => clearTimeout(t);
-  }, []);
-  const fontsReady = fontsLoaded || fontError != null || fontTimedOut;
+  const [fontWaitOver, setFontWaitOver] = useState(false);
+  const [minSplashDone, setMinSplashDone] = useState(false);
+  const [splashForcedOff, setSplashForcedOff] = useState(false);
+  const [overlayReady, setOverlayReady] = useState(false);
+  const fontsReady = fontsLoaded || fontError !== null || fontWaitOver;
+  const splashDone = splashForcedOff || (fontsReady && minSplashDone);
 
   useEffect(() => {
-    if (fontsReady) {
-      SplashScreen.hideAsync().catch(() => {});
-    }
-  }, [fontsReady]);
-
-  // Defence in depth: a *second* hard cap (4 s) on hideAsync that fires
-  // regardless of where the rest of the bootstrap is. If anything above
-  // useFonts has thrown / hung at module load, this still tears down
-  // the splash so the user sees the React tree (which can then surface
-  // an error via the global handler installed at the top of this file).
-  useEffect(() => {
-    const t = setTimeout(() => {
-      SplashScreen.hideAsync().catch(() => {});
-    }, 4000);
-    return () => clearTimeout(t);
-  }, []);
-
-  useEffect(() => {
-    if (!__DEV__) warmHostedApiOnLaunch();
-    void import("@/utils/imageLoadCache").then((m) => m.hydrateImageCacheIndex());
-    void import("@/utils/imageLoadTelemetry").then((m) => m.hydrateImageTelemetry());
-    void import("@/utils/sampleAssetPrefetch").then((m) =>
-      m.prefetchSampleAssetsOnColdStart(),
-    );
-  }, []);
-
-  if (!fontsReady) return null;
-
-  return <RootLayoutWithClerk />;
-}
-
-// `clerkBootNonce` lets the boot gate's "Try again" button fully
-// remount <ClerkProvider> — bumping the nonce changes the React key,
-// which tears down the SDK and re-runs initialization from scratch
-// (not just a UI reset). Important on flaky networks: a single
-// failed cold-start fetch is no longer a death sentence.
-//
-// Outermost ErrorBoundary catches errors thrown during ClerkProvider
-// init or anywhere in the tree (the previous placement, inside
-// ClerkProvider > ClerkLoaded, missed any failure in Clerk itself —
-// a likely culprit for the v1.2.1 stuck-on-splash, since ClerkLoaded
-// suspends rendering until Clerk resolves and offers no fallback if
-// it never does).
-function createEmbeddedClerkBoot(): ClerkBootConfig {
-  const origin = getPublicApiOrigin();
-  const key = EMBEDDED_CLERK_PUBLISHABLE_KEY;
-  return {
-    publishableKey: key,
-    proxyUrl: resolveClerkProxyUrl(key, origin),
-    keySource: "embedded",
-    serverKeyMatched: true,
-  };
-}
-
-function RootLayoutWithClerk() {
-  const [clerkBootNonce, setClerkBootNonce] = useState(0);
-  const [boot, setBoot] = useState<ClerkBootConfig>(createEmbeddedClerkBoot);
-
-  useEffect(() => {
-    const key = EMBEDDED_CLERK_PUBLISHABLE_KEY;
-    if (key.trim()) warmClerkOnLaunch(key);
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    void resolveClerkBootConfig(getPublicApiOrigin())
-      .then((config) => {
-        if (cancelled || !config.publishableKey.trim()) return;
-        warmClerkOnLaunch(config.publishableKey);
-        setBoot(config);
-      })
-      .catch(() => {});
+    void SystemUI.setBackgroundColorAsync(colors.background).catch(() => undefined);
+    prepareEffects();
+    // Remote flags (e.g. FEATURE_RECORD_SOUND) — fail closed if the endpoint is missing.
+    void bootFeatures();
+    const fontTimer = setTimeout(() => setFontWaitOver(true), FONT_WAIT_MS);
+    const minTimer = setTimeout(() => setMinSplashDone(true), SPLASH_MIN_MS);
+    const splashTimer = setTimeout(() => setSplashForcedOff(true), SPLASH_LIMIT_MS);
     return () => {
-      cancelled = true;
+      clearTimeout(fontTimer);
+      clearTimeout(minTimer);
+      clearTimeout(splashTimer);
     };
-  }, [clerkBootNonce]);
+  }, []);
 
-  const retryClerk = () => {
-    resetLaunchWarmups();
-    setClerkBootNonce((n) => n + 1);
-  };
+  useEffect(() => {
+    if (!overlayReady) return;
+    SplashScreen.hideAsync().catch(() => undefined);
+  }, [overlayReady]);
 
-  if (!boot.publishableKey.trim()) {
-    return (
-      <View style={bootGateStyles.root}>
-        <Text style={bootGateStyles.title}>Can&apos;t reach SameWave</Text>
-        <Text style={bootGateStyles.body}>
-          This build has no Clerk sign-in key. Set EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
-          in eas.json (and CLERK_PUBLISHABLE_KEY on Render), then rebuild and
-          upload a new Play release (versionCode must increase).
-        </Text>
-        <TouchableOpacity style={bootGateStyles.button} onPress={retryClerk}>
-          <Text style={bootGateStyles.buttonLabel}>Try again</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
+  useEffect(() => {
+    if (splashDone) stopWaveSwoosh();
+  }, [splashDone]);
 
   return (
-    <ErrorBoundary>
-      <ClerkProvider
-        key={clerkBootNonce}
-        publishableKey={boot.publishableKey}
-        tokenCache={tokenCache}
-        proxyUrl={boot.proxyUrl}
-        signInFallbackRedirectUrl="/"
-        signUpFallbackRedirectUrl="/"
-        routerReplace={(to) => {
-          const path = normalizeClerkRouterTarget(to);
-          // #region agent log
-          postDebugSessionLog({
-            hypothesisId: "H-G-router",
-            location: "_layout.tsx:ClerkProvider.routerReplace",
-            message: "clerk routerReplace",
-            data: { rawLen: to.length, pathLen: path.length },
-          });
-          // #endregion
-          router.replace(path as never);
-        }}
-        routerPush={(to) => {
-          const path = normalizeClerkRouterTarget(to);
-          // #region agent log
-          postDebugSessionLog({
-            hypothesisId: "H-G-router",
-            location: "_layout.tsx:ClerkProvider.routerPush",
-            message: "clerk routerPush",
-            data: { rawLen: to.length, pathLen: path.length },
-          });
-          // #endregion
-          router.push(path as never);
-        }}
-      >
-        <ClerkBootGate boot={boot} onRetry={retryClerk}>
-          {/* Wire the bearer-token getter BEFORE AppProvider mounts, so
-              AppProvider's first authed effects already see a valid token.
-              ClerkTokenBridge renders nothing — it's pure side-effect glue. */}
-          <ClerkTokenBridge />
-          <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-            <QueryClientProvider client={queryClient}>
-              <SubscriptionProvider>
-                <AppProvider>
-                  <HostedApiWarmup />
-                  {/* Keeps AppContext.proUnlocked in sync with the
-                      RevenueCat "pro" entitlement. Renders nothing. */}
-                  <RevenueCatProBridge />
-                  <GestureHandlerRootView style={{ flex: 1 }}>
-                    <KeyboardProvider>
-                      <ToastHost>
-                        <AuthGate>
-                          <RootLayoutNav />
-                        </AuthGate>
-                      </ToastHost>
-                    </KeyboardProvider>
-                  </GestureHandlerRootView>
-                </AppProvider>
-              </SubscriptionProvider>
-            </QueryClientProvider>
-          </SafeAreaProvider>
-        </ClerkBootGate>
-      </ClerkProvider>
-    </ErrorBoundary>
+    <SafeAreaProvider style={{ backgroundColor: colors.background }}>
+      <StatusBar style="dark" />
+      <ErrorBoundary>
+        <SplashReadyContext.Provider value={splashDone}>
+          {fontsReady ? (
+            <SessionProvider>
+              <AppStateProvider>
+                <Routes />
+              </AppStateProvider>
+            </SessionProvider>
+          ) : (
+            <View style={{ flex: 1, backgroundColor: colors.background }} />
+          )}
+          {!splashDone ? (
+            <LaunchSplash playSound onLayoutReady={() => setOverlayReady(true)} />
+          ) : null}
+        </SplashReadyContext.Provider>
+      </ErrorBoundary>
+    </SafeAreaProvider>
   );
 }

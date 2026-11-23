@@ -39,6 +39,11 @@ yarn-error.*
 credentials.json
 **/keystore.jks
 
+# Firebase / FCM (Chris supplies; never commit secrets)
+google-services.json
+GoogleService-Info.plist
+*-firebase-adminsdk*.json
+
 # typescript
 *.tsbuildinfo
 .vercel

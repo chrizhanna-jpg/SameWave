@@ -1,0 +1,18 @@
+wave.mp3
+=========
+
+Source:  "bathswish.mp3" by wrenshep098
+URL:     https://freesound.org/people/wrenshep098/sounds/132230/
+Licence: Creative Commons 0 (CC0 / public domain)
+         https://creativecommons.org/publicdomain/zero/1.0/
+
+Processing (ffmpeg):
+  - HQ MP3 preview from Freesound CDN
+  - Trim: start 0.0 s, length ~1.55 s (water being swished)
+  - highpass 50 Hz, lowpass 5000 Hz
+  - Soft fades: in 0.18 s, out 0.4 s (qsin)
+  - loudnorm I=-20 LUFS, TP=-3 dBFS
+  - Encode: mono 44.1 kHz MP3 @ 160 kb/s
+
+Used only for Match "Offer a Wave" (match-back). Distinct from splash swell
+and from the arrival chime (chime.mp3), which is not played on this press.
