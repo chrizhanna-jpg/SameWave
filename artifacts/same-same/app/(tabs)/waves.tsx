@@ -116,7 +116,7 @@ export default function WavesScreen() {
           <Txt variant="heading" tone="primary" style={styles.sectionTitle}>
             Ripples received
           </Txt>
-          <Txt variant="quiet" tone="secondary">
+          <Txt variant="quiet" tone="primary">
             Moments people matched to yours. Tap to open.
           </Txt>
         </Frost>
@@ -143,7 +143,7 @@ export default function WavesScreen() {
             <Txt tone="primary" center>
               No Ripples received
             </Txt>
-            <Txt variant="quiet" tone="secondary" center style={styles.emptyBody}>
+            <Txt variant="quiet" tone="primary" center style={styles.emptyBody}>
               When someone matches their moment to one of yours, it lands here.
             </Txt>
           </Frost>
@@ -188,7 +188,7 @@ export default function WavesScreen() {
           <Txt variant="heading" tone="primary" style={styles.sectionTitle}>
             Waves
           </Txt>
-          <Txt variant="quiet" tone="secondary">
+          <Txt variant="quiet" tone="primary">
             Moments where they matched back. Tap to open.
           </Txt>
         </Frost>
@@ -212,7 +212,7 @@ export default function WavesScreen() {
             <Txt tone="primary" center>
               No Waves yet
             </Txt>
-            <Txt variant="quiet" tone="secondary" center style={styles.emptyBody}>
+            <Txt variant="quiet" tone="primary" center style={styles.emptyBody}>
               When someone matches back, their moment stays here. The map of
               where they happened is on the Map tab.
             </Txt>
@@ -350,9 +350,12 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
   },
   card: { marginBottom: space.md },
-  /** Dense fill so slate / secondary text clears WCAG AA over the scene. */
+  /**
+   * Near-opaque mist fill (theme background) so slate ink clears WCAG AA over
+   * bright lake / rock while the scene still peeks at the card edges via Frost.
+   */
   readableFill: {
-    backgroundColor: colors.surfaceTranslucent,
+    backgroundColor: "rgba(233, 246, 255, 0.97)",
   },
   emptyPad: {
     paddingHorizontal: space.lg,
