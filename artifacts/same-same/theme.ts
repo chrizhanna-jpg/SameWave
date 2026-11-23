@@ -148,10 +148,10 @@ export const layout = {
   /** Minimum comfortable tap target (Material 48dp). */
   iconButtonSize: 48,
   /**
-   * How far the home toolbar sits below the safe-area padding — about 3×
-   * an icon button, so ? / history / account clear the status chrome.
+   * @deprecated Home toolbar uses useSafeAreaInsets directly (pinned-cards
+   * layout). Kept so older call sites compile; do not use for new chrome.
    */
-  homeToolbarOffset: 48 * 3,
+  homeToolbarOffset: 0,
   /**
    * Frosted tab bar content height excluding safe-area inset and selection mark:
    * paddingTop (space.md) + tab item row (iconButtonSize).

@@ -1,6 +1,7 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useContext, useEffect, useState } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Platform, Pressable, StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AccountAvatar } from "@/components/AccountAvatar";
 import { BrandMark } from "@/components/BrandMark";
@@ -27,12 +28,12 @@ import { colors, font, layout, space } from "@/theme";
  * Returning to Home from tabs / background stays silent. Post-send waiting
  * shows once after upload.
  *
- * The two Frost cards sit in a pinned footer above the absolute tab bar so
- * they never scroll under it (gesture or 3-button nav). Only the toolbar /
- * upper area may scroll, and that ScrollView ends above the footer.
+ * Help + Account sit in a fixed top toolbar (safe-area aware). The two Frost
+ * cards pin above the absolute tab bar so they never slide under it.
  */
 export default function HomeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const splashReady = useContext(SplashReadyContext);
   const {
     travelling,
@@ -140,31 +141,39 @@ export default function HomeScreen() {
       scene={sceneFor.home}
       style={styles.screen}
       // Cards are pinned in the footer; Screen itself must not scroll them.
+      // Top chrome is owned by the toolbar (safe-area) — skip Screen's top pad.
+      bare
       reserveBottom={0}
     >
       <View style={styles.body}>
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          // Scroll region ends above the pinned cards — never draws under them.
-          bounces={false}
+        {/*
+          Fixed toolbar — NOT inside a short ScrollView. The old 3×48 top
+          margin pushed Help/Account below the visible strip once cards were
+          pinned, so they sat under the status bar / cutout.
+        */}
+        <View
+          style={[
+            styles.toolbar,
+            {
+              paddingTop: insets.top + space.sm,
+              minHeight: insets.top + space.sm + layout.iconButtonSize,
+            },
+          ]}
+          accessibilityLabel="Home toolbar"
         >
-          <View style={styles.toolbar}>
-            <Pressable
-              onPress={() => router.push("/how-it-works")}
-              hitSlop={layout.hitSlop}
-              accessibilityRole="button"
-              accessibilityLabel="How it works"
-            >
-              <FrostIconWell>
-                <Icon name="help" size={22} color={colors.waterMuted} />
-              </FrostIconWell>
-            </Pressable>
-            <AccountAvatar onPress={() => router.push("/account")} />
-          </View>
-        </ScrollView>
+          <Pressable
+            onPress={() => router.push("/how-it-works")}
+            hitSlop={layout.hitSlop}
+            accessibilityRole="button"
+            accessibilityLabel="How it works"
+            style={styles.toolbarHit}
+          >
+            <FrostIconWell>
+              <Icon name="help" size={22} color={colors.waterMuted} />
+            </FrostIconWell>
+          </Pressable>
+          <AccountAvatar onPress={() => router.push("/account")} />
+        </View>
 
         <View
           style={[styles.pinned, { paddingBottom: tabClearance }]}
@@ -263,22 +272,35 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  body: { flex: 1, width: "100%" },
-  scroll: { flex: 1, minHeight: 0 },
-  scrollContent: { flexGrow: 1 },
+  body: {
+    flex: 1,
+    width: "100%",
+    maxWidth: layout.maxContentWidth,
+    alignSelf: "center",
+    paddingHorizontal: space.lg,
+  },
   toolbar: {
-    marginTop: layout.homeToolbarOffset,
-    marginBottom: space.md,
+    flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    marginBottom: space.md,
+    paddingBottom: space.sm,
+    zIndex: 2,
+  },
+  toolbarHit: {
+    minWidth: layout.iconButtonSize,
     minHeight: layout.iconButtonSize,
+    alignItems: "center",
+    justifyContent: "center",
   },
   /** Non-scrolling footer: both cards sit just above the absolute tab bar. */
   pinned: {
-    flexShrink: 0,
+    flex: 1,
+    flexShrink: 1,
     width: "100%",
     gap: space.md,
+    justifyContent: "flex-end",
   },
   brandCard: {
     width: "100%",

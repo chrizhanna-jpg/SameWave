@@ -26,3 +26,16 @@ test("Home pins the two cards above the tab bar (no scroll under the bar)", () =
   assert.doesNotMatch(home, /\bscroll\s*=\s*\{?true\}?/);
   assert.match(home, /reserveBottom=\{0\}/);
 });
+
+test("Home Help and Account clear the status bar with safe-area insets", () => {
+  assert.match(home, /useSafeAreaInsets/);
+  assert.match(home, /accessibilityLabel="How it works"/);
+  assert.match(home, /AccountAvatar/);
+  assert.match(home, /accessibilityLabel="Home toolbar"/);
+  assert.match(home, /paddingTop:\s*insets\.top\s*\+\s*space\.sm/);
+  assert.match(home, /minHeight:\s*insets\.top\s*\+\s*space\.sm\s*\+\s*layout\.iconButtonSize/);
+  // Pinned-cards layout: no legacy layout offset that hid the toolbar.
+  assert.doesNotMatch(home, /layout\.homeToolbarOffset/);
+  assert.doesNotMatch(home, /ScrollView/);
+  assert.match(home, /styles\.toolbarHit|minWidth:\s*layout\.iconButtonSize/);
+});
