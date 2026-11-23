@@ -351,11 +351,12 @@ const styles = StyleSheet.create({
   },
   card: { marginBottom: space.md },
   /**
-   * Near-opaque mist fill (theme background) so slate ink clears WCAG AA over
-   * bright lake / rock while the scene still peeks at the card edges via Frost.
+   * Opaque theme mist under copy so slate ink clears WCAG AA on any part of
+   * the lake/mountain scene. Frost still softens the card chrome; the photo
+   * remains visible between panels and around the screen edges.
    */
   readableFill: {
-    backgroundColor: "rgba(233, 246, 255, 0.97)",
+    backgroundColor: colors.background,
   },
   emptyPad: {
     paddingHorizontal: space.lg,
