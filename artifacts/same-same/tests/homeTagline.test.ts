@@ -27,19 +27,11 @@ test("Home pins the two cards above the tab bar (no scroll under the bar)", () =
   assert.match(home, /reserveBottom=\{0\}/);
 });
 
-test("Home offers Choose from your photos as a soft secondary beside Capture", () => {
+test("Home has no standalone Choose from your photos (library lives on Capture)", () => {
   assert.match(home, /label="Capture a moment"/);
-  assert.match(home, /label="Choose from your photos"/);
-  assert.match(home, /pickFromLibrary|chooseFromLibrary/);
-  const capture = home.indexOf('label="Capture a moment"');
-  const choose = home.indexOf('label="Choose from your photos"');
-  const topic = home.indexOf('label="Today\'s topic"');
-  assert.ok(capture >= 0 && choose > capture, "Choose sits under Capture");
-  assert.ok(topic > choose, "Today's topic stays after Choose");
-  // Soft secondary (same family as Today's topic), not quiet text-only.
-  const chooseBlock = home.slice(choose - 120, choose + 200);
-  assert.match(chooseBlock, /kind="soft"/);
-  assert.doesNotMatch(chooseBlock, /Platform\.OS\s*!==\s*"web"/);
+  assert.match(home, /label="Today's topic"/);
+  assert.doesNotMatch(home, /label="Choose from your photos"/);
+  assert.doesNotMatch(home, /pickFromLibrary/);
 });
 
 test("Home Help and Account clear the status bar with safe-area insets", () => {

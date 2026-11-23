@@ -123,19 +123,6 @@ export default function HomeScreen() {
     router.push("/capture");
   };
 
-  const pickFromLibrary = async () => {
-    setProblem(null);
-    setDraftTopic(null);
-    try {
-      const photo = await chooseFromLibrary();
-      if (!photo) return;
-      setDraftPhoto(photo);
-      router.replace("/ripple");
-    } catch {
-      setProblem("That photo couldn't be opened. Try another.");
-    }
-  };
-
   return (
     <Screen
       scene={sceneFor.home}
@@ -232,13 +219,6 @@ export default function HomeScreen() {
                   onPress={() => void beginCompose(null, false)}
                   style={styles.actionGap}
                   accessibilityHint="Opens the camera, then the Ripple tab to upload"
-                />
-                <Button
-                  kind="soft"
-                  label="Choose from your photos"
-                  onPress={() => void pickFromLibrary()}
-                  style={styles.actionGap}
-                  accessibilityHint="Opens your photo library, then the Ripple tab to upload"
                 />
                 <Button
                   kind="soft"

@@ -264,14 +264,24 @@ export default function CaptureScreen() {
           })}
         </View>
         <View style={styles.shutterRow}>
+          {/*
+            Photos must read as a labelled control — icon-only was easy to miss
+            on the dark chrome beside the shutter (Chris / Expo preview).
+          */}
           <Pressable
             onPress={useLibrary}
             hitSlop={layout.hitSlop}
             accessibilityRole="button"
-            accessibilityLabel="Choose from your photos"
-            style={styles.side}
+            accessibilityLabel="Photos"
+            accessibilityHint="Opens your photo library, then continues to compose"
+            style={({ pressed }) => [styles.photosHit, pressed && styles.sidePressed]}
           >
-            <Icon name="photos" size={28} />
+            <View style={styles.photosWell}>
+              <Icon name="photos" size={26} color={colors.white} />
+              <Txt variant="label" tone="white" style={styles.photosLabel}>
+                Photos
+              </Txt>
+            </View>
           </Pressable>
           <Pressable
             onPress={takePhoto}
@@ -291,9 +301,9 @@ export default function CaptureScreen() {
             hitSlop={layout.hitSlop}
             accessibilityRole="button"
             accessibilityLabel="Switch camera"
-            style={styles.side}
+            style={({ pressed }) => [styles.side, pressed && styles.sidePressed]}
           >
-            <Icon name="flip" size={28} />
+            <Icon name="flip" size={28} color={colors.white} />
           </Pressable>
         </View>
       </View>
@@ -349,8 +359,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-around",
     alignSelf: "stretch",
+    paddingHorizontal: space.md,
   },
-  side: { width: 56, height: 56, alignItems: "center", justifyContent: "center" },
+  side: { width: 64, height: 64, alignItems: "center", justifyContent: "center" },
+  sidePressed: { opacity: 0.75 },
+  photosHit: {
+    minWidth: 72,
+    minHeight: 64,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  photosWell: {
+    minWidth: 64,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xs,
+    borderRadius: radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+    backgroundColor: "rgba(255, 255, 255, 0.22)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255, 255, 255, 0.55)",
+  },
+  photosLabel: { letterSpacing: 0.2 },
   shutter: {
     width: 76,
     height: 76,
