@@ -10,8 +10,6 @@ import { Screen } from "@/components/Screen";
 import { Txt } from "@/components/Txt";
 import {
   inboxOfferTheirThumbSource,
-  isPreviewOfferId,
-  PREVIEW_OFFER_WAVE_ID,
   withOptionalSampleOffers,
 } from "@/core/sampleOffers";
 import { loadSampleWaves, testPhotosBuildEnabled } from "@/core/testPhotos";
@@ -28,7 +26,7 @@ import { colors, space } from "@/theme";
 /**
  * Waves tab: "Ripples received" (pending inbound moments) and "Waves" (mutual
  * moments where they matched back). Same moment-card chrome in both sections.
- * Tap opens full-screen WaveJoin; SoftIconDisc X returns here.
+ * Pending tap → Match (Offer a Wave / Pass); mutual tap → WaveJoin SoftIconDisc X.
  */
 export default function WavesScreen() {
   const router = useRouter();
@@ -48,12 +46,17 @@ export default function WavesScreen() {
     );
   }, [offers, waves]);
 
-  /** Mutual Waves; seed sample rows in TEST_PHOTOS preview when the list is empty. */
+  /**
+   * Mutual Waves. Live / matched-back list wins. Preview only seeds sample
+   * Waves when there is no pending Ripple — so match-back is what fills this
+   * section in the Expo Go E2E path.
+   */
   const mutualWaves = useMemo(() => {
     if (waves.length > 0) return waves;
     if (!testPhotosBuildEnabled()) return [];
+    if (ripplesReceived.length > 0) return [];
     return loadSampleWaves().slice(0, 2);
-  }, [waves]);
+  }, [waves, ripplesReceived.length]);
 
   const loadingRipples = !offersKnown && sync === "syncing";
   const loadingWaves = !wavesKnown && sync === "syncing";
@@ -63,9 +66,9 @@ export default function WavesScreen() {
   };
 
   /**
-   * Ripple card tap → full-screen WaveJoin.
-   * Mutual pair → /wave/[id]. Preview → sample Wave. Pending live → Match
-   * (Offer a Wave / Pass already answer; SoftIconDisc X returns here).
+   * Pending Ripple → Match (stage=wave) so Offer a Wave / Pass decide.
+   * SoftIconDisc X returns here. Already-mutual → WaveJoin.
+   * Decision stays off the card (Chris: keep inbox cards clean).
    */
   const openOffer = (offer: Offer) => {
     const mutual = findWaveByPhotos(waves, offer.myPhotoId, offer.theirPhotoId);
@@ -73,13 +76,14 @@ export default function WavesScreen() {
       openWave(mutual);
       return;
     }
-    if (isPreviewOfferId(offer.id) && testPhotosBuildEnabled()) {
-      router.push({ pathname: "/wave/[id]", params: { id: PREVIEW_OFFER_WAVE_ID } });
-      return;
-    }
     router.push({
       pathname: "/match",
-      params: { photoId: offer.myPhotoId, from: "waves" },
+      params: {
+        photoId: offer.myPhotoId,
+        from: "waves",
+        stage: "wave",
+        offerId: offer.id,
+      },
     });
   };
 

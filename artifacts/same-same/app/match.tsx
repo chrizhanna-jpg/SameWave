@@ -27,6 +27,13 @@ import { parseMatchStage } from "@/core/matchAdvance";
 import { MATCH } from "@/core/reach";
 import { rankMatchCandidates } from "@/core/matchDeck";
 import {
+  findOfferIncludingPreview,
+  inboxOfferMyThumbSource,
+  inboxOfferTheirThumbSource,
+  isPreviewOfferId,
+  PREVIEW_OFFER_WAVE_ID,
+} from "@/core/sampleOffers";
+import {
   peekSamplePhotosToggle,
   readSamplePhotosToggle,
   subscribeSamplePhotosToggle,
@@ -58,15 +65,26 @@ type LoadState = "loading" | "ready" | "empty" | "error";
  * After uploading a moment: your photo on top, a live candidate below, joined by the
  * Wave seam. Full-bleed overlay: X + RippleMark (ripple stage) or X + WaveMark
  * (wave stage). Any action tap advances the bottom photo.
+ *
+ * Inbox decision (Ripples received → Match): `offerId` + `stage=wave` + `from=waves`.
+ * Offer a Wave / Pass reuse the same SoftIconDisc chrome; no new card buttons.
  */
 export default function MatchScreen() {
   const router = useRouter();
-  const { photoId: rawId, stage: rawStage, from: rawFrom } = useLocalSearchParams<{
+  const {
+    photoId: rawId,
+    stage: rawStage,
+    from: rawFrom,
+    offerId: rawOfferId,
+  } = useLocalSearchParams<{
     photoId?: string;
     stage?: string;
     from?: string;
+    offerId?: string;
   }>();
   const photoId = typeof rawId === "string" ? rawId : Array.isArray(rawId) ? rawId[0] : "";
+  const offerId =
+    typeof rawOfferId === "string" ? rawOfferId : Array.isArray(rawOfferId) ? rawOfferId[0] : "";
   const stage = parseMatchStage(rawStage);
   const fromWaves =
     (typeof rawFrom === "string" ? rawFrom : Array.isArray(rawFrom) ? rawFrom[0] : "") ===
@@ -87,12 +105,19 @@ export default function MatchScreen() {
   const {
     ripples,
     waves,
+    offers,
     backend,
     syncNow,
     recordMatchSeen,
     finishMatchLook,
+    respondToOffer,
     countryCode,
   } = useAppState();
+  const inboxOffer = useMemo(
+    () => (offerId ? findOfferIncludingPreview(offers, offerId) : null),
+    [offerId, offers],
+  );
+  const inboxDecision = Boolean(offerId && inboxOffer);
   // null = still reading toggle; never fetch until known (avoids empty-deck race).
   const [useSamples, setUseSamples] = useState<boolean | null>(() => {
     if (!testPhotosBuildEnabled()) return false;
@@ -141,7 +166,7 @@ export default function MatchScreen() {
   );
 
   const ripple = ripples.find((r) => r.photoId === photoId) ?? ripples[0] ?? null;
-  const myPhotoId = ripple?.photoId ?? photoId;
+  const myPhotoId = inboxOffer?.myPhotoId ?? ripple?.photoId ?? photoId;
 
   const [deck, setDeck] = useState<Candidate[]>([]);
   const [index, setIndex] = useState(0);
@@ -173,7 +198,32 @@ export default function MatchScreen() {
     [ownIds, offeredIds, waves],
   );
 
+  /** Pin their moment as the only candidate when deciding a Ripple received. */
+  useEffect(() => {
+    if (!inboxOffer) return;
+    const theirSource = inboxOfferTheirThumbSource(inboxOffer);
+    const theirUri =
+      inboxOffer.theirUri ??
+      (theirSource && typeof theirSource === "object" && "uri" in theirSource
+        ? (theirSource.uri as string)
+        : null);
+    const pinned: Candidate = {
+      id: inboxOffer.theirPhotoId,
+      score: 1,
+      uri: theirUri ?? "",
+      createdAt: inboxOffer.createdAt,
+      theme: inboxOffer.theirTopic ?? null,
+      emotion: inboxOffer.theirEmotion ?? null,
+      wavedAtYou: true,
+    };
+    setDeck([pinned]);
+    setIndex(0);
+    setLoad("ready");
+  }, [inboxOffer]);
+
   const loadDeck = useCallback(async () => {
+    // Inbox decision uses the pinned offer — skip candidate fetch.
+    if (inboxDecision) return;
     if (!samplesReady || useSamples === null) return;
     if (!myPhotoId || !ripple) {
       setLoad("empty");
@@ -241,7 +291,7 @@ export default function MatchScreen() {
           : "Couldn't load photos to match. Please try again.",
       );
     }
-  }, [backend, excludeBase, myPhotoId, ownIds, ripple, samplesReady, useSamples]);
+  }, [backend, countryCode, excludeBase, inboxDecision, myPhotoId, ownIds, ripple, samplesReady, useSamples]);
 
   useEffect(() => {
     void loadDeck();
@@ -372,6 +422,22 @@ export default function MatchScreen() {
     if (!current || busy || load !== "ready") return;
     setBusy(true);
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+
+    // Ripples received: Pass dismisses the pending offer and returns to Waves.
+    if (inboxDecision && offerId) {
+      try {
+        await respondToOffer(offerId, "different");
+      } catch {
+        setBusy(false);
+        setProblem("Couldn't pass on that moment. Please try again.");
+        return;
+      }
+      setBusy(false);
+      finishedRef.current = true;
+      router.replace("/(tabs)/waves");
+      return;
+    }
+
     if (!isSample(current.id)) {
       try {
         await backend.pass(current.id);
@@ -388,11 +454,47 @@ export default function MatchScreen() {
     if (!current || busy || load !== "ready" || !myPhotoId) return;
     setBusy(true);
     // Ripple = offer; Wave = match-back. No drop beep; no arrival chime here.
-    if (stage === "wave") void playWave();
+    if (stage === "wave" || inboxDecision) void playWave();
     else void playRipple();
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
 
-    // Sample fixtures: advance only (no server offer).
+    // Ripples received: Offer a Wave accepts → mutual Wave → Waves section.
+    if (inboxDecision && offerId) {
+      try {
+        await respondToOffer(offerId, "same");
+      } catch (error) {
+        setBusy(false);
+        setProblem(
+          errorKind(error) === "unreachable"
+            ? "Can't reach SameWave right now. Try again in a moment."
+            : "That match didn't go. Please try again.",
+        );
+        return;
+      }
+      finishedRef.current = true;
+      finishMatchLook(myPhotoId, seenRef.current);
+      let waveId: string | null = isPreviewOfferId(offerId) ? PREVIEW_OFFER_WAVE_ID : null;
+      if (!waveId) {
+        let formed = findWaveByPhotos(waves, myPhotoId, current.id);
+        try {
+          await syncNow({ force: true });
+          const fresh = await backend.listWaves();
+          formed = findWaveByPhotos(fresh, myPhotoId, current.id) ?? formed;
+        } catch {
+          // Offer already accepted; Waves tab will catch up on focus sync.
+        }
+        waveId = formed?.id ?? null;
+      }
+      setBusy(false);
+      if (waveId) {
+        router.replace({ pathname: "/wave/[id]", params: { id: waveId } });
+      } else {
+        router.replace("/(tabs)/waves");
+      }
+      return;
+    }
+
+    // Sample fixtures in the normal Match deck: advance only (no server offer).
     if (isSample(current.id)) {
       setBusy(false);
       advance(current.id);
@@ -442,7 +544,14 @@ export default function MatchScreen() {
   const empty = load === "empty" || (load === "ready" && !candidate);
   // Hide match/skip when there's nothing to act on — dead buttons confuse people.
   const showActions = load === "ready" && !empty;
-  if (!ripple && load !== "loading") {
+  // Inbox decision can render from the offer alone (preview has no local Ripple ledger).
+  const myThumb = inboxOffer ? inboxOfferMyThumbSource(inboxOffer) : null;
+  const myUri =
+    inboxOffer?.myUri ??
+    (myThumb && typeof myThumb === "object" && "uri" in myThumb ? (myThumb.uri as string) : null) ??
+    ripple?.localUri ??
+    null;
+  if (!ripple && !inboxDecision && load !== "loading") {
     return (
       <View style={[styles.root, { paddingTop: insets.top + space.md }]}>
         <Txt center tone="secondary" style={styles.missing}>
@@ -473,19 +582,19 @@ export default function MatchScreen() {
           width={width}
           height={height}
           top={{
-            uri: ripple?.localUri ?? null,
-            ownPhotoId: myPhotoId || undefined,
+            uri: myUri,
+            ownPhotoId: myUri ? undefined : myPhotoId || undefined,
             quiet: true,
             accessibilityLabel: "Your photo",
           }}
           bottom={
             candidate
-              ? candidate.uri && isSample(candidate.id)
+              ? candidate.uri && (isSample(candidate.id) || inboxDecision)
                 ? {
                     uri: candidate.uri,
                     blurIn: true,
                     quiet: true,
-                    accessibilityLabel: "Sample photo",
+                    accessibilityLabel: inboxDecision ? "Their moment" : "Sample photo",
                   }
                 : {
                     // Relative /api/… URIs need auth — Photo fetches by id.
@@ -619,14 +728,20 @@ export default function MatchScreen() {
             accessibilityRole="button"
             // Keep labels distinct from tab bar "Ripple" / "Waves" so a11y
             // and automation never activate the wrong control.
-            accessibilityLabel={stage === "wave" ? "Offer a Wave" : "Offer a Ripple"}
-            accessibilityHint="Offers a match on this photo. Any tap advances the bottom photo."
+            accessibilityLabel={
+              stage === "wave" || inboxDecision ? "Offer a Wave" : "Offer a Ripple"
+            }
+            accessibilityHint={
+              inboxDecision
+                ? "Matches back to form a Wave"
+                : "Offers a match on this photo. Any tap advances the bottom photo."
+            }
             accessibilityState={{ disabled: busy }}
             style={({ pressed }) => [styles.actionHit, pressed && styles.actionPressed]}
           >
             {/* Soft circular disc only — no Frost / elevation hexagon behind. */}
             <SoftIconDisc size={ACTION_SIZE}>
-              {stage === "wave" ? (
+              {stage === "wave" || inboxDecision ? (
                 <WaveMark width={44} />
               ) : (
                 <RippleMark size={48} color={MATCH_RIPPLE_INK} />

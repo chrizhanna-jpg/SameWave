@@ -16,6 +16,15 @@ test("match screen keeps Pass / Offer a Ripple / Offer a Wave labels and soft di
   assert.match(match, /WaveMark/);
 });
 
+test("match screen supports Ripples-received inbox decision via offerId", () => {
+  assert.match(match, /offerId/);
+  assert.match(match, /inboxDecision/);
+  assert.match(match, /findOfferIncludingPreview/);
+  assert.match(match, /respondToOffer/);
+  assert.match(match, /from=waves|fromWaves/);
+  assert.match(match, /Matches back to form a Wave/);
+});
+
 test("match screen loads quietly without Unavailable spinner copy", () => {
   assert.doesNotMatch(match, /Unavailable/);
   assert.match(match, /quiet:\s*true/);

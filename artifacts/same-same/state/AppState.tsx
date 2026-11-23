@@ -33,6 +33,11 @@ import {
   travellingRipple,
   withReachPass,
 } from "@/core/reach";
+import {
+  isPreviewOfferId,
+  previewWaveAfterAccept,
+  resolvePreviewOffer,
+} from "@/core/sampleOffers";
 import type { Candidate, Offer, Ripple, Wave } from "@/core/types";
 import { sortWaves, unseenWaves, unrevealedWaves, withRevealedWaveId } from "@/core/waves";
 import { normalizeCountryCode } from "@/data/countries";
@@ -826,6 +831,30 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   const respondToOffer = useCallback(
     async (offerId: string, verdict: "same" | "different") => {
+      // Preview inbox fixture — no server write; local Wave after match-back.
+      if (isPreviewOfferId(offerId)) {
+        resolvePreviewOffer(verdict === "same" ? "accepted" : "dismissed");
+        const formed = verdict === "same" ? previewWaveAfterAccept() : null;
+        commit((current) => {
+          const without = current.offers.filter((o) => o.id !== offerId);
+          if (!formed) {
+            return { ...current, offers: without, offersKnown: true };
+          }
+          const waves = current.waves.some((w) => w.id === formed.id)
+            ? current.waves
+            : [formed, ...current.waves];
+          return {
+            ...current,
+            offers: without,
+            offersKnown: true,
+            waves,
+            wavesKnown: true,
+          };
+        });
+        if (formed) save("waves");
+        return;
+      }
+
       if (verdict === "same") await backend.acceptOffer(offerId);
       else await backend.dismissOffer(offerId);
       // Optimistic removal; sync refreshes mutual Waves after Wave-back.
