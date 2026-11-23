@@ -230,6 +230,8 @@ export function sampleWavesForMap(): Wave[] {
         takenAt: mine.takenAt,
         lat: mine.lat,
         lng: mine.lng,
+        theme: mine.theme,
+        emotion: mine.emotion,
       },
       theirs: {
         photoId: theirs.id,
@@ -239,6 +241,8 @@ export function sampleWavesForMap(): Wave[] {
         takenAt: theirs.takenAt,
         lat: theirs.lat,
         lng: theirs.lng,
+        theme: theirs.theme,
+        emotion: theirs.emotion,
       },
     });
   }
