@@ -5,6 +5,11 @@ import { resolveUserFromRequest } from "../lib/users";
 import { sendPushToUser } from "../lib/push";
 import { PUSH_COPY } from "../lib/pushCopy";
 import { logger } from "../lib/logger";
+import {
+  loadEchoAudioFields,
+  preferredImageKey,
+  resolveServedImageUri,
+} from "../lib/r2PhotoStore";
 
 const router: IRouter = Router();
 
@@ -156,12 +161,8 @@ export async function recordEchoOffer(input: {
   const row = upserted[0];
   if (!row) return { state: "skipped" };
 
-  // Detect the actual state transition. Only fire pushes on real edges:
-  //   - no row before, pending after        → fresh offer push
-  //   - pending before, mutual after        → mutual completion push
-  // Re-voting the same direction (or re-voting after the pair is
-  // already mutual) hits neither edge and silently no-ops, so the
-  // recipient isn't spammed.
+  // Only fire push when a pending offer becomes a mutual Wave.
+  // Pending offers do not notify. Re-voting the same direction is a no-op.
   const becameMutual =
     !!before && before.state === "pending" && row.state === "mutual";
   const recipientUserId =
@@ -355,6 +356,42 @@ type EchoCard = {
   };
 };
 
+/**
+ * Echo JSON still exposes `uri`. R2 rows return the public object URL (the
+ * shipped app passes that straight to Image). Postgres rows stay data URIs.
+ * CASE skips the byte columns when a key is set so those rows are not detoasted.
+ */
+function displayOrOriginalSql(
+  alias: "pl" | "ph",
+  bytesAlias: "lowBytes" | "highBytes",
+  mimeAlias: "lowMime" | "highMime",
+) {
+  const table = sql.raw(alias);
+  return sql`
+    CASE
+      WHEN NULLIF(btrim(${table}.display_key), '') IS NOT NULL THEN NULL
+      WHEN NULLIF(btrim(${table}.original_key), '') IS NOT NULL THEN NULL
+      WHEN ${table}.display_bytes_base64 IS NOT NULL
+       AND ${table}.display_bytes_base64 <> ''
+      THEN ${table}.display_bytes_base64
+      ELSE ${table}.bytes_base64
+    END AS ${sql.raw(`"${bytesAlias}"`)},
+    CASE
+      WHEN ${table}.display_bytes_base64 IS NOT NULL
+       AND ${table}.display_bytes_base64 <> ''
+      THEN COALESCE(NULLIF(${table}.display_mime, ''), ${table}.mime_type)
+      ELSE ${table}.mime_type
+    END AS ${sql.raw(`"${mimeAlias}"`)}`;
+}
+
+function photoObjectKeySql(alias: "pl" | "ph", prefix: "low" | "high") {
+  const table = sql.raw(alias);
+  return sql`
+    ${table}.display_key AS ${sql.raw(`"${prefix}DisplayKey"`)},
+    ${table}.original_key AS ${sql.raw(`"${prefix}OriginalKey"`)},
+    ${table}.audio_key AS ${sql.raw(`"${prefix}AudioKey"`)}`;
+}
+
 /** Normalise a DB timestamp to an ISO string (or null) for JSON transport. */
 function isoOrNull(v: unknown): string | null {
   if (v == null) return null;
@@ -398,9 +435,17 @@ function photoSideFromRow(
     typeof emotionRaw === "string" && emotionRaw.trim().length > 0
       ? emotionRaw.trim().toLowerCase()
       : null;
+  const bytes = row[`${side}Bytes`];
   return {
     id: String(row[`photo${side === "low" ? "Low" : "High"}Id`]),
-    uri: `data:${String(row[`${side}Mime`])};base64,${String(row[`${side}Bytes`])}`,
+    uri: resolveServedImageUri({
+      objectKey: preferredImageKey(
+        row[`${side}DisplayKey`] as string | null,
+        row[`${side}OriginalKey`] as string | null,
+      ),
+      bytesBase64: typeof bytes === "string" ? bytes : null,
+      mimeType: typeof row[`${side}Mime`] === "string" ? String(row[`${side}Mime`]) : null,
+    }),
     countryCode: capture ?? declared,
     captureCountryCode: capture,
     captureCountrySource: source,
@@ -459,8 +504,7 @@ router.get("/echoes/inbox", async (req, res) => {
         e.photo_high_id AS "photoHighId",
         e.user_low_id AS "userLowId",
         e.user_high_id AS "userHighId",
-        pl.bytes_base64 AS "lowBytes",
-        pl.mime_type AS "lowMime",
+        ${displayOrOriginalSql("pl", "lowBytes", "lowMime")},
         pl.country_code AS "lowCountry",
         pl.capture_country_code AS "lowCaptureCountry",
         pl.capture_country_source AS "lowCaptureCountrySource",
@@ -468,8 +512,9 @@ router.get("/echoes/inbox", async (req, res) => {
         pl.created_at AS "lowCreatedAt",
         pl.theme AS "lowTheme",
         pl.emotion AS "lowEmotion",
-        ph.bytes_base64 AS "highBytes",
-        ph.mime_type AS "highMime",
+        ${photoObjectKeySql("pl", "low")},
+        ${displayOrOriginalSql("ph", "highBytes", "highMime")},
+        ${photoObjectKeySql("ph", "high")},
         ph.country_code AS "highCountry",
         ph.capture_country_code AS "highCaptureCountry",
         ph.capture_country_source AS "highCaptureCountrySource",
@@ -516,8 +561,7 @@ router.get("/echoes/mine", async (req, res) => {
         e.photo_high_id AS "photoHighId",
         e.user_low_id AS "userLowId",
         e.user_high_id AS "userHighId",
-        pl.bytes_base64 AS "lowBytes",
-        pl.mime_type AS "lowMime",
+        ${displayOrOriginalSql("pl", "lowBytes", "lowMime")},
         pl.country_code AS "lowCountry",
         pl.capture_country_code AS "lowCaptureCountry",
         pl.capture_country_source AS "lowCaptureCountrySource",
@@ -525,8 +569,9 @@ router.get("/echoes/mine", async (req, res) => {
         pl.created_at AS "lowCreatedAt",
         pl.theme AS "lowTheme",
         pl.emotion AS "lowEmotion",
-        ph.bytes_base64 AS "highBytes",
-        ph.mime_type AS "highMime",
+        ${photoObjectKeySql("pl", "low")},
+        ${displayOrOriginalSql("ph", "highBytes", "highMime")},
+        ${photoObjectKeySql("ph", "high")},
         ph.country_code AS "highCountry",
         ph.capture_country_code AS "highCaptureCountry",
         ph.capture_country_source AS "highCaptureCountrySource",
@@ -715,15 +760,15 @@ router.get("/echoes/theme/:theme", async (req, res) => {
         pr.mutual_at AS "mutualAt",
         pr.photo_low_id AS "photoLowId",
         pr.photo_high_id AS "photoHighId",
-        pl.bytes_base64 AS "lowBytes",
-        pl.mime_type AS "lowMime",
+        ${displayOrOriginalSql("pl", "lowBytes", "lowMime")},
+        ${photoObjectKeySql("pl", "low")},
         pl.country_code AS "lowCountry",
         pl.capture_country_code AS "lowCaptureCountry",
         pl.capture_country_source AS "lowCaptureCountrySource",
         pl.custom_audio_base64 AS "lowAudioB64",
         pl.custom_audio_mime AS "lowAudioMime",
-        ph.bytes_base64 AS "highBytes",
-        ph.mime_type AS "highMime",
+        ${displayOrOriginalSql("ph", "highBytes", "highMime")},
+        ${photoObjectKeySql("ph", "high")},
         ph.country_code AS "highCountry",
         ph.capture_country_code AS "highCaptureCountry",
         ph.capture_country_source AS "highCaptureCountrySource",
@@ -776,18 +821,39 @@ router.get("/echoes/theme/:theme", async (req, res) => {
         typeof raw.highCountry === "string"
           ? raw.highCountry.trim().toUpperCase()
           : null;
+      const lowBytes = typeof raw.lowBytes === "string" ? raw.lowBytes : null;
+      const highBytes = typeof raw.highBytes === "string" ? raw.highBytes : null;
+      const [lowAudio, highAudio] = await Promise.all([
+        loadEchoAudioFields({
+          bytesBase64: (raw.lowAudioB64 as string | null) ?? null,
+          mimeType: (raw.lowAudioMime as string | null) ?? null,
+          objectKey: (raw.lowAudioKey as string | null) ?? null,
+        }),
+        loadEchoAudioFields({
+          bytesBase64: (raw.highAudioB64 as string | null) ?? null,
+          mimeType: (raw.highAudioMime as string | null) ?? null,
+          objectKey: (raw.highAudioKey as string | null) ?? null,
+        }),
+      ]);
       photos.push({
         echoId,
         theme: themeStr,
         mutualAt,
         photo: {
           id: lowId,
-          uri: `data:${String(raw.lowMime)};base64,${String(raw.lowBytes)}`,
+          uri: resolveServedImageUri({
+            objectKey: preferredImageKey(
+              raw.lowDisplayKey as string | null,
+              raw.lowOriginalKey as string | null,
+            ),
+            bytesBase64: lowBytes,
+            mimeType: typeof raw.lowMime === "string" ? raw.lowMime : null,
+          }),
           countryCode: lowDeclared,
           captureCountryCode: lowCapture,
           captureCountrySource: sideSource(raw.lowCaptureCountrySource),
-          customAudioBase64: (raw.lowAudioB64 as string | null) ?? null,
-          customAudioMime: (raw.lowAudioMime as string | null) ?? null,
+          customAudioBase64: lowAudio.customAudioBase64,
+          customAudioMime: lowAudio.customAudioMime,
         },
         partnerPhotoId: highId,
       });
@@ -797,12 +863,19 @@ router.get("/echoes/theme/:theme", async (req, res) => {
         mutualAt,
         photo: {
           id: highId,
-          uri: `data:${String(raw.highMime)};base64,${String(raw.highBytes)}`,
+          uri: resolveServedImageUri({
+            objectKey: preferredImageKey(
+              raw.highDisplayKey as string | null,
+              raw.highOriginalKey as string | null,
+            ),
+            bytesBase64: highBytes,
+            mimeType: typeof raw.highMime === "string" ? raw.highMime : null,
+          }),
           countryCode: highDeclared,
           captureCountryCode: highCapture,
           captureCountrySource: sideSource(raw.highCaptureCountrySource),
-          customAudioBase64: (raw.highAudioB64 as string | null) ?? null,
-          customAudioMime: (raw.highAudioMime as string | null) ?? null,
+          customAudioBase64: highAudio.customAudioBase64,
+          customAudioMime: highAudio.customAudioMime,
         },
         partnerPhotoId: lowId,
       });
@@ -978,8 +1051,23 @@ router.get("/echoes/pair", async (req, res) => {
       .select({
         id: photosTable.id,
         userId: photosTable.userId,
-        bytesBase64: photosTable.bytesBase64,
-        mimeType: photosTable.mimeType,
+        bytesBase64: sql<string | null>`CASE
+          WHEN NULLIF(btrim(${photosTable.displayKey}), '') IS NOT NULL THEN NULL
+          WHEN NULLIF(btrim(${photosTable.originalKey}), '') IS NOT NULL THEN NULL
+          WHEN ${photosTable.displayBytesBase64} IS NOT NULL
+           AND ${photosTable.displayBytesBase64} <> ''
+          THEN ${photosTable.displayBytesBase64}
+          ELSE ${photosTable.bytesBase64}
+        END`,
+        mimeType: sql<string>`CASE
+          WHEN ${photosTable.displayBytesBase64} IS NOT NULL
+           AND ${photosTable.displayBytesBase64} <> ''
+          THEN COALESCE(NULLIF(${photosTable.displayMime}, ''), ${photosTable.mimeType})
+          ELSE ${photosTable.mimeType}
+        END`,
+        displayKey: photosTable.displayKey,
+        originalKey: photosTable.originalKey,
+        audioKey: photosTable.audioKey,
         countryCode: photosTable.countryCode,
         captureCountryCode: photosTable.captureCountryCode,
         captureCountrySource: photosTable.captureCountrySource,
@@ -1024,38 +1112,44 @@ router.get("/echoes/pair", async (req, res) => {
             ),
           )
         : null);
+    const [aAudio, bAudio] = await Promise.all([
+      loadEchoAudioFields({
+        bytesBase64: a.customAudioBase64,
+        mimeType: a.customAudioMime,
+        objectKey: a.audioKey,
+      }),
+      loadEchoAudioFields({
+        bytesBase64: b.customAudioBase64,
+        mimeType: b.customAudioMime,
+        objectKey: b.audioKey,
+      }),
+    ]);
+    const sideJson = (
+      photo: typeof a,
+      audio: { customAudioBase64: string | null; customAudioMime: string | null },
+    ) => ({
+      id: photo.id,
+      uri: resolveServedImageUri({
+        objectKey: preferredImageKey(photo.displayKey, photo.originalKey),
+        bytesBase64: photo.bytesBase64,
+        mimeType: photo.mimeType,
+      }),
+      countryCode: photo.countryCode,
+      captureCountryCode: photo.captureCountryCode,
+      captureCountrySource: photo.captureCountrySource,
+      capturedAt: photo.capturedAt,
+      theme: photo.theme,
+      emotion: photo.emotion,
+      tags: photo.tags ?? [],
+      musicGenre: photo.musicGenre,
+      createdAt: photo.createdAt,
+      customAudioBase64: audio.customAudioBase64,
+      customAudioMime: audio.customAudioMime,
+    });
     res.json({
       mutualAt: fallbackMutualAt,
-      a: {
-        id: a.id,
-        uri: `data:${a.mimeType};base64,${a.bytesBase64}`,
-        countryCode: a.countryCode,
-        captureCountryCode: a.captureCountryCode,
-        captureCountrySource: a.captureCountrySource,
-        capturedAt: a.capturedAt,
-        theme: a.theme,
-        emotion: a.emotion,
-        tags: a.tags ?? [],
-        musicGenre: a.musicGenre,
-        createdAt: a.createdAt,
-        customAudioBase64: a.customAudioBase64,
-        customAudioMime: a.customAudioMime,
-      },
-      b: {
-        id: b.id,
-        uri: `data:${b.mimeType};base64,${b.bytesBase64}`,
-        countryCode: b.countryCode,
-        captureCountryCode: b.captureCountryCode,
-        captureCountrySource: b.captureCountrySource,
-        capturedAt: b.capturedAt,
-        theme: b.theme,
-        emotion: b.emotion,
-        tags: b.tags ?? [],
-        musicGenre: b.musicGenre,
-        createdAt: b.createdAt,
-        customAudioBase64: b.customAudioBase64,
-        customAudioMime: b.customAudioMime,
-      },
+      a: sideJson(a, aAudio),
+      b: sideJson(b, bAudio),
     });
   } catch (err) {
     req.log.error({ err }, "echo pair failed");

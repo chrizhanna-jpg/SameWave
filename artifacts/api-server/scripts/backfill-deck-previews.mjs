@@ -48,6 +48,8 @@ async function encodePair(b64, mime) {
 const client = new pg.Client({ connectionString: DATABASE_URL });
 await client.connect();
 
+// Do not filter with length(bytes_base64): that detoasts every original.
+// IS NULL on the display/preview columns does not.
 const { rows: countRows } = await client.query(`
   SELECT count(*)::int AS c
   FROM photos
@@ -55,7 +57,6 @@ const { rows: countRows } = await client.query(`
     AND status = 'active'
     AND (expires_at IS NULL OR expires_at > now())
     AND (display_bytes_base64 IS NULL OR deck_preview_base64 IS NULL)
-    AND length(bytes_base64) > 0
 `);
 const total = countRows[0]?.c ?? 0;
 console.log(`Active user uploads missing deck previews: ${total}`);
@@ -75,7 +76,6 @@ while (true) {
       AND status = 'active'
       AND (expires_at IS NULL OR expires_at > now())
       AND (display_bytes_base64 IS NULL OR deck_preview_base64 IS NULL)
-      AND length(bytes_base64) > 0
     ORDER BY created_at DESC
     LIMIT $1
   `, [BATCH]);

@@ -4,9 +4,8 @@ import { logger } from "./lib/logger";
 import { startPhotoRetentionCleanup } from "./lib/photoRetentionCleanup";
 import { getPhotoRetentionDays } from "./lib/photoRetention";
 import { getAndroidLatestDebugInfo } from "./androidLatest";
-import { warmStockDisplayCache } from "./lib/warmStockDisplayCache";
-import { startDeckEncodeBackfill } from "./lib/deckEncodeBackfill";
 import { ensureDeckPreviewSchema } from "./lib/ensureDeckPreviewSchema";
+import { isR2Enabled, r2ConfigWarning } from "./lib/r2PhotoStore";
 
 const rawPort = process.env["PORT"];
 
@@ -28,6 +27,8 @@ const listenHost = process.env["LISTEN_HOST"]?.trim() || "0.0.0.0";
 void (async () => {
   try {
     await ensureDeckPreviewSchema();
+    const r2Warning = r2ConfigWarning();
+    if (r2Warning) logger.warn(r2Warning);
   } catch (err) {
     logger.error({ err }, "startup aborted — deck preview schema");
     process.exit(1);
@@ -43,6 +44,7 @@ void (async () => {
         androidLatestVersionCode: androidLatest.resolved.latestVersionCode,
         androidLatestVersionName: androidLatest.resolved.latestVersionName,
         androidLatestUsingDefaults: androidLatest.usingDefaults,
+        photoStorage: isR2Enabled() ? "r2" : "postgres",
       },
       "Server listening",
     );
@@ -57,8 +59,6 @@ void (async () => {
       );
     }
     startPhotoRetentionCleanup();
-    warmStockDisplayCache();
-    startDeckEncodeBackfill();
   });
 
   server.on("error", (err) => {

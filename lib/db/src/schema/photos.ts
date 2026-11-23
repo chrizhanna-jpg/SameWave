@@ -12,9 +12,10 @@ import { z } from "zod";
 import { usersTable } from "./users";
 import { vector } from "./_vector";
 
-// One row per user-uploaded photo. The actual JPEG bytes are stored as
-// base64 text for MVP simplicity — when traffic justifies it we'll move
-// the bytes to object storage and keep just a key here.
+// One row per user-uploaded photo. Bytes stay in base64 text when R2 is
+// not configured. When R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY,
+// R2_BUCKET, and R2_PUBLIC_BASE_URL are all set, new uploads write the
+// objects to R2 and store only the keys here (byte columns stay null).
 //
 // `embedding` is a pgvector column built from theme + tags via Gemini's
 // text-embedding-004 model. We use it for cosine-similarity matching so
@@ -27,9 +28,20 @@ export const photosTable = pgTable(
       .notNull()
       .references(() => usersTable.id, { onDelete: "cascade" }),
 
-    // Image bytes (base64-encoded). Capped at ~8MB binary upstream.
-    bytesBase64: text("bytes_base64").notNull(),
+    // Image bytes (base64-encoded). Null when the original lives in R2
+    // (`original_key`). Capped at ~8MB binary upstream. Nullable so an R2
+    // deploy does not have to rewrite existing rows.
+    bytesBase64: text("bytes_base64"),
     mimeType: varchar("mime_type", { length: 32 }).notNull().default("image/jpeg"),
+    // R2 object keys. Null while the row's bytes still live in Postgres.
+    originalKey: text("original_key"),
+    displayKey: text("display_key"),
+    deckPreviewKey: text("deck_preview_key"),
+    audioKey: text("audio_key"),
+    // md5 of the first 4096 chars of the original base64. Lets deck dedup
+    // keep working after bytes_base64 is cleared. Null on legacy rows, which
+    // still hash the byte column in SQL.
+    contentPrefixMd5: varchar("content_prefix_md5", { length: 32 }),
 
     // AI-derived metadata used for similarity + display.
     theme: varchar("theme", { length: 64 }).notNull().default(""),

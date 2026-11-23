@@ -37,7 +37,6 @@ import {
   resizePhotoForDisplay,
   withDisplayImageSlot,
 } from "../lib/photoImageResize";
-import { prioritizeWarmPhotoIds } from "../lib/warmStockDisplayCache";
 import { stockPhotoCdnUrl } from "../lib/stockPhotoCdn";
 import { fetchDeckPreviewsByIds } from "../lib/deckEncodeBackfill";
 import {
@@ -45,7 +44,26 @@ import {
   encodeDeckPhotoSizes,
 } from "../lib/photoDisplayEncode";
 import { sendPhotoImageBytes } from "../lib/photoImageHeaders";
+import { photoContentHashSql } from "../lib/photoContentHash";
 import { fetchMyJourneyRows } from "../lib/myJourney";
+import {
+  contentPrefixMd5,
+  deletePhotoObjects,
+  getPhotoObject,
+  isR2Enabled,
+  loadOriginalBase64,
+  newPhotoId,
+  resolveServedAudioUrl,
+  storeUploadedPhotoObjects,
+} from "../lib/r2PhotoStore";
+import {
+  MAX_PHOTOS_PER_DAY,
+  PHOTO_DAILY_CAP_ERROR,
+  PHOTO_TOO_LARGE_ERROR,
+  PhotoDailyCapError,
+  isPhotoDailyCapError,
+  photoExceedsByteCap,
+} from "../lib/photoLimits";
 import {
   exploreThemeNeedles,
   normalizeChallengeTheme,
@@ -227,8 +245,9 @@ function approxBase64Bytes(b64: string): number {
 }
 
 /**
- * Rolling 24h send count. Live rows plus deletes still count via
- * photo_send_log (no FK to photos). Stock / atlas seeds are excluded.
+ * Rolling 24h sends for this account. Live rows come from photos; deletes
+ * stay counted via photo_send_log, which has no FK to photos. Stock and
+ * atlas-seed ids are not sends.
  */
 async function countUserPhotoSends(
   executor: Pick<typeof db, "execute">,
@@ -472,6 +491,51 @@ router.post("/photos", async (req, res) => {
       }
     }
 
+    const photoId = newPhotoId();
+    const useR2 = isR2Enabled();
+    let originalKey: string | null = null;
+    let displayKey: string | null = null;
+    let deckPreviewKey: string | null = null;
+    let audioKey: string | null = null;
+    if (useR2) {
+      try {
+        const stored = await storeUploadedPhotoObjects({
+          photoId,
+          original: {
+            body: Buffer.from(stripped, "base64"),
+            contentType: mimeType,
+          },
+          display: deckEncoded
+            ? {
+                body: deckEncoded.displayBuf,
+                contentType: deckEncoded.displayMime,
+              }
+            : null,
+          deckPreview: deckEncoded
+            ? {
+                body: Buffer.from(deckEncoded.previewB64, "base64"),
+                contentType: deckEncoded.previewMime,
+              }
+            : null,
+          audio:
+            customAudioBase64 && customAudioMime
+              ? {
+                  body: Buffer.from(customAudioBase64, "base64"),
+                  contentType: customAudioMime,
+                }
+              : null,
+        });
+        originalKey = stored.originalKey;
+        displayKey = stored.displayKey;
+        deckPreviewKey = stored.deckPreviewKey;
+        audioKey = stored.audioKey;
+      } catch (storeErr) {
+        req.log.error({ err: storeErr }, "photo object upload failed");
+        res.status(500).json({ error: "upload failed" });
+        return;
+      }
+    }
+
     let row: {
       id: string;
       theme: string;
@@ -496,8 +560,9 @@ router.post("/photos", async (req, res) => {
         const inserted = await tx
           .insert(photosTable)
           .values({
+            id: photoId,
             userId: user.id,
-            bytesBase64: stripped,
+            bytesBase64: useR2 ? null : stripped,
             mimeType,
             theme,
             tags,
@@ -509,12 +574,17 @@ router.post("/photos", async (req, res) => {
             capturedAt,
             emotion,
             musicGenre,
-            customAudioBase64,
+            customAudioBase64: useR2 ? null : customAudioBase64,
             customAudioMime,
-            displayBytesBase64: deckEncoded?.displayB64,
+            displayBytesBase64: useR2 ? null : deckEncoded?.displayB64,
             displayMime: deckEncoded?.displayMime,
-            deckPreviewBase64: deckEncoded?.previewB64,
+            deckPreviewBase64: useR2 ? null : deckEncoded?.previewB64,
             deckPreviewMime: deckEncoded?.previewMime,
+            originalKey,
+            displayKey,
+            deckPreviewKey,
+            audioKey,
+            contentPrefixMd5: contentPrefixMd5(stripped),
             status: "active",
             expiresAt: new Date(Date.now() + getPhotoRetentionMs()),
           })
@@ -537,6 +607,16 @@ router.post("/photos", async (req, res) => {
         return created;
       });
     } catch (insertErr) {
+      if (useR2) {
+        await deletePhotoObjects([
+          originalKey,
+          displayKey,
+          deckPreviewKey,
+          audioKey,
+        ]).catch((cleanupErr) => {
+          req.log.warn({ err: cleanupErr }, "photo object cleanup after insert failure failed");
+        });
+      }
       if (isPhotoDailyCapError(insertErr)) {
         res.status(429).json({ error: PHOTO_DAILY_CAP_ERROR });
         return;
@@ -797,6 +877,7 @@ router.get("/photos/candidates", async (req, res) => {
           p.music_genre AS "musicGenre",
           p.custom_audio_base64 AS "customAudioBase64",
           p.custom_audio_mime AS "customAudioMime",
+          p.audio_key AS "audioKey",
           p.mime_type AS "mimeType",
           p.created_at AS "createdAt",
           -- Real capture instant (EXIF / camera shutter); null when the photo
@@ -824,7 +905,7 @@ router.get("/photos/candidates", async (req, res) => {
           -- via GET /photos/:id/image). The content hash is computed in SQL so
           -- DISTINCT ON dedup behaviour is preserved while the response stays
           -- small — this is the main first-card latency fix.
-          md5(substring(p.bytes_base64 from 1 for 4096)) AS content_hash,
+          ${photoContentHashSql("p")} AS content_hash,
           cardinality(ARRAY(SELECT unnest(p.tags) INTERSECT SELECT unnest(${tagsExpr}))) AS tag_overlap,
           cardinality(ARRAY(SELECT unnest(p.shape_tags) INTERSECT SELECT unnest(${shapesExpr}))) AS shape_overlap,
           cardinality(ARRAY(SELECT unnest(p.subjects) INTERSECT SELECT unnest(${subjectsExpr}))) AS subject_overlap,
@@ -936,20 +1017,20 @@ router.get("/photos/candidates", async (req, res) => {
           AND p.user_id <> ${user.id}
           AND p.report_count < ${REPORT_HIDE_THRESHOLD}
           AND (p.expires_at IS NULL OR p.expires_at > now())
-          AND md5(substring(p.bytes_base64 from 1 for 4096)) <> ALL(${bannedPrefixMd5Expr})
+          AND ${photoContentHashSql("p")} <> ALL(${bannedPrefixMd5Expr})
           AND p.id NOT IN (
             SELECT v.photo_id FROM votes v WHERE v.voter_user_id = ${user.id}
             UNION ALL
             SELECT s.photo_id FROM seen_photos s WHERE s.user_id = ${user.id}
           )
           AND p.id <> ALL(${excludeIdsExpr})
-          AND md5(substring(p.bytes_base64 from 1 for 4096)) NOT IN (
-            SELECT md5(substring(p2.bytes_base64 from 1 for 4096))
+          AND ${photoContentHashSql("p")} NOT IN (
+            SELECT ${photoContentHashSql("p2")}
             FROM votes v
             JOIN photos p2 ON p2.id = v.photo_id
             WHERE v.voter_user_id = ${user.id}
             UNION ALL
-            SELECT md5(substring(p3.bytes_base64 from 1 for 4096))
+            SELECT ${photoContentHashSql("p3")}
             FROM seen_photos s
             JOIN photos p3 ON p3.id = s.photo_id
             WHERE s.user_id = ${user.id}
@@ -968,10 +1049,11 @@ router.get("/photos/candidates", async (req, res) => {
     const photos = (rows.rows as Array<Record<string, unknown>>).map((r) => {
       const customAudioBase64 = (r.customAudioBase64 as string | null) ?? null;
       const customAudioMime = (r.customAudioMime as string | null) ?? null;
-      const customAudioUrl =
-        customAudioBase64 && customAudioMime
-          ? `data:${customAudioMime};base64,${customAudioBase64}`
-          : null;
+      const customAudioUrl = resolveServedAudioUrl({
+        objectKey: (r.audioKey as string | null) ?? null,
+        bytesBase64: customAudioBase64,
+        mimeType: customAudioMime,
+      });
       const id = String(r.id);
       const cdnUri = stockPhotoCdnUrl(id, 960);
       return {
@@ -1033,13 +1115,6 @@ router.get("/photos/candidates", async (req, res) => {
       return preview ? { ...p, previewUri: preview.previewUri } : p;
     });
 
-    prioritizeWarmPhotoIds(
-      withPreviews
-        .filter((p) => !p.uri.startsWith("https://") && !p.previewUri)
-        .slice(0, 4)
-        .map((p) => p.id),
-    );
-
     res.json({ photos: withPreviews });
   } catch (err) {
     req.log.error({ err }, "candidates query failed");
@@ -1084,6 +1159,7 @@ router.post("/photos/match-by-object", async (req, res) => {
       .select({
         bytesBase64: photosTable.bytesBase64,
         mimeType: photosTable.mimeType,
+        originalKey: photosTable.originalKey,
       })
       .from(photosTable)
       .where(
@@ -1095,8 +1171,13 @@ router.post("/photos/match-by-object", async (req, res) => {
       res.status(404).json({ error: "photo not found" });
       return;
     }
+    const base64 = await loadOriginalBase64(row);
+    if (!base64) {
+      res.status(404).json({ error: "photo not found" });
+      return;
+    }
     const { objects, shapes } = await extractObjectTags({
-      base64: row.bytesBase64,
+      base64,
       mimeType: row.mimeType ?? "image/jpeg",
     });
     res.json({ objects, shapes });
@@ -1153,6 +1234,7 @@ router.post("/photos/backfill-shapes", async (req, res) => {
         id: photosTable.id,
         bytesBase64: photosTable.bytesBase64,
         mimeType: photosTable.mimeType,
+        originalKey: photosTable.originalKey,
       })
       .from(photosTable)
       .where(
@@ -1167,8 +1249,10 @@ router.post("/photos/backfill-shapes", async (req, res) => {
     let failed = 0;
     for (const row of rows) {
       try {
+        const base64 = await loadOriginalBase64(row);
+        if (!base64) throw new Error("photo bytes missing");
         const { shapes } = await extractObjectTags({
-          base64: row.bytesBase64,
+          base64,
           mimeType: row.mimeType ?? "image/jpeg",
         });
         // Always write something so the row's cardinality > 0 and
@@ -1262,6 +1346,7 @@ router.post("/photos/backfill-subjects", async (req, res) => {
         id: photosTable.id,
         bytesBase64: photosTable.bytesBase64,
         mimeType: photosTable.mimeType,
+        originalKey: photosTable.originalKey,
       })
       .from(photosTable)
       .where(
@@ -1280,8 +1365,10 @@ router.post("/photos/backfill-subjects", async (req, res) => {
         // pass) so the subjects field gets populated with the same
         // contract a fresh upload would produce — same prompt, same
         // normalisation, same 6-token cap.
+        const base64 = await loadOriginalBase64(row);
+        if (!base64) throw new Error("photo bytes missing");
         const { subjects } = await analyzePhoto({
-          base64: row.bytesBase64,
+          base64,
           mimeType: row.mimeType ?? "image/jpeg",
         });
         // Always write something so cardinality > 0 and the row is
@@ -1506,8 +1593,8 @@ router.get("/photos/atlas", async (req, res) => {
         ))) AS hc,
         pl.id::text AS "photoLowId",
         ph.id::text AS "photoHighId",
-        md5(substring(pl.bytes_base64 from 1 for 4096)) AS "photoLowHash",
-        md5(substring(ph.bytes_base64 from 1 for 4096)) AS "photoHighHash",
+        ${photoContentHashSql("pl")} AS "photoLowHash",
+        ${photoContentHashSql("ph")} AS "photoHighHash",
         e.pending_from_user_id AS pf,
         e.user_low_id AS ul,
         e.user_high_id AS uh
@@ -1774,8 +1861,9 @@ router.post("/photos/atlas/explore", async (req, res) => {
         pl.mime_type AS pl_mime,
         pl.custom_audio_base64 AS pl_audio_b64,
         pl.custom_audio_mime AS pl_audio_mime,
+        pl.audio_key AS pl_audio_key,
         pl.user_id::text AS pl_user,
-        md5(substring(pl.bytes_base64 from 1 for 4096)) AS pl_hash,
+        ${photoContentHashSql("pl")} AS pl_hash,
         upper(trim(both from coalesce(
           nullif(trim(both from pl.capture_country_code), ''),
           nullif(trim(both from pl.country_code), ''),
@@ -1790,8 +1878,9 @@ router.post("/photos/atlas/explore", async (req, res) => {
         ph.mime_type AS ph_mime,
         ph.custom_audio_base64 AS ph_audio_b64,
         ph.custom_audio_mime AS ph_audio_mime,
+        ph.audio_key AS ph_audio_key,
         ph.user_id::text AS ph_user,
-        md5(substring(ph.bytes_base64 from 1 for 4096)) AS ph_hash,
+        ${photoContentHashSql("ph")} AS ph_hash,
         upper(trim(both from coalesce(
           nullif(trim(both from ph.capture_country_code), ''),
           nullif(trim(both from ph.country_code), ''),
@@ -1877,6 +1966,7 @@ router.post("/photos/atlas/explore", async (req, res) => {
       const photoId = String(r[`${prefix}_id`] ?? "").trim();
       const audioB64 = (r[`${prefix}_audio_b64`] as string | null) ?? null;
       const audioMime = (r[`${prefix}_audio_mime`] as string | null) ?? null;
+      const audioKey = (r[`${prefix}_audio_key`] as string | null) ?? null;
       const normTags = (v: unknown): string[] => {
         if (!Array.isArray(v)) return [];
         return v
@@ -1898,8 +1988,11 @@ router.post("/photos/atlas/explore", async (req, res) => {
         subjects: normTags(r[`${prefix}_subjects`]),
         emotion: (r[`${prefix}_emotion`] as string | null) ?? null,
         musicGenre: (r[`${prefix}_music`] as string | null) ?? null,
-        customAudioUrl:
-          audioB64 && audioMime ? `data:${audioMime};base64,${audioB64}` : null,
+        customAudioUrl: resolveServedAudioUrl({
+          objectKey: audioKey,
+          bytesBase64: audioB64,
+          mimeType: audioMime,
+        }),
         // Stream via GET /api/photos/:id/image — never inline multi-MB base64 in JSON.
         uri: photoId
           ? `/api/photos/${encodeURIComponent(photoId)}/image`
@@ -1997,7 +2090,6 @@ router.get("/photos/atlas/:countryCode", async (req, res) => {
         SELECT
           p.id,
           p.user_id,
-          p.bytes_base64,
           p.mime_type,
           p.theme,
           p.tags,
@@ -2005,8 +2097,12 @@ router.get("/photos/atlas/:countryCode", async (req, res) => {
           p.music_genre,
           p.custom_audio_base64,
           p.custom_audio_mime,
+          p.audio_key,
           p.created_at,
-          md5(substring(p.bytes_base64 from 1 for 4096)) AS content_hash,
+          -- Dedup key only. Do not select p.bytes_base64: the full original
+          -- is multi-MB and was never returned. Hash a 4 KB prefix instead
+          -- (same key as /candidates) so identical images still collapse.
+          ${photoContentHashSql("p")} AS content_hash,
           row_number() OVER (
             PARTITION BY p.user_id
             ORDER BY p.created_at DESC
@@ -2037,6 +2133,7 @@ router.get("/photos/atlas/:countryCode", async (req, res) => {
         music_genre,
         custom_audio_base64,
         custom_audio_mime,
+        audio_key,
         created_at
       FROM deduped
       ORDER BY user_rank ASC, exposure_penalty ASC, created_at DESC
@@ -2045,6 +2142,7 @@ router.get("/photos/atlas/:countryCode", async (req, res) => {
     const photos = (rows.rows as Array<Record<string, unknown>>).map((r) => {
       const audioBase64 = (r.custom_audio_base64 as string | null) ?? null;
       const audioMime   = (r.custom_audio_mime   as string | null) ?? null;
+      const audioKey    = (r.audio_key as string | null) ?? null;
       const id = String(r.id);
       return {
         id,
@@ -2053,9 +2151,11 @@ router.get("/photos/atlas/:countryCode", async (req, res) => {
         tags:           Array.isArray(r.tags) ? (r.tags as string[]) : [],
         emotion:        (r.emotion as string | null) ?? null,
         musicGenre:     (r.music_genre as string | null) ?? null,
-        customAudioUrl: audioBase64 && audioMime
-          ? `data:${audioMime};base64,${audioBase64}`
-          : null,
+        customAudioUrl: resolveServedAudioUrl({
+          objectKey: audioKey,
+          bytesBase64: audioBase64,
+          mimeType: audioMime,
+        }),
         createdAt:      String(r.created_at),
       };
     });
@@ -2149,8 +2249,21 @@ router.get("/photos/:id/image", async (req, res) => {
         return;
       }
 
+      // Keys first. The display byte column is read only when display_key is
+      // empty, so an R2 row does not detoast a null-or-legacy original.
+      // Bytes are proxied (not 302'd): old builds send Authorization, expect
+      // image bytes plus ETag / 304, and pass ?w= for a server-side resize.
       const rows = await db.execute(sql`
-        SELECT mime_type, bytes_base64, display_bytes_base64, display_mime, created_at
+        SELECT
+          mime_type,
+          display_mime,
+          created_at,
+          COALESCE(NULLIF(btrim(display_key), ''), '') AS display_key,
+          COALESCE(NULLIF(btrim(original_key), ''), '') AS original_key,
+          CASE
+            WHEN NULLIF(btrim(display_key), '') IS NOT NULL THEN NULL
+            ELSE display_bytes_base64
+          END AS display_bytes_base64
         FROM photos
         WHERE id::text = ${photoId}
           AND status = 'active'
@@ -2171,26 +2284,82 @@ router.get("/photos/:id/image", async (req, res) => {
             ? new Date(createdAtRaw)
             : null;
       const mime = String(r.mime_type ?? "image/jpeg");
-      const displayB64 = String(r.display_bytes_base64 ?? "");
-      const displayMime = String(r.display_mime ?? "image/jpeg");
-      if (
-        displayB64 &&
-        (maxWidth == null || maxWidth === DECK_DISPLAY_WIDTH)
-      ) {
-        const buf = Buffer.from(displayB64, "base64");
-        putCachedDisplayBytes(photoId, cacheWidth, buf, displayMime);
+      const displayKey = String(r.display_key ?? "").trim();
+      const originalKey = String(r.original_key ?? "").trim();
+      const displayB64 = String(r.display_bytes_base64 ?? "").trim();
+      const displayMime = String(r.display_mime ?? "").trim() || "image/jpeg";
+
+      const sendBuf = (
+        buf: Buffer,
+        outMime: string,
+      ) => {
+        putCachedDisplayBytes(photoId, cacheWidth, buf, outMime);
         sendPhotoImageBytes(
           req,
           res,
           buf,
-          displayMime,
+          outMime,
           photoId,
           cacheWidth,
           lastModified,
         );
+      };
+
+      if (displayKey || displayB64) {
+        let buf: Buffer | null = null;
+        let outMime = displayMime;
+        if (displayKey) {
+          const obj = await getPhotoObject(displayKey);
+          if (!obj) {
+            res.status(404).json({ error: "photo not found" });
+            return;
+          }
+          buf = obj.body;
+          if (!String(r.display_mime ?? "").trim() && obj.contentType.startsWith("image/")) {
+            outMime = obj.contentType;
+          }
+        } else {
+          buf = Buffer.from(displayB64, "base64");
+        }
+        // A non-default width is resized from the display bytes already in
+        // memory. The original is fetched only when display is missing.
+        if (maxWidth != null && maxWidth !== DECK_DISPLAY_WIDTH) {
+          const resized = await resizePhotoForDisplay(buf, outMime, maxWidth);
+          buf = resized.buf;
+          outMime = resized.mime;
+        }
+        sendBuf(buf, outMime);
         return;
       }
-      const b64 = String(r.bytes_base64 ?? "");
+
+      if (originalKey) {
+        const obj = await getPhotoObject(originalKey);
+        if (!obj) {
+          res.status(404).json({ error: "photo not found" });
+          return;
+        }
+        let buf = obj.body;
+        let outMime = mime.startsWith("image/") ? mime : obj.contentType;
+        if (maxWidth != null) {
+          const resized = await resizePhotoForDisplay(buf, outMime, maxWidth);
+          buf = resized.buf;
+          outMime = resized.mime;
+        }
+        sendBuf(buf, outMime);
+        return;
+      }
+
+      const originalRows = await db.execute(sql`
+        SELECT bytes_base64
+        FROM photos
+        WHERE id::text = ${photoId}
+          AND status = 'active'
+          AND report_count < ${REPORT_HIDE_THRESHOLD}
+          AND (expires_at IS NULL OR expires_at > now())
+        LIMIT 1
+      `);
+      const original = originalRows.rows[0] as Record<string, unknown> | undefined;
+      const b64 = String(original?.bytes_base64 ?? "");
       if (!b64) {
         res.status(404).json({ error: "photo not found" });
         return;
@@ -2202,16 +2371,7 @@ router.get("/photos/:id/image", async (req, res) => {
         buf = resized.buf;
         outMime = resized.mime;
       }
-      putCachedDisplayBytes(photoId, cacheWidth, buf, outMime);
-      sendPhotoImageBytes(
-        req,
-        res,
-        buf,
-        outMime,
-        photoId,
-        cacheWidth,
-        lastModified,
-      );
+      sendBuf(buf, outMime);
     });
   } catch (err) {
     req.log.error({ err }, "photo image failed");
@@ -2535,7 +2695,14 @@ router.delete("/photos/:id", async (req, res) => {
     }
     const photoId = req.params.id;
     const rows = await db
-      .select({ id: photosTable.id, userId: photosTable.userId })
+      .select({
+        id: photosTable.id,
+        userId: photosTable.userId,
+        originalKey: photosTable.originalKey,
+        displayKey: photosTable.displayKey,
+        deckPreviewKey: photosTable.deckPreviewKey,
+        audioKey: photosTable.audioKey,
+      })
       .from(photosTable)
       .where(eq(photosTable.id, photoId))
       .limit(1);
@@ -2550,6 +2717,14 @@ router.delete("/photos/:id", async (req, res) => {
     }
     await db.delete(photosTable).where(eq(photosTable.id, photoId));
     invalidateCachedDisplayBytes(photoId);
+    await deletePhotoObjects([
+      row.originalKey,
+      row.displayKey,
+      row.deckPreviewKey,
+      row.audioKey,
+    ]).catch((err) => {
+      req.log.warn({ err, photoId }, "photo object delete failed");
+    });
     res.json({ ok: true });
   } catch (err) {
     req.log.error({ err }, "photo delete failed");

@@ -32,6 +32,7 @@ flowchart TB
   subgraph hosted [Hosted services]
     Render[samewave.onrender.com\napi-server]
     Neon[(Neon Postgres\n+ pgvector)]
+    R2[(Cloudflare R2\nphoto objects, optional)]
     Clerk[Clerk auth]
     OpenAI[OpenAI API]
     RC[RevenueCat]
@@ -51,6 +52,7 @@ flowchart TB
   RC --> Apple
 
   Render --> Neon
+  Render --> R2
   Render --> Clerk
   Render --> OpenAI
   Render --> ExpoPush
@@ -76,7 +78,8 @@ Render (`/api/__clerk` → `frontend-api.clerk.dev`). See
 | **Clerk** | Sign-in, sessions, user identity | **~50,000 MAU** (Hobby) |
 | **Google Cloud / Google Sign-In** | OAuth for Android | Same order of magnitude as Clerk MAU |
 | **Render** | Hosts Node `api-server` | **~low hundreds concurrent** on free; **no hard MAU** — **5 GB egress/mo**, sleeps after **~15 min** idle |
-| **Neon** | Production Postgres + vectors | **~60,000 MAU** (vendor); **~dozens–low hundreds of heavy photo users** in practice (**0.5 GB** storage) |
+| **Neon** | Production Postgres + vectors | **~60,000 MAU** (vendor); **~dozens–low hundreds of heavy photo users** in practice (**0.5 GB** storage) while bytes stay in the database |
+| **Cloudflare R2** | Optional photo object storage (S3 API). Off until all five `R2_*` vars are set | Object storage; public reads via `R2_PUBLIC_BASE_URL` |
 | **Docker + Postgres** | Local dev database only | Not production |
 | **OpenAI API** | Photo analysis (themes, tags, shapes) | **Budget-limited** (pay per request) |
 | **RevenueCat** | IAP entitlements (`pro`) | Free until **~$2,500/mo** tracked revenue, then **1%** |
@@ -88,7 +91,6 @@ Render (`/api/__clerk` → `frontend-api.clerk.dev`). See
 
 | Item | Notes |
 |------|--------|
-| **CDN / object storage** (S3, R2, Cloudflare) | Photos stored as **base64 in Postgres** (MVP); move to blob storage when scaling |
 | **Vercel, Supabase, Firebase (runtime), Sentry** | No deploy config in repo |
 | **Static web** (`expo export` + `server/serve.js`) | Self-hosted only; no cloud host documented |
 | **Unsplash / incompetech.com** | Demo images and royalty-free music URLs only |
@@ -155,7 +157,14 @@ Render (`/api/__clerk` → `frontend-api.clerk.dev`). See
 
 - **Purpose:** Users, photos, echoes, matches, push tokens; **pgvector** for embeddings (768-d).
 - **Connection:** `DATABASE_URL` with `?sslmode=require`.
-- **Capacity (free):** **~60,000 MAU** (Neon marketing limit) but **0.5 GB storage** is the practical cap while photos live in the database.
+- **Capacity (free):** **~60,000 MAU** (Neon marketing limit) but **0.5 GB storage** is the practical cap while photo bytes live in the database. With R2 configured, new uploads store object keys only.
+
+### Cloudflare R2 (optional)
+
+- **Purpose:** JPEG and custom-audio bytes for new uploads. Postgres keeps `original_key`, `display_key`, `deck_preview_key`, `audio_key`, and `content_prefix_md5`.
+- **Off by default:** if any of the five `R2_*` variables is missing, uploads and reads stay on base64 columns.
+- **Reads:** `GET /api/photos/:id/image` proxies object bytes (ETag, 304, `?w=` resize). Echo `uri` values are the public object URL when a key exists, and a `data:` URI when the bytes are still in Postgres. Deck `previewUri` stays a `data:` URI.
+- **Bucket:** public read via the r2.dev subdomain or a custom domain whose origin is `R2_PUBLIC_BASE_URL`. Writes use the S3 API key. The React Native app does not need CORS. Stock `stock_%` rows stay on Unsplash and are not copied.
 
 ### Docker Compose (local only)
 
@@ -215,6 +224,7 @@ See [play-store-go-live.md](./play-store-go-live.md) for Play Console + RevenueC
 | Clerk (client) | `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`, `EXPO_PUBLIC_CLERK_PROXY_URL` | `.env.example`, `eas.json` |
 | RevenueCat | `EXPO_PUBLIC_REVENUECAT_*` | `.env.example` |
 | API (Render) | `DATABASE_URL`, `CLERK_*`, `OPENAI_*`, `PORT` | `artifacts/api-server/.env.example`, `.env.render.example` |
+| Photo objects (optional) | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_BASE_URL` | `artifacts/api-server/.env.example`, `.env.render.example` |
 
 Production builds in `eas.json` point at `https://samewave.onrender.com` and the Clerk proxy on the same host.
 
@@ -224,8 +234,9 @@ Production builds in `eas.json` point at `https://samewave.onrender.com` and the
 
 | Limit | Value | Source |
 |-------|--------|--------|
-| HTTP JSON body | **12 MB** | `api-server` Express config |
-| Photo upload (binary) | **~8 MB** | `api-server` routes |
+| HTTP JSON body | **12 MB** (other routes). Photo upload allows base64 headroom above a **5 MB** original and returns **413** past that | `api-server` Express config, `photoLimits.ts` |
+| Photo upload (binary) | **5 MB** decoded original (`MAX_PHOTO_BYTES`) | `api-server` `POST /api/photos` |
+| Photo sends | **30 per account per rolling 24 hours** (`MAX_PHOTOS_PER_DAY`). Delete does not refund | `photo_send_log` plus live `photos` rows |
 | API client timeout | **30 s** | `artifacts/same-same/utils/api.ts` |
 | Clerk UI boot timeout | **8 s** | `app/_layout.tsx` |
 | Expo Push batch | **100** per API call | `api-server/src/lib/push.ts` |
@@ -235,13 +246,13 @@ Production builds in `eas.json` point at `https://samewave.onrender.com` and the
 
 ## Practical bottleneck
 
-On the **current architecture** (photos as base64 in Postgres, API on Render free):
+On the **current architecture** (photo bytes in Postgres until R2 env vars are set, API on Render free):
 
 1. **Neon storage (0.5 GB)** — limits total photo volume before MAU limits on Clerk or Play matter.
 2. **Render sleep + single instance** — cold starts and concurrency during spikes.
 3. **OpenAI cost** — scales with every analyzed upload.
 
-**Scaling path (when needed):** paid Neon + always-on Render (or another host), object storage for images, and optional CDN for media.
+**Scaling path (when needed):** paid Neon + always-on Render (or another host). New photo bytes can move to R2 by setting the five `R2_*` variables; old test rows are cleared with `artifacts/api-server/scripts/clear-test-photo-bytes.sql` (not run on boot). `GET /api/photos/:id/image` keeps returning bytes.
 
 ---
 
