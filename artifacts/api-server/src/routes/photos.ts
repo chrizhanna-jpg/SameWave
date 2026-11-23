@@ -73,14 +73,6 @@ import {
 } from "../lib/challengeTheme";
 import { expandSubjectsForQuery } from "../lib/subjectMatch";
 import { parseCaptureCountrySource } from "../lib/captureCountrySource";
-import {
-  MAX_PHOTOS_PER_DAY,
-  PHOTO_DAILY_CAP_ERROR,
-  PHOTO_TOO_LARGE_ERROR,
-  PhotoDailyCapError,
-  isPhotoDailyCapError,
-  photoExceedsByteCap,
-} from "../lib/photoLimits";
 
 const bannedPrefixMd5Expr =
   BANNED_PHOTO_PREFIX_MD5.length > 0
