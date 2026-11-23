@@ -50,16 +50,14 @@ export default function WavesScreen() {
   }, [offers, waves]);
 
   /**
-   * Mutual Waves. Live / matched-back list wins. Preview only seeds sample
-   * Waves when there is no pending Ripple — so match-back is what fills this
-   * section in the Expo Go E2E path.
+   * Mutual Waves. Live / matched-back list wins. Preview seeds sample Waves
+   * when the live list is empty so both pair thumbs can be exercised.
    */
   const mutualWaves = useMemo(() => {
     if (waves.length > 0) return waves;
     if (!testPhotosBuildEnabled()) return [];
-    if (ripplesReceived.length > 0) return [];
     return loadSampleWaves().slice(0, 2);
-  }, [waves, ripplesReceived.length]);
+  }, [waves]);
 
   const loadingRipples = !offersKnown && sync === "syncing";
   const loadingWaves = !wavesKnown && sync === "syncing";
