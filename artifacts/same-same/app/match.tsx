@@ -110,6 +110,7 @@ export default function MatchScreen() {
     syncNow,
     recordMatchSeen,
     finishMatchLook,
+    markPostSendRippleOffered,
     respondToOffer,
     countryCode,
   } = useAppState();
@@ -526,6 +527,8 @@ export default function MatchScreen() {
       );
       return;
     }
+    // Offer = send a Ripple — Home may show "Your Ripple is out there".
+    markPostSendRippleOffered();
     seenRef.current = [...new Set([...seenRef.current, current.id])];
     recordMatchSeen(myPhotoId, [current.id]);
 

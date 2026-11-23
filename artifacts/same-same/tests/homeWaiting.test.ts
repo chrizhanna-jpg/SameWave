@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { shouldShowHomeWaiting } from "../core/homeWaiting";
+import { homeWaitingCopy, shouldShowHomeWaiting } from "../core/homeWaiting";
 
 test("waiting only right after a send while a Ripple is travelling", () => {
   assert.equal(
@@ -56,4 +56,18 @@ test("no travelling Ripple never shows waiting", () => {
     }),
     false,
   );
+});
+
+test("photo-only upload uses arrival waiting copy, not Ripple-sent confirmation", () => {
+  const copy = homeWaitingCopy({ rippleOffered: false });
+  assert.equal(copy.title, "Ripples and Waves arrive in a few days.");
+  assert.match(copy.tagline, /shares your moment/);
+  assert.equal(copy.caption, null);
+  assert.doesNotMatch(copy.title, /out there/i);
+});
+
+test("after offering a Ripple, Home keeps Ripple-sent confirmation", () => {
+  const copy = homeWaitingCopy({ rippleOffered: true });
+  assert.equal(copy.title, "Your Ripple is out there");
+  assert.equal(copy.caption, "Waves usually arrive within a few days.");
 });

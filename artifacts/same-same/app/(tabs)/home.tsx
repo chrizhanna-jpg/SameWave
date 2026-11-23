@@ -12,7 +12,7 @@ import { RippleRings } from "@/components/RippleRings";
 import { Screen } from "@/components/Screen";
 import { Txt } from "@/components/Txt";
 import { dailyTopicFor } from "@/core/dailyTopic";
-import { shouldShowHomeWaiting } from "@/core/homeWaiting";
+import { homeWaitingCopy, shouldShowHomeWaiting } from "@/core/homeWaiting";
 import { sceneFor } from "@/data/scenes";
 import { chooseFromLibrary } from "@/device/photos";
 import { isWaveSwooshPlaying, playOceanSound, shouldPlayHomeOceanOnFocus } from "@/device/sound";
@@ -25,8 +25,8 @@ import { colors, font, layout, space } from "@/theme";
 /**
  * Home tab: brand, topic, send actions, Account. Default launch tab.
  * Ocean swell: once per cold start (splash, or Home once if splash skipped it).
- * Returning to Home from tabs / background stays silent. Post-send waiting
- * shows once after upload.
+ * Returning to Home from tabs / background stays silent. Post-upload waiting
+ * shows once after upload; Ripple-sent confirmation only after a Match offer.
  *
  * Help + Account sit in a fixed top toolbar (safe-area aware). The two Frost
  * cards pin above the absolute tab bar so they never slide under it.
@@ -41,6 +41,7 @@ export default function HomeScreen() {
     shouldAskForPushes,
     askForPushes,
     postSendWaiting,
+    postSendRippleOffered,
     dismissPostSendWaiting,
   } = useAppState();
   const [sendingAnother, setSendingAnother] = useState(false);
@@ -51,6 +52,7 @@ export default function HomeScreen() {
     postSendWaiting,
     sendingAnother,
   });
+  const waitingCopy = homeWaitingCopy({ rippleOffered: postSendRippleOffered });
   const today = dailyTopicFor();
   // Measured tab bar height (incl. safe-area pad) + gap — Android gesture / 3-button.
   const tabClearance = useTabBarClearance(space.lg);
@@ -171,22 +173,24 @@ export default function HomeScreen() {
               <>
                 <RippleRings size={160} />
                 <Txt variant="title" center style={styles.brandTitle}>
-                  Your Ripple is out there
+                  {waitingCopy.title}
                 </Txt>
                 <Txt tone="secondary" center style={styles.tagline}>
-                  We&apos;ll tell you when someone shares your moment.
+                  {waitingCopy.tagline}
                 </Txt>
-                <Txt
-                  variant="quiet"
-                  tone="quiet"
-                  center
-                  style={styles.caption}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.85}
-                >
-                  Waves usually arrive within a few days.
-                </Txt>
+                {waitingCopy.caption ? (
+                  <Txt
+                    variant="quiet"
+                    tone="quiet"
+                    center
+                    style={styles.caption}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.85}
+                  >
+                    {waitingCopy.caption}
+                  </Txt>
+                ) : null}
               </>
             ) : (
               <>

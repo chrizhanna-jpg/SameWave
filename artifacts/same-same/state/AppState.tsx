@@ -168,10 +168,17 @@ export interface AppStateValue {
   /** Uploads the photo. Throws a BackendError when it does not reach the server. */
   sendRipple(draft: RippleDraft): Promise<Ripple>;
   /**
-   * True until Home/Ripple dismiss the post-send waiting UI for the Ripple
-   * just sent. Independent of `travelling` so re-entering Home shows buttons.
+   * True until Home/Ripple dismiss the post-send waiting UI after an upload.
+   * Independent of `travelling` so re-entering Home shows buttons.
    */
   postSendWaiting: boolean;
+  /**
+   * True once the user has offered a Ripple on Match (or background reach
+   * has) during this post-upload wait. Gates "Your Ripple is out there".
+   */
+  postSendRippleOffered: boolean;
+  /** Match / background reach: user actually sent a Ripple offer. */
+  markPostSendRippleOffered(): void;
   /** Leave Home waiting / tap Send another — clear until the next send. */
   dismissPostSendWaiting(): void;
   syncNow(options?: { force?: boolean }): Promise<void>;
@@ -292,6 +299,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [pushTarget, setPushTarget] = useState<PushTarget | null>(null);
   const [sentThisSession, setSentThisSession] = useState(false);
   const [postSendWaiting, setPostSendWaiting] = useState(false);
+  const [postSendRippleOffered, setPostSendRippleOffered] = useState(false);
   const [boot, setBoot] = useState<BootStatus>("idle");
   const [bootDetail, setBootDetail] = useState<string | null>(null);
   const [bootAttempt, setBootAttempt] = useState(0);
@@ -371,6 +379,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (dataRef.current.accountId !== forAccount) return false;
+      if (offered.length > 0) setPostSendRippleOffered(true);
       commit((current) => ({
         ...current,
         ripples: current.ripples.map((r) =>
@@ -784,6 +793,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         save("ripples");
         setNow(Date.now());
         setSentThisSession(true);
+        // Upload only — Ripple-sent copy waits until Match offer (or reach).
+        setPostSendRippleOffered(false);
         setPostSendWaiting(true);
         void syncNow({ force: true });
       }
@@ -792,7 +803,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     [backend, commit, save, syncNow],
   );
 
-  const dismissPostSendWaiting = useCallback(() => setPostSendWaiting(false), []);
+  const markPostSendRippleOffered = useCallback(() => setPostSendRippleOffered(true), []);
+
+  const dismissPostSendWaiting = useCallback(() => {
+    setPostSendWaiting(false);
+    setPostSendRippleOffered(false);
+  }, []);
 
   const recordMatchSeen = useCallback(
     (myPhotoId: string, theirIds: readonly string[]) => {
@@ -999,6 +1015,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       setCountry,
       sendRipple,
       postSendWaiting,
+      postSendRippleOffered,
+      markPostSendRippleOffered,
       dismissPostSendWaiting,
       syncNow,
       recordMatchSeen,
@@ -1020,6 +1038,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       retryBoot,
       sentThisSession,
       postSendWaiting,
+      postSendRippleOffered,
+      markPostSendRippleOffered,
       dismissPostSendWaiting,
       data.wavesKnown,
       data.offers,
