@@ -224,11 +224,20 @@ export default function HomeScreen() {
                   style={styles.actionGap}
                   accessibilityHint="Opens the camera, then the Ripple tab to upload"
                 />
+                <View
+                  style={styles.todayTopic}
+                  accessibilityLabel={`Today's topic: ${today.label}`}
+                >
+                  <Txt variant="quiet" tone="secondary" center>
+                    Today&apos;s topic
+                  </Txt>
+                  <Txt tone="moon" center style={styles.todayTopicLabel}>
+                    {today.label}
+                  </Txt>
+                </View>
                 <Button
                   kind="soft"
-                  label="Today's topic"
-                  detail={today.label}
-                  detailTone="moon"
+                  label="Capture this moment"
                   onPress={() => void beginCompose(today.id, true)}
                   style={styles.actionGap}
                   accessibilityHint="Starts a Ripple locked to today's topic"
@@ -312,4 +321,16 @@ const styles = StyleSheet.create({
     gap: space.sm,
   },
   actionGap: { alignSelf: "stretch" },
+  /** Full topic above the soft CTA — wraps; never ellipsized on the button. */
+  todayTopic: {
+    alignSelf: "stretch",
+    alignItems: "center",
+    gap: space.xs,
+    paddingHorizontal: space.sm,
+    paddingTop: space.xs,
+  },
+  todayTopicLabel: {
+    alignSelf: "stretch",
+    fontFamily: font.bold,
+  },
 });
