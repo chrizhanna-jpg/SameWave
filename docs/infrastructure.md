@@ -236,7 +236,7 @@ Production builds in `eas.json` point at `https://samewave.onrender.com` and the
 |-------|--------|--------|
 | HTTP JSON body | **12 MB** (other routes). Photo upload allows base64 headroom above a **5 MB** original and returns **413** past that | `api-server` Express config, `photoLimits.ts` |
 | Photo upload (binary) | **5 MB** decoded original (`MAX_PHOTO_BYTES`) | `api-server` `POST /api/photos` |
-| Photo sends | **10 per account per rolling 24 hours** (`MAX_PHOTOS_PER_DAY`). Delete does not refund | `photo_send_log` plus live `photos` rows |
+| Photo sends | **30 per account per rolling 24 hours** (`MAX_PHOTOS_PER_DAY`). Delete does not refund | `photo_send_log` plus live `photos` rows |
 | API client timeout | **30 s** | `artifacts/same-same/utils/api.ts` |
 | Clerk UI boot timeout | **8 s** | `app/_layout.tsx` |
 | Expo Push batch | **100** per API call | `api-server/src/lib/push.ts` |

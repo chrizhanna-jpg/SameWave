@@ -5,11 +5,11 @@ import express from "express";
 export const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 
 /** New user photo sends (Ripples) allowed per account in a rolling 24 hours. */
-export const MAX_PHOTOS_PER_DAY = 10;
+export const MAX_PHOTOS_PER_DAY = 30;
 
 export const PHOTO_TOO_LARGE_ERROR = "Photo is too large (max 5 MB).";
 export const PHOTO_DAILY_CAP_ERROR =
-  "You can send up to 10 photos a day. Try again later.";
+  `You can send up to ${MAX_PHOTOS_PER_DAY} photos a day. Try again later.`;
 
 /**
  * Ids written by stock-pool and atlas demo scripts, not by a person's upload.
