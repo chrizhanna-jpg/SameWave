@@ -60,13 +60,15 @@ test("Wave inbox has no Wave back / Dismiss; tap opens full-screen Wave", () => 
   assert.match(waves, /No Ripples received|Checking for moments/);
   assert.match(waves, /Matched their moment to yours/);
   assert.match(waves, /Moments people matched to yours/);
-  assert.match(waves, /MomentRow/);
+  assert.match(waves, /They matched back/);
+  assert.match(waves, /Moments where they matched back/);
+  assert.match(waves, /TheirMomentCard/);
   assert.match(waves, /inboxOfferTheirThumbSource/);
   assert.doesNotMatch(waves, /inboxOfferMyThumbSource/);
   assert.match(waves, /Waves/);
   assert.match(waves, /No Waves yet/);
   assert.match(waves, /styles\.divider|colors\.line/);
-  assert.match(waves, /Open their moment|Open Wave/);
+  assert.match(waves, /Open their moment/);
   assert.doesNotMatch(waves, /\bInbox\b/);
   assert.doesNotMatch(waves, /Your Waves/);
   assert.match(waves, /PREVIEW_OFFER_WAVE_ID|\/wave\/\[id\]/);

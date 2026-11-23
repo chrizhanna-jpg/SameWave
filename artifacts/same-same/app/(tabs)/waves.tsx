@@ -1,4 +1,4 @@
-import { Image } from "expo-image";
+import { Image, type ImageSource } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useMemo } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
@@ -14,7 +14,7 @@ import {
   PREVIEW_OFFER_WAVE_ID,
   withOptionalSampleOffers,
 } from "@/core/sampleOffers";
-import { testPhotosBuildEnabled } from "@/core/testPhotos";
+import { loadSampleWaves, testPhotosBuildEnabled } from "@/core/testPhotos";
 import type { Offer, Wave } from "@/core/types";
 import { findWaveByPhotos } from "@/core/waves";
 import { waveListPlace, waveListWhen } from "@/core/waveListMeta";
@@ -26,9 +26,9 @@ import { useTabBarClearance } from "@/state/TabBarHeight";
 import { colors, space } from "@/theme";
 
 /**
- * Waves tab: "Ripples received" (pending inbound offers) and "Waves" (mutual).
- * Tap a card for full-screen WaveJoin; SoftIconDisc X returns here.
- * Map of past Waves lives on the Map tab.
+ * Waves tab: "Ripples received" (pending inbound moments) and "Waves" (mutual
+ * moments where they matched back). Same moment-card chrome in both sections.
+ * Tap opens full-screen WaveJoin; SoftIconDisc X returns here.
  */
 export default function WavesScreen() {
   const router = useRouter();
@@ -48,7 +48,13 @@ export default function WavesScreen() {
     );
   }, [offers, waves]);
 
-  const mutualWaves = useMemo(() => waves, [waves]);
+  /** Mutual Waves; seed sample rows in TEST_PHOTOS preview when the list is empty. */
+  const mutualWaves = useMemo(() => {
+    if (waves.length > 0) return waves;
+    if (!testPhotosBuildEnabled()) return [];
+    return loadSampleWaves().slice(0, 2);
+  }, [waves]);
+
   const loadingRipples = !offersKnown && sync === "syncing";
   const loadingWaves = !wavesKnown && sync === "syncing";
 
@@ -113,9 +119,27 @@ export default function WavesScreen() {
             </Txt>
           </Frost>
         ) : (
-          ripplesReceived.map((offer) => (
-            <MomentRow key={offer.id} offer={offer} onOpen={() => openOffer(offer)} />
-          ))
+          ripplesReceived.map((offer) => {
+            const theirSource = inboxOfferTheirThumbSource(offer);
+            const theirUri =
+              theirSource && typeof theirSource === "object" && "uri" in theirSource
+                ? (theirSource.uri as string)
+                : null;
+            return (
+              <TheirMomentCard
+                key={offer.id}
+                frame="Matched their moment to yours"
+                emotion={offer.theirEmotion}
+                topic={offer.theirTopic}
+                place={waveListPlace({ countryCode: offer.theirCountryCode })}
+                when={waveListWhen(offer.createdAt)}
+                theirUri={theirUri}
+                theirPhotoId={offer.theirPhotoId}
+                bundledSource={!theirUri ? theirSource : null}
+                onOpen={() => openOffer(offer)}
+              />
+            );
+          })
         )}
       </View>
 
@@ -126,7 +150,7 @@ export default function WavesScreen() {
           Waves
         </Txt>
         <Txt variant="quiet" tone="quiet" style={styles.sectionHint}>
-          Mutual matches. Tap to open.
+          Moments where they matched back. Tap to open.
         </Txt>
 
         {loadingWaves ? (
@@ -139,63 +163,27 @@ export default function WavesScreen() {
               No Waves yet
             </Txt>
             <Txt variant="quiet" tone="quiet" center style={styles.emptyBody}>
-              When a Ripple becomes mutual, it stays here. The map of where they
-              happened is on the Map tab.
+              When someone matches back, their moment stays here. The map of
+              where they happened is on the Map tab.
             </Txt>
           </Frost>
         ) : (
           mutualWaves.map((wave) => (
-            <Pressable
+            <TheirMomentCard
               key={wave.id}
-              onPress={() => openWave(wave)}
-              accessibilityRole="button"
-              accessibilityLabel="Open Wave"
-              style={styles.historyHit}
-            >
-              <Frost kind="card" style={styles.card} contentStyle={styles.historyPad}>
-                <View style={styles.historyRow}>
-                  <View style={styles.pair}>
-                    {wave.mine.uri ? (
-                      <Image
-                        source={{ uri: wave.mine.uri }}
-                        style={styles.thumb}
-                        contentFit="cover"
-                        accessibilityLabel="Your photo"
-                      />
-                    ) : (
-                      <View
-                        style={[styles.thumb, styles.thumbEmpty]}
-                        accessibilityLabel="Your photo"
-                      />
-                    )}
-                    {wave.theirs.uri ? (
-                      <Image
-                        source={{ uri: wave.theirs.uri }}
-                        style={styles.thumb}
-                        contentFit="cover"
-                        accessibilityLabel="Their photo"
-                      />
-                    ) : (
-                      <View
-                        style={[styles.thumb, styles.thumbEmpty]}
-                        accessibilityLabel="Their photo"
-                      />
-                    )}
-                  </View>
-                  <View style={styles.historyMeta}>
-                    <Txt numberOfLines={1}>
-                      {waveListPlace({
-                        countryCode: wave.theirs.countryCode,
-                        countrySource: wave.theirs.countrySource,
-                      })}
-                    </Txt>
-                    <Txt variant="quiet" tone="quiet" numberOfLines={1}>
-                      {waveListWhen(wave.formedAt) ?? "Wave"}
-                    </Txt>
-                  </View>
-                </View>
-              </Frost>
-            </Pressable>
+              frame="They matched back"
+              emotion={wave.theirs.emotion}
+              topic={wave.theirs.theme}
+              place={waveListPlace({
+                countryCode: wave.theirs.countryCode,
+                countrySource: wave.theirs.countrySource,
+              })}
+              when={waveListWhen(wave.theirs.takenAt ?? wave.formedAt)}
+              theirUri={wave.theirs.uri}
+              theirPhotoId={wave.theirs.photoId}
+              bundledSource={null}
+              onOpen={() => openWave(wave)}
+            />
           ))
         )}
       </View>
@@ -204,20 +192,32 @@ export default function WavesScreen() {
 }
 
 /**
- * Their moment (photo + feeling/topic/place/time), framed as a match to yours.
- * Not a dual-thumb photo strip — only the other person's moment.
+ * Other person's moment card — photo + feeling/topic/place/time.
+ * Shared by Ripples received and Waves; only the frame copy differs.
  */
-function MomentRow({ offer, onOpen }: { offer: Offer; onOpen: () => void }) {
-  const feeling = emotionFor(offer.theirEmotion)?.label ?? null;
-  const topic = topicFor(offer.theirTopic)?.label ?? offer.theirTopic;
-  const place = waveListPlace({ countryCode: offer.theirCountryCode });
-  const when = waveListWhen(offer.createdAt);
-
-  const theirSource = inboxOfferTheirThumbSource(offer);
-  const theirUri =
-    theirSource && typeof theirSource === "object" && "uri" in theirSource
-      ? (theirSource.uri as string)
-      : null;
+function TheirMomentCard({
+  frame,
+  emotion,
+  topic,
+  place,
+  when,
+  theirUri,
+  theirPhotoId,
+  bundledSource,
+  onOpen,
+}: {
+  frame: string;
+  emotion: string | null | undefined;
+  topic: string | null | undefined;
+  place: string | null;
+  when: string | null;
+  theirUri: string | null | undefined;
+  theirPhotoId: string;
+  bundledSource: ImageSource | null;
+  onOpen: () => void;
+}) {
+  const feeling = emotionFor(emotion)?.label ?? null;
+  const topicLabel = topicFor(topic)?.label ?? topic;
 
   return (
     <Pressable
@@ -225,21 +225,21 @@ function MomentRow({ offer, onOpen }: { offer: Offer; onOpen: () => void }) {
       accessibilityRole="button"
       accessibilityLabel="Open their moment"
       accessibilityHint="Opens the full-screen Wave layout"
-      style={styles.historyHit}
+      style={styles.hit}
     >
       <Frost kind="card" style={styles.card} contentStyle={styles.momentPad}>
         <View style={styles.momentRow}>
-          {theirSource && !theirUri ? (
+          {bundledSource ? (
             <Image
-              source={theirSource}
+              source={bundledSource}
               style={styles.momentThumb}
               contentFit="cover"
               accessibilityLabel="Their moment"
             />
           ) : (
             <Photo
-              uri={theirUri}
-              ownPhotoId={theirUri ? undefined : offer.theirPhotoId}
+              uri={theirUri ?? null}
+              ownPhotoId={theirUri ? undefined : theirPhotoId}
               quiet
               style={styles.momentThumb}
               accessibilityLabel="Their moment"
@@ -247,10 +247,10 @@ function MomentRow({ offer, onOpen }: { offer: Offer; onOpen: () => void }) {
           )}
           <View style={styles.momentMeta}>
             <Txt variant="quiet" tone="moon" numberOfLines={1}>
-              Matched their moment to yours
+              {frame}
             </Txt>
-            <PhotoMetaChip emotion={offer.theirEmotion} topic={offer.theirTopic} />
-            {!feeling && !topic ? (
+            <PhotoMetaChip emotion={emotion} topic={topic} />
+            {!feeling && !topicLabel ? (
               <Txt variant="quiet" tone="quiet">
                 Their moment
               </Txt>
@@ -291,23 +291,11 @@ const styles = StyleSheet.create({
   },
   momentRow: { flexDirection: "row", gap: space.md, alignItems: "center" },
   momentMeta: { flex: 1, gap: space.xs, minWidth: 0 },
-  /** Single moment photo — larger than a dual-thumb strip. */
   momentThumb: {
     width: 96,
     height: 96,
     borderRadius: 14,
     backgroundColor: colors.surface,
   },
-  pair: { flexDirection: "row", gap: space.xs },
-  thumb: {
-    width: 72,
-    height: 72,
-    borderRadius: 12,
-    backgroundColor: colors.surface,
-  },
-  thumbEmpty: { borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
-  historyHit: { alignSelf: "stretch" },
-  historyPad: { paddingHorizontal: space.md, paddingVertical: space.md },
-  historyRow: { flexDirection: "row", gap: space.md, alignItems: "center" },
-  historyMeta: { flex: 1, minWidth: 0, gap: space.xs },
+  hit: { alignSelf: "stretch" },
 });
