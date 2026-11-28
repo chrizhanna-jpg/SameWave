@@ -83,15 +83,21 @@ function MarkPattern({ kind }: { kind: "ripple" | "wave" }) {
     return out;
   }, [width, height]);
 
+  const onDeepCanvas = kind === "ripple";
+
   return (
     <View style={styles.markLayer} pointerEvents="none" accessibilityElementsHidden>
       {tiles.map((tile) => (
         <View
           key={tile.key}
-          style={[styles.markTile, { left: tile.left, top: tile.top }]}
+          style={[
+            styles.markTile,
+            onDeepCanvas && styles.markTileOnDeep,
+            { left: tile.left, top: tile.top },
+          ]}
         >
           {kind === "ripple" ? (
-            <RippleMark size={MARK_TILE} animated={false} color={colors.waterMid} />
+            <RippleMark size={MARK_TILE} animated={false} color={colors.white} />
           ) : (
             <WaveMark width={MARK_TILE} />
           )}
@@ -168,15 +174,18 @@ export function Screen({
           ? ({ kind: "homeIllustration" as const })
           : ({ kind: "scene" as const, id: scene });
 
+  /** Ripple tab uses a deeper ocean canvas so white Frost panels contrast. */
+  const canvasColor = mark === "ripple" ? colors.rippleCanvas : colors.background;
+
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { backgroundColor: canvasColor }]}>
       <SceneBackdrop
         source={backdrop}
         wash={sceneWash && (backdrop.kind === "scene" || backdrop.kind === "uri")}
       />
-      {/* Fallback canvas for bare/camera — existing background only. */}
+      {/* Fallback canvas for bare/camera — theme canvas (deeper on Ripple). */}
       {backdrop.kind === "none" ? (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background }]} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: canvasColor }]} />
       ) : null}
       {mark ? <MarkPattern kind={mark} /> : null}
       <KeyboardAvoidingView
@@ -207,5 +216,9 @@ const styles = StyleSheet.create({
     opacity: 0.1,
     alignItems: "center",
     justifyContent: "center",
+  },
+  /** Light tiles on rippleCanvas so the pattern stays visible. */
+  markTileOnDeep: {
+    opacity: 0.16,
   },
 });

@@ -39,6 +39,11 @@ export const colors = {
   rippleHeading: "#1068E9",
   waveHeading: "#0A6FA8",
   /**
+   * Ripple tab canvas — mid/deep icon blue so white Frost panels contrast
+   * clearly; tiles and on-canvas hints use light ink for AA.
+   */
+  rippleCanvas: "#1068E9",
+  /**
    * Map land fill — soft theme tint so continents read against pale water
    * (canvas background) while photo pins stay clear.
    */

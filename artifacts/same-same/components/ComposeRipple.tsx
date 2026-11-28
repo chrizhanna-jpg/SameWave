@@ -319,14 +319,25 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
           accessibilityHint={canSend ? "Uploads this moment to SameWave" : hint}
         />
         {!canSend && !sending ? (
-          <Txt variant="quiet" tone="secondary" center style={styles.missing}>
+          <Txt
+            variant="quiet"
+            // On the deep Ripple canvas, secondary slate fails AA — use white.
+            tone={embeddedInTab ? "white" : "secondary"}
+            center
+            style={styles.missing}
+          >
             {hint}
           </Txt>
         ) : null}
       </View>
 
       {problem ? (
-        <Txt variant="quiet" tone="ember" center style={styles.problem}>
+        <Txt
+          variant="quiet"
+          tone={embeddedInTab ? "white" : "ember"}
+          center
+          style={styles.problem}
+        >
           {problem}
         </Txt>
       ) : null}

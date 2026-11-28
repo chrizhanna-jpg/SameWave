@@ -19,6 +19,16 @@ test("Ripple tab compose no longer mounts RippleRings", () => {
   assert.doesNotMatch(composeSrc, /RippleRings/);
 });
 
+test("Ripple tab uses deep canvas mark pattern (not a photo scene)", () => {
+  assert.match(composeSrc, /mark=\{embeddedInTab \? "ripple" : undefined\}/);
+  assert.match(composeSrc, /scene=\{embeddedInTab \? "none"/);
+  const theme = readFileSync(path.join(here, "../theme.ts"), "utf8");
+  assert.match(theme, /rippleCanvas:\s*"#1068E9"/);
+  const screen = readFileSync(path.join(here, "../components/Screen.tsx"), "utf8");
+  assert.match(screen, /mark === "ripple" \? colors\.rippleCanvas/);
+  assert.match(screen, /MarkPattern/);
+});
+
 test("Home capture button wording unchanged in home.tsx", () => {
   const home = readFileSync(path.join(here, "../app/(tabs)/home.tsx"), "utf8");
   assert.match(home, /Capture a moment/);
