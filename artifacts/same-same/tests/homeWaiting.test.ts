@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { homeWaitingCopy, shouldShowHomeWaiting } from "../core/homeWaiting";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
 
 test("waiting only right after a send while a Ripple is travelling", () => {
   assert.equal(
@@ -70,4 +75,12 @@ test("after offering a Ripple, Home keeps Ripple-sent confirmation", () => {
   const copy = homeWaitingCopy({ rippleOffered: true });
   assert.equal(copy.title, "Your Ripple is out there");
   assert.equal(copy.caption, "Waves usually arrive within a few days.");
+});
+
+test("Home waiting chrome mounts RippleRings with Ripple-sent copy", () => {
+  const home = readFileSync(path.join(here, "../app/(tabs)/home.tsx"), "utf8");
+  assert.match(home, /<RippleRings\s+size=\{160\}\s*\/>/);
+  assert.match(home, /waitingCopy\.title/);
+  assert.match(home, /homeWaitingCopy/);
+  assert.match(home, /shouldShowHomeWaiting/);
 });

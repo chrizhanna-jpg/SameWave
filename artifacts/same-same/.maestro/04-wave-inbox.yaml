@@ -1,4 +1,4 @@
-# Wave tab: Ripples received + Waves sections; tap opens full-screen Wave.
+# Wave tab: Make a wave + Waves caught sections; tap opens full-screen Wave.
 appId: echo.samewaveripple.app
 ---
 - launchApp
@@ -9,9 +9,9 @@ appId: echo.samewaveripple.app
     text: "Waves"
     index: 0
 - extendedWaitUntil:
-    visible: "Ripples received"
+    visible: "Make a wave"
     timeout: 30000
-- assertVisible: "Waves"
+- assertVisible: "Waves caught"
 - takeScreenshot: wave-inbox-sections
 - runFlow:
     when:

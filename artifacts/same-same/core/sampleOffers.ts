@@ -1,5 +1,5 @@
 /**
- * Preview-only inbox fixtures so Ripples received / Waves can be exercised
+ * Preview-only inbox fixtures so Make a wave / Waves caught can be exercised
  * without production or Neon writes. Gated by testPhotosBuildEnabled() —
  * never in release builds. User toggle: Account → Sample data.
  */
@@ -83,7 +83,7 @@ export function peekPreviewOfferResolution(
   return first.done ? null : first.value;
 }
 
-/** Mark a sample Ripple decided — leaves Ripples received; no network. */
+/** Mark a sample Ripple decided — leaves Make a wave; no network. */
 export function resolvePreviewOffer(
   offerId: string,
   verdict: PreviewOfferResolution,

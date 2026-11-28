@@ -1,7 +1,14 @@
 import { Image, type ImageSource } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from "react-native";
 
 import { Frost } from "@/components/Frost";
 import { Photo } from "@/components/Photo";
@@ -21,6 +28,7 @@ import {
   withOptionalSampleWaves,
 } from "@/core/testPhotos";
 import type { Offer, Wave } from "@/core/types";
+import { uiShotsBuildEnabled } from "@/core/uiShots";
 import { findWaveByPhotos } from "@/core/waves";
 import { waveListPlace, waveListWhen } from "@/core/waveListMeta";
 import { emotionFor } from "@/data/emotions";
@@ -30,14 +38,34 @@ import { useTabBarClearance } from "@/state/TabBarHeight";
 import { colors, space } from "@/theme";
 
 const PAIR_THUMB = 72;
+/** Cap first-section list so "Waves caught" stays on-screen on small phones. */
+const MAKE_WAVE_LIST_MAX = 168;
+const UI_SHOT_MAKE_WAVE_PAD = 20;
 
 /**
- * Waves tab: "Ripples received" (pending inbound moments) and "Waves" (mutual
+ * Waves tab: "Make a wave" (pending inbound moments) and "Waves caught" (mutual
  * moments where they matched back). Same moment-card chrome in both sections.
  * Pending tap → Match (Offer a Wave / Pass); mutual tap → WaveJoin SoftIconDisc X.
+ *
+ * First section scrolls inside a height cap so both headings stay visible without
+ * scrolling past a long Make-a-wave list (320/360dp).
  */
+/** UI-shot pad so heading-cap layout can be verified with 20+ first-section rows. */
+function padOffersForUiShot(items: Offer[]): Offer[] {
+  if (!uiShotsBuildEnabled() || items.length === 0 || items.length >= UI_SHOT_MAKE_WAVE_PAD) {
+    return items;
+  }
+  const out: Offer[] = [];
+  for (let i = 0; i < UI_SHOT_MAKE_WAVE_PAD; i += 1) {
+    const src = items[i % items.length]!;
+    out.push({ ...src, id: `${src.id}__pad${i}` });
+  }
+  return out;
+}
+
 export default function WavesScreen() {
   const router = useRouter();
+  const { height: winH } = useWindowDimensions();
   const { offers, offersKnown, waves, wavesKnown, sync, syncNow } = useAppState();
   const tabClearance = useTabBarClearance(space.md);
   const [useSampleData, setUseSampleData] = useState(
@@ -61,9 +89,10 @@ export default function WavesScreen() {
 
   /** Pending only — drop any offer that already has a mutual Wave. */
   const ripplesReceived = useMemo(() => {
-    return withOptionalSampleOffers(offers, { useSampleData }).filter(
+    const pending = withOptionalSampleOffers(offers, { useSampleData }).filter(
       (offer) => !findWaveByPhotos(waves, offer.myPhotoId, offer.theirPhotoId),
     );
+    return padOffersForUiShot(pending);
   }, [offers, waves, useSampleData]);
 
   /**
@@ -76,6 +105,15 @@ export default function WavesScreen() {
 
   const loadingRipples = !offersKnown && sync === "syncing";
   const loadingWaves = !wavesKnown && sync === "syncing";
+
+  /**
+   * Height cap for Make-a-wave cards — leaves room for both section headings
+   * on ~320–360dp phones without scrolling the page past the first list.
+   */
+  const makeWaveListMax = Math.max(
+    120,
+    Math.min(MAKE_WAVE_LIST_MAX, Math.round(winH * 0.26)),
+  );
 
   const openWave = (wave: Wave) => {
     router.push({ pathname: "/wave/[id]", params: { id: wave.id } });
@@ -103,11 +141,15 @@ export default function WavesScreen() {
     });
   };
 
+  const makeWaveCount = ripplesReceived.length;
+  const wavesCaughtCount = mutualWaves.length;
+  const makeWaveTitle = `Make a wave (${makeWaveCount})`;
+  const wavesCaughtTitle = `Waves caught (${wavesCaughtCount})`;
+
   return (
     <Screen
       scene="none"
       mark="wave"
-      scroll
       reserveBottom={tabClearance}
       style={styles.screen}
     >
@@ -123,7 +165,7 @@ export default function WavesScreen() {
         </Txt>
       </Frost>
 
-      <View style={styles.sectionBlock} accessibilityLabel="Ripples received">
+      <View style={styles.sectionBlock} accessibilityLabel={makeWaveTitle}>
         <Frost
           kind="card"
           intensity={68}
@@ -133,8 +175,9 @@ export default function WavesScreen() {
           <Txt
             variant="heading"
             style={[styles.sectionTitle, styles.ripplesHeading]}
+            accessibilityLabel={makeWaveTitle}
           >
-            Ripples received
+            {makeWaveTitle}
           </Txt>
           <Txt variant="quiet" tone="primary">
             Moments people matched to yours. Tap to open.
@@ -161,44 +204,52 @@ export default function WavesScreen() {
             contentStyle={[styles.emptyPad, styles.readableFill]}
           >
             <Txt tone="primary" center>
-              No Ripples received
+              Nothing to make a wave yet
             </Txt>
             <Txt variant="quiet" tone="primary" center style={styles.emptyBody}>
               When someone matches their moment to one of yours, it lands here.
             </Txt>
           </Frost>
         ) : (
-          ripplesReceived.map((offer) => {
-            const mySource = inboxOfferMyThumbSource(offer);
-            const theirSource = inboxOfferTheirThumbSource(offer);
-            const myUri =
-              offer.myUri ??
-              (mySource && typeof mySource === "object" && "uri" in mySource
-                ? (mySource.uri as string)
-                : null);
-            const theirUri =
-              offer.theirUri ??
-              (theirSource && typeof theirSource === "object" && "uri" in theirSource
-                ? (theirSource.uri as string)
-                : null);
-            return (
-              <PairMomentCard
-                key={offer.id}
-                frame="Matched their moment to yours"
-                emotion={offer.theirEmotion}
-                topic={offer.theirTopic}
-                place={waveListPlace({ countryCode: offer.theirCountryCode })}
-                when={waveListWhen(offer.createdAt)}
-                mineUri={myUri}
-                minePhotoId={offer.myPhotoId}
-                mineBundled={!myUri ? mySource : null}
-                theirUri={theirUri}
-                theirPhotoId={offer.theirPhotoId}
-                theirBundled={!theirUri ? theirSource : null}
-                onOpen={() => openOffer(offer)}
-              />
-            );
-          })
+          <ScrollView
+            style={[styles.makeWaveList, { maxHeight: makeWaveListMax }]}
+            contentContainerStyle={styles.makeWaveListContent}
+            nestedScrollEnabled
+            showsVerticalScrollIndicator
+            accessibilityLabel="Make a wave list"
+          >
+            {ripplesReceived.map((offer) => {
+              const mySource = inboxOfferMyThumbSource(offer);
+              const theirSource = inboxOfferTheirThumbSource(offer);
+              const myUri =
+                offer.myUri ??
+                (mySource && typeof mySource === "object" && "uri" in mySource
+                  ? (mySource.uri as string)
+                  : null);
+              const theirUri =
+                offer.theirUri ??
+                (theirSource && typeof theirSource === "object" && "uri" in theirSource
+                  ? (theirSource.uri as string)
+                  : null);
+              return (
+                <PairMomentCard
+                  key={offer.id}
+                  frame="Matched their moment to yours"
+                  emotion={offer.theirEmotion}
+                  topic={offer.theirTopic}
+                  place={waveListPlace({ countryCode: offer.theirCountryCode })}
+                  when={waveListWhen(offer.createdAt)}
+                  mineUri={myUri}
+                  minePhotoId={offer.myPhotoId}
+                  mineBundled={!myUri ? mySource : null}
+                  theirUri={theirUri}
+                  theirPhotoId={offer.theirPhotoId}
+                  theirBundled={!theirUri ? theirSource : null}
+                  onOpen={() => openOffer(offer)}
+                />
+              );
+            })}
+          </ScrollView>
         )}
       </View>
 
@@ -208,7 +259,7 @@ export default function WavesScreen() {
         </Frost>
       </View>
 
-      <View style={styles.sectionBlock} accessibilityLabel="Waves section">
+      <View style={styles.caughtBlock} accessibilityLabel={wavesCaughtTitle}>
         <Frost
           kind="card"
           intensity={68}
@@ -218,8 +269,9 @@ export default function WavesScreen() {
           <Txt
             variant="heading"
             style={[styles.sectionTitle, styles.wavesHeading]}
+            accessibilityLabel={wavesCaughtTitle}
           >
-            Waves
+            {wavesCaughtTitle}
           </Txt>
           <Txt variant="quiet" tone="primary">
             Moments where they matched back. Tap to open.
@@ -243,7 +295,7 @@ export default function WavesScreen() {
             contentStyle={[styles.emptyPad, styles.readableFill]}
           >
             <Txt tone="primary" center>
-              No Waves yet
+              No Waves caught yet
             </Txt>
             <Txt variant="quiet" tone="primary" center style={styles.emptyBody}>
               When someone matches back, their moment stays here. The map of
@@ -251,26 +303,34 @@ export default function WavesScreen() {
             </Txt>
           </Frost>
         ) : (
-          mutualWaves.map((wave) => (
-            <PairMomentCard
-              key={wave.id}
-              frame="They matched back"
-              emotion={wave.theirs.emotion}
-              topic={wave.theirs.theme}
-              place={waveListPlace({
-                countryCode: wave.theirs.countryCode,
-                countrySource: wave.theirs.countrySource,
-              })}
-              when={waveListWhen(wave.theirs.takenAt ?? wave.formedAt)}
-              mineUri={wave.mine.uri}
-              minePhotoId={wave.mine.photoId}
-              mineBundled={null}
-              theirUri={wave.theirs.uri}
-              theirPhotoId={wave.theirs.photoId}
-              theirBundled={null}
-              onOpen={() => openWave(wave)}
-            />
-          ))
+          <ScrollView
+            style={styles.caughtList}
+            contentContainerStyle={styles.caughtListContent}
+            nestedScrollEnabled
+            showsVerticalScrollIndicator
+            accessibilityLabel="Waves caught list"
+          >
+            {mutualWaves.map((wave) => (
+              <PairMomentCard
+                key={wave.id}
+                frame="They matched back"
+                emotion={wave.theirs.emotion}
+                topic={wave.theirs.theme}
+                place={waveListPlace({
+                  countryCode: wave.theirs.countryCode,
+                  countrySource: wave.theirs.countrySource,
+                })}
+                when={waveListWhen(wave.theirs.takenAt ?? wave.formedAt)}
+                mineUri={wave.mine.uri}
+                minePhotoId={wave.mine.photoId}
+                mineBundled={null}
+                theirUri={wave.theirs.uri}
+                theirPhotoId={wave.theirs.photoId}
+                theirBundled={null}
+                onOpen={() => openWave(wave)}
+              />
+            ))}
+          </ScrollView>
         )}
       </View>
     </Screen>
@@ -311,7 +371,7 @@ function PairThumb({
 
 /**
  * Matched pair card — yours + theirs side by side, plus feeling/topic/place/time.
- * Shared by Ripples received and Waves; only the frame copy differs.
+ * Shared by Make a wave and Waves caught; only the frame copy differs.
  */
 function PairMomentCard({
   frame,
@@ -394,14 +454,16 @@ function PairMomentCard({
 }
 
 const styles = StyleSheet.create({
-  screen: { flexGrow: 1, justifyContent: "flex-start" },
-  headingFrost: { marginBottom: space.md, alignSelf: "stretch" },
+  screen: { flex: 1, justifyContent: "flex-start" },
+  headingFrost: { marginBottom: space.sm, alignSelf: "stretch", flexShrink: 0 },
   headingPad: {
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
   },
-  sectionBlock: { marginBottom: space.sm },
-  sectionFrost: { marginBottom: space.md, alignSelf: "stretch" },
+  sectionBlock: { marginBottom: space.sm, flexShrink: 0 },
+  /** Waves caught fills remaining height; its list scrolls independently. */
+  caughtBlock: { flex: 1, minHeight: 0, marginBottom: space.sm },
+  sectionFrost: { marginBottom: space.sm, alignSelf: "stretch", flexShrink: 0 },
   sectionPad: {
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
@@ -410,9 +472,14 @@ const styles = StyleSheet.create({
   sectionTitle: { marginBottom: 0 },
   ripplesHeading: { color: colors.rippleHeading },
   wavesHeading: { color: colors.waveHeading },
+  makeWaveList: { alignSelf: "stretch" },
+  makeWaveListContent: { paddingBottom: space.xs },
+  caughtList: { flex: 1, alignSelf: "stretch" },
+  caughtListContent: { paddingBottom: space.md },
   dividerFrost: {
-    marginVertical: space.md,
+    marginVertical: space.sm,
     alignSelf: "stretch",
+    flexShrink: 0,
   },
   dividerPad: {
     paddingHorizontal: space.md,
@@ -425,9 +492,7 @@ const styles = StyleSheet.create({
   },
   card: { marginBottom: space.md },
   /**
-   * Opaque theme mist under copy so slate ink clears WCAG AA on any part of
-   * the lake/mountain scene. Frost still softens the card chrome; the photo
-   * remains visible between panels and around the screen edges.
+   * Opaque theme mist under copy so slate ink clears WCAG AA on the calm canvas.
    */
   readableFill: {
     backgroundColor: colors.background,

@@ -34,7 +34,7 @@ export const colors = {
   softAccent: "#B5DFFC",
   /**
    * Section heading accents on the calm canvas (#E9F6FF) — deep enough for
-   * large-text AA, distinct so Ripples received vs Waves are easy to tell apart.
+   * large-text AA, distinct so Make a wave vs Waves caught are easy to tell apart.
    */
   rippleHeading: "#1068E9",
   waveHeading: "#0A6FA8",

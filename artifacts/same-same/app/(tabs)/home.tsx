@@ -1,4 +1,4 @@
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useContext, useEffect, useState } from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -14,6 +14,7 @@ import { Txt } from "@/components/Txt";
 import { dailyTopicFor } from "@/core/dailyTopic";
 import { homeWaitingCopy, shouldShowHomeWaiting } from "@/core/homeWaiting";
 import { sceneFor } from "@/data/scenes";
+import { uiShotsBuildEnabled } from "@/core/uiShots";
 import { chooseFromLibrary } from "@/device/photos";
 import { isWaveSwooshPlaying, playOceanSound, shouldPlayHomeOceanOnFocus } from "@/device/sound";
 import { useAppState } from "@/state/AppState";
@@ -35,6 +36,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const splashReady = useContext(SplashReadyContext);
+  const params = useLocalSearchParams<{ shot?: string }>();
   const {
     travelling,
     sync,
@@ -47,12 +49,21 @@ export default function HomeScreen() {
   const [sendingAnother, setSendingAnother] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
-  const waiting = shouldShowHomeWaiting({
-    hasTravellingRipple: travelling !== null,
-    postSendWaiting,
-    sendingAnother,
+  /** UI-shot only: force Ripple-sent waiting chrome for headless screenshots. */
+  const shotRippleSent =
+    uiShotsBuildEnabled() &&
+    (params.shot === "ripple-sent" || params.shot === "rippleSent");
+
+  const waiting =
+    shotRippleSent ||
+    shouldShowHomeWaiting({
+      hasTravellingRipple: travelling !== null,
+      postSendWaiting,
+      sendingAnother,
+    });
+  const waitingCopy = homeWaitingCopy({
+    rippleOffered: shotRippleSent || postSendRippleOffered,
   });
-  const waitingCopy = homeWaitingCopy({ rippleOffered: postSendRippleOffered });
   const today = dailyTopicFor();
   // Measured tab bar height (incl. safe-area pad) + gap — Android gesture / 3-button.
   const tabClearance = useTabBarClearance(space.lg);

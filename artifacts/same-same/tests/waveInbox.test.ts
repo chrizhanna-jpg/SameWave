@@ -132,8 +132,12 @@ test("Wave inbox has no card actions; pending tap opens Match Offer a Wave / Pas
   assert.doesNotMatch(waves, /label="Dismiss"/);
   assert.doesNotMatch(waves, /respondToOffer/);
   assert.doesNotMatch(waves, /onWaveBack|onDismiss/);
-  assert.match(waves, /Ripples received/);
-  assert.match(waves, /No Ripples received|Checking for moments/);
+  assert.match(waves, /Make a wave/);
+  assert.match(waves, /Waves caught/);
+  assert.match(waves, /makeWaveTitle|Make a wave \(\$\{/);
+  assert.match(waves, /Nothing to make a wave yet|Checking for moments/);
+  assert.match(waves, /No Waves caught yet/);
+  assert.doesNotMatch(waves, /Ripples received/);
   assert.match(waves, /Matched their moment to yours/);
   assert.match(waves, /Moments people matched to yours/);
   assert.match(waves, /They matched back/);
@@ -146,8 +150,6 @@ test("Wave inbox has no card actions; pending tap opens Match Offer a Wave / Pas
   assert.match(waves, /label="Their photo"/);
   assert.match(waves, /mineUri|minePhotoId/);
   assert.match(waves, /theirUri|theirPhotoId/);
-  assert.match(waves, /Waves/);
-  assert.match(waves, /No Waves yet/);
   assert.match(waves, /styles\.divider|colors\.line/);
   assert.match(waves, /Open their moment/);
   assert.doesNotMatch(waves, /\bInbox\b/);
@@ -170,6 +172,9 @@ test("Wave inbox has no card actions; pending tap opens Match Offer a Wave / Pas
   assert.match(waves, /headingFrost|readableFill/);
   assert.match(waves, /colors\.background/);
   assert.match(waves, /intensity=\{7[28]\}|intensity=\{68\}/);
+  // First section height-capped so Waves caught stays on-screen with long lists.
+  assert.match(waves, /makeWaveListMax|MAKE_WAVE_LIST_MAX/);
+  assert.match(waves, /ScrollView/);
   assert.doesNotMatch(waves, /sceneFor\.home/);
   assert.doesNotMatch(waves, /tone="moon"/);
   assert.doesNotMatch(waves, /tone="quiet"/);
