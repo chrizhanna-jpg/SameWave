@@ -497,10 +497,10 @@ export function WorldMap({
                         >
                           <Path
                             d={map.landPath}
-                            fill={colors.waterMuted}
-                            fillOpacity={0.55}
-                            stroke={colors.slate}
-                            strokeOpacity={0.35}
+                            fill={colors.mapLand}
+                            fillOpacity={0.78}
+                            stroke={colors.waterSoft}
+                            strokeOpacity={0.55}
                             strokeWidth={LAND_STROKE_PX}
                             strokeLinecap="round"
                             strokeLinejoin="round"

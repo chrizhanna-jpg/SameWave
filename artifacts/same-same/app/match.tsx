@@ -110,6 +110,8 @@ export default function MatchScreen() {
     syncNow,
     recordMatchSeen,
     finishMatchLook,
+    markPostSendRippleOffered,
+    postSendRippleOffered,
     respondToOffer,
     countryCode,
   } = useAppState();
@@ -329,9 +331,14 @@ export default function MatchScreen() {
       router.replace("/(tabs)/waves");
       return;
     }
+    // After offering a Ripple, land on the Ripple tab for "Your Ripple is out there".
+    if (postSendRippleOffered) {
+      router.replace("/(tabs)/ripple");
+      return;
+    }
     if (router.canGoBack()) router.back();
     else router.replace("/home");
-  }, [finishMatchLook, myPhotoId, router, fromWaves]);
+  }, [finishMatchLook, myPhotoId, router, fromWaves, postSendRippleOffered]);
 
   const advance = useCallback(
     (fromId: string) => {
@@ -526,6 +533,8 @@ export default function MatchScreen() {
       );
       return;
     }
+    // Offer = send a Ripple — Ripple tab shows "Your Ripple is out there".
+    markPostSendRippleOffered();
     seenRef.current = [...new Set([...seenRef.current, current.id])];
     recordMatchSeen(myPhotoId, [current.id]);
 
@@ -538,13 +547,13 @@ export default function MatchScreen() {
         const fresh = await backend.listWaves();
         formed = findWaveByPhotos(fresh, myPhotoId, current.id) ?? formed;
       } catch {
-        // Waves list may still catch up via WaveArrivalHost on home.
+        // Waves list may still catch up via WaveArrivalHost.
       }
       setBusy(false);
       if (formed) {
         router.replace({ pathname: "/wave/[id]", params: { id: formed.id } });
       } else {
-        router.replace("/home");
+        router.replace("/(tabs)/ripple");
       }
       return;
     }
@@ -664,7 +673,7 @@ export default function MatchScreen() {
                 {empty ? (
                   <Button
                     kind="soft"
-                    label="Back home"
+                    label={postSendRippleOffered ? "Done" : "Back home"}
                     onPress={() => void close()}
                     style={styles.emptyDone}
                   />

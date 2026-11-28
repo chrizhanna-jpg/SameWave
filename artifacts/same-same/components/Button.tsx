@@ -86,18 +86,23 @@ export function Button({
       ]}
     >
       {busy ? (
-        <ActivityIndicator color={colors.textPrimary} />
+        <ActivityIndicator color={tone === "white" ? colors.white : colors.textPrimary} />
       ) : detail ? (
         <View style={styles.row}>
-          <Txt variant="button" tone="primary" numberOfLines={1}>
+          <Txt variant="button" tone={tone ?? "primary"} numberOfLines={1}>
             {label}
           </Txt>
-          <Txt variant="button" tone="secondary" style={styles.sep} numberOfLines={1}>
+          <Txt
+            variant="button"
+            tone={tone === "white" ? "white" : "secondary"}
+            style={styles.sep}
+            numberOfLines={1}
+          >
             {" · "}
           </Txt>
           <Txt
             variant="quiet"
-            tone={detailTone}
+            tone={tone === "white" ? "white" : detailTone}
             numberOfLines={1}
             ellipsizeMode="tail"
             style={styles.detail}
@@ -106,7 +111,7 @@ export function Button({
           </Txt>
         </View>
       ) : (
-        <Txt variant="button" tone="primary" center style={styles.label}>
+        <Txt variant="button" tone={tone ?? "primary"} center style={styles.label}>
           {label}
         </Txt>
       )}

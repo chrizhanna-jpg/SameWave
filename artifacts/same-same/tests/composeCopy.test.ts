@@ -15,8 +15,19 @@ test("compose heading is What's the topic? and Upload moment stays", () => {
   assert.doesNotMatch(composeSrc, /missing\.push\("a moment"\)/);
 });
 
-test("Ripple tab compose no longer mounts RippleRings", () => {
-  assert.doesNotMatch(composeSrc, /RippleRings/);
+test("Ripple tab mounts RippleRings only for post-send waiting chrome", () => {
+  assert.match(composeSrc, /RippleRings/);
+  assert.match(composeSrc, /shouldShowRippleSentWaiting|rippleSentWaiting/);
+});
+
+test("Ripple tab uses deep canvas mark pattern (not a photo scene)", () => {
+  assert.match(composeSrc, /mark=\{embeddedInTab \? "ripple" : undefined\}/);
+  assert.match(composeSrc, /scene=\{embeddedInTab \? "none"/);
+  const theme = readFileSync(path.join(here, "../theme.ts"), "utf8");
+  assert.match(theme, /rippleCanvas:\s*"#1068E9"/);
+  const screen = readFileSync(path.join(here, "../components/Screen.tsx"), "utf8");
+  assert.match(screen, /mark === "ripple" \? colors\.rippleCanvas/);
+  assert.match(screen, /MarkPattern/);
 });
 
 test("Home capture button wording unchanged in home.tsx", () => {

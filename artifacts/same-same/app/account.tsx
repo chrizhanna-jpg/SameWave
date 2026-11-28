@@ -173,8 +173,9 @@ export default function AccountScreen() {
             Photos you send will live here.
           </Txt>
         ) : (
-          <View style={styles.grid}>
+          <View style={styles.pairList}>
             {history.map((photo) => {
+              // Matching Wave → show both photos. Upload / Ripple with no match → single.
               const paired = waves.find(
                 (w) => w.mine.photoId === photo.photoId || w.theirs.photoId === photo.photoId,
               );
@@ -187,27 +188,57 @@ export default function AccountScreen() {
                     }
                   }}
                   onLongPress={() => onDelete(photo.photoId)}
+                  accessibilityRole={paired ? "button" : undefined}
                   accessibilityLabel={
                     paired
                       ? "Ripple with a Wave. Tap to open the pair. Long press to delete."
-                      : "Ripple. Long press to delete."
+                      : "Photo without a Wave. Long press to delete."
                   }
-                  style={styles.tile}
+                  style={styles.pairRow}
                 >
-                  <Photo
-                    uri={photo.uri}
-                    ownPhotoId={photo.photoId}
-                    onUnavailable={() => {
-                      /* Unavailable label is enough; long-press still deletes. */
-                    }}
-                    style={styles.tilePhoto}
-                  />
-                  {busyId === photo.photoId ? (
-                    <View style={styles.tileBusy}>
-                      <Txt variant="quiet" tone="primary">
-                        …
-                      </Txt>
+                  <View style={styles.pairThumbsWrap}>
+                    <View style={styles.pairThumbs}>
+                      {paired ? (
+                        <>
+                          <Photo
+                            uri={paired.mine.uri}
+                            ownPhotoId={paired.mine.photoId}
+                            onUnavailable={() => {
+                              /* Unavailable label is enough; long-press still deletes. */
+                            }}
+                            style={styles.pairThumb}
+                          />
+                          <Photo
+                            uri={paired.theirs.uri}
+                            onUnavailable={() => {
+                              /* Unavailable label is enough; long-press still deletes. */
+                            }}
+                            style={styles.pairThumb}
+                          />
+                        </>
+                      ) : (
+                        <Photo
+                          uri={photo.uri}
+                          ownPhotoId={photo.photoId}
+                          onUnavailable={() => {
+                            /* Unavailable label is enough; long-press still deletes. */
+                          }}
+                          style={styles.pairThumb}
+                        />
+                      )}
                     </View>
+                    {busyId === photo.photoId ? (
+                      <View style={styles.pairBusy}>
+                        <Txt variant="quiet" tone="primary">
+                          …
+                        </Txt>
+                      </View>
+                    ) : null}
+                  </View>
+                  {paired ? (
+                    <Txt tone="secondary" style={styles.pairOpen}>
+                      Open
+                    </Txt>
                   ) : null}
                 </Pressable>
               );
@@ -216,7 +247,7 @@ export default function AccountScreen() {
         )}
         {history.length > 0 ? (
           <Txt variant="quiet" tone="secondary" style={styles.hint}>
-            Long press a photo to delete it. Tap one with a Wave to open the pair.
+            Long press a photo to delete it. Tap a pair to open the Wave.
           </Txt>
         ) : null}
 
@@ -228,24 +259,24 @@ export default function AccountScreen() {
             When a Ripple finds a match, the pair lives here.
           </Txt>
         ) : (
-          <View style={styles.waveList}>
+          <View style={styles.pairList}>
             {waves.map((wave) => (
               <Pressable
                 key={wave.id}
                 onPress={() => router.push({ pathname: "/wave/[id]", params: { id: wave.id } })}
                 accessibilityRole="button"
                 accessibilityLabel="Open Wave pair"
-                style={styles.waveRow}
+                style={styles.pairRow}
               >
-                <View style={styles.waveThumbs}>
+                <View style={styles.pairThumbs}>
                   <Photo
                     uri={wave.mine.uri}
                     ownPhotoId={wave.mine.photoId}
-                    style={styles.waveThumb}
+                    style={styles.pairThumb}
                   />
-                  <Photo uri={wave.theirs.uri} style={styles.waveThumb} />
+                  <Photo uri={wave.theirs.uri} style={styles.pairThumb} />
                 </View>
-                <Txt tone="secondary" style={styles.waveOpen}>
+                <Txt tone="secondary" style={styles.pairOpen}>
                   Open
                 </Txt>
               </Pressable>
@@ -404,47 +435,31 @@ const styles = StyleSheet.create({
   sectionFirst: { marginTop: space.lg },
   section: { marginTop: space.xl },
   empty: { marginTop: space.md },
-  grid: {
-    marginTop: space.md,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: space.sm,
-  },
-  tile: {
-    width: "31%",
-    aspectRatio: 1,
-    borderRadius: radius.sm,
-    overflow: "hidden",
-    backgroundColor: colors.surface,
-  },
-  tilePhoto: { width: "100%", height: "100%" },
-  tileBusy: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    backgroundColor: colors.scrim,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  hint: { marginTop: space.sm },
-  waveList: { marginTop: space.md, gap: space.sm },
-  waveRow: {
+  pairList: { marginTop: space.md, gap: space.sm },
+  pairRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: space.md,
     paddingVertical: space.sm,
   },
-  waveThumbs: { flexDirection: "row", gap: space.xs },
-  waveThumb: {
+  pairThumbsWrap: { position: "relative" },
+  pairThumbs: { flexDirection: "row", gap: space.xs },
+  pairThumb: {
     width: 56,
     height: 56,
     borderRadius: radius.sm,
     overflow: "hidden",
     backgroundColor: colors.surface,
   },
-  waveOpen: { marginLeft: "auto" },
+  pairOpen: { marginLeft: "auto" },
+  pairBusy: {
+    ...StyleSheet.absoluteFill,
+    borderRadius: radius.sm,
+    backgroundColor: colors.scrim,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  hint: { marginTop: space.sm },
   legal: {
     marginTop: space.xl,
     flexDirection: "row",

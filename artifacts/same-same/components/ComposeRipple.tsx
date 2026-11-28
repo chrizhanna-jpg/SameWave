@@ -1,6 +1,13 @@
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
-import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   Platform,
   StyleSheet,
@@ -12,6 +19,7 @@ import { Button } from "@/components/Button";
 import { EmotionPicker } from "@/components/EmotionPicker";
 import { Frost } from "@/components/Frost";
 import { Photo } from "@/components/Photo";
+import { RippleRings } from "@/components/RippleRings";
 import { Screen, type ScreenScroll } from "@/components/Screen";
 import { SongPicker } from "@/components/SongPicker";
 import { SoundRecorder } from "@/components/SoundRecorder";
@@ -20,6 +28,11 @@ import { Txt } from "@/components/Txt";
 import { BackendError, errorKind } from "@/backend/types";
 import { dailyTopicFor } from "@/core/dailyTopic";
 import { peekFeatures, subscribeFeatures } from "@/core/features";
+import {
+  homeWaitingCopy,
+  shouldShowRippleSentWaiting,
+} from "@/core/homeWaiting";
+import { uiShotsBuildEnabled } from "@/core/uiShots";
 import { wavePhotoSlot } from "@/core/wavePhotoSlot";
 import { waveLayoutMetrics } from "@/device/waveLayoutMetrics";
 import { sceneFor } from "@/data/scenes";
@@ -71,6 +84,7 @@ function missingHint(photo: boolean, emotion: boolean, topic: boolean): string {
  */
 export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolean }) {
   const router = useRouter();
+  const params = useLocalSearchParams<{ shot?: string }>();
   const windowDims = useWindowDimensions();
   const metrics = useMemo(
     () => waveLayoutMetrics(),
@@ -78,12 +92,20 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
   );
   const slotAspect = wavePhotoSlot(metrics.width, metrics.height).aspectRatio;
   const previewHeight = Math.max(1, Math.round(PREVIEW_WIDTH / slotAspect));
-  const { sendRipple } = useAppState();
+  const {
+    sendRipple,
+    travelling,
+    postSendWaiting,
+    postSendRippleOffered,
+    dismissPostSendWaiting,
+    dismissRippleSentWaiting,
+  } = useAppState();
   const draft = useDraft();
   const recordSound = useRecordSoundEnabled();
   const tabClearance = useTabBarClearance(space.xl);
   const scrollRef = useRef<ScreenScroll | null>(null);
   const scrollYRef = useRef(0);
+  const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const topicLocked = isDraftTopicLocked();
   const lockedTopicId = topicLocked ? draft.topic : null;
@@ -93,6 +115,37 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
   const [sent, setSent] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
+
+  /** UI-shot only: force Ripple-sent waiting chrome for headless screenshots. */
+  const shotRippleSent =
+    uiShotsBuildEnabled() &&
+    (params.shot === "ripple-sent" || params.shot === "rippleSent");
+
+  const rippleSentWaiting =
+    shotRippleSent ||
+    shouldShowRippleSentWaiting({
+      hasTravellingRipple: travelling !== null,
+      postSendWaiting,
+      rippleOffered: postSendRippleOffered,
+    });
+  const waitingCopy = homeWaitingCopy({ rippleOffered: true });
+
+  useFocusEffect(
+    useCallback(() => {
+      if (dismissTimer.current) {
+        clearTimeout(dismissTimer.current);
+        dismissTimer.current = null;
+      }
+      return () => {
+        // Leaving Ripple after a sent confirmation clears it; do not clear
+        // photo-only postSendWaiting when navigating Compose → Match.
+        dismissTimer.current = setTimeout(() => {
+          dismissRippleSentWaiting();
+          dismissTimer.current = null;
+        }, 100);
+      };
+    }, [dismissRippleSentWaiting]),
+  );
 
   // Keep locked Daily topic pinned.
   useEffect(() => {
@@ -188,6 +241,48 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
     }
   };
 
+  if (rippleSentWaiting && embeddedInTab) {
+    return (
+      <Screen
+        scene="none"
+        mark="ripple"
+        reserveBottom={tabClearance}
+        style={styles.sentScreen}
+      >
+        <View style={styles.sentBody} accessibilityLabel="Your Ripple is out there">
+          <Frost kind="card" style={styles.sentCard} contentStyle={styles.sentPad}>
+            <RippleRings size={160} />
+            <Txt variant="title" center style={styles.sentTitle}>
+              {waitingCopy.title}
+            </Txt>
+            <Txt tone="secondary" center style={styles.sentTagline}>
+              {waitingCopy.tagline}
+            </Txt>
+            {waitingCopy.caption ? (
+              <Txt variant="quiet" tone="quiet" center style={styles.sentCaption}>
+                {waitingCopy.caption}
+              </Txt>
+            ) : null}
+          </Frost>
+          <Frost kind="card" style={styles.sentActions} contentStyle={styles.sentActionsPad}>
+            <Button
+              kind="soft"
+              label="Send another"
+              onPress={() => {
+                dismissPostSendWaiting();
+                clearDraft();
+                setSending(false);
+                setSent(false);
+                setProblem(null);
+              }}
+              accessibilityHint="Clears this confirmation so you can compose another Ripple"
+            />
+          </Frost>
+        </View>
+      </Screen>
+    );
+  }
+
   return (
     <Screen
       scroll
@@ -195,8 +290,10 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
       onScroll={(event) => onScrollY(scrollYRef, event)}
       reserveBottom={embeddedInTab ? tabClearance : undefined}
       contentBottomPad={embeddedInTab ? undefined : 48}
-      photoUri={photo?.uri ?? null}
-      scene={sceneFor.composeFallback}
+      // Ripple tab: calm canvas + ripple mark watermark — never the photo as backdrop.
+      photoUri={embeddedInTab ? null : (photo?.uri ?? null)}
+      scene={embeddedInTab ? "none" : sceneFor.composeFallback}
+      mark={embeddedInTab ? "ripple" : undefined}
     >
       {/*
         Stable order: photo (or Add a photo), then feeling / topic / sound.
@@ -317,14 +414,25 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
           accessibilityHint={canSend ? "Uploads this moment to SameWave" : hint}
         />
         {!canSend && !sending ? (
-          <Txt variant="quiet" tone="secondary" center style={styles.missing}>
+          <Txt
+            variant="quiet"
+            // On the deep Ripple canvas, secondary slate fails AA — use white.
+            tone={embeddedInTab ? "white" : "secondary"}
+            center
+            style={styles.missing}
+          >
             {hint}
           </Txt>
         ) : null}
       </View>
 
       {problem ? (
-        <Txt variant="quiet" tone="ember" center style={styles.problem}>
+        <Txt
+          variant="quiet"
+          tone={embeddedInTab ? "white" : "ember"}
+          center
+          style={styles.problem}
+        >
           {problem}
         </Txt>
       ) : null}
@@ -367,4 +475,23 @@ const styles = StyleSheet.create({
   },
   missing: { marginTop: space.sm },
   problem: { marginTop: space.md, marginBottom: space.lg, paddingHorizontal: space.lg },
+  sentScreen: { flex: 1 },
+  sentBody: {
+    flex: 1,
+    justifyContent: "center",
+    gap: space.md,
+    paddingBottom: space.lg,
+  },
+  sentCard: { alignSelf: "stretch" },
+  sentPad: {
+    alignItems: "center",
+    paddingHorizontal: space.lg,
+    paddingVertical: space.xl,
+    gap: space.sm,
+  },
+  sentTitle: { marginTop: space.md, fontFamily: font.bold },
+  sentTagline: { maxWidth: 300 },
+  sentCaption: { marginTop: space.xs },
+  sentActions: { alignSelf: "stretch" },
+  sentActionsPad: { paddingHorizontal: space.lg, paddingVertical: space.md },
 });

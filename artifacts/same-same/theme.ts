@@ -27,6 +27,27 @@ export const colors = {
   waterMid: "#45B4FC",
   /** Quiet secondary marks — desaturated from the icon's deep blue (#1068E9). */
   waterMuted: "#6E8099",
+  /**
+   * Soft filled secondary surfaces — light tint. Prefer rippleCanvas + white
+   * label for the Home Today's topic CTA (clear colour, AA on deep blue).
+   */
+  softAccent: "#B5DFFC",
+  /**
+   * Section heading accents on the calm canvas (#E9F6FF) — deep enough for
+   * large-text AA, distinct so Make a wave vs Waves caught are easy to tell apart.
+   */
+  rippleHeading: "#1068E9",
+  waveHeading: "#0A6FA8",
+  /**
+   * Ripple tab canvas — mid/deep icon blue so white Frost panels contrast
+   * clearly; tiles and on-canvas hints use light ink for AA.
+   */
+  rippleCanvas: "#1068E9",
+  /**
+   * Map land fill — soft theme tint so continents read against pale water
+   * (canvas background) while photo pins stay clear.
+   */
+  mapLand: "#9ED4FC",
 
   /** Text. Never pure black — dark slate for contrast on blue. */
   slate: "#3F4A4B",

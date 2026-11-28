@@ -1,9 +1,10 @@
-import React from "react";
+import React, { useMemo } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -11,7 +12,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { RippleMark } from "@/components/RippleMark";
 import { SceneBackdrop } from "@/components/SceneBackdrop";
+import { WaveMark } from "@/components/WaveMark";
 import { sceneFor, type SceneId } from "@/data/scenes";
 import { colors, layout, space } from "@/theme";
 
@@ -49,6 +52,59 @@ interface Props {
   photoUri?: string | null;
   /** Soft palette wash over a photograph for text legibility. Default true. */
   sceneWash?: boolean;
+  /**
+   * Subtle repeating tiled mark pattern on the canvas (instead of a photo scene).
+   * Use with scene="none" for Ripple / Waves tab backgrounds.
+   */
+  mark?: "ripple" | "wave";
+}
+
+const MARK_TILE = 44;
+const MARK_STEP_X = 92;
+const MARK_STEP_Y = 84;
+
+/** Offset staggered grid of small low-opacity marks. */
+function MarkPattern({ kind }: { kind: "ripple" | "wave" }) {
+  const { width, height } = useWindowDimensions();
+  const tiles = useMemo(() => {
+    const cols = Math.ceil(width / MARK_STEP_X) + 2;
+    const rows = Math.ceil(height / MARK_STEP_Y) + 2;
+    const out: { key: string; left: number; top: number }[] = [];
+    for (let row = 0; row < rows; row += 1) {
+      const stagger = row % 2 === 1 ? MARK_STEP_X / 2 : 0;
+      for (let col = 0; col < cols; col += 1) {
+        out.push({
+          key: `${row}-${col}`,
+          left: col * MARK_STEP_X + stagger - MARK_STEP_X,
+          top: row * MARK_STEP_Y - MARK_STEP_Y / 2,
+        });
+      }
+    }
+    return out;
+  }, [width, height]);
+
+  const onDeepCanvas = kind === "ripple";
+
+  return (
+    <View style={styles.markLayer} pointerEvents="none" accessibilityElementsHidden>
+      {tiles.map((tile) => (
+        <View
+          key={tile.key}
+          style={[
+            styles.markTile,
+            onDeepCanvas && styles.markTileOnDeep,
+            { left: tile.left, top: tile.top },
+          ]}
+        >
+          {kind === "ripple" ? (
+            <RippleMark size={MARK_TILE} animated={false} color={colors.white} />
+          ) : (
+            <WaveMark width={MARK_TILE} />
+          )}
+        </View>
+      ))}
+    </View>
+  );
 }
 
 /** Style 3 canvas: full-bleed calm scene (or photo) under frosted content. */
@@ -65,6 +121,7 @@ export function Screen({
   scene = sceneFor.home,
   photoUri,
   sceneWash = true,
+  mark,
 }: Props) {
   const insets = useSafeAreaInsets();
   const padding: ViewStyle = bare
@@ -117,16 +174,20 @@ export function Screen({
           ? ({ kind: "homeIllustration" as const })
           : ({ kind: "scene" as const, id: scene });
 
+  /** Ripple tab uses a deeper ocean canvas so white Frost panels contrast. */
+  const canvasColor = mark === "ripple" ? colors.rippleCanvas : colors.background;
+
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { backgroundColor: canvasColor }]}>
       <SceneBackdrop
         source={backdrop}
         wash={sceneWash && (backdrop.kind === "scene" || backdrop.kind === "uri")}
       />
-      {/* Fallback canvas for bare/camera — existing background only. */}
+      {/* Fallback canvas for bare/camera — theme canvas (deeper on Ripple). */}
       {backdrop.kind === "none" ? (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background }]} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: canvasColor }]} />
       ) : null}
+      {mark ? <MarkPattern kind={mark} /> : null}
       <KeyboardAvoidingView
         style={styles.fill}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -143,4 +204,21 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   center: { justifyContent: "center", alignItems: "center" },
   centerScroll: { flexGrow: 1, justifyContent: "center", alignItems: "center" },
+  markLayer: {
+    ...StyleSheet.absoluteFill,
+    overflow: "hidden",
+  },
+  /** Subtle tiled watermark — readable chrome stays on top. */
+  markTile: {
+    position: "absolute",
+    width: MARK_TILE,
+    height: MARK_TILE,
+    opacity: 0.1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  /** Light tiles on rippleCanvas so the pattern stays visible. */
+  markTileOnDeep: {
+    opacity: 0.16,
+  },
 });

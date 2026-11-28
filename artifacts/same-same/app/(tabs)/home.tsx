@@ -12,7 +12,7 @@ import { RippleRings } from "@/components/RippleRings";
 import { Screen } from "@/components/Screen";
 import { Txt } from "@/components/Txt";
 import { dailyTopicFor } from "@/core/dailyTopic";
-import { shouldShowHomeWaiting } from "@/core/homeWaiting";
+import { homeWaitingCopy, shouldShowHomeWaiting } from "@/core/homeWaiting";
 import { sceneFor } from "@/data/scenes";
 import { chooseFromLibrary } from "@/device/photos";
 import { isWaveSwooshPlaying, playOceanSound, shouldPlayHomeOceanOnFocus } from "@/device/sound";
@@ -25,8 +25,8 @@ import { colors, font, layout, space } from "@/theme";
 /**
  * Home tab: brand, topic, send actions, Account. Default launch tab.
  * Ocean swell: once per cold start (splash, or Home once if splash skipped it).
- * Returning to Home from tabs / background stays silent. Post-send waiting
- * shows once after upload.
+ * Returning to Home from tabs / background stays silent. Post-upload waiting
+ * shows once after upload; Ripple-sent confirmation only after a Match offer.
  *
  * Help + Account sit in a fixed top toolbar (safe-area aware). The two Frost
  * cards pin above the absolute tab bar so they never slide under it.
@@ -41,15 +41,21 @@ export default function HomeScreen() {
     shouldAskForPushes,
     askForPushes,
     postSendWaiting,
+    postSendRippleOffered,
     dismissPostSendWaiting,
   } = useAppState();
   const [sendingAnother, setSendingAnother] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
+  // Ripple-sent chrome lives on the Ripple tab; Home only keeps photo-only wait.
   const waiting = shouldShowHomeWaiting({
     hasTravellingRipple: travelling !== null,
     postSendWaiting,
     sendingAnother,
+    rippleOffered: postSendRippleOffered,
+  });
+  const waitingCopy = homeWaitingCopy({
+    rippleOffered: false,
   });
   const today = dailyTopicFor();
   // Measured tab bar height (incl. safe-area pad) + gap — Android gesture / 3-button.
@@ -171,22 +177,24 @@ export default function HomeScreen() {
               <>
                 <RippleRings size={160} />
                 <Txt variant="title" center style={styles.brandTitle}>
-                  Your Ripple is out there
+                  {waitingCopy.title}
                 </Txt>
                 <Txt tone="secondary" center style={styles.tagline}>
-                  We&apos;ll tell you when someone shares your moment.
+                  {waitingCopy.tagline}
                 </Txt>
-                <Txt
-                  variant="quiet"
-                  tone="quiet"
-                  center
-                  style={styles.caption}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.85}
-                >
-                  Waves usually arrive within a few days.
-                </Txt>
+                {waitingCopy.caption ? (
+                  <Txt
+                    variant="quiet"
+                    tone="quiet"
+                    center
+                    style={styles.caption}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.85}
+                  >
+                    {waitingCopy.caption}
+                  </Txt>
+                ) : null}
               </>
             ) : (
               <>
@@ -220,13 +228,23 @@ export default function HomeScreen() {
                   style={styles.actionGap}
                   accessibilityHint="Opens the camera, then the Ripple tab to upload"
                 />
+                <View
+                  style={styles.todayTopic}
+                  accessibilityLabel={`Today's topic: ${today.label}`}
+                >
+                  <Txt variant="quiet" tone="secondary" center>
+                    Today&apos;s topic
+                  </Txt>
+                  <Txt tone="moon" center style={styles.todayTopicLabel}>
+                    {today.label}
+                  </Txt>
+                </View>
                 <Button
                   kind="soft"
-                  label="Today's topic"
-                  detail={today.label}
-                  detailTone="moon"
+                  tone="white"
+                  label="Capture this moment"
                   onPress={() => void beginCompose(today.id, true)}
-                  style={styles.actionGap}
+                  style={{ ...styles.actionGap, ...styles.todayTopicCta }}
                   accessibilityHint="Starts a Ripple locked to today's topic"
                 />
               </>
@@ -308,4 +326,24 @@ const styles = StyleSheet.create({
     gap: space.sm,
   },
   actionGap: { alignSelf: "stretch" },
+  /** Full topic above the soft CTA — wraps; never ellipsized on the button. */
+  todayTopic: {
+    alignSelf: "stretch",
+    alignItems: "center",
+    gap: space.xs,
+    paddingHorizontal: space.sm,
+    paddingTop: space.xs,
+  },
+  todayTopicLabel: {
+    alignSelf: "stretch",
+    fontFamily: font.bold,
+  },
+  /**
+   * Today's topic CTA — saturated rippleCanvas (deep ocean) with white label
+   * (Button tone="white") for AA; wording unchanged.
+   */
+  todayTopicCta: {
+    backgroundColor: colors.rippleCanvas,
+    borderColor: colors.rippleCanvas,
+  },
 });
