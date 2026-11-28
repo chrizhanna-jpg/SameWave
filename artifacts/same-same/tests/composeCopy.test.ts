@@ -15,8 +15,9 @@ test("compose heading is What's the topic? and Upload moment stays", () => {
   assert.doesNotMatch(composeSrc, /missing\.push\("a moment"\)/);
 });
 
-test("Ripple tab compose no longer mounts RippleRings", () => {
-  assert.doesNotMatch(composeSrc, /RippleRings/);
+test("Ripple tab mounts RippleRings only for post-send waiting chrome", () => {
+  assert.match(composeSrc, /RippleRings/);
+  assert.match(composeSrc, /shouldShowRippleSentWaiting|rippleSentWaiting/);
 });
 
 test("Ripple tab uses deep canvas mark pattern (not a photo scene)", () => {

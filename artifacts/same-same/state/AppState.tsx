@@ -181,6 +181,8 @@ export interface AppStateValue {
   markPostSendRippleOffered(): void;
   /** Leave Home waiting / tap Send another — clear until the next send. */
   dismissPostSendWaiting(): void;
+  /** Clears waiting only if a Ripple was offered (Ripple-tab confirmation). */
+  dismissRippleSentWaiting(): void;
   syncNow(options?: { force?: boolean }): Promise<void>;
   /** Match screen: remember candidates already shown without counting a background look. */
   recordMatchSeen(myPhotoId: string, theirIds: readonly string[]): void;
@@ -810,6 +812,14 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setPostSendRippleOffered(false);
   }, []);
 
+  const dismissRippleSentWaiting = useCallback(() => {
+    setPostSendRippleOffered((offered) => {
+      if (!offered) return false;
+      setPostSendWaiting(false);
+      return false;
+    });
+  }, []);
+
   const recordMatchSeen = useCallback(
     (myPhotoId: string, theirIds: readonly string[]) => {
       if (!theirIds.length) return;
@@ -1018,6 +1028,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       postSendRippleOffered,
       markPostSendRippleOffered,
       dismissPostSendWaiting,
+      dismissRippleSentWaiting,
       syncNow,
       recordMatchSeen,
       finishMatchLook,
@@ -1041,6 +1052,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       postSendRippleOffered,
       markPostSendRippleOffered,
       dismissPostSendWaiting,
+      dismissRippleSentWaiting,
       data.wavesKnown,
       data.offers,
       data.offersKnown,

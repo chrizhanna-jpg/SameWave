@@ -1,21 +1,34 @@
 /**
- * Home (and Ripple) post-send confirmation.
+ * Post-send confirmation copy and gates.
  *
- * A travelling Ripple alone must not keep the screen on "Send another" —
- * that state is persisted and would show on every Home entry. Waiting UI
- * is only for the send that just happened, until the user dismisses it
- * (leaves the tab, or taps Send another).
+ * A travelling Ripple alone must not keep the UI on "Send another" —
+ * that state is persisted and would show on every entry. Waiting UI
+ * is only for the send that just happened, until the user dismisses it.
  *
  * Upload ("Upload moment") alone is not a Ripple send. "Your Ripple is out
- * there" only after the user offers a Ripple on Match; photo-only uses
- * arrival / waiting copy.
+ * there" only after the user offers a Ripple on Match — that chrome lives on
+ * the Ripple tab. Home may still show photo-only arrival waiting (not the
+ * Ripple-sent moment).
  */
+
 export function shouldShowHomeWaiting(opts: {
   hasTravellingRipple: boolean;
   postSendWaiting: boolean;
   sendingAnother: boolean;
+  /** When true, Ripple-sent chrome is on the Ripple tab — Home stays normal. */
+  rippleOffered?: boolean;
 }): boolean {
+  if (opts.rippleOffered) return false;
   return opts.hasTravellingRipple && opts.postSendWaiting && !opts.sendingAnother;
+}
+
+/** Ripple tab: show "Your Ripple is out there" + RippleRings after Match offer. */
+export function shouldShowRippleSentWaiting(opts: {
+  hasTravellingRipple: boolean;
+  postSendWaiting: boolean;
+  rippleOffered: boolean;
+}): boolean {
+  return opts.hasTravellingRipple && opts.postSendWaiting && opts.rippleOffered;
 }
 
 export type HomeWaitingCopy = {
