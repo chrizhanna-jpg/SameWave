@@ -239,7 +239,7 @@ export default function HomeScreen() {
                   kind="soft"
                   label="Capture this moment"
                   onPress={() => void beginCompose(today.id, true)}
-                  style={styles.actionGap}
+                  style={{ ...styles.actionGap, ...styles.todayTopicCta }}
                   accessibilityHint="Starts a Ripple locked to today's topic"
                 />
               </>
@@ -332,5 +332,10 @@ const styles = StyleSheet.create({
   todayTopicLabel: {
     alignSelf: "stretch",
     fontFamily: font.bold,
+  },
+  /** Soft CTA under Today's topic — tinted accent, not white surface. */
+  todayTopicCta: {
+    backgroundColor: colors.softAccent,
+    borderColor: colors.waterSoft,
   },
 });

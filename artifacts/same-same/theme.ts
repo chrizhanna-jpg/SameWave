@@ -27,6 +27,17 @@ export const colors = {
   waterMid: "#45B4FC",
   /** Quiet secondary marks — desaturated from the icon's deep blue (#1068E9). */
   waterMuted: "#6E8099",
+  /**
+   * Soft filled CTA (e.g. Home "Capture this moment") — tinted, not white,
+   * so it reads as an accent while slate label text stays AA on it.
+   */
+  softAccent: "#B5DFFC",
+  /**
+   * Section heading accents on the calm canvas (#E9F6FF) — deep enough for
+   * large-text AA, distinct so Ripples received vs Waves are easy to tell apart.
+   */
+  rippleHeading: "#1068E9",
+  waveHeading: "#0A6FA8",
 
   /** Text. Never pure black — dark slate for contrast on blue. */
   slate: "#3F4A4B",

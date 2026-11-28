@@ -38,6 +38,9 @@ test("Home shows today's topic above the soft CTA (full text, not button detail)
   assert.match(home, /Today&apos;s topic/);
   assert.match(home, /\{today\.label\}/);
   assert.match(home, /styles\.todayTopic/);
+  // Soft CTA uses tinted accent, not a white surface.
+  assert.match(home, /styles\.todayTopicCta/);
+  assert.match(home, /colors\.softAccent/);
   // Topic must not be crammed into Button detail (that ellipsizes on one line).
   assert.doesNotMatch(home, /detail=\{today\.label\}/);
   assert.doesNotMatch(home, /label="Today's topic"/);

@@ -162,12 +162,17 @@ test("Wave inbox has no card actions; pending tap opens Match Offer a Wave / Pas
   assert.match(waves, /useSampleData/);
   assert.match(waves, /withOptionalSampleWaves/);
   assert.match(waves, /withOptionalSampleOffers/);
-  // Contrast: titles/hints sit on Frost; opaque mist fill; no moon/quiet on scene.
-  assert.match(waves, /headingFrost|readableFill/);
-  assert.match(waves, /colors\.background/);
-  assert.match(waves, /intensity=\{7[28]\}|intensity=\{68\}/);
+  // Calm canvas: wave mark watermark, no photo scene; headers/empty without Frost panels.
+  assert.match(waves, /mark="wave"/);
+  assert.match(waves, /scene="none"/);
+  assert.match(waves, /ripplesHeading|colors\.rippleHeading/);
+  assert.match(waves, /wavesHeading|colors\.waveHeading/);
+  assert.doesNotMatch(waves, /headingFrost/);
+  assert.doesNotMatch(waves, /sceneFor\.home/);
   assert.doesNotMatch(waves, /tone="moon"/);
   assert.doesNotMatch(waves, /tone="quiet"/);
+  // Pair moment cards still use Frost; section headers/empty states do not.
+  assert.match(waves, /<Frost\b/);
 
   const match = readFileSync(path.join(root, "app/match.tsx"), "utf8");
   assert.match(match, /offerId/);

@@ -4,6 +4,7 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -11,7 +12,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { RippleMark } from "@/components/RippleMark";
 import { SceneBackdrop } from "@/components/SceneBackdrop";
+import { WaveMark } from "@/components/WaveMark";
 import { sceneFor, type SceneId } from "@/data/scenes";
 import { colors, layout, space } from "@/theme";
 
@@ -49,6 +52,11 @@ interface Props {
   photoUri?: string | null;
   /** Soft palette wash over a photograph for text legibility. Default true. */
   sceneWash?: boolean;
+  /**
+   * Large low-opacity mark watermark on the canvas (instead of a photo scene).
+   * Use with scene="none" for Ripple / Waves tab backgrounds.
+   */
+  mark?: "ripple" | "wave";
 }
 
 /** Style 3 canvas: full-bleed calm scene (or photo) under frosted content. */
@@ -65,8 +73,11 @@ export function Screen({
   scene = sceneFor.home,
   photoUri,
   sceneWash = true,
+  mark,
 }: Props) {
   const insets = useSafeAreaInsets();
+  const { width: winW } = useWindowDimensions();
+  const markSize = Math.min(Math.round(winW * 0.92), 420);
   const padding: ViewStyle = bare
     ? {}
     : {
@@ -127,6 +138,20 @@ export function Screen({
       {backdrop.kind === "none" ? (
         <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background }]} />
       ) : null}
+      {mark === "ripple" ? (
+        <View style={styles.markLayer} pointerEvents="none" accessibilityElementsHidden>
+          <View style={styles.markDim}>
+            <RippleMark size={markSize} animated={false} color={colors.waterMid} />
+          </View>
+        </View>
+      ) : null}
+      {mark === "wave" ? (
+        <View style={styles.markLayer} pointerEvents="none" accessibilityElementsHidden>
+          <View style={styles.markDim}>
+            <WaveMark width={markSize} />
+          </View>
+        </View>
+      ) : null}
       <KeyboardAvoidingView
         style={styles.fill}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -143,4 +168,11 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   center: { justifyContent: "center", alignItems: "center" },
   centerScroll: { flexGrow: 1, justifyContent: "center", alignItems: "center" },
+  markLayer: {
+    ...StyleSheet.absoluteFill,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  /** Subtle watermark — readable chrome stays on top. */
+  markDim: { opacity: 0.12 },
 });

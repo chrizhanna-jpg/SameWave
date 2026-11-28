@@ -195,8 +195,10 @@ export function ComposeRipple({ embeddedInTab = true }: { embeddedInTab?: boolea
       onScroll={(event) => onScrollY(scrollYRef, event)}
       reserveBottom={embeddedInTab ? tabClearance : undefined}
       contentBottomPad={embeddedInTab ? undefined : 48}
-      photoUri={photo?.uri ?? null}
-      scene={sceneFor.composeFallback}
+      // Ripple tab: calm canvas + ripple mark watermark — never the photo as backdrop.
+      photoUri={embeddedInTab ? null : (photo?.uri ?? null)}
+      scene={embeddedInTab ? "none" : sceneFor.composeFallback}
+      mark={embeddedInTab ? "ripple" : undefined}
     >
       {/*
         Stable order: photo (or Add a photo), then feeling / topic / sound.
