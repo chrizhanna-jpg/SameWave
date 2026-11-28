@@ -333,9 +333,8 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
     fontFamily: font.bold,
   },
-  /** Soft CTA under Today's topic — tinted accent, not white surface. */
+  /** Soft CTA under Today's topic — tinted accent only; copy/typography unchanged. */
   todayTopicCta: {
     backgroundColor: colors.softAccent,
-    borderColor: colors.waterSoft,
   },
 });
