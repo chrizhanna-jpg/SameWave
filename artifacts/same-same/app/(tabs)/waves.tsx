@@ -179,9 +179,6 @@ export default function WavesScreen() {
           >
             {makeWaveTitle}
           </Txt>
-          <Txt variant="quiet" tone="primary">
-            Moments people matched to yours. Tap to open.
-          </Txt>
         </Frost>
 
         {loadingRipples ? (
@@ -272,9 +269,6 @@ export default function WavesScreen() {
             accessibilityLabel={wavesCaughtTitle}
           >
             {wavesCaughtTitle}
-          </Txt>
-          <Txt variant="quiet" tone="primary">
-            Moments where they matched back. Tap to open.
           </Txt>
         </Frost>
 

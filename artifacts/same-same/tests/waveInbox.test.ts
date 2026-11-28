@@ -139,9 +139,12 @@ test("Wave inbox has no card actions; pending tap opens Match Offer a Wave / Pas
   assert.match(waves, /No Waves caught yet/);
   assert.doesNotMatch(waves, /Ripples received/);
   assert.match(waves, /Matched their moment to yours/);
-  assert.match(waves, /Moments people matched to yours/);
+  assert.doesNotMatch(waves, /Moments people matched to yours/);
   assert.match(waves, /They matched back/);
-  assert.match(waves, /Moments where they matched back/);
+  assert.doesNotMatch(waves, /Moments where they matched back/);
+  // Empty-state copy stays (not the removed under-heading subtitles).
+  assert.match(waves, /Nothing to make a wave yet/);
+  assert.match(waves, /No Waves caught yet/);
   assert.match(waves, /PairMomentCard/);
   assert.match(waves, /pairThumbs|Matched photo pair/);
   assert.match(waves, /inboxOfferTheirThumbSource/);
