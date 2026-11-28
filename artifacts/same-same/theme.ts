@@ -28,8 +28,8 @@ export const colors = {
   /** Quiet secondary marks — desaturated from the icon's deep blue (#1068E9). */
   waterMuted: "#6E8099",
   /**
-   * Soft filled CTA (e.g. Home "Capture this moment") — tinted, not white,
-   * so it reads as an accent while slate label text stays AA on it.
+   * Soft filled secondary surfaces — light tint. Prefer rippleCanvas + white
+   * label for the Home Today's topic CTA (clear colour, AA on deep blue).
    */
   softAccent: "#B5DFFC",
   /**

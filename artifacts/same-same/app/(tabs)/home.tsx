@@ -241,6 +241,7 @@ export default function HomeScreen() {
                 </View>
                 <Button
                   kind="soft"
+                  tone="white"
                   label="Capture this moment"
                   onPress={() => void beginCompose(today.id, true)}
                   style={{ ...styles.actionGap, ...styles.todayTopicCta }}
@@ -337,8 +338,12 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
     fontFamily: font.bold,
   },
-  /** Soft CTA under Today's topic — tinted accent only; copy/typography unchanged. */
+  /**
+   * Today's topic CTA — saturated rippleCanvas (deep ocean) with white label
+   * (Button tone="white") for AA; wording unchanged.
+   */
   todayTopicCta: {
-    backgroundColor: colors.softAccent,
+    backgroundColor: colors.rippleCanvas,
+    borderColor: colors.rippleCanvas,
   },
 });
