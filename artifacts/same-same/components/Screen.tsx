@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -53,10 +53,52 @@ interface Props {
   /** Soft palette wash over a photograph for text legibility. Default true. */
   sceneWash?: boolean;
   /**
-   * Large low-opacity mark watermark on the canvas (instead of a photo scene).
+   * Subtle repeating tiled mark pattern on the canvas (instead of a photo scene).
    * Use with scene="none" for Ripple / Waves tab backgrounds.
    */
   mark?: "ripple" | "wave";
+}
+
+const MARK_TILE = 44;
+const MARK_STEP_X = 92;
+const MARK_STEP_Y = 84;
+
+/** Offset staggered grid of small low-opacity marks. */
+function MarkPattern({ kind }: { kind: "ripple" | "wave" }) {
+  const { width, height } = useWindowDimensions();
+  const tiles = useMemo(() => {
+    const cols = Math.ceil(width / MARK_STEP_X) + 2;
+    const rows = Math.ceil(height / MARK_STEP_Y) + 2;
+    const out: { key: string; left: number; top: number }[] = [];
+    for (let row = 0; row < rows; row += 1) {
+      const stagger = row % 2 === 1 ? MARK_STEP_X / 2 : 0;
+      for (let col = 0; col < cols; col += 1) {
+        out.push({
+          key: `${row}-${col}`,
+          left: col * MARK_STEP_X + stagger - MARK_STEP_X,
+          top: row * MARK_STEP_Y - MARK_STEP_Y / 2,
+        });
+      }
+    }
+    return out;
+  }, [width, height]);
+
+  return (
+    <View style={styles.markLayer} pointerEvents="none" accessibilityElementsHidden>
+      {tiles.map((tile) => (
+        <View
+          key={tile.key}
+          style={[styles.markTile, { left: tile.left, top: tile.top }]}
+        >
+          {kind === "ripple" ? (
+            <RippleMark size={MARK_TILE} animated={false} color={colors.waterMid} />
+          ) : (
+            <WaveMark width={MARK_TILE} />
+          )}
+        </View>
+      ))}
+    </View>
+  );
 }
 
 /** Style 3 canvas: full-bleed calm scene (or photo) under frosted content. */
@@ -76,8 +118,6 @@ export function Screen({
   mark,
 }: Props) {
   const insets = useSafeAreaInsets();
-  const { width: winW } = useWindowDimensions();
-  const markSize = Math.min(Math.round(winW * 0.92), 420);
   const padding: ViewStyle = bare
     ? {}
     : {
@@ -138,20 +178,7 @@ export function Screen({
       {backdrop.kind === "none" ? (
         <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background }]} />
       ) : null}
-      {mark === "ripple" ? (
-        <View style={styles.markLayer} pointerEvents="none" accessibilityElementsHidden>
-          <View style={styles.markDim}>
-            <RippleMark size={markSize} animated={false} color={colors.waterMid} />
-          </View>
-        </View>
-      ) : null}
-      {mark === "wave" ? (
-        <View style={styles.markLayer} pointerEvents="none" accessibilityElementsHidden>
-          <View style={styles.markDim}>
-            <WaveMark width={markSize} />
-          </View>
-        </View>
-      ) : null}
+      {mark ? <MarkPattern kind={mark} /> : null}
       <KeyboardAvoidingView
         style={styles.fill}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -170,9 +197,15 @@ const styles = StyleSheet.create({
   centerScroll: { flexGrow: 1, justifyContent: "center", alignItems: "center" },
   markLayer: {
     ...StyleSheet.absoluteFill,
+    overflow: "hidden",
+  },
+  /** Subtle tiled watermark — readable chrome stays on top. */
+  markTile: {
+    position: "absolute",
+    width: MARK_TILE,
+    height: MARK_TILE,
+    opacity: 0.1,
     alignItems: "center",
     justifyContent: "center",
   },
-  /** Subtle watermark — readable chrome stays on top. */
-  markDim: { opacity: 0.12 },
 });

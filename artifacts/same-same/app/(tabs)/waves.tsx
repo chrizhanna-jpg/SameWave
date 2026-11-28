@@ -111,41 +111,62 @@ export default function WavesScreen() {
       reserveBottom={tabClearance}
       style={styles.screen}
     >
-      <View style={styles.headingPad}>
+      {/* Frosted title — keeps AA on the calm canvas watermark. */}
+      <Frost
+        kind="card"
+        intensity={68}
+        style={styles.headingFrost}
+        contentStyle={[styles.headingPad, styles.readableFill]}
+      >
         <Txt variant="title" tone="primary" accessibilityLabel="Waves">
           Waves
         </Txt>
-      </View>
+      </Frost>
 
       <View style={styles.sectionBlock} accessibilityLabel="Ripples received">
-        <View style={styles.sectionPad}>
+        <Frost
+          kind="card"
+          intensity={68}
+          style={styles.sectionFrost}
+          contentStyle={[styles.sectionPad, styles.readableFill]}
+        >
           <Txt
             variant="heading"
             style={[styles.sectionTitle, styles.ripplesHeading]}
           >
             Ripples received
           </Txt>
-          <Txt variant="quiet" tone="secondary">
+          <Txt variant="quiet" tone="primary">
             Moments people matched to yours. Tap to open.
           </Txt>
-        </View>
+        </Frost>
 
         {loadingRipples ? (
-          <View style={[styles.card, styles.emptyPad]}>
+          <Frost
+            kind="card"
+            intensity={72}
+            style={styles.card}
+            contentStyle={[styles.emptyPad, styles.readableFill]}
+          >
             <ActivityIndicator color={colors.waterMid} />
             <Txt tone="secondary" center style={styles.emptyBody}>
               Checking for moments…
             </Txt>
-          </View>
+          </Frost>
         ) : ripplesReceived.length === 0 ? (
-          <View style={[styles.card, styles.emptyPad]}>
+          <Frost
+            kind="card"
+            intensity={72}
+            style={styles.card}
+            contentStyle={[styles.emptyPad, styles.readableFill]}
+          >
             <Txt tone="primary" center>
               No Ripples received
             </Txt>
-            <Txt variant="quiet" tone="secondary" center style={styles.emptyBody}>
+            <Txt variant="quiet" tone="primary" center style={styles.emptyBody}>
               When someone matches their moment to one of yours, it lands here.
             </Txt>
-          </View>
+          </Frost>
         ) : (
           ripplesReceived.map((offer) => {
             const mySource = inboxOfferMyThumbSource(offer);
@@ -181,37 +202,54 @@ export default function WavesScreen() {
         )}
       </View>
 
-      <View accessibilityRole="none" style={styles.dividerPad}>
-        <View style={styles.divider} />
+      <View accessibilityRole="none" style={styles.dividerFrost}>
+        <Frost kind="card" intensity={48} contentStyle={styles.dividerPad}>
+          <View style={styles.divider} />
+        </Frost>
       </View>
 
       <View style={styles.sectionBlock} accessibilityLabel="Waves section">
-        <View style={styles.sectionPad}>
+        <Frost
+          kind="card"
+          intensity={68}
+          style={styles.sectionFrost}
+          contentStyle={[styles.sectionPad, styles.readableFill]}
+        >
           <Txt
             variant="heading"
             style={[styles.sectionTitle, styles.wavesHeading]}
           >
             Waves
           </Txt>
-          <Txt variant="quiet" tone="secondary">
+          <Txt variant="quiet" tone="primary">
             Moments where they matched back. Tap to open.
           </Txt>
-        </View>
+        </Frost>
 
         {loadingWaves ? (
-          <View style={[styles.card, styles.emptyPad]}>
+          <Frost
+            kind="card"
+            intensity={72}
+            style={styles.card}
+            contentStyle={[styles.emptyPad, styles.readableFill]}
+          >
             <ActivityIndicator color={colors.waterMid} />
-          </View>
+          </Frost>
         ) : mutualWaves.length === 0 ? (
-          <View style={[styles.card, styles.emptyPad]}>
+          <Frost
+            kind="card"
+            intensity={72}
+            style={styles.card}
+            contentStyle={[styles.emptyPad, styles.readableFill]}
+          >
             <Txt tone="primary" center>
               No Waves yet
             </Txt>
-            <Txt variant="quiet" tone="secondary" center style={styles.emptyBody}>
+            <Txt variant="quiet" tone="primary" center style={styles.emptyBody}>
               When someone matches back, their moment stays here. The map of
               where they happened is on the Map tab.
             </Txt>
-          </View>
+          </Frost>
         ) : (
           mutualWaves.map((wave) => (
             <PairMomentCard
@@ -357,28 +395,28 @@ function PairMomentCard({
 
 const styles = StyleSheet.create({
   screen: { flexGrow: 1, justifyContent: "flex-start" },
+  headingFrost: { marginBottom: space.md, alignSelf: "stretch" },
   headingPad: {
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
-    marginBottom: space.md,
-    alignSelf: "stretch",
   },
   sectionBlock: { marginBottom: space.sm },
+  sectionFrost: { marginBottom: space.md, alignSelf: "stretch" },
   sectionPad: {
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
     gap: space.xs,
-    marginBottom: space.md,
-    alignSelf: "stretch",
   },
   sectionTitle: { marginBottom: 0 },
   ripplesHeading: { color: colors.rippleHeading },
   wavesHeading: { color: colors.waveHeading },
-  dividerPad: {
+  dividerFrost: {
     marginVertical: space.md,
+    alignSelf: "stretch",
+  },
+  dividerPad: {
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
-    alignSelf: "stretch",
   },
   divider: {
     height: StyleSheet.hairlineWidth,
@@ -386,9 +424,13 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
   },
   card: { marginBottom: space.md },
-  /** Moment cards still use Frost; headers/empty states sit on the calm canvas. */
+  /**
+   * Opaque theme mist under copy so slate ink clears WCAG AA on any part of
+   * the lake/mountain scene. Frost still softens the card chrome; the photo
+   * remains visible between panels and around the screen edges.
+   */
   readableFill: {
-    backgroundColor: colors.surfaceTranslucent,
+    backgroundColor: colors.background,
   },
   emptyPad: {
     paddingHorizontal: space.lg,

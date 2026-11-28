@@ -38,6 +38,11 @@ export const colors = {
    */
   rippleHeading: "#1068E9",
   waveHeading: "#0A6FA8",
+  /**
+   * Map land fill — soft theme tint so continents read against pale water
+   * (canvas background) while photo pins stay clear.
+   */
+  mapLand: "#9ED4FC",
 
   /** Text. Never pure black — dark slate for contrast on blue. */
   slate: "#3F4A4B",
